@@ -1,0 +1,31 @@
+{
+  "name": "raiz-digital-platform",
+  "version": "0.4.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:domain": "node --experimental-strip-types scripts/test-lab-import.mjs",
+    "test:security": "node --experimental-strip-types scripts/test-security.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs",
+    "seed:dev": "node scripts/seed-dev.mjs",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "pg": "8.16.3",
+    "@node-rs/argon2": "2.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3",
+    "@types/pg": "8.15.5"
+  },
+  "type": "module"
+}
