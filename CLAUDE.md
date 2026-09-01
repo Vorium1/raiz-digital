@@ -89,3 +89,7 @@ Uma funcionalidade só está concluída quando houver, conforme aplicável:
 - teste automatizado ou E2E compatível com o risco;
 - build aprovado;
 - documentação de handoff atualizada.
+
+## GitHub target
+
+O repositório oficial deve ser `Vorium1/raiz-digital`, branch `main`. O remote local já está configurado para esse destino. Se ainda não existir remotamente, continue os commits localmente e não publique em outro repositório.

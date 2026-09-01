@@ -1,0 +1,51 @@
+Você está assumindo o desenvolvimento do projeto RAIZ Digital.
+
+TRABALHE SOBRE ESTE REPOSITÓRIO. NÃO RECOMECE O PROJETO.
+
+Antes de alterar código:
+1. Leia CLAUDE.md na raiz.
+2. Leia START_HERE_CLAUDE.txt.
+3. Leia docs/MASTER_HANDOFF_CLAUDE.md.
+4. Leia docs/PROJECT_STATE.md, docs/V0.5_INTERRUPTED.md, docs/ROADMAP_PRODUCT.md e docs/MOTOR_AGRONOMICO.md.
+5. Inspecione git log e git status.
+6. Instale dependências somente pelo package.json/lockfile existente. Não troque stack sem necessidade.
+7. Execute os testes/checks já existentes e registre o resultado real antes de marcar qualquer item como concluído.
+
+OBJETIVO IMEDIATO
+Continuar a v0.5 exatamente do ponto interrompido, consolidando a operação de campo:
+- cadastro visual de propriedade e talhão;
+- desenho/importação de polígono;
+- ordem de coleta;
+- grid e pontos GPS;
+- vínculo espacial entre coleta, amostra, análise e laudo;
+- persistência real no PostgreSQL/PostGIS;
+- UX mobile simples;
+- isolamento multiempresa e auditoria preservados.
+
+REGRAS NÃO NEGOCIÁVEIS
+- Next.js + TypeScript + PostgreSQL/PostGIS permanecem a base.
+- Não usar Lovable para reescrever o núcleo.
+- Não inventar resultado agronômico.
+- IA não substitui regras agronômicas determinísticas.
+- Não publicar recomendação agronômica sem rule set homologado.
+- Não remover RLS, tenant_id, auditoria, autenticação ou trilha de origem dos dados.
+- Não ocultar falhas de build/testes.
+- Não declarar funcionalidade pronta apenas porque a interface existe.
+- Preserve a identidade RAIZ Digital e o guia de marca em docs/brand/.
+
+GIT
+O Git local já contém o histórico do handoff. Faça commits pequenos e rastreáveis. O remote pretendido é:
+https://github.com/Vorium1/raiz-digital.git
+
+Se o repositório remoto ainda não existir, continue localmente sem perder tempo. Não crie outro nome e não use outro projeto da Vorium. Quando o repositório existir, publique main com `git push -u origin main`.
+
+PRIMEIRA RESPOSTA PARA MIM
+Não escreva um plano genérico. Faça a auditoria real primeiro e então me informe objetivamente:
+- estado do repositório;
+- testes executados e resultados;
+- build/typecheck reais;
+- o que da v0.5 já existe;
+- o que falta;
+- primeiro bloco que você vai implementar.
+
+Depois avance sozinho no código pelo maior tempo possível, interrompendo apenas se precisar de uma decisão de produto que não esteja documentada ou de uma credencial/ação humana indispensável.
