@@ -1,0 +1,13 @@
+RAIZ DIGITAL — INÍCIO DO HANDOFF
+
+1) Abra e leia CLAUDE.md.
+2) Leia docs/MASTER_HANDOFF_CLAUDE.md e docs/PROJECT_STATE.md.
+3) Não comece reescrevendo o projeto.
+4) A v0.4 é a última baseline consolidada.
+5) O diretório atual contém o início interrompido da v0.5.
+6) Faça auditoria, instale dependências, rode testes/typecheck/build, suba Postgres/PostGIS e valide RLS antes de avançar.
+7) Depois feche a v0.5 conforme docs/ROADMAP_PRODUCT.md.
+
+Mensagem sugerida ao Claude:
+
+"Abra o projeto RAIZ Digital recebido e leia CLAUDE.md antes de qualquer alteração. Faça primeiro a auditoria obrigatória descrita no handoff. Não recomece, não troque a stack e não redesenhe o produto. Corrija o que falhar, valide a baseline e o snapshot v0.5, e só então avance a v0.5. Trabalhe em commits pequenos, rode testes e atualize PROJECT_STATE.md."

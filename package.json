@@ -1,6 +1,6 @@
 {
   "name": "raiz-digital-platform",
-  "version": "0.4.0",
+  "version": "0.5.0-dev.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,9 @@
     "test:security": "node --experimental-strip-types scripts/test-security.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "seed:dev": "node scripts/seed-dev.mjs",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run check:migrations"
   },
   "dependencies": {
     "next": "16.2.6",

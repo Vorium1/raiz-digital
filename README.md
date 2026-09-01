@@ -4,9 +4,11 @@ Plataforma de inteligência agronômica **“Do solo à decisão, com precisão.
 
 ## Versão atual
 
-**0.4.0 — sessão real, isolamento multiempresa e persistência PostgreSQL/PostGIS**
+**0.5.0-dev.1 — handoff: baseline 0.4 + operações de campo em desenvolvimento**
 
 A 0.4 mantém a UX construída nas versões 0.1–0.3 e conecta o primeiro núcleo persistente do produto. O modo `database` não usa números ou pareceres agronômicos fictícios para preencher telas vazias.
+
+> **Handoff:** a v0.4 é a última baseline consolidada. Este diretório inclui um início de v0.5 ainda não homologado. Leia `CLAUDE.md`, `docs/MASTER_HANDOFF_CLAUDE.md` e `docs/V0.5_INTERRUPTED.md` antes de continuar.
 
 ## O que está implementado de verdade
 
