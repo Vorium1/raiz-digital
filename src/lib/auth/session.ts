@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { createOpaqueSessionToken, hashSessionToken, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/token";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 
 export type PlatformSession = {
   sessionId: string;
@@ -104,6 +105,16 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
     return null;
   }
   return session;
+}
+
+export async function changeOwnPassword(input: { userId: string; currentPassword: string; newPassword: string }) {
+  const result = await query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id = $1::uuid", [input.userId]);
+  const currentHash = result.rows[0]?.password_hash;
+  if (!currentHash || !(await verifyPassword(currentHash, input.currentPassword))) {
+    throw new Error("Senha atual incorreta.");
+  }
+  const newHash = await hashPassword(input.newPassword);
+  await query("UPDATE users SET password_hash = $1 WHERE id = $2::uuid", [newHash, input.userId]);
 }
 
 export async function requirePlatformSession() {

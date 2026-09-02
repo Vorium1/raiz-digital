@@ -20,7 +20,7 @@ export default async function SettingsPage() {
   ]);
   return <><Topbar eyebrow="Administração" title="Configurações"/><div className="content-wrap">
     <PageIntro title="Governança da plataforma" description={`Empresa ativa: ${session.tenantName}. Usuários, perfis e dados operacionais permanecem isolados pelo tenant da sessão.`}/>
-    <SettingsTabs members={members as any} laboratories={context.laboratories as any} auditEvents={auditEvents as any}/>
+    <SettingsTabs members={members as any} laboratories={context.laboratories as any} auditEvents={auditEvents as any} canManageTeam={new Set(["SUPER_ADMIN","TENANT_ADMIN"]).has(session.role)}/>
   </div></>;
 }
 

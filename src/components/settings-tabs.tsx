@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { roleLabel } from "@/lib/role-labels";
@@ -10,6 +11,14 @@ import { formatRelativeOrDate } from "@/domain/analysis-ui";
 type Member = { id: string; name: string; email: string; role: string; active: boolean; lastLoginAt: string | null };
 type Laboratory = { id: string; name: string; taxId: string | null };
 type AuditEvent = { id: string; action: string; entityType: string; createdAt: string; actorName: string | null };
+
+const invitableRoles = [
+  { value: "TENANT_ADMIN", label: "Administrador" },
+  { value: "AGRONOMIST", label: "Agrônomo" },
+  { value: "FIELD_TECH", label: "Técnico de campo" },
+  { value: "COMMERCIAL", label: "Comercial" },
+  { value: "VIEWER", label: "Leitura" },
+] as const;
 
 const tabs = [
   { key: "team", label: "Usuários e permissões", icon: "users" },
@@ -28,12 +37,70 @@ const notImplementedCopy: Partial<Record<TabKey, string>> = {
   email: "Modelos de e-mail e envio automático de relatório ainda não existem.",
 };
 
-export function SettingsTabs({ members, laboratories: initialLaboratories, auditEvents }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[] }) {
+export function SettingsTabs({ members, laboratories: initialLaboratories, auditEvents, canManageTeam }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean }) {
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>("team");
   const [laboratories, setLaboratories] = useState(initialLaboratories);
   const [newLabName, setNewLabName] = useState("");
   const [creatingLab, setCreatingLab] = useState(false);
   const [labError, setLabError] = useState("");
+
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<string>("VIEWER");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteResult, setInviteResult] = useState<{ email: string; password: string | null; createdNewUser: boolean } | null>(null);
+
+  async function inviteMember() {
+    const name = inviteName.trim();
+    const email = inviteEmail.trim();
+    if (!name || !email) return;
+    setInviting(true);
+    setInviteError("");
+    setInviteResult(null);
+    try {
+      const response = await fetch("/api/team", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, email, role: inviteRole }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível convidar o membro.");
+      setInviteResult({ email, password: payload.temporaryPassword, createdNewUser: payload.createdNewUser });
+      setInviteName("");
+      setInviteEmail("");
+      router.refresh();
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : "Falha ao convidar membro.");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  async function submitPasswordChange() {
+    setPasswordError("");
+    setPasswordSuccess(false);
+    if (newPassword.length < 10) { setPasswordError("A nova senha precisa ter ao menos 10 caracteres."); return; }
+    if (newPassword !== confirmPassword) { setPasswordError("A confirmação não bate com a nova senha."); return; }
+    setChangingPassword(true);
+    try {
+      const response = await fetch("/api/auth/change-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível alterar a senha.");
+      setPasswordSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Falha ao alterar senha.");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
 
   async function createLaboratory() {
     const name = newLabName.trim();
@@ -87,7 +154,42 @@ export function SettingsTabs({ members, laboratories: initialLaboratories, audit
             ) : (
               <div className="empty-state"><Icon name="users" /><strong>Nenhum membro encontrado</strong><small>O tenant atual não possui vínculos ativos além da configuração de sessão.</small></div>
             )}
-            <div className="module-note"><Icon name="shield" size={15} /><span><strong>Convites ainda não estão habilitados.</strong><small>A próxima etapa adicionará convite com expiração, definição de perfil e 2FA para administradores.</small></span></div>
+
+            {canManageTeam && (
+              <div className="team-invite">
+                <h3>Convidar membro</h3>
+                <p>Cria o acesso na hora. Ainda não envia e-mail de verdade — copie a senha temporária e repasse por um canal seguro.</p>
+                <div className="team-invite-grid">
+                  <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Nome" disabled={inviting} />
+                  <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="E-mail" type="email" disabled={inviting} />
+                  <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} disabled={inviting}>
+                    {invitableRoles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                  </select>
+                  <button type="button" className="button secondary" disabled={inviting || !inviteName.trim() || !inviteEmail.trim()} onClick={() => void inviteMember()}>{inviting ? "Convidando…" : "Convidar"}</button>
+                </div>
+                {inviteError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível convidar</strong><small>{inviteError}</small></div></div>}
+                {inviteResult && (
+                  inviteResult.password ? (
+                    <div className="import-message success"><Icon name="check" /><div><strong>Conta criada para {inviteResult.email}</strong><small>Senha temporária (mostrada só agora, copie e envie por um canal seguro): <code>{inviteResult.password}</code></small></div></div>
+                  ) : (
+                    <div className="import-message"><Icon name="shield" /><div><strong>{inviteResult.email} já tinha conta</strong><small>Vínculo criado com esta empresa; a pessoa continua usando a senha que já tinha.</small></div></div>
+                  )
+                )}
+              </div>
+            )}
+
+            <div className="team-invite">
+              <h3>Minha conta</h3>
+              <p>Alterar a própria senha de acesso.</p>
+              <div className="team-invite-grid password-grid">
+                <input value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Senha atual" type="password" disabled={changingPassword} />
+                <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Nova senha (mín. 10 caracteres)" type="password" disabled={changingPassword} />
+                <input value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirmar nova senha" type="password" disabled={changingPassword} />
+                <button type="button" className="button secondary" disabled={changingPassword || !currentPassword || !newPassword} onClick={() => void submitPasswordChange()}>{changingPassword ? "Salvando…" : "Alterar senha"}</button>
+              </div>
+              {passwordError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível alterar</strong><small>{passwordError}</small></div></div>}
+              {passwordSuccess && <div className="import-message success"><Icon name="check" /><div><strong>Senha alterada com sucesso</strong><small>Use a nova senha no próximo login.</small></div></div>}
+            </div>
           </>
         )}
 

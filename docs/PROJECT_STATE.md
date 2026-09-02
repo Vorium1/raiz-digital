@@ -326,3 +326,33 @@ existia na tela original de Configurações (antes desta sessão), só nunca tin
 de usuários nunca tinha ficado larga o bastante para revelar o problema. Corrigido trocando para
 `grid-template-columns: minmax(0,1fr)` (e o equivalente no desktop, `240px minmax(0,1fr)`). Testado: sem
 estouro horizontal em nenhuma aba, nem no desktop nem no celular (390px).
+
+## Convite de membro da equipe e troca de senha
+
+Gap real fechado: não existia nenhuma forma de adicionar um novo usuário à empresa pelo próprio site — só
+rodando um script direto no banco (`seed-dev.mjs`). Isso travava qualquer uso real em equipe. Também não
+existia nenhuma forma de um usuário trocar a própria senha, o que tornaria esse convite incompleto (a pessoa
+convidada ficaria presa para sempre com uma senha temporária conhecida pelo administrador).
+
+- `POST /api/team`: cria o convite. Restrito a `SUPER_ADMIN`/`TENANT_ADMIN` (mais restrito que outras rotas
+  de escrita, de propósito — gerenciar quem tem acesso é mais sensível). Não permite atribuir o perfil
+  `SUPER_ADMIN` por essa via (só os cinco perfis abaixo dele). Gera uma senha temporária aleatória (12
+  caracteres), devolvida **uma única vez** na resposta — nunca fica em log nem em lugar nenhum além do hash
+  Argon2 no banco. Se o e-mail já é de um usuário existente, só cria o vínculo com a empresa e **não** mexe
+  na senha dele (evita que um administrador de uma empresa possa sequestrar a conta de alguém cadastrado em
+  outra empresa só sabendo o e-mail). E-mail já vinculado a esta mesma empresa retorna erro 409.
+- `POST /api/auth/change-password`: qualquer usuário logado troca a própria senha, exige a senha atual
+  correta (reaproveita `verifyPassword`/`hashPassword` já usados no login, mesmos parâmetros do Argon2).
+- Aba "Usuários e permissões" das Configurações ganhou os dois formulários: "Convidar membro" (nome, e-mail,
+  perfil, mostra a senha temporária uma vez) e "Minha conta" (trocar a própria senha).
+
+Testado contra o banco real, API direta: membro convidado, login com a senha temporária funcionou, troca de
+senha funcionou, login com a senha antiga passou a falhar (401) e com a nova passou a funcionar (200),
+convite duplicado bloqueado (409), perfil sem permissão bloqueado ao tentar convidar (403). Testado pela tela
+real (desktop e celular 390px): sem estouro de layout.
+
+**Ainda não implementado, registrado como pendência real**: convite por e-mail de verdade (hoje o
+administrador precisa copiar e repassar a senha temporária manualmente, por fora do sistema — não é enviado
+nada automaticamente), expiração do convite, e 2FA. Segue como o `CLAUDE.md` já previa em "Antes de produção
+ainda faltam 2FA administrativo, recuperação de senha, convites" — o convite básico e a troca de senha própria
+agora existem; recuperação de senha esquecida (sem estar logado) e 2FA continuam pendentes.
