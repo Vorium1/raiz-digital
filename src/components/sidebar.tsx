@@ -11,7 +11,7 @@ const navigationSections = [
     label: "PRINCIPAL",
     items: [
       { href: "/dashboard", label: "Início", icon: "home" },
-      { href: "/analises", label: "Análises", icon: "flask", count: 7 },
+      { href: "/analises", label: "Análises", icon: "flask" },
       { href: "/coletas", label: "Coletas e mapas", icon: "map" },
       { href: "/clientes", label: "Clientes", icon: "users" },
     ],
@@ -26,9 +26,9 @@ const navigationSections = [
   },
 ] as const;
 
-type SidebarProps = { tenantName?: string; userName?: string; role?: string };
+type SidebarProps = { tenantName?: string; userName?: string; role?: string; pendingAnalyses?: number };
 
-export function Sidebar({ tenantName, userName, role }: SidebarProps) {
+export function Sidebar({ tenantName, userName, role, pendingAnalyses }: SidebarProps) {
   const pathname = usePathname();
 
   const tenantLabel = tenantName ?? "GrãoSul Agrícola";
@@ -57,11 +57,12 @@ export function Sidebar({ tenantName, userName, role }: SidebarProps) {
             <span className="nav-label">{section.label}</span>
             {section.items.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const count = item.href === "/analises" ? (pendingAnalyses ?? 7) : 0;
               return (
                 <Link key={item.href} href={item.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
                   <Icon name={item.icon} size={19} />
                   <span>{item.label}</span>
-                  {"count" in item && <b aria-label={`${item.count} pendentes`}>{item.count}</b>}
+                  {count > 0 && <b aria-label={`${count} pendentes`}>{count}</b>}
                 </Link>
               );
             })}

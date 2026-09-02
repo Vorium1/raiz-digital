@@ -552,3 +552,22 @@ teste feita mais cedo nesta sessão apareceu lá, com rótulo legível); bolinha
 continua sumida depois de recarregar a página; fecha ao clicar fora; sem estouro de layout em desktop.
 Celular mantém o comportamento já existente de esconder o sino no topo compacto (decisão de design anterior
 a esta sessão, não alterada).
+
+## Correção: número fictício no menu lateral
+
+Achado numa varredura por dado inventado em modo real (o `CLAUDE.md` proíbe isso explicitamente): o item
+"Análises" do menu lateral (`src/components/sidebar.tsx`) sempre mostrava uma bolinha laranja com o número
+**7** fixo no código — em toda página, inclusive com o banco real conectado e mesmo sem nenhuma análise
+pendente de verdade. Era herança do protótipo visual original e nunca tinha sido conectado a dado real.
+
+- `PlatformLayout` (`src/app/(platform)/layout.tsx`) agora busca o mesmo retrato usado no painel inicial
+  (`getDashboardSnapshot`, que já existia) e passa para a barra lateral a soma real de análises "aguardando
+  revisão" + "com inconsistência" — o mesmo número que já aparece nos cartões do painel inicial.
+- A bolinha só aparece quando esse número é maior que zero; sem pendência real, some.
+- O modo demonstração (sem banco) manteve o número de exemplo, já que ali os dados são só ilustrativos e
+  isso é comunicado por um aviso de tela; não é o caso proibido pelo `CLAUDE.md` (que é especificamente sobre
+  `DATA_MODE=database`).
+
+Testado contra o banco real: com nenhuma análise pendente, a bolinha não aparece; forçando temporariamente
+uma análise para "Aguardando revisão" (revertido logo em seguida), a bolinha passou a mostrar exatamente o
+mesmo número do cartão "Aguardando revisão" do painel inicial.
