@@ -12,7 +12,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     <div className="app-shell">
       <Sidebar tenantName={session?.tenantName} userName={session?.name} role={session?.role} pendingAnalyses={pendingAnalyses} />
       <main id="conteudo-principal" className="main-content" tabIndex={-1}>{children}</main>
-      <MobileNavigation />
+      <MobileNavigation role={session?.role} />
     </div>
   );
 }

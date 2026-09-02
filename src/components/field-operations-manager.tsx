@@ -132,6 +132,16 @@ export function FieldOperationsManager() {
 
   useEffect(()=>{ void loadAll().catch((error)=>setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao carregar operação." })); }, []);
 
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (!hash) return;
+    const target = document.getElementById(hash);
+    if (target instanceof HTMLDetailsElement) {
+      target.open = true;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loading]);
+
   async function postJson(url: string, body: unknown) {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json().catch(()=>({}));
@@ -354,7 +364,7 @@ export function FieldOperationsManager() {
       <div className="field-ops-section-head"><div><span className="eyebrow">BASE CARTOGRÁFICA</span><h2>Área, talhão e safra</h2><p>Cadastre uma vez. Depois a operação reaproveita o mesmo contexto em coletas, laudos, histórico e mapas.</p></div><span className="field-ops-count">{context.fields.length} talhões</span></div>
       {!context.clients.length && <div className="field-ops-inline-warning"><Icon name="users" size={18}/><span>Cadastre primeiro um cliente em <strong>Clientes</strong>.</span></div>}
       <div className="field-ops-accordion">
-        <details><summary><span><b>1</b><strong>Propriedade</strong><small>Município, UF e limite opcional</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
+        <details id="propriedades"><summary><span><b>1</b><strong>Propriedade</strong><small>Município, UF e limite opcional</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Cliente</span><select value={propertyClientId} onChange={(e)=>{setPropertyClientId(e.target.value);setFieldPropertyId("");}}><option value="">Selecione</option>{context.clients.map((client)=><option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
           <label><span>Nome</span><input value={propertyName} onChange={(e)=>setPropertyName(e.target.value)} placeholder="Fazenda Boa Esperança"/></label>
           <label><span>Município</span><input value={municipality} onChange={(e)=>setMunicipality(e.target.value)} placeholder="Passo Fundo"/></label>
@@ -383,7 +393,7 @@ export function FieldOperationsManager() {
             ))}
           </div>}
         </div></details>
-        <details><summary><span><b>2</b><strong>Talhão</strong><small>Polígono WGS84 obrigatório</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
+        <details id="talhoes"><summary><span><b>2</b><strong>Talhão</strong><small>Polígono WGS84 obrigatório</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Propriedade</span><select value={fieldPropertyId} onChange={(e)=>setFieldPropertyId(e.target.value)}><option value="">Selecione</option>{propertyOptions.map((property)=><option key={property.id} value={property.id}>{property.name} · {property.municipality}/{property.state}</option>)}</select></label>
           <label><span>Nome do talhão</span><input value={fieldName} onChange={(e)=>setFieldName(e.target.value)} placeholder="Talhão Norte"/></label>
           <label className="field-ops-wide"><span>Polígono GeoJSON</span><textarea value={fieldBoundary} onChange={(e)=>setFieldBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[[[-52.4,-28.2],...]]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setFieldBoundary)}/><GeoMapInput value={fieldBoundary} onChange={setFieldBoundary} referenceBoundary={selectedFieldProperty?.boundary ?? null} height={320}/><small>O PostGIS valida geometria, calcula hectares e bloqueia talhão fora do limite da propriedade quando esse limite existe. {selectedFieldProperty?.boundary ? "O contorno tracejado no mapa mostra o limite da propriedade selecionada." : ""}</small></label>
@@ -408,7 +418,7 @@ export function FieldOperationsManager() {
             ))}
           </div>}
         </div></details>
-        <details><summary><span><b>3</b><strong>Safra</strong><small>Cultura e meta do contexto agronômico</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
+        <details id="safras"><summary><span><b>3</b><strong>Safra</strong><small>Cultura e meta do contexto agronômico</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Talhão</span><select value={seasonFieldId} onChange={(e)=>setSeasonFieldId(e.target.value)}><option value="">Selecione</option>{context.fields.map((field)=><option key={field.id} value={field.id}>{field.name} · {Number(field.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</option>)}</select></label>
           <label><span>Safra</span><input value={seasonLabel} onChange={(e)=>setSeasonLabel(e.target.value)}/></label>
           <label><span>Cultura</span><select value={cropProfileId} onChange={(e)=>setCropProfileId(e.target.value)}><option value="">Selecione</option>{context.cropProfiles.map((profile)=><option key={profile.id} value={profile.id}>{profile.name}{profile.status === "DRAFT" ? " (aguardando homologação)" : ""}</option>)}</select></label>

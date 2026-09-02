@@ -4,22 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
+import { visibleNavigationSections } from "@/lib/navigation";
 
-const primaryItems = [
-  { href: "/dashboard", label: "Início", icon: "home" },
-  { href: "/clientes", label: "Clientes", icon: "users" },
-  { href: "/analises", label: "Análises", icon: "flask" },
-] as const;
+const PRIMARY_HREFS = ["/dashboard", "/clientes", "/analises"];
 
-const moreItems = [
-  { href: "/coletas", label: "Coletas e mapas", description: "Campo, GPS e pontos de amostragem", icon: "map" },
-  { href: "/relatorios", label: "Relatórios", description: "Laudos e documentos publicados", icon: "file" },
-  { href: "/historico", label: "Histórico", description: "Evolução por área e safra", icon: "history" },
-  { href: "/financeiro", label: "Financeiro", description: "Assinatura, cobranças e pagamentos", icon: "wallet" },
-  { href: "/configuracoes", label: "Configurações", description: "Equipe, integrações e governança", icon: "settings" },
-] as const;
-
-export function MobileNavigation() {
+export function MobileNavigation({ role }: { role?: string }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -27,8 +16,16 @@ export function MobileNavigation() {
     setMoreOpen(false);
   }, [pathname]);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-  const moreActive = moreItems.some((item) => isActive(item.href));
+  const isActive = (href: string) => {
+    const path = href.split("#")[0].split("?")[0];
+    return pathname === path || pathname.startsWith(`${path}/`);
+  };
+
+  const sections = visibleNavigationSections(role);
+  const allItems = sections.flatMap((section) => section.items.map((item) => ({ ...item, section: section.label })));
+  const primaryItems = PRIMARY_HREFS.map((href) => allItems.find((item) => item.href === href)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const moreSections = sections.map((section) => ({ ...section, items: section.items.filter((item) => !PRIMARY_HREFS.includes(item.href)) })).filter((section) => section.items.length > 0);
+  const moreActive = moreSections.some((section) => section.items.some((item) => isActive(item.href)));
 
   return (
     <>
@@ -53,29 +50,34 @@ export function MobileNavigation() {
           </button>
         </div>
         <nav className="mobile-more-list" aria-label="Navegação adicional">
-          {moreItems.map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(item.href) ? "active" : ""}>
-              <span className="mobile-more-icon"><Icon name={item.icon} size={20} /></span>
-              <span><strong>{item.label}</strong><small>{item.description}</small></span>
-              <Icon name="chevron" size={17} />
-            </Link>
+          {moreSections.map((section) => (
+            <div key={section.label} className="mobile-more-group">
+              <span className="mobile-more-group-label">{section.label}</span>
+              {section.items.map((item) => (
+                <Link key={item.href} href={item.href} className={isActive(item.href) ? "active" : ""}>
+                  <span className="mobile-more-icon"><Icon name={item.icon} size={20} /></span>
+                  <span><strong>{item.label}</strong></span>
+                  <Icon name="chevron" size={17} />
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
       </section>
 
       <nav className="mobile-bottom-nav" aria-label="Navegação principal no celular">
-        <Link href={primaryItems[0].href} className={isActive(primaryItems[0].href) ? "active" : ""} aria-current={isActive(primaryItems[0].href) ? "page" : undefined}>
+        {primaryItems[0] && <Link href={primaryItems[0].href} className={isActive(primaryItems[0].href) ? "active" : ""} aria-current={isActive(primaryItems[0].href) ? "page" : undefined}>
           <Icon name={primaryItems[0].icon} size={21} /><span>{primaryItems[0].label}</span>
-        </Link>
-        <Link href={primaryItems[1].href} className={isActive(primaryItems[1].href) ? "active" : ""} aria-current={isActive(primaryItems[1].href) ? "page" : undefined}>
+        </Link>}
+        {primaryItems[1] && <Link href={primaryItems[1].href} className={isActive(primaryItems[1].href) ? "active" : ""} aria-current={isActive(primaryItems[1].href) ? "page" : undefined}>
           <Icon name={primaryItems[1].icon} size={21} /><span>{primaryItems[1].label}</span>
-        </Link>
+        </Link>}
         <Link href="/analises/nova" className={`mobile-create-action ${isActive("/analises/nova") ? "active" : ""}`} aria-label="Criar nova análise">
           <span><Icon name="plus" size={25} /></span><b>Criar</b>
         </Link>
-        <Link href={primaryItems[2].href} className={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "active" : ""} aria-current={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "page" : undefined}>
+        {primaryItems[2] && <Link href={primaryItems[2].href} className={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "active" : ""} aria-current={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "page" : undefined}>
           <Icon name={primaryItems[2].icon} size={21} /><span>{primaryItems[2].label}</span>
-        </Link>
+        </Link>}
         <button
           type="button"
           className={moreOpen || moreActive ? "active" : ""}

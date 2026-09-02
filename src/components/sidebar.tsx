@@ -5,26 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { initials, roleLabel } from "@/lib/role-labels";
-
-const navigationSections = [
-  {
-    label: "PRINCIPAL",
-    items: [
-      { href: "/dashboard", label: "Início", icon: "home" },
-      { href: "/analises", label: "Análises", icon: "flask" },
-      { href: "/coletas", label: "Coletas e mapas", icon: "map" },
-      { href: "/clientes", label: "Clientes", icon: "users" },
-    ],
-  },
-  {
-    label: "GESTÃO",
-    items: [
-      { href: "/relatorios", label: "Relatórios", icon: "file" },
-      { href: "/historico", label: "Histórico", icon: "history" },
-      { href: "/financeiro", label: "Financeiro", icon: "wallet" },
-    ],
-  },
-] as const;
+import { visibleNavigationSections } from "@/lib/navigation";
 
 type SidebarProps = { tenantName?: string; userName?: string; role?: string; pendingAnalyses?: number };
 
@@ -36,6 +17,7 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
   const userLabel = userName ?? "Gui Bortoluzzi";
   const userInitials = userName ? initials(userName) || "?" : "GB";
   const roleText = role ? (roleLabel[role] ?? role) : "Administrador";
+  const sections = visibleNavigationSections(role).map((section) => ({ ...section, items: section.items.filter((item) => item.href !== "/configuracoes") }));
 
   return (
     <aside className="sidebar">
@@ -52,11 +34,12 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
       <Link href="/analises/nova" className="sidebar-create"><Icon name="plus" size={18}/>Criar nova análise</Link>
 
       <nav className="sidebar-nav" aria-label="Navegação principal">
-        {navigationSections.map((section) => (
+        {sections.map((section) => (
           <div className="sidebar-nav-section" key={section.label}>
             <span className="nav-label">{section.label}</span>
             {section.items.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const path = item.href.split("#")[0].split("?")[0];
+              const active = pathname === path || pathname.startsWith(`${path}/`);
               const count = item.href === "/analises" ? (pendingAnalyses ?? 7) : 0;
               return (
                 <Link key={item.href} href={item.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
