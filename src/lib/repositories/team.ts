@@ -57,6 +57,85 @@ export async function inviteTeamMember(input: {
   });
 }
 
+const manageableRoles = new Set(["TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH", "COMMERCIAL", "VIEWER"]);
+const adminRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN"]);
+
+async function countActiveAdmins(client: import("pg").PoolClient, tenantId: string, excludingUserId?: string) {
+  const result = await client.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM tenant_members
+     WHERE tenant_id = $1::uuid AND active = true AND role IN ('SUPER_ADMIN','TENANT_ADMIN')
+       AND ($2::uuid IS NULL OR user_id <> $2::uuid)`,
+    [tenantId, excludingUserId ?? null],
+  );
+  return result.rows[0]?.count ?? 0;
+}
+
+export async function updateTeamMemberRole(input: { tenantId: string; actorUserId: string; targetUserId: string; role: string }) {
+  if (!manageableRoles.has(input.role)) throw new TeamError("Perfil inválido.", 400);
+  return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
+    const current = await client.query<{ role: string; active: boolean }>(
+      `SELECT role::text, active FROM tenant_members WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
+      [input.tenantId, input.targetUserId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
+
+    if (adminRoles.has(row.role) && !adminRoles.has(input.role) && row.active) {
+      const remaining = await countActiveAdmins(client, input.tenantId, input.targetUserId);
+      if (remaining === 0) throw new TeamError("Não é possível rebaixar: este é o único administrador ativo da empresa.", 409);
+    }
+
+    await client.query(
+      `UPDATE tenant_members SET role = $3 WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
+      [input.tenantId, input.targetUserId, input.role],
+    );
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "TEAM_MEMBER_ROLE_CHANGED",
+      entityType: "user",
+      entityId: input.targetUserId,
+      metadata: { from: row.role, to: input.role },
+    });
+  });
+}
+
+export async function setTeamMemberActive(input: { tenantId: string; actorUserId: string; targetUserId: string; active: boolean }) {
+  if (input.targetUserId === input.actorUserId) throw new TeamError("Você não pode desativar o seu próprio acesso.", 400);
+  return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
+    const current = await client.query<{ role: string; active: boolean }>(
+      `SELECT role::text, active FROM tenant_members WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
+      [input.tenantId, input.targetUserId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
+
+    if (!input.active && adminRoles.has(row.role) && row.active) {
+      const remaining = await countActiveAdmins(client, input.tenantId, input.targetUserId);
+      if (remaining === 0) throw new TeamError("Não é possível desativar: este é o único administrador ativo da empresa.", 409);
+    }
+
+    await client.query(
+      `UPDATE tenant_members SET active = $3 WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
+      [input.tenantId, input.targetUserId, input.active],
+    );
+    if (!input.active) {
+      await client.query(
+        `UPDATE user_sessions SET revoked_at = now() WHERE tenant_id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL`,
+        [input.tenantId, input.targetUserId],
+      );
+    }
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: input.active ? "TEAM_MEMBER_REACTIVATED" : "TEAM_MEMBER_DEACTIVATED",
+      entityType: "user",
+      entityId: input.targetUserId,
+      metadata: {},
+    });
+  });
+}
+
 export async function listTenantMembers(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(

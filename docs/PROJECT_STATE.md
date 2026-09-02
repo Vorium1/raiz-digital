@@ -571,3 +571,31 @@ pendente de verdade. Era herança do protótipo visual original e nunca tinha si
 Testado contra o banco real: com nenhuma análise pendente, a bolinha não aparece; forçando temporariamente
 uma análise para "Aguardando revisão" (revertido logo em seguida), a bolinha passou a mostrar exatamente o
 mesmo número do cartão "Aguardando revisão" do painel inicial.
+
+## Gestão real de equipe: mudar perfil e desativar acesso
+
+Lacuna de segurança encontrada nesta sessão: a coluna `active` de `tenant_members` já existia desde a
+primeira migração e já era exibida na tela ("Ativo"/"Inativo"), mas nunca havia nenhuma forma de mudá-la —
+só era possível **convidar** gente, nunca revogar o acesso de quem já não trabalha mais na empresa, nem
+corrigir um perfil atribuído errado.
+
+- `PATCH /api/team/[id]` (novo): muda o perfil (`role`) e/ou a situação (`active`) de um membro já existente.
+  Só `SUPER_ADMIN`/`TENANT_ADMIN` podem usar; e só um `SUPER_ADMIN` pode gerenciar outro `SUPER_ADMIN`
+  (evita que um administrador comum rebaixe ou desative alguém acima dele na hierarquia).
+- Duas travas de segurança no banco (`src/lib/repositories/team.ts`), testadas de verdade: ninguém pode
+  desativar a própria conta pela tela (evita ficar trancado para fora sem querer), e não é possível
+  rebaixar ou desativar o **último** administrador ativo da empresa — sempre sobra pelo menos um
+  `SUPER_ADMIN`/`TENANT_ADMIN` com acesso.
+- Desativar um membro também revoga na hora todas as sessões abertas dele (mesmo padrão já usado na
+  redefinição de senha); a próxima ação dele em qualquer aba já aberta falha, e o próximo login é recusado
+  de imediato — a trava de `active = true` já existia na função do banco usada pelo login (`app.user_memberships`),
+  só não estava conectada a nenhum botão.
+- Tela de Configurações → Usuários e permissões: cada linha da equipe (exceto a própria conta logada e
+  contas `SUPER_ADMIN`, que ficam sem esses controles) ganhou um seletor de perfil editável e um botão
+  Desativar/Reativar.
+
+Testado contra o banco real com uma conta de teste já existente (RBAC viewer), sem afetar nenhum dado real:
+mudar perfil persiste; desativar bloqueia login imediatamente (403, "sem empresa ativa vinculada");
+reativar libera o login de novo, já com o novo perfil; tentar rebaixar o único administrador é bloqueado
+(409, mensagem clara); tentar autodesativar é bloqueado (400, mensagem clara); a sessão do administrador
+continua válida durante todo o processo. Testado em desktop e celular, sem estouro de layout.

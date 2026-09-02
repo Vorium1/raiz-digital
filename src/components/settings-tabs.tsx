@@ -37,9 +37,42 @@ const notImplementedCopy: Partial<Record<TabKey, string>> = {
   email: "Modelos de e-mail e envio automático de relatório ainda não existem.",
 };
 
-export function SettingsTabs({ members, laboratories: initialLaboratories, auditEvents, canManageTeam, twoFactorEnabled: initialTwoFactorEnabled }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; twoFactorEnabled: boolean }) {
+export function SettingsTabs({ members: initialMembers, laboratories: initialLaboratories, auditEvents, canManageTeam, twoFactorEnabled: initialTwoFactorEnabled, currentUserId }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; twoFactorEnabled: boolean; currentUserId: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("team");
+  const [members, setMembers] = useState(initialMembers);
+  const [memberBusy, setMemberBusy] = useState("");
+  const [memberError, setMemberError] = useState("");
+
+  async function changeMemberRole(memberId: string, role: string) {
+    setMemberBusy(`role-${memberId}`);
+    setMemberError("");
+    try {
+      const response = await fetch(`/api/team/${memberId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível alterar o perfil.");
+      setMembers((current) => current.map((member) => member.id === memberId ? { ...member, role } : member));
+    } catch (error) {
+      setMemberError(error instanceof Error ? error.message : "Falha ao alterar perfil.");
+    } finally {
+      setMemberBusy("");
+    }
+  }
+
+  async function toggleMemberActive(memberId: string, active: boolean) {
+    setMemberBusy(`active-${memberId}`);
+    setMemberError("");
+    try {
+      const response = await fetch(`/api/team/${memberId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ active }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar a situação.");
+      setMembers((current) => current.map((member) => member.id === memberId ? { ...member, active } : member));
+    } catch (error) {
+      setMemberError(error instanceof Error ? error.message : "Falha ao atualizar situação.");
+    } finally {
+      setMemberBusy("");
+    }
+  }
   const [laboratories, setLaboratories] = useState(initialLaboratories);
   const [newLabName, setNewLabName] = useState("");
   const [creatingLab, setCreatingLab] = useState(false);
@@ -198,22 +231,41 @@ export function SettingsTabs({ members, laboratories: initialLaboratories, audit
             {members.length ? (
               <div className="data-card">
                 <table className="data-table">
-                  <thead><tr><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th></tr></thead>
+                  <thead><tr><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Último acesso</th>{canManageTeam && <th></th>}</tr></thead>
                   <tbody>
-                    {members.map((member) => (
-                      <tr key={member.id}>
-                        <td><strong>{member.name}</strong><small>{member.email}</small></td>
-                        <td>{roleLabel[member.role] ?? member.role}</td>
-                        <td><StatusBadge tone={member.active ? "success" : "waiting"}>{member.active ? "Ativo" : "Inativo"}</StatusBadge></td>
-                        <td>{member.lastLoginAt ? formatRelativeOrDate(member.lastLoginAt) : "Ainda não acessou"}</td>
-                      </tr>
-                    ))}
+                    {members.map((member) => {
+                      const manageable = canManageTeam && member.role !== "SUPER_ADMIN" && member.id !== currentUserId;
+                      return (
+                        <tr key={member.id}>
+                          <td><strong>{member.name}</strong><small>{member.email}</small></td>
+                          <td>
+                            {manageable ? (
+                              <select value={member.role} disabled={memberBusy === `role-${member.id}`} onChange={(e) => void changeMemberRole(member.id, e.target.value)}>
+                                {invitableRoles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                              </select>
+                            ) : (roleLabel[member.role] ?? member.role)}
+                          </td>
+                          <td><StatusBadge tone={member.active ? "success" : "waiting"}>{member.active ? "Ativo" : "Inativo"}</StatusBadge></td>
+                          <td>{member.lastLoginAt ? formatRelativeOrDate(member.lastLoginAt) : "Ainda não acessou"}</td>
+                          {canManageTeam && (
+                            <td className="client-row-actions">
+                              {manageable && (
+                                <button type="button" className="button tiny" disabled={memberBusy === `active-${member.id}`} onClick={() => void toggleMemberActive(member.id, !member.active)}>
+                                  {memberBusy === `active-${member.id}` ? "…" : member.active ? "Desativar" : "Reativar"}
+                                </button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="empty-state"><Icon name="users" /><strong>Nenhum membro encontrado</strong><small>O tenant atual não possui vínculos ativos além da configuração de sessão.</small></div>
             )}
+            {memberError && <div className="import-message danger" style={{ margin: "0 20px 18px" }}><Icon name="warning" /><div><strong>Não foi possível atualizar</strong><small>{memberError}</small></div></div>}
 
             {canManageTeam && (
               <div className="team-invite">
