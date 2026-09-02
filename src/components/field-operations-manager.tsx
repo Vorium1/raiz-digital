@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
+import { RealFieldMap } from "@/components/real-field-map";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 type ContextData = {
@@ -45,33 +46,6 @@ function geoJsonObject(text: string) {
   return parsed;
 }
 
-function geometryRings(geometry: Geometry): number[][][] {
-  if (geometry.type === "Polygon") return (geometry.coordinates as number[][][]).slice(0, 1);
-  return (geometry.coordinates as number[][][][]).map((polygon)=>polygon[0]).filter(Boolean);
-}
-
-function FieldVectorMap({ order }: { order: Order }) {
-  const rings = geometryRings(order.fieldBoundary);
-  const coords = rings.flat();
-  const all = [...coords, ...order.points.map((point)=>[point.longitude, point.latitude])];
-  if (!all.length) return <div className="field-map-empty">Limite cartográfico indisponível.</div>;
-  const lons = all.map((coord)=>coord[0]);
-  const lats = all.map((coord)=>coord[1]);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons), minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const lonSpan = Math.max(maxLon - minLon, 0.00001), latSpan = Math.max(maxLat - minLat, 0.00001);
-  const x = (lon: number) => 28 + ((lon - minLon) / lonSpan) * 544;
-  const y = (lat: number) => 328 - ((lat - minLat) / latSpan) * 296;
-  const path = (ring: number[][]) => ring.map((coord,index)=>`${index ? "L" : "M"}${x(coord[0]).toFixed(1)},${y(coord[1]).toFixed(1)}`).join(" ") + " Z";
-  return <div className="field-vector-map">
-    <svg viewBox="0 0 600 356" role="img" aria-label={`Talhão ${order.fieldName} com ${order.plannedPoints} pontos planejados`}>
-      <defs><pattern id="raiz-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="currentColor" strokeWidth=".55"/></pattern></defs>
-      <rect x="0" y="0" width="600" height="356" className="field-map-grid"/>
-      {rings.map((ring,index)=><path key={index} d={path(ring)} className="field-map-boundary"/>)}
-      {order.points.map((point)=><g key={point.id} className={point.collectedAt ? "field-map-marker collected" : "field-map-marker"} transform={`translate(${x(point.longitude)},${y(point.latitude)})`}><circle r="7"/><text y="-10" textAnchor="middle">{point.code}</text></g>)}
-    </svg>
-    <div className="field-map-foot"><span>WGS84 · coordenadas persistidas</span><span><i className="planned"/>Planejado <i className="collected"/>Coletado</span></div>
-  </div>;
-}
 
 export function FieldOperationsManager() {
   const [context, setContext] = useState<ContextData>(emptyContext);
@@ -498,7 +472,7 @@ export function FieldOperationsManager() {
       <div className="field-order-detail card">
         {!selectedOrder ? <div className="field-order-empty"><Icon name="location"/><strong>Selecione uma ordem.</strong></div> : <>
           <div className="field-order-detail-head"><div><span className="eyebrow">{selectedOrder.status}</span><h2>{selectedOrder.code}</h2><p>{selectedOrder.clientName} · {selectedOrder.propertyName} · {selectedOrder.fieldName}</p></div><div className="field-order-detail-actions">{selectedOrder.status === "PLANNED" && <button type="button" className="button ghost" disabled={busy === `cancel-${selectedOrder.id}`} onClick={()=>void cancelOrder(selectedOrder)}>{busy === `cancel-${selectedOrder.id}` ? "Cancelando…" : "Cancelar ordem"}</button>}<div className="order-progress-ring"><strong>{progress}%</strong><small>coletado</small></div></div></div>
-          <FieldVectorMap order={selectedOrder}/>
+          <RealFieldMap boundary={selectedOrder.fieldBoundary} points={selectedOrder.points} height={380}/>
           <div className="field-order-meta"><span><b>{selectedOrder.fieldAreaHa.toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</b><small>área</small></span><span><b>{selectedOrder.gridAreaHa ? `${selectedOrder.gridAreaHa} ha` : "GPS"}</b><small>estratégia</small></span><span><b>{selectedOrder.depthFromCm}–{selectedOrder.depthToCm} cm</b><small>profundidade</small></span><span><b>{selectedOrder.plannedPoints}</b><small>pontos</small></span></div>
           {selectedOrder.samplingStrategy !== "GRID" || selectedOrder.collectedPoints === 0 ? <label className="gps-import-button"><input type="file" accept=".csv,.txt,.geojson,.json" disabled={busy === "points"} onChange={(e)=>void importPoints(e.target.files?.[0])}/><Icon name="upload" size={16}/><span><strong>{busy === "points" ? "Validando pontos…" : "Importar / substituir pontos GPS"}</strong><small>CSV: código, latitude, longitude · ou FeatureCollection GeoJSON</small></span></label> : null}
           <div className="field-point-list">
