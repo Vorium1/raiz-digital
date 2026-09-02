@@ -128,10 +128,23 @@ a consulta com "could not determine data type of parameter $1". Corrigido adicio
 `WHERE co.tenant_id = $1::uuid`, que também passa a dar defesa em profundidade (filtro na aplicação, além do
 RLS), no mesmo padrão já usado nas demais funções desse arquivo.
 
-**Ainda não testado nesta auditoria** (permanece como pendência do `V0.5_INTERRUPTED.md`): performance da
-importação de pontos em volume (a validação e a inserção fazem uma consulta por ponto, em laço), talhões que
-cruzam zonas UTM, concorrência/reimportação simultânea, RBAC por todos os perfis (só `TENANT_ADMIN` foi
-testado), fluxo GPS em navegador real (só simulado via API).
+**Atualizações desde a primeira auditoria:**
+
+- **Performance da importação de pontos corrigida**: `importCollectionPoints` fazia uma consulta de validação
+  e uma de inserção **por ponto**, em laço (até 2000 idas e voltas ao banco). Reescrito para validar todos os
+  pontos em uma única consulta (`unnest` + `ST_Covers`) e inserir todos em uma única consulta (`unnest` +
+  `INSERT ... SELECT`), preservando exatamente o mesmo comportamento (mesmos erros, mesma numeração de
+  sequência). Testado com importação rejeitada (ponto fora do talhão) e aceita (6 pontos, sequência 1-6),
+  ambas contra o banco real.
+- **RBAC testado para todos os perfis de escrita**: criados usuários reais de teste com os perfis
+  `AGRONOMIST`, `FIELD_TECH`, `COMMERCIAL` e `VIEWER` na mesma empresa, e testado contra `/api/clients`,
+  `/api/collection-orders` e `/api/properties`. Todos os resultados bateram com a permissão esperada de cada
+  perfil (ex.: `FIELD_TECH` cria ordem de coleta mas não cliente; `COMMERCIAL` cria cliente mas não ordem de
+  coleta; `VIEWER` só lê, nunca escreve). Usuários de teste (`rbac-*@raiz.local`) permanecem no tenant
+  "Raiz Digital Demo" do banco de desenvolvimento para reuso em testes futuros.
+
+**Ainda não testado** (permanece como pendência do `V0.5_INTERRUPTED.md`): talhões que cruzam zonas UTM,
+concorrência/reimportação simultânea, fluxo GPS em navegador real (só simulado via API).
 
 ## Outras notas desta auditoria
 

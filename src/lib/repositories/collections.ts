@@ -236,46 +236,50 @@ export async function importCollectionPoints(input: {
     if (!context) throw new FieldOperationError("Ordem de coleta não encontrada.", 404);
     if (input.replaceExisting !== false && context.collectedPoints > 0) throw new FieldOperationError("Não é permitido substituir pontos depois que a coleta foi iniciada.", 409);
 
-    const outside: string[] = [];
-    for (const point of input.points) {
-      const check = await client.query<{ inside: boolean }>(
-        `SELECT ST_Covers(f.boundary, ST_SetSRID(ST_MakePoint($3,$4),4326)) AS inside
+    const codes = input.points.map((point) => point.code.trim());
+    const longitudes = input.points.map((point) => point.longitude);
+    const latitudes = input.points.map((point) => point.latitude);
+    const depthFrom = input.points.map((point) => point.depthFromCm ?? context.depthFromCm);
+    const depthTo = input.points.map((point) => point.depthToCm ?? context.depthToCm);
+    const subsampleCounts = input.points.map((point) => point.subsampleCount ?? null);
+    const sourcePayloads = input.points.map((point) => JSON.stringify(point.sourcePayload ?? {}));
+
+    const outsideCheck = await client.query<{ code: string }>(
+      `WITH input AS (
+         SELECT * FROM unnest($3::text[], $4::float8[], $5::float8[])
+           AS t(code, longitude, latitude)
+       ), boundary AS (
+         SELECT f.boundary
          FROM collection_orders co
          JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
          JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-         WHERE co.tenant_id = $1::uuid AND co.id = $2::uuid`,
-        [input.tenantId, input.orderId, point.longitude, point.latitude],
-      );
-      if (!check.rows[0]?.inside) outside.push(point.code);
-    }
+         WHERE co.tenant_id = $1::uuid AND co.id = $2::uuid
+       )
+       SELECT input.code
+       FROM input, boundary
+       WHERE NOT ST_Covers(boundary.boundary, ST_SetSRID(ST_MakePoint(input.longitude, input.latitude), 4326))`,
+      [input.tenantId, input.orderId, codes, longitudes, latitudes],
+    );
+    const outside = outsideCheck.rows.map((row) => row.code);
     if (outside.length) throw new FieldOperationError(`${outside.length} ponto(s) estão fora do limite do talhão.`, 422, { outside: outside.slice(0, 25) });
 
     if (input.replaceExisting !== false) {
       await client.query("DELETE FROM sample_points WHERE tenant_id = $1::uuid AND collection_order_id = $2::uuid", [input.tenantId, input.orderId]);
     }
 
-    let sequence = 1;
-    for (const point of input.points) {
-      await client.query(
-        `INSERT INTO sample_points
-         (tenant_id, collection_order_id, code, sequence, position, depth_from_cm, depth_to_cm, subsample_count, gps_source, source_payload)
-         VALUES ($1::uuid,$2::uuid,$3,$4,ST_SetSRID(ST_MakePoint($5,$6),4326),$7,$8,$9,$10,$11::jsonb)`,
-        [
-          input.tenantId,
-          input.orderId,
-          point.code.trim(),
-          sequence,
-          point.longitude,
-          point.latitude,
-          point.depthFromCm ?? context.depthFromCm,
-          point.depthToCm ?? context.depthToCm,
-          point.subsampleCount ?? null,
-          `IMPORTED_${input.source}`,
-          JSON.stringify(point.sourcePayload ?? {}),
-        ],
-      );
-      sequence += 1;
-    }
+    await client.query(
+      `WITH input AS (
+         SELECT * FROM unnest($3::text[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], $8::int[], $9::text[])
+           WITH ORDINALITY AS t(code, longitude, latitude, depth_from_cm, depth_to_cm, subsample_count, source_payload, seq)
+       )
+       INSERT INTO sample_points
+       (tenant_id, collection_order_id, code, sequence, position, depth_from_cm, depth_to_cm, subsample_count, gps_source, source_payload)
+       SELECT $1::uuid, $2::uuid, input.code, input.seq::int,
+              ST_SetSRID(ST_MakePoint(input.longitude, input.latitude), 4326),
+              input.depth_from_cm, input.depth_to_cm, input.subsample_count, $10, input.source_payload::jsonb
+       FROM input`,
+      [input.tenantId, input.orderId, codes, longitudes, latitudes, depthFrom, depthTo, subsampleCounts, sourcePayloads, `IMPORTED_${input.source}`],
+    );
 
     await client.query("UPDATE collection_orders SET sampling_strategy = 'IMPORTED', status = 'PLANNED' WHERE tenant_id = $1::uuid AND id = $2::uuid", [input.tenantId, input.orderId]);
     await writeAudit(client, {
