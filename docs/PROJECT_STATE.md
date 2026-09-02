@@ -14,8 +14,8 @@ Data do handoff: 2026-09-01
 | RLS | Corrigida e validada | Ver "Correção crítica de RLS" abaixo — estava sem efeito prático até esta auditoria |
 | Login/sessão | Validado real | Login, senha incorreta, sessão sem cookie e logout testados via HTTP real. Falta endurecimento comercial (2FA, recuperação de senha) |
 | Clientes | Persistência inicial, validada | CRUD inicial testado via API real |
-| Propriedades | API inicial, validada | UI visual ainda incompleta |
-| Talhões | PostGIS + API inicial, validada | Área em hectare calculada corretamente pelo PostGIS em teste real; editor/importador visual de polígono ainda incompleto |
+| Propriedades | API inicial, validada | Editor visual de polígono (mapa Leaflet) disponível; boundary opcional |
+| Talhões | PostGIS + API inicial, validada | Área em hectare calculada corretamente pelo PostGIS em teste real; editor visual de polígono (mapa Leaflet, desenho por clique) implementado e testado |
 | Safras | Persistência inicial, validada | Integrada ao fluxo de análise |
 | Análises | Persistência inicial | Sem parecer oficial automático |
 | Importação laboratório CSV | Implementada | CSV longo/amplo; ainda faltam XLSX/PDF |
@@ -135,3 +135,32 @@ testado), fluxo GPS em navegador real (só simulado via API).
 - `npm audit` aponta 3 vulnerabilidades de severidade alta (Next.js, postcss, sharp); a correção automática
   levaria o Next.js para fora da faixa fixada no `package.json`. Não corrigido nesta auditoria — decisão do
   responsável pelo projeto pendente.
+
+## Barra lateral conectada à sessão real
+
+A `Sidebar` (`src/components/sidebar.tsx`) mostrava nome de empresa e usuário fixos no código
+("GrãoSul Agrícola", "Gui Bortoluzzi"), independente de quem estivesse logado — não era um vazamento de
+dado entre empresas, apenas texto de exibição nunca conectado à sessão. Corrigido: `src/app/(platform)/layout.tsx`
+agora repassa `tenantName`/`userName`/`role` da sessão real para a `Sidebar`, que usa esses valores quando
+disponíveis e mantém o texto antigo como aparência do modo demo (`DATA_MODE=demo`, sem sessão). Rótulos de
+perfil (`TENANT_ADMIN` → "Administrador" etc.) foram centralizados em `src/lib/role-labels.ts`, reaproveitado
+também por `configuracoes/page.tsx`.
+
+## Mapa visual para desenho/importação de polígono (Leaflet)
+
+Item explicitamente listado como incompleto no handoff: o cadastro de propriedade/talhão só aceitava colar
+GeoJSON em texto ou subir um arquivo, sem visualização em mapa real. Adicionado `src/components/geo-map-input.tsx`,
+um componente de mapa (Leaflet + tiles OpenStreetMap, gratuitos) que permite:
+
+- desenhar o polígono clicando os vértices direto no mapa (sem depender de nenhum serviço pago);
+- visualizar o polígono atual (vindo de texto colado, arquivo importado ou desenho) sobre um mapa real;
+- ao editar o talhão, mostrar o limite da propriedade selecionada como referência tracejada no mapa.
+
+Integrado nas etapas "Propriedade" e "Talhão" do `field-operations-manager.tsx`, mantendo a caixa de texto e
+o upload de arquivo já existentes como alternativas (o mapa é mais uma forma de preencher o mesmo campo, não
+substitui as outras). Testado manualmente via Playwright: desenho por clique gera GeoJSON WGS84 válido,
+sincronizado corretamente com a caixa de texto.
+
+Decisão técnica: usei apenas `leaflet` (biblioteca principal, sem plugins adicionais como `leaflet-draw`) e
+implementei a interação de desenho manualmente, para manter a dependência mínima, gratuita e substituível —
+alinhado ao critério do `CLAUDE.md` de preferir a solução mais simples e barata.

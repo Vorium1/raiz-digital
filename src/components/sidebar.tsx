@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icon";
+import { initials, roleLabel } from "@/lib/role-labels";
 
 const navigationSections = [
   {
@@ -25,8 +26,16 @@ const navigationSections = [
   },
 ] as const;
 
-export function Sidebar() {
+type SidebarProps = { tenantName?: string; userName?: string; role?: string };
+
+export function Sidebar({ tenantName, userName, role }: SidebarProps) {
   const pathname = usePathname();
+
+  const tenantLabel = tenantName ?? "GrãoSul Agrícola";
+  const tenantInitials = tenantName ? initials(tenantName) || "?" : "GS";
+  const userLabel = userName ?? "Gui Bortoluzzi";
+  const userInitials = userName ? initials(userName) || "?" : "GB";
+  const roleText = role ? (roleLabel[role] ?? role) : "Administrador";
 
   return (
     <aside className="sidebar">
@@ -34,9 +43,9 @@ export function Sidebar() {
         <Image src="/brand/logo-dark.svg" alt="Raiz Digital" width={184} height={46} priority />
       </Link>
 
-      <div className="tenant-switcher" aria-label="Empresa atual: GrãoSul Agrícola">
-        <div className="tenant-avatar">GS</div>
-        <div><small>Empresa atual</small><strong>GrãoSul Agrícola</strong></div>
+      <div className="tenant-switcher" aria-label={`Empresa atual: ${tenantLabel}`}>
+        <div className="tenant-avatar">{tenantInitials}</div>
+        <div><small>Empresa atual</small><strong>{tenantLabel}</strong></div>
         <Icon name="chevron" size={16} />
       </div>
 
@@ -67,8 +76,8 @@ export function Sidebar() {
           <div><strong>Base técnica homologada</strong><small>RS Grãos · v1.0.0</small></div>
         </div>
         <div className="user-card">
-          <div className="user-avatar">GB</div>
-          <div><strong>Gui Bortoluzzi</strong><small>Administrador</small></div>
+          <div className="user-avatar">{userInitials}</div>
+          <div><strong>{userLabel}</strong><small>{roleText}</small></div>
           <Icon name="dots" size={18}/>
         </div>
       </div>

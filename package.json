@@ -17,18 +17,20 @@
     "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run check:migrations"
   },
   "dependencies": {
+    "@node-rs/argon2": "2.0.2",
+    "leaflet": "^1.9.4",
     "next": "16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
     "pg": "8.16.3",
-    "@node-rs/argon2": "2.0.2"
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/node": "22.19.19",
+    "@types/pg": "8.15.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "typescript": "5.9.3",
-    "@types/pg": "8.15.5"
+    "typescript": "5.9.3"
   },
   "type": "module"
 }

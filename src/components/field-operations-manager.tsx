@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
+import { GeoMapInput } from "@/components/geo-map-input";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 type ContextData = {
@@ -224,6 +225,7 @@ export function FieldOperationsManager() {
   }
 
   const propertyOptions = useMemo(()=>context.properties.filter((property)=>!propertyClientId || property.clientId === propertyClientId), [context.properties, propertyClientId]);
+  const selectedFieldProperty = context.properties.find((property)=>property.id === fieldPropertyId);
 
   if (loading && !orders.length && !context.clients.length) return <div className="data-card"><div className="empty-state"><Icon name="clock"/><strong>Carregando operação de campo…</strong><small>Consultando áreas, safras, ordens e pontos reais.</small></div></div>;
 
@@ -239,13 +241,13 @@ export function FieldOperationsManager() {
           <label><span>Nome</span><input value={propertyName} onChange={(e)=>setPropertyName(e.target.value)} placeholder="Fazenda Boa Esperança"/></label>
           <label><span>Município</span><input value={municipality} onChange={(e)=>setMunicipality(e.target.value)} placeholder="Passo Fundo"/></label>
           <label><span>UF</span><input value={state} maxLength={2} onChange={(e)=>setState(e.target.value.toUpperCase())}/></label>
-          <label className="field-ops-wide"><span>Limite da propriedade · GeoJSON opcional</span><textarea value={propertyBoundary} onChange={(e)=>setPropertyBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[...]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setPropertyBoundary)}/></label>
+          <label className="field-ops-wide"><span>Limite da propriedade · GeoJSON opcional</span><textarea value={propertyBoundary} onChange={(e)=>setPropertyBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[...]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setPropertyBoundary)}/><GeoMapInput value={propertyBoundary} onChange={setPropertyBoundary} height={260}/></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "property" || !propertyClientId || !propertyName || !municipality} onClick={()=>void createProperty()}>{busy === "property" ? "Salvando…" : "Cadastrar propriedade"}</button></div>
         </div></details>
         <details><summary><span><b>2</b><strong>Talhão</strong><small>Polígono WGS84 obrigatório</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Propriedade</span><select value={fieldPropertyId} onChange={(e)=>setFieldPropertyId(e.target.value)}><option value="">Selecione</option>{propertyOptions.map((property)=><option key={property.id} value={property.id}>{property.name} · {property.municipality}/{property.state}</option>)}</select></label>
           <label><span>Nome do talhão</span><input value={fieldName} onChange={(e)=>setFieldName(e.target.value)} placeholder="Talhão Norte"/></label>
-          <label className="field-ops-wide"><span>Polígono GeoJSON</span><textarea value={fieldBoundary} onChange={(e)=>setFieldBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[[[-52.4,-28.2],...]]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setFieldBoundary)}/><small>O PostGIS valida geometria, calcula hectares e bloqueia talhão fora do limite da propriedade quando esse limite existe.</small></label>
+          <label className="field-ops-wide"><span>Polígono GeoJSON</span><textarea value={fieldBoundary} onChange={(e)=>setFieldBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[[[-52.4,-28.2],...]]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setFieldBoundary)}/><GeoMapInput value={fieldBoundary} onChange={setFieldBoundary} referenceBoundary={selectedFieldProperty?.boundary ?? null} height={320}/><small>O PostGIS valida geometria, calcula hectares e bloqueia talhão fora do limite da propriedade quando esse limite existe. {selectedFieldProperty?.boundary ? "O contorno tracejado no mapa mostra o limite da propriedade selecionada." : ""}</small></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "field" || !fieldPropertyId || !fieldName || !fieldBoundary.trim()} onClick={()=>void createField()}>{busy === "field" ? "Validando…" : "Validar e cadastrar talhão"}</button></div>
         </div></details>
         <details><summary><span><b>3</b><strong>Safra</strong><small>Cultura e meta do contexto agronômico</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">

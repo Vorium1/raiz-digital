@@ -5,17 +5,9 @@ import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listTenantMembers } from "@/lib/repositories/team";
 import { formatRelativeOrDate } from "@/domain/analysis-ui";
+import { roleLabel } from "@/lib/role-labels";
 
 export const metadata = { title: "Configurações" };
-
-const roleLabel: Record<string,string> = {
-  SUPER_ADMIN:"Administrador global",
-  TENANT_ADMIN:"Administrador",
-  AGRONOMIST:"Agrônomo",
-  FIELD_TECH:"Técnico de campo",
-  COMMERCIAL:"Comercial",
-  VIEWER:"Leitura",
-};
 
 export default async function SettingsPage() {
   if (!isDatabaseMode()) return <DemoSettings/>;
