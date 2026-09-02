@@ -281,3 +281,22 @@ exato enviado, e `analyses.source_file_key` gravado com a mesma chave.
 qualquer ambiente assim, será necessário implementar o provedor S3-compatível (`STORAGE_PROVIDER=s3`, variáveis
 já previstas em `.env.example`) — decisão de infraestrutura que envolve escolher/contratar um serviço, por isso
 não implementei sem confirmação.
+
+## Cadastro real de laboratórios
+
+A tela de nova análise mostrava "LabSolo" e "Outro laboratório" como opções fixas no código — não eram
+laboratórios cadastrados de verdade, só texto solto no formulário (o schema já tinha a tabela `laboratories`
+e `analyses.laboratory_id`, mas nada os conectava). Implementado:
+
+- `GET/POST /api/laboratories` (lista e cria; escrita restrita a `SUPER_ADMIN`/`TENANT_ADMIN`/`AGRONOMIST`,
+  testado que `VIEWER` é bloqueado com 403).
+- `listAgronomicContext` (usado por `/api/context`) agora inclui `laboratories`.
+- A etapa "Laudo laboratorial" do assistente de nova análise, em modo banco de dados, lista laboratórios reais
+  e permite cadastrar um novo direto ali (nome + botão "Cadastrar", aparece na lista e já fica selecionado).
+  O modo demonstração continua com as opções de exemplo, sem mudança.
+- `laboratoryId` agora é enviado de verdade ao criar a análise (antes o campo existia na API mas o formulário
+  nunca preenchia). A tela de detalhe da análise mostra o nome do laboratório vinculado quando houver.
+
+Testado contra o banco real (API direta e pela tela, desktop e celular): laboratório criado, aparece na
+listagem, vinculado à análise, nome aparece na página de detalhe. RBAC confirmado (perfil de leitura bloqueado
+ao tentar cadastrar).

@@ -3,13 +3,27 @@ import { writeAudit } from "@/lib/repositories/audit";
 
 export async function listAgronomicContext(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
-    const [clients, properties, fields, seasons] = await Promise.all([
+    const [clients, properties, fields, seasons, laboratories] = await Promise.all([
       client.query(`SELECT id::text, name FROM clients ORDER BY name`),
       client.query(`SELECT id::text, client_id::text AS "clientId", name, municipality, state, CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::json END AS boundary FROM properties ORDER BY name`),
       client.query(`SELECT id::text, property_id::text AS "propertyId", name, area_ha::float8 AS "areaHa", ST_AsGeoJSON(boundary)::json AS boundary FROM fields ORDER BY name`),
       client.query(`SELECT id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop", yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit" FROM crop_seasons ORDER BY created_at DESC`),
+      client.query(`SELECT id::text, name, tax_id AS "taxId" FROM laboratories WHERE active ORDER BY name`),
     ]);
-    return { clients: clients.rows, properties: properties.rows, fields: fields.rows, seasons: seasons.rows };
+    return { clients: clients.rows, properties: properties.rows, fields: fields.rows, seasons: seasons.rows, laboratories: laboratories.rows };
+  });
+}
+
+export async function createLaboratory(input: { tenantId: string; userId: string; name: string; taxId?: string | null }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `INSERT INTO laboratories (tenant_id, name, tax_id) VALUES ($1::uuid, $2, nullif($3,''))
+       RETURNING id::text, name, tax_id AS "taxId"`,
+      [input.tenantId, input.name, input.taxId ?? ""],
+    );
+    const created = result.rows[0];
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "LABORATORY_CREATED", entityType: "laboratory", entityId: created.id, metadata: { name: created.name } });
+    return created;
   });
 }
 

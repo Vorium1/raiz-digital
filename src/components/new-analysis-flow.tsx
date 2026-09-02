@@ -18,9 +18,10 @@ type ContextData = {
   properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string }>;
   fields: Array<{ id: string; propertyId: string; name: string; areaHa: number }>;
   seasons: Array<{ id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null }>;
+  laboratories: Array<{ id: string; name: string; taxId: string | null }>;
 };
 
-const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [] };
+const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [] };
 
 export function NewAnalysisFlow({ initialStep = 0, databaseMode = false }: { initialStep?: number; databaseMode?: boolean }) {
   const router = useRouter();
@@ -35,8 +36,31 @@ export function NewAnalysisFlow({ initialStep = 0, databaseMode = false }: { ini
   const [propertyId, setPropertyId] = useState("");
   const [fieldId, setFieldId] = useState("");
   const [seasonId, setSeasonId] = useState("");
+  const [laboratoryId, setLaboratoryId] = useState("");
+  const [newLabName, setNewLabName] = useState("");
+  const [creatingLab, setCreatingLab] = useState(false);
+  const [labError, setLabError] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
+
+  async function createLaboratory() {
+    const name = newLabName.trim();
+    if (!name) return;
+    setCreatingLab(true);
+    setLabError("");
+    try {
+      const response = await fetch("/api/laboratories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível cadastrar o laboratório.");
+      setContext((current) => ({ ...current, laboratories: [...current.laboratories, payload.laboratory].sort((a, b) => a.name.localeCompare(b.name)) }));
+      setLaboratoryId(payload.laboratory.id);
+      setNewLabName("");
+    } catch (error) {
+      setLabError(error instanceof Error ? error.message : "Falha ao cadastrar laboratório.");
+    } finally {
+      setCreatingLab(false);
+    }
+  }
 
   useEffect(() => {
     if (!databaseMode) return;
@@ -93,7 +117,7 @@ export function NewAnalysisFlow({ initialStep = 0, databaseMode = false }: { ini
       const analysisResponse = await fetch("/api/analyses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cropSeasonId: seasonId, sourceType: importFile ? "CSV" : null }),
+        body: JSON.stringify({ cropSeasonId: seasonId, laboratoryId: laboratoryId || undefined, sourceType: importFile ? "CSV" : null }),
       });
       const analysisPayload = await analysisResponse.json().catch(() => ({}));
       if (!analysisResponse.ok) throw new Error(analysisPayload.error ?? "Não foi possível criar a análise.");
@@ -162,7 +186,9 @@ export function NewAnalysisFlow({ initialStep = 0, databaseMode = false }: { ini
       </div>}
       {step === 2 && <div className="form-section">
         <div className="form-heading"><span className="eyebrow">RESULTADOS</span><h2>Importe o laudo do laboratório.</h2><p>CSV ou XLSX são lidos e validados no servidor. No modo real, o mesmo conteúdo é revalidado no commit antes de entrar no PostgreSQL.</p></div>
-        <div className="import-options"><div><Icon name="flask"/><span><strong>Laboratório</strong><select defaultValue=""><option value="">Identificar / selecionar</option><option>LabSolo</option><option>Outro laboratório</option></select></span></div><div><Icon name="layers"/><span><strong>Extrator principal P/K</strong><select value={method} onChange={(event)=>setMethod(event.target.value)}><option value="">Não informado</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></span></div></div>
+        <div className="import-options"><div><Icon name="flask"/><span><strong>Laboratório</strong>{databaseMode ? <select value={laboratoryId} onChange={(event)=>setLaboratoryId(event.target.value)}><option value="">Não identificado</option>{context.laboratories.map((lab)=><option key={lab.id} value={lab.id}>{lab.name}</option>)}</select> : <select defaultValue=""><option value="">Identificar / selecionar</option><option>LabSolo</option><option>Outro laboratório</option></select>}</span></div><div><Icon name="layers"/><span><strong>Extrator principal P/K</strong><select value={method} onChange={(event)=>setMethod(event.target.value)}><option value="">Não informado</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></span></div></div>
+        {databaseMode && <div className="new-lab-inline"><input value={newLabName} onChange={(event)=>setNewLabName(event.target.value)} placeholder="Cadastrar novo laboratório pelo nome" disabled={creatingLab}/><button type="button" className="button secondary" disabled={creatingLab || !newLabName.trim()} onClick={()=>void createLaboratory()}>{creatingLab ? "Salvando…" : "Cadastrar"}</button></div>}
+        {labError && <div className="import-message danger"><Icon name="warning"/><div><strong>Não foi possível cadastrar</strong><small>{labError}</small></div></div>}
         <LabImporter method={method} onPreviewChange={setImportPreview} onFileReady={setImportFile}/>
       </div>}
       {step === 3 && <div className="form-section">

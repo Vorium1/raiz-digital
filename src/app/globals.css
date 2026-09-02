@@ -505,6 +505,10 @@ button { color: inherit; }
 .geo-map-canvas{background:#eef2ef;width:100%}
 .point-lab-linked{align-items:center;background:#f1f8f5;border-radius:9px;color:#2d7463;display:flex;font-size:7px;font-weight:700;gap:3px;padding:3px 6px}
 .field-point-actions{align-items:center;display:flex;gap:6px;justify-content:flex-end}
+.new-lab-inline{display:flex;gap:10px;margin-top:14px}
+.new-lab-inline input{background:white;border:1px solid #d7dfda;border-radius:8px;flex:1;height:40px;outline:none;padding:0 12px}
+.new-lab-inline input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,166,.09)}
+@media(max-width:520px){.new-lab-inline{flex-direction:column}}
 
 @media(max-width:1100px){.field-order-form{grid-template-columns:repeat(3,1fr)}.field-ops-form{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.field-ops-live{grid-template-columns:1fr}.field-order-list{max-height:260px;overflow:auto}.field-order-form,.field-ops-form{grid-template-columns:1fr}.field-ops-wide{grid-column:auto}.field-vector-map{margin:0 12px}.field-vector-map svg{height:280px}.field-order-detail-head{padding:16px 14px 10px}.field-order-meta{margin:10px 12px;overflow-x:auto}.field-order-meta>span{min-width:100px}.gps-import-button{margin:10px 12px}.field-ops-section-head{padding:16px}.field-ops-section-head p{max-width:80%}.field-ops-form{padding:14px}.field-order-form{padding:16px 16px 8px}.field-ops-context{margin:0 16px 12px}.field-ops-actions{padding:0 16px 16px}.field-point-row{padding:10px 12px}.field-map-marker text{display:none}}
