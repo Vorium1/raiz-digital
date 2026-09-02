@@ -16,14 +16,16 @@ Data do handoff: 2026-09-01
 | Clientes | Persistência inicial, validada | CRUD inicial testado via API real |
 | Propriedades | API inicial, validada | Editor visual de polígono (mapa Leaflet) disponível; boundary opcional |
 | Talhões | PostGIS + API inicial, validada | Área em hectare calculada corretamente pelo PostGIS em teste real; editor visual de polígono (mapa Leaflet, desenho por clique) implementado e testado |
-| Safras | Persistência inicial, validada | Integrada ao fluxo de análise |
-| Análises | Persistência inicial | Sem parecer oficial automático |
-| Importação laboratório CSV | Implementada | CSV longo/amplo; ainda faltam XLSX/PDF |
+| Safras e Culturas | Persistência real, validada | Cultura agora é vínculo a `crop_profiles` (catálogo cadastrável), não texto livre; adiciona cultivar, sistema de cultivo, textura de solo, região técnica. Ver "Fundação da Inteligência Agronômica" abaixo |
+| Análises | Persistência inicial + núcleo técnico real | Tela de análise mostra o painel de Inteligência Agronômica real (não mais placeholder) |
+| Importação laboratório CSV | Implementada + corrigida | CSV longo/amplo; **corrigido elo de rastreabilidade quebrado** — laudo agora é promovido de verdade para `lab_samples`/`lab_results`, não só para a área de rascunho. Ainda faltam XLSX/PDF |
 | Normalização laboratório | Implementada parcialmente | Biblioteca de métodos ainda precisa homologação |
-| Índice de confiança | Base técnica existente | Integrar ao motor homologado |
+| Índice de confiança | Dois índices distintos agora existem | O da importação (qualidade do CSV) já existia; o motor determinístico calcula o seu próprio (completude/contexto/compatibilidade de regra) por interpretação |
 | Operações de campo v0.5 | Auditada e validada em banco real | Ver "Auditoria do bloco v0.5" abaixo |
-| Motor agronômico | Contrato definido | Rule set oficial ainda não implementado/homologado |
-| Revisão/aprovação | UI/base conceitual | Fluxo executável ainda pendente |
+| Motor agronômico | **Implementado e validado em banco real** | Motor determinístico puro (`src/domain/agronomic-engine.ts`) + `interpretations` ativada. Nenhum rule set/perfil de cultura homologado ainda — ver pendências de agrônomo abaixo |
+| Perfis de cultura (`crop_profiles`) | Implementado, catálogo cadastrado, faixas vazias | 5 culturas cadastradas (Soja, Milho, Trigo, Cevada, Arroz) em DRAFT, sem nenhuma faixa técnica inventada — aguardando homologação |
+| Mapa geográfico | **Real, implementado** | Leaflet + OpenStreetMap substituindo o mapa vetorial abstrato; polígono e pontos reais do PostGIS, clique com painel lateral |
+| Revisão/aprovação | **Fluxo executável real** | `POST /api/interpretations/[id]/review`; testado end-to-end contra o banco real |
 | Relatório PDF | Pendente | Não simular como pronto |
 | Storage S3 | Pendente | Arquivo bruto ainda precisa storage real |
 | Worker/fila | Pendente | Preferência inicial: PostgreSQL |
@@ -832,3 +834,148 @@ verdade e estourou a grade do formulário — mesma causa raiz de um bug já cor
 (`.settings-grid`): colunas de grid `1fr` sem `minmax(0,1fr)` não conseguem encolher abaixo do próprio
 conteúdo. Corrigido em `.team-invite-grid`/`.team-invite-grid.password-grid`. Revarrido depois da correção:
 9 telas × 3 larguras (1280px, 1440px, celular) = 27 combinações, nenhum estouro.
+
+## Fundação da Inteligência Agronômica por Cultura
+
+Antes de implementar, foi entregue e aprovado pelo diretor do projeto um documento de arquitetura completo
+(`docs/ARQUITETURA_INTELIGENCIA_AGRONOMICA.md`), incluindo a verificação honesta de que **não existia
+nenhuma IA conectada à plataforma** até este ponto (nenhuma dependência de IA no `package.json`, nenhuma
+chamada de rede para provedor nenhum — confirmado por busca em todo o código-fonte). Este bloco implementa
+a fundação técnica dessa arquitetura, em ordem controlada, sem conectar nenhuma IA.
+
+### Migrations criadas
+
+- `db/migrations/012_agronomic_intelligence_foundation.sql` — cria `crop_profiles` (catálogo de cultura
+  versionado: código, nome, `semantic_version`, `content_hash`, status DRAFT/ACTIVE/SUPERSEDED, regiões e
+  sistemas aplicáveis, autor/revisores/aprovador), `crop_profile_parameters` (um parâmetro por perfil, com
+  categoria química/física/microbiológica, profundidade, métodos aceitos, `sufficiency_ranges` — **nulo até
+  homologação**, criticidade), `technical_regions`; estende `crop_seasons` com `crop_profile_id`,
+  `cultivar`, `management_system`, `soil_type`, `soil_texture`, `technical_region_code`; estende
+  `lab_results` com `parameter_category` (default `QUIMICO`, coerente com os únicos parâmetros que o
+  importador reconhece hoje); torna `interpretations.rule_set_id` opcional e adiciona
+  `interpretations.crop_profile_id` e `not_interpretable_reason`; semeia o catálogo inicial de 5 culturas
+  (Soja, Milho, Trigo, Cevada, Arroz) **sem nenhuma faixa técnica** — todas em DRAFT, aguardando
+  homologação. Aplicada e verificada contra o banco real (Supabase). `scripts/check-migrations.mjs`
+  atualizado com asserções para esta migration.
+
+### Modelo de dados final (deste bloco)
+
+```
+crop_profiles ──< crop_profile_parameters
+     ↑
+crop_seasons.crop_profile_id
+     ↑
+analyses.crop_season_id
+     ↓
+lab_samples (agora populada de verdade) ──< lab_results (categorizados)
+     ↑
+sample_points.id (via lab_samples.sample_point_id)
+     ↑
+collection_orders → crop_seasons → fields → properties → clients
+
+interpretations: analysis_id + crop_profile_id + structured_output (facts/interpretation/
+confidence/trace) + status (CALCULATED → IN_REVIEW → APPROVED) + reviewed_by/approved_by
+```
+
+### Elo de rastreabilidade quebrado, corrigido
+
+Ao verificar a cadeia ponta a ponta como pedido, encontrei um problema real: `commitCsvImport`
+(`src/lib/repositories/imports.ts`) gravava o laudo só em `analysis_imports`/`analysis_import_rows` (área
+de rascunho) e **nunca promovia os dados para `lab_samples`/`lab_results`** — confirmado com consulta direta
+ao banco: três análises já marcadas `IMPORTED` em produção, mas `lab_results` com zero linhas. O motor
+determinístico depende de ler `lab_results` real, então esse elo foi corrigido antes de avançar: cada linha
+sem bloqueio na própria linha (unidade e método conhecidos, valor válido) agora é promovida dentro da mesma
+transação do commit, casando `sample_code` com `sample_points.code` da ordem de coleta vinculada quando
+existe — sem inventar o ponto quando não existe vínculo.
+
+### Motor determinístico
+
+`src/domain/agronomic-engine.ts` é puro (sem acesso a banco): recebe o perfil de cultura da safra + os
+resultados de laboratório reais (com a profundidade real do ponto) e devolve, por parâmetro, uma
+classificação com a regra/versão usada — ou um motivo explícito de "não interpretável"
+(`NO_CROP_PROFILE`, `PARAMETER_NOT_IN_PROFILE`, `DEPTH_UNKNOWN`, `DEPTH_NOT_COVERED`,
+`METHOD_NOT_SUPPORTED`, `AWAITING_HOMOLOGATION`, `NO_MATCHING_BAND`). Nunca preenche lacuna por inferência.
+11 cenários de teste (`scripts/test-agronomic-engine.mjs`, `npm run test:engine`) cobrindo cada bloqueio e
+o caminho interpretável.
+
+### Interpretations ativada
+
+A tabela existia desde a migration 001 mas nunca era escrita. Agora cada execução do motor grava uma nova
+revisão com `structured_output` (fatos separados de classificação), `assumptions`/`warnings`, o `rule
+set`/perfil e versão usados, nível de confiança e pendências. Toda interpretação nasce com status
+`IN_REVIEW` ("aguardando validação técnica") e só avança para `APPROVED` via rota que exige papel de
+agrônomo/admin (`POST /api/interpretations/[id]/review`). Histórico por revisão preservado (nunca
+sobrescreve).
+
+### Telas implementadas
+
+- **Safras e Culturas** (`field-operations-manager.tsx`): cultura passou de texto livre para seleção do
+  catálogo `crop_profiles`; adiciona cultivar, sistema de cultivo, textura de solo, região técnica.
+- **Inteligência Agronômica** (`src/components/agronomic-intelligence-panel.tsx`, embutida na página de
+  análise): mostra cultura/safra, contexto, parâmetros, classificação determinística, regra/base técnica
+  usada, pendências, status de revisão e histórico de revisões. Nenhum texto de IA. Botões de "rodar motor"
+  e "aprovar" condicionados ao papel real da sessão.
+- **Mapa real** (`src/components/real-field-map.tsx`, tela Coletas e mapas): substitui o mapa vetorial
+  abstrato por Leaflet + OpenStreetMap real — polígono real do talhão, pontos reais dos pontos de
+  amostragem, cor por status, clique abre painel lateral com os dados reais do ponto. `layersRef` já
+  preparado para uma futura camada de fertilidade sem reestruturar o mapa.
+
+### Captura do mapa real funcionando
+
+Testado com Playwright contra o servidor real (não simulado): a ordem `OC-260902-9C31CA` (talhão real,
+81 pontos reais) abre com zoom automático correto sobre o polígono do talhão, ruas/geografia real do
+OpenStreetMap ao redor, pontos coloridos por status (cobre/laranja = pendente, verde = coletado). Clique no
+ponto `P040` abriu o painel lateral com `Status: Pendente`, coordenadas reais, profundidade `0–20 cm` —
+tanto em 1440px quanto em 390px (mobile), sem overflow horizontal em nenhuma das duas larguras.
+
+### Confirmação de rastreabilidade
+
+Cadeia verificada com dado real de ponta a ponta, com um teste completo criado e depois limpo do banco:
+cliente → propriedade → talhão → safra/cultura (`crop_profile_id`) → ordem de coleta → ponto de amostragem
+→ amostra (`lab_samples`, agora com `sample_point_id` real) → laudo/parâmetro (`lab_results`) → regra
+(`crop_profile_parameters` homologado) → interpretação (`interpretations`, com trace completo) → revisão
+(`reviewInterpretation`, `analyses.status` → `APPROVED`). Confirmado com pH real classificado corretamente
+como "Adequado" (5.8) e "Baixo" (5.2) contra as faixas cadastradas.
+
+Dois elos ainda não estão fechados, e é importante ser honesto sobre isso:
+- **mapa**: já lê o mesmo dado real de pontos, mas ainda não cruza com o resultado da interpretação
+  (camada de fertilidade) — a estrutura (`layersRef`) já está pronta para isso, é o próximo passo natural.
+- **relatório**: `reports` existe no schema desde a migration 001, mas nenhum código gera ou publica um
+  relatório ainda — isso não fazia parte do escopo pedido nesta fase (que terminava em "mapa" e
+  "rastreabilidade") e seria um bloco novo por si só (geração de PDF + storage), não iniciado aqui.
+
+### Testes realizados
+
+- `npm run test:handoff` completo (domínio de laudo, segurança, operações de campo, motor agronômico,
+  contratos de migration) — aprovado.
+- `npm run typecheck` e `npm run build` — limpos, sem erro.
+- Testes reais contra o banco de produção (Supabase), sempre limpos ao final (rollback ou delete
+  explícito, nunca deixando dado de teste para trás):
+  - promoção de laudo para `lab_samples`/`lab_results` (SQL direto, com rollback);
+  - fluxo completo via API real: login → vincular perfil de cultura à safra → homologar parâmetro de pH →
+    importar CSV real → motor determinístico → aprovar interpretação → status da análise virou `APPROVED`;
+  - Playwright contra o servidor real: painel de Inteligência Agronômica (estado vazio honesto, estado de
+    erro honesto) e mapa real (zoom, cor por status, clique → painel), em desktop e mobile, sem erro de
+    console e sem overflow horizontal.
+
+### Pendências que dependem obrigatoriamente de um agrônomo
+
+Nada disto foi preenchido com valor inventado — fica marcado como aguardando homologação:
+- toda `sufficiency_ranges` de cada `crop_profile_parameters` (as faixas técnicas em si — hoje só existe o
+  exemplo de pH usado no teste, que foi removido do banco ao final);
+- quais métodos analíticos são aceitos por parâmetro/cultura;
+- as regiões técnicas e quais perfis valem em cada uma;
+- a definição de quando a densidade de pontos é suficiente para liberar interpolação espacial no mapa;
+- a aprovação final de cada interpretação antes de virar relatório publicado (mecanismo já existe, decisão
+  é sempre humana).
+
+### Itens preparados para a futura IA (ainda não conectada)
+
+`src/lib/ai/agronomic-explanation-provider.ts` define a interface `AgronomicExplanationProvider` e
+`resolveAgronomicExplanationProvider()`, que **retorna `null` sempre** nesta fase — nenhum provedor está
+registrado, nenhuma dependência de IA foi instalada, nenhuma chamada de rede acontece. A interface já
+impede, pelo próprio formato dos tipos, que uma IA futura substitua uma classificação: ela só recebe o
+`EngineResult` já calculado e só pode devolver texto (`narrative`), nunca um número ou uma faixa. Trocar de
+provedor no futuro (ex.: um adaptador Anthropic) não deveria exigir tocar no motor determinístico nem nas
+telas que o consomem. Integração real só deve acontecer mediante autorização explícita — não incluída
+neste bloco.
