@@ -100,7 +100,7 @@ export async function listCollectionOrders(tenantId: string, userId?: string, cr
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN users u ON u.id = co.assigned_to
        LEFT JOIN sample_points sp ON sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
-       WHERE ($2::uuid IS NULL OR co.crop_season_id = $2::uuid)
+       WHERE co.tenant_id = $1::uuid AND ($2::uuid IS NULL OR co.crop_season_id = $2::uuid)
        GROUP BY co.id, u.name, cs.id, cs.season_label, f.id, f.name, f.area_ha, f.boundary, p.name, c.name
        ORDER BY co.created_at DESC`,
       [tenantId, cropSeasonId ?? null],

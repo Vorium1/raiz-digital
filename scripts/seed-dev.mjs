@@ -7,7 +7,10 @@ const password = process.env.SEED_ADMIN_PASSWORD;
 if (!databaseUrl) throw new Error("DATABASE_URL obrigatória.");
 if (!password || password.length < 10) throw new Error("SEED_ADMIN_PASSWORD deve ter ao menos 10 caracteres.");
 
-const pool = new Pool({ connectionString: databaseUrl });
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+});
 const client = await pool.connect();
 try {
   await client.query("BEGIN");

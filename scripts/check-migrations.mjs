@@ -5,6 +5,8 @@ const initial = await readFile(new URL("../db/migrations/001_initial.sql", impor
 const tenancy = await readFile(new URL("../db/migrations/002_tenancy_and_imports.sql", import.meta.url), "utf8");
 const identity = await readFile(new URL("../db/migrations/003_identity_and_persistence.sql", import.meta.url), "utf8");
 const fieldOps = await readFile(new URL("../db/migrations/004_field_operations.sql", import.meta.url), "utf8");
+const forceRls = await readFile(new URL("../db/migrations/005_force_row_level_security.sql", import.meta.url), "utf8");
+const appRole = await readFile(new URL("../db/migrations/006_app_runtime_role.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -17,4 +19,10 @@ assert.match(fieldOps, /ALTER TABLE collection_orders/i);
 assert.match(fieldOps, /observed_position geometry\(Point,4326\)/i);
 assert.match(fieldOps, /sample_points_observed_position_gix/i);
 assert.match(fieldOps, /collection_orders_touch_updated_at/i);
-console.log("migrations: contratos estruturais 001-004 aprovados");
+assert.match(forceRls, /FORCE ROW LEVEL SECURITY/i);
+assert.match(forceRls, /collection_orders/i);
+assert.match(forceRls, /audit_events/i);
+assert.match(appRole, /CREATE ROLE raiz_app/i);
+assert.match(appRole, /NOBYPASSRLS/i);
+assert.doesNotMatch(appRole, /\bSUPERUSER\b/i);
+console.log("migrations: contratos estruturais 001-006 aprovados");

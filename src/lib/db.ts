@@ -3,7 +3,7 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
 let pool: Pool | undefined;
 
 function databaseUrl() {
-  const value = process.env.DATABASE_URL?.trim();
+  const value = (process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL)?.trim();
   if (!value) throw new Error("DATABASE_URL não configurada.");
   return value;
 }
