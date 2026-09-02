@@ -429,3 +429,27 @@ lista nem tinha ação nenhuma (decorativo, sem link).
 Testado contra o banco real: criar, editar e excluir um cliente sem vínculos funcionou; excluir um cliente
 que já tinha propriedade foi bloqueado com mensagem clara (409); perfil sem permissão de exclusão foi
 bloqueado (403). Testado pela tela real, desktop e celular, sem estouro de layout.
+
+## Busca e filtro reais na tela de Análises
+
+Mesma classe de bug encontrada e corrigida nesta sessão (controle que parece funcional mas não faz nada): a
+caixa de busca e o seletor de status da tela de Análises não tinham nenhum `onChange` — eram enfeite. A
+página inteira era um Server Component, então não dava para ligar interatividade nela diretamente.
+
+- Novo componente `src/components/analyses-table.tsx` (Client Component) recebe a lista de análises já
+  buscada no servidor e faz busca e filtro no navegador, sem nova consulta ao banco a cada letra digitada
+  (lista de análises de um tenant é pequena o bastante para isso ser instantâneo e simples).
+- Busca compara código da análise, nome do cliente e nome do talhão (sem diferenciar maiúsculas/acentos via
+  `toLocaleLowerCase("pt-BR")`).
+- O filtro de status antes só oferecia 3 das 12 situações reais do fluxo (resquício do design decorativo
+  original). Trocado por `ANALYSIS_STATUS_OPTIONS`, gerado a partir do mesmo mapa de status usado no resto do
+  sistema (`src/domain/analysis-ui.ts`), então cobre todas as situações reais e não fica desatualizado se um
+  status novo for adicionado depois.
+- Estado vazio diferente para "nenhuma análise cadastrada ainda" vs. "a busca/filtro não encontrou nada".
+- O modo demonstração (sem banco) manteve a barra de busca/filtro como estava (decorativa), já que os dados
+  ali são só exemplo e não há filtro real para aplicar.
+
+Testado pela tela real (Playwright) contra o banco real, desktop e celular: busca sem resultado mostra o
+estado vazio certo; filtro por `DRAFT` e `IMPORTED` (os únicos status presentes nos dados de teste) retornou
+exatamente as linhas esperadas; filtro pelos demais status retornou zero linhas (correto, nenhuma análise de
+teste está nessas situações); sem estouro horizontal de layout em nenhum dos dois tamanhos de tela.

@@ -19,6 +19,8 @@ export function analysisStatusMeta(status: string) {
   return STATUS[status] ?? { label: status, tone: "neutral" as StatusTone, progress: 0 };
 }
 
+export const ANALYSIS_STATUS_OPTIONS = Object.entries(STATUS).map(([value, meta]) => ({ value, label: meta.label }));
+
 export function formatRelativeOrDate(value: string | Date) {
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return "—";
