@@ -88,6 +88,20 @@ export function FieldOperationsManager() {
   const [nextCrop, setNextCrop] = useState("");
   const [yieldGoal, setYieldGoal] = useState("");
 
+  const [editingPropertyId, setEditingPropertyId] = useState("");
+  const [editPropertyName, setEditPropertyName] = useState("");
+  const [editMunicipality, setEditMunicipality] = useState("");
+  const [editState, setEditState] = useState("");
+
+  const [editingFieldId, setEditingFieldId] = useState("");
+  const [editFieldName, setEditFieldName] = useState("");
+
+  const [editingSeasonId, setEditingSeasonId] = useState("");
+  const [editSeasonLabel, setEditSeasonLabel] = useState("");
+  const [editCurrentCrop, setEditCurrentCrop] = useState("");
+  const [editNextCrop, setEditNextCrop] = useState("");
+  const [editYieldGoal, setEditYieldGoal] = useState("");
+
   const [orderSeasonId, setOrderSeasonId] = useState("");
   const [strategy, setStrategy] = useState<"GRID" | "IMPORTED">("GRID");
   const [gridAreaHa, setGridAreaHa] = useState("2");
@@ -164,6 +178,95 @@ export function FieldOperationsManager() {
       setMessage({ tone:"success", text:"Safra vinculada ao talhão." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao criar safra." }); }
+    finally { setBusy(""); }
+  }
+
+  async function patchJson(url: string, body: unknown) {
+    const response = await fetch(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const payload = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(payload.error ?? "Operação não concluída.");
+    return payload;
+  }
+
+  async function deleteJson(url: string) {
+    const response = await fetch(url, { method: "DELETE" });
+    const payload = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(payload.error ?? "Operação não concluída.");
+    return payload;
+  }
+
+  function startEditProperty(property: ContextData["properties"][number]) {
+    setEditingPropertyId(property.id); setEditPropertyName(property.name); setEditMunicipality(property.municipality); setEditState(property.state);
+  }
+
+  async function saveProperty(id: string) {
+    setBusy(`property-save-${id}`); setMessage(null);
+    try {
+      await patchJson(`/api/properties/${id}`, { name: editPropertyName, municipality: editMunicipality, state: editState });
+      setEditingPropertyId(""); setMessage({ tone:"success", text:"Propriedade atualizada." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar propriedade." }); }
+    finally { setBusy(""); }
+  }
+
+  async function removeProperty(property: ContextData["properties"][number]) {
+    if (!window.confirm(`Excluir a propriedade "${property.name}"?`)) return;
+    setBusy(`property-delete-${property.id}`); setMessage(null);
+    try {
+      await deleteJson(`/api/properties/${property.id}`);
+      setMessage({ tone:"success", text:"Propriedade excluída." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao excluir propriedade." }); }
+    finally { setBusy(""); }
+  }
+
+  function startEditField(field: ContextData["fields"][number]) {
+    setEditingFieldId(field.id); setEditFieldName(field.name);
+  }
+
+  async function saveField(id: string) {
+    setBusy(`field-save-${id}`); setMessage(null);
+    try {
+      await patchJson(`/api/fields/${id}`, { name: editFieldName });
+      setEditingFieldId(""); setMessage({ tone:"success", text:"Talhão atualizado." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar talhão." }); }
+    finally { setBusy(""); }
+  }
+
+  async function removeField(field: ContextData["fields"][number]) {
+    if (!window.confirm(`Excluir o talhão "${field.name}"?`)) return;
+    setBusy(`field-delete-${field.id}`); setMessage(null);
+    try {
+      await deleteJson(`/api/fields/${field.id}`);
+      setMessage({ tone:"success", text:"Talhão excluído." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao excluir talhão." }); }
+    finally { setBusy(""); }
+  }
+
+  function startEditSeason(season: ContextData["seasons"][number]) {
+    setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCurrentCrop(season.currentCrop ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : "");
+  }
+
+  async function saveSeason(id: string) {
+    setBusy(`season-save-${id}`); setMessage(null);
+    try {
+      await patchJson(`/api/crop-seasons/${id}`, { seasonLabel: editSeasonLabel, currentCrop: editCurrentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null });
+      setEditingSeasonId(""); setMessage({ tone:"success", text:"Safra atualizada." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar safra." }); }
+    finally { setBusy(""); }
+  }
+
+  async function removeSeason(season: ContextData["seasons"][number]) {
+    if (!window.confirm(`Excluir a safra "${season.seasonLabel}"?`)) return;
+    setBusy(`season-delete-${season.id}`); setMessage(null);
+    try {
+      await deleteJson(`/api/crop-seasons/${season.id}`);
+      setMessage({ tone:"success", text:"Safra excluída." });
+      await loadAll();
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao excluir safra." }); }
     finally { setBusy(""); }
   }
 
@@ -244,12 +347,52 @@ export function FieldOperationsManager() {
           <label><span>UF</span><input value={state} maxLength={2} onChange={(e)=>setState(e.target.value.toUpperCase())}/></label>
           <label className="field-ops-wide"><span>Limite da propriedade · GeoJSON opcional</span><textarea value={propertyBoundary} onChange={(e)=>setPropertyBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[...]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setPropertyBoundary)}/><GeoMapInput value={propertyBoundary} onChange={setPropertyBoundary} height={260}/></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "property" || !propertyClientId || !propertyName || !municipality} onClick={()=>void createProperty()}>{busy === "property" ? "Salvando…" : "Cadastrar propriedade"}</button></div>
+          {context.properties.length > 0 && <div className="field-ops-wide field-ops-list">
+            {context.properties.map((property)=>editingPropertyId === property.id ? (
+              <div key={property.id} className="field-ops-list-row editing">
+                <input value={editPropertyName} onChange={(e)=>setEditPropertyName(e.target.value)} placeholder="Nome"/>
+                <input value={editMunicipality} onChange={(e)=>setEditMunicipality(e.target.value)} placeholder="Município"/>
+                <input value={editState} maxLength={2} onChange={(e)=>setEditState(e.target.value.toUpperCase())} placeholder="UF"/>
+                <span className="field-ops-list-actions">
+                  <button className="button tiny" disabled={busy === `property-save-${property.id}`} onClick={()=>void saveProperty(property.id)}><Icon name="check" size={13}/></button>
+                  <button className="icon-button" onClick={()=>setEditingPropertyId("")}><Icon name="close" size={13}/></button>
+                </span>
+              </div>
+            ) : (
+              <div key={property.id} className="field-ops-list-row">
+                <span><strong>{property.name}</strong><small>{property.municipality}/{property.state}</small></span>
+                <span className="field-ops-list-actions">
+                  <button type="button" className="icon-button" aria-label={`Editar ${property.name}`} onClick={()=>startEditProperty(property)}><Icon name="edit" size={14}/></button>
+                  <button type="button" className="icon-button" aria-label={`Excluir ${property.name}`} disabled={busy === `property-delete-${property.id}`} onClick={()=>void removeProperty(property)}><Icon name={busy === `property-delete-${property.id}` ? "clock" : "trash"} size={14}/></button>
+                </span>
+              </div>
+            ))}
+          </div>}
         </div></details>
         <details><summary><span><b>2</b><strong>Talhão</strong><small>Polígono WGS84 obrigatório</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Propriedade</span><select value={fieldPropertyId} onChange={(e)=>setFieldPropertyId(e.target.value)}><option value="">Selecione</option>{propertyOptions.map((property)=><option key={property.id} value={property.id}>{property.name} · {property.municipality}/{property.state}</option>)}</select></label>
           <label><span>Nome do talhão</span><input value={fieldName} onChange={(e)=>setFieldName(e.target.value)} placeholder="Talhão Norte"/></label>
           <label className="field-ops-wide"><span>Polígono GeoJSON</span><textarea value={fieldBoundary} onChange={(e)=>setFieldBoundary(e.target.value)} placeholder='{"type":"Polygon","coordinates":[[[-52.4,-28.2],...]]}'/><input className="geo-file" type="file" accept=".geojson,.json" onChange={(e)=>void readGeometryFile(e.target.files?.[0],setFieldBoundary)}/><GeoMapInput value={fieldBoundary} onChange={setFieldBoundary} referenceBoundary={selectedFieldProperty?.boundary ?? null} height={320}/><small>O PostGIS valida geometria, calcula hectares e bloqueia talhão fora do limite da propriedade quando esse limite existe. {selectedFieldProperty?.boundary ? "O contorno tracejado no mapa mostra o limite da propriedade selecionada." : ""}</small></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "field" || !fieldPropertyId || !fieldName || !fieldBoundary.trim()} onClick={()=>void createField()}>{busy === "field" ? "Validando…" : "Validar e cadastrar talhão"}</button></div>
+          {context.fields.length > 0 && <div className="field-ops-wide field-ops-list">
+            {context.fields.map((field)=>editingFieldId === field.id ? (
+              <div key={field.id} className="field-ops-list-row editing">
+                <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
+                <span className="field-ops-list-actions">
+                  <button className="button tiny" disabled={busy === `field-save-${field.id}`} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/></button>
+                  <button className="icon-button" onClick={()=>setEditingFieldId("")}><Icon name="close" size={13}/></button>
+                </span>
+              </div>
+            ) : (
+              <div key={field.id} className="field-ops-list-row">
+                <span><strong>{field.name}</strong><small>{Number(field.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</small></span>
+                <span className="field-ops-list-actions">
+                  <button type="button" className="icon-button" aria-label={`Editar ${field.name}`} onClick={()=>startEditField(field)}><Icon name="edit" size={14}/></button>
+                  <button type="button" className="icon-button" aria-label={`Excluir ${field.name}`} disabled={busy === `field-delete-${field.id}`} onClick={()=>void removeField(field)}><Icon name={busy === `field-delete-${field.id}` ? "clock" : "trash"} size={14}/></button>
+                </span>
+              </div>
+            ))}
+          </div>}
         </div></details>
         <details><summary><span><b>3</b><strong>Safra</strong><small>Cultura e meta do contexto agronômico</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Talhão</span><select value={seasonFieldId} onChange={(e)=>setSeasonFieldId(e.target.value)}><option value="">Selecione</option>{context.fields.map((field)=><option key={field.id} value={field.id}>{field.name} · {Number(field.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</option>)}</select></label>
@@ -259,6 +402,28 @@ export function FieldOperationsManager() {
           <label><span>Meta produtiva</span><input value={yieldGoal} onChange={(e)=>setYieldGoal(e.target.value)} inputMode="decimal" placeholder="75"/></label>
           <label><span>Área confirmada</span><input readOnly value={selectedField ? `${Number(selectedField.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha` : ""}/></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "season" || !seasonFieldId || !seasonLabel} onClick={()=>void createSeason()}>{busy === "season" ? "Salvando…" : "Criar safra"}</button></div>
+          {context.seasons.length > 0 && <div className="field-ops-wide field-ops-list">
+            {context.seasons.map((season)=>editingSeasonId === season.id ? (
+              <div key={season.id} className="field-ops-list-row editing">
+                <input value={editSeasonLabel} onChange={(e)=>setEditSeasonLabel(e.target.value)} placeholder="Safra"/>
+                <input value={editCurrentCrop} onChange={(e)=>setEditCurrentCrop(e.target.value)} placeholder="Cultura atual"/>
+                <input value={editNextCrop} onChange={(e)=>setEditNextCrop(e.target.value)} placeholder="Próxima cultura"/>
+                <input value={editYieldGoal} onChange={(e)=>setEditYieldGoal(e.target.value)} inputMode="decimal" placeholder="Meta"/>
+                <span className="field-ops-list-actions">
+                  <button className="button tiny" disabled={busy === `season-save-${season.id}`} onClick={()=>void saveSeason(season.id)}><Icon name="check" size={13}/></button>
+                  <button className="icon-button" onClick={()=>setEditingSeasonId("")}><Icon name="close" size={13}/></button>
+                </span>
+              </div>
+            ) : (
+              <div key={season.id} className="field-ops-list-row">
+                <span><strong>{season.seasonLabel}</strong><small>{context.fields.find((field)=>field.id === season.fieldId)?.name ?? "Talhão"} · {season.currentCrop || "cultura não informada"}</small></span>
+                <span className="field-ops-list-actions">
+                  <button type="button" className="icon-button" aria-label={`Editar ${season.seasonLabel}`} onClick={()=>startEditSeason(season)}><Icon name="edit" size={14}/></button>
+                  <button type="button" className="icon-button" aria-label={`Excluir ${season.seasonLabel}`} disabled={busy === `season-delete-${season.id}`} onClick={()=>void removeSeason(season)}><Icon name={busy === `season-delete-${season.id}` ? "clock" : "trash"} size={14}/></button>
+                </span>
+              </div>
+            ))}
+          </div>}
         </div></details>
       </div>
     </section>

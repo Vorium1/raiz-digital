@@ -453,3 +453,32 @@ Testado pela tela real (Playwright) contra o banco real, desktop e celular: busc
 estado vazio certo; filtro por `DRAFT` e `IMPORTED` (os únicos status presentes nos dados de teste) retornou
 exatamente as linhas esperadas; filtro pelos demais status retornou zero linhas (correto, nenhuma análise de
 teste está nessas situações); sem estouro horizontal de layout em nenhum dos dois tamanhos de tela.
+
+## Edição e exclusão de propriedade, talhão e safra
+
+Mesma lacuna que já existia em Clientes antes desta sessão: propriedade, talhão e safra só podiam ser
+criados na tela "Coletas e mapas" — não havia como corrigir um nome digitado errado nem remover um cadastro
+de teste, mesmo que o registro não tivesse nenhum vínculo.
+
+- `PATCH`/`DELETE /api/properties/[id]`, `/api/fields/[id]` e `/api/crop-seasons/[id]` (novos). Editar segue
+  os mesmos perfis que já podiam criar cada entidade; excluir fica restrito a `SUPER_ADMIN`/`TENANT_ADMIN`
+  (mesmo padrão de Clientes: excluir é mais sensível que editar).
+- Excluir com vínculo é bloqueado pelo próprio banco (chave estrangeira, sem `ON DELETE CASCADE` de
+  propósito) e a rota traduz o erro cru do PostgreSQL em mensagem clara (409): propriedade com talhão,
+  talhão com safra ou coleta, safra com ordem de coleta ou análise.
+- Edição cobre os campos simples (nome/município/UF da propriedade; nome do talhão; safra, culturas e meta
+  produtiva da safra). O polígono (limite geográfico) não é editável por aqui — mudar um polígono já
+  cadastrado exigiria revalidar tudo que depende dele (área em hectares, pontos de coleta já dentro do
+  talhão), e isso fica para uma tarefa própria caso surja essa necessidade real.
+- Cada seção "Propriedade", "Talhão" e "Safra" do acordeão em Coletas e mapas ganhou uma lista dos registros
+  já cadastrados, com ícones de editar e excluir — antes eram apenas formulários de criação, sem nenhuma
+  lista visível dos que já existiam.
+
+Bug encontrado e corrigido durante o próprio teste: as consultas `UPDATE` tentavam gravar `updated_at`, mas
+essas três tabelas nunca tiveram essa coluna (só `clients` tem) — o erro cru do Postgres vazava pra tela.
+Corrigido removendo o campo das consultas antes de qualquer commit.
+
+Testado contra o banco real: editar propriedade e confirmar que o nome muda persiste (Playwright, desktop e
+celular, sem estouro de layout); excluir propriedade/talhão com vínculo bloqueado com 409 e mensagem clara;
+criar uma propriedade descartável e excluí-la com sucesso (200); excluir talhão com safra vinculada bloqueado
+(409); excluir safra com ordem de coleta vinculada bloqueado (409).
