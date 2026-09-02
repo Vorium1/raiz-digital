@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createSession, findUserByEmail, membershipsForUser } from "@/lib/auth/session";
 import { verifyPassword } from "@/lib/auth/password";
+import { isLoginLocked, recordFailedLogin } from "@/lib/auth/rate-limit";
 
 function ipHash(request: Request) {
   const raw = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "";
@@ -19,8 +20,18 @@ export async function POST(request: Request) {
       return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
 
+    const lock = await isLoginLocked(email);
+    if (lock.locked) {
+      const minutes = Math.ceil(lock.retryAfterSeconds / 60);
+      return Response.json(
+        { error: `Muitas tentativas de login para este e-mail. Tente novamente em ${minutes} minuto(s).` },
+        { status: 429, headers: { "Retry-After": String(lock.retryAfterSeconds) } },
+      );
+    }
+
     const user = await findUserByEmail(email);
     if (!user?.password_hash || !(await verifyPassword(user.password_hash, password))) {
+      await recordFailedLogin(email, ipHash(request));
       return Response.json({ error: "Credenciais inválidas." }, { status: 401 });
     }
 

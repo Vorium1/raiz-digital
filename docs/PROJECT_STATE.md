@@ -356,3 +356,26 @@ administrador precisa copiar e repassar a senha temporária manualmente, por for
 nada automaticamente), expiração do convite, e 2FA. Segue como o `CLAUDE.md` já previa em "Antes de produção
 ainda faltam 2FA administrativo, recuperação de senha, convites" — o convite básico e a troca de senha própria
 agora existem; recuperação de senha esquecida (sem estar logado) e 2FA continuam pendentes.
+
+## Bloqueio de login por força bruta
+
+Outro item de "Antes de produção" do `CLAUDE.md` ("rate limiting") fechado parcialmente: nada impedia
+tentativas ilimitadas de adivinhar a senha de um usuário. Implementado sem nenhum serviço novo (nada de
+Redis) — só uma tabela no próprio PostgreSQL:
+
+- `db/migrations/008_login_attempts.sql`: tabela `login_attempts` (e-mail, hash do IP, data), sem RLS/tenant
+  (login acontece antes de existir contexto de empresa, mesmo padrão de `users`/`user_sessions`). Só registra
+  tentativas malsucedidas.
+- `/api/auth/login` agora verifica, antes até de checar a senha, se já houve 5 tentativas malsucedidas para
+  aquele e-mail nos últimos 15 minutos; se sim, bloqueia com 429 e mensagem de quanto tempo falta — mesmo que
+  a senha desta tentativa estivesse certa (comportamento correto: uma vez atingido o limite, é preciso esperar
+  a janela passar).
+- Bloqueio é por e-mail, não afeta outros usuários nem o restante do sistema.
+
+Testado contra o banco real: 5 tentativas erradas seguidas, a 6ª bloqueada com 429 mesmo usando a senha
+correta, outro e-mail seguiu funcionando normalmente (login 200).
+
+**Pendência explícita**: essa proteção é só por e-mail; bloqueio por IP (contra alguém tentando muitos
+e-mails diferentes do mesmo lugar) ainda não existe. A tabela também cresce sem limpeza automática — hoje
+isso é aceitável (linhas pequenas, só tentativas falhas), mas antes de produção de longo prazo vale um job de
+limpeza periódica (que depende da fila em PostgreSQL ainda não construída, ver Fase C do roadmap).
