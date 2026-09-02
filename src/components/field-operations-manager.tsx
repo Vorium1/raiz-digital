@@ -16,6 +16,7 @@ type Point = {
   id: string; code: string; sequence: number | null; latitude: number; longitude: number;
   observedLatitude: number | null; observedLongitude: number | null; collectedAt: string | null;
   depthFromCm: number; depthToCm: number; subsampleCount: number | null; accuracyM: number | null; gpsSource: string | null;
+  notes: string | null;
   labResultCount: number;
 };
 type Order = {
@@ -110,6 +111,9 @@ export function FieldOperationsManager() {
   const [depthFromCm, setDepthFromCm] = useState("0");
   const [depthToCm, setDepthToCm] = useState("20");
   const [plannedAt, setPlannedAt] = useState("");
+
+  const [openNoteId, setOpenNoteId] = useState("");
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
   const selectedOrder = orders.find((order)=>order.id === selectedOrderId) ?? orders[0] ?? null;
   const selectedField = context.fields.find((field)=>field.id === seasonFieldId);
@@ -320,7 +324,7 @@ export function FieldOperationsManager() {
       const position = await new Promise<GeolocationPosition>((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{ enableHighAccuracy:true, timeout:20_000, maximumAge:0 }));
       const response = await fetch(`/api/collection-orders/${selectedOrder.id}/points/${point.id}`, {
         method:"PATCH", headers:{"content-type":"application/json"},
-        body:JSON.stringify({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracyM:position.coords.accuracy }),
+        body:JSON.stringify({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracyM:position.coords.accuracy, notes:noteDrafts[point.id] ?? "" }),
       });
       const payload = await response.json().catch(()=>({}));
       if (!response.ok) {
@@ -328,6 +332,8 @@ export function FieldOperationsManager() {
         throw new Error((payload.error ?? "Posição não validada.") + distance);
       }
       setMessage({ tone:"success", text:`${point.code} confirmado por GPS. Desvio do ponto planejado: ${Math.round(payload.point.distanceMeters)} m.` });
+      setNoteDrafts((current)=>{ const next = { ...current }; delete next[point.id]; return next; });
+      setOpenNoteId("");
       await loadAll(selectedOrder.id);
     } catch (error) {
       const text = error instanceof GeolocationPositionError ? `GPS indisponível: ${error.message}` : error instanceof Error ? error.message : "Falha ao registrar coleta.";
@@ -470,7 +476,22 @@ export function FieldOperationsManager() {
           <div className="field-order-meta"><span><b>{selectedOrder.fieldAreaHa.toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</b><small>área</small></span><span><b>{selectedOrder.gridAreaHa ? `${selectedOrder.gridAreaHa} ha` : "GPS"}</b><small>estratégia</small></span><span><b>{selectedOrder.depthFromCm}–{selectedOrder.depthToCm} cm</b><small>profundidade</small></span><span><b>{selectedOrder.plannedPoints}</b><small>pontos</small></span></div>
           {selectedOrder.samplingStrategy !== "GRID" || selectedOrder.collectedPoints === 0 ? <label className="gps-import-button"><input type="file" accept=".csv,.txt,.geojson,.json" disabled={busy === "points"} onChange={(e)=>void importPoints(e.target.files?.[0])}/><Icon name="upload" size={16}/><span><strong>{busy === "points" ? "Validando pontos…" : "Importar / substituir pontos GPS"}</strong><small>CSV: código, latitude, longitude · ou FeatureCollection GeoJSON</small></span></label> : null}
           <div className="field-point-list">
-            {selectedOrder.points.slice(0, 80).map((point)=><div key={point.id} className={point.collectedAt ? "field-point-row done" : "field-point-row"}><span className="point-sequence">{point.sequence ?? "–"}</span><span><strong>{point.code}</strong><small>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)} · {point.depthFromCm}–{point.depthToCm} cm</small></span><span className="field-point-actions">{point.labResultCount > 0 && <span className="point-lab-linked" title={`${point.labResultCount} resultado(s) de laudo vinculados pelo código ${point.code}`}><Icon name="flask" size={13}/>{point.labResultCount}</span>}{point.collectedAt ? <span className="point-collected"><Icon name="check" size={13}/>Coletado</span> : <button className="button tiny" disabled={busy === `collect-${point.id}`} onClick={()=>void collectHere(point)}><Icon name="location" size={13}/>{busy === `collect-${point.id}` ? "GPS…" : "Confirmar aqui"}</button>}</span></div>)}
+            {selectedOrder.points.slice(0, 80).map((point)=><div key={point.id} className={point.collectedAt ? "field-point-row done" : "field-point-row"}>
+              <span className="point-sequence">{point.sequence ?? "–"}</span>
+              <span>
+                <strong>{point.code}</strong>
+                <small>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)} · {point.depthFromCm}–{point.depthToCm} cm</small>
+                {point.notes && <small className="point-note">Obs.: {point.notes}</small>}
+              </span>
+              <span className="field-point-actions">
+                {point.labResultCount > 0 && <span className="point-lab-linked" title={`${point.labResultCount} resultado(s) de laudo vinculados pelo código ${point.code}`}><Icon name="flask" size={13}/>{point.labResultCount}</span>}
+                {point.collectedAt ? <span className="point-collected"><Icon name="check" size={13}/>Coletado</span> : <>
+                  <button type="button" className="icon-button point-note-toggle" aria-label={openNoteId === point.id ? "Fechar observação" : "Adicionar observação"} onClick={()=>setOpenNoteId(openNoteId === point.id ? "" : point.id)}><Icon name="edit" size={13}/></button>
+                  <button className="button tiny" disabled={busy === `collect-${point.id}`} onClick={()=>void collectHere(point)}><Icon name="location" size={13}/>{busy === `collect-${point.id}` ? "GPS…" : "Confirmar aqui"}</button>
+                </>}
+              </span>
+              {openNoteId === point.id && !point.collectedAt && <input className="point-note-input" value={noteDrafts[point.id] ?? ""} onChange={(e)=>setNoteDrafts((current)=>({ ...current, [point.id]: e.target.value }))} placeholder="Observação de campo (opcional) · vai junto ao confirmar" maxLength={280}/>}
+            </div>)}
             {selectedOrder.points.length > 80 && <div className="point-list-more">Mostrando 80 de {selectedOrder.points.length} pontos para manter a tela leve.</div>}
           </div>
         </>}

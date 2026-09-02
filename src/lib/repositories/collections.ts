@@ -23,6 +23,7 @@ export type CollectionOrderPoint = {
   subsampleCount: number | null;
   accuracyM: number | null;
   gpsSource: string | null;
+  notes: string | null;
   labResultCount: number;
 };
 
@@ -90,6 +91,7 @@ export async function listCollectionOrders(tenantId: string, userId?: string, cr
                'subsampleCount', sp.subsample_count,
                'accuracyM', sp.accuracy_m::float8,
                'gpsSource', sp.gps_source,
+               'notes', sp.notes,
                'labResultCount', (
                  SELECT count(*)::int
                  FROM analysis_import_rows air

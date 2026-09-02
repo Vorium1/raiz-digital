@@ -665,3 +665,27 @@ Testado com chamadas diretas à API contra o banco real (mais confiável que ler
 atraso de re-render): marcar irrigado como verdadeiro persiste e é confirmado por uma consulta separada;
 voltar para falso também persiste. Formulário testado visualmente em desktop, encaixando bem no grid
 existente.
+
+## Observação de campo ao confirmar ponto de coleta
+
+Última lacuna encontrada na varredura desta sessão pelo schema do banco: a API de confirmar coleta de ponto
+já aceitava um texto de observação (`sample_points.notes`) desde que essa rota foi criada, mas a tela nunca
+oferecia esse campo — só o botão de toque único "Confirmar aqui". Diferente das outras correções deste tipo,
+esta exigia um cuidado de design real: o fluxo de coleta é usado no celular, ao ar livre, e é pensado para
+ser rápido (um toque confirma o ponto por GPS); um campo de texto por padrão atrapalharia isso.
+
+- Cada ponto ainda não coletado ganhou um pequeno botão (ícone de lápis) ao lado de "Confirmar aqui" que
+  abre um campo de texto opcional só quando a pessoa realmente quer registrar algo (ex.: "solo compactado
+  perto da cerca"). O botão principal de toque único continua exatamente como era.
+- A observação é enviada junto no momento de confirmar o ponto — não existe um botão "salvar" separado, só
+  o "Confirmar aqui" de sempre, evitando um passo extra.
+- Depois de coletado, se houver observação, ela aparece como uma linha discreta abaixo das coordenadas do
+  ponto, visível sem precisar abrir nada.
+- `listCollectionOrders` e a rota `/api/context` passaram a trazer esse campo — antes nem chegava no
+  navegador, mesmo já existindo no banco.
+
+Testado contra o banco real, com geolocalização simulada exatamente nas coordenadas do ponto (Playwright):
+abrir o campo de observação, digitar um texto, confirmar o ponto por GPS — a observação foi persistida
+corretamente no banco junto com a confirmação (`collected_at` e `notes` preenchidos). Testado em desktop e
+celular, sem estouro de layout mesmo com o campo de observação aberto. O ponto de teste foi revertido ao
+estado original (não coletado, sem observação) ao final.
