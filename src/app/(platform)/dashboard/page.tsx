@@ -2,29 +2,36 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
+import { DashboardFilters } from "@/components/dashboard-filters";
 import { analyses, dashboardMetrics, samplePoints, tasks } from "@/lib/demo-data";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { getDashboardSnapshot } from "@/lib/repositories/dashboard";
+import { getDashboardSnapshot, getExecutiveDashboard, getDashboardFilterOptions } from "@/lib/repositories/dashboard";
 import { listAnalyses } from "@/lib/repositories/analyses";
+import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { analysisStatusMeta, formatRelativeOrDate } from "@/domain/analysis-ui";
 
 export const metadata = { title: "Início" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const database = isDatabaseMode();
   if (database) {
+    const params = await searchParams;
     const session = await requirePlatformSession();
-    const [snapshot, recent] = await Promise.all([
+    const filters = { clientId: params.clientId, propertyId: params.propertyId, cropSeasonId: params.cropSeasonId };
+    const [snapshot, recent, executive, filterOptions, alerts] = await Promise.all([
       getDashboardSnapshot(session.tenantId, session.userId),
       listAnalyses(session.tenantId, session.userId),
+      getExecutiveDashboard(session.tenantId, filters, session.userId),
+      getDashboardFilterOptions(session.tenantId, session.userId),
+      listOperationalAlerts(session.tenantId, session.userId),
     ]);
-    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} />;
+    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} />;
   }
   return <DemoDashboard/>;
 }
 
-function DatabaseDashboard({ sessionName, snapshot, recent }: { sessionName: string; snapshot: any; recent: any[] }) {
+function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number }) {
   const firstName = sessionName.trim().split(/\s+/)[0] || "equipe";
   const priority = snapshot.awaitingReview + snapshot.inconsistent;
   const metrics = [
@@ -33,6 +40,18 @@ function DatabaseDashboard({ sessionName, snapshot, recent }: { sessionName: str
     { label:"Pontos coletados", value:snapshot.collectedPoints, detail:"registros confirmados", icon:"location" },
     { label:"Clientes", value:snapshot.clients, detail:"carteira deste tenant", icon:"users" },
   ] as const;
+  const executiveMetrics = [
+    { label: "Propriedades", value: executive.properties, icon: "map" },
+    { label: "Área total", value: `${Number(executive.totalAreaHa).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha`, icon: "leaf" },
+    { label: "Talhões", value: executive.fields, icon: "layers" },
+    { label: "Safras em andamento", value: executive.seasonsInProgress, icon: "calendar" },
+    { label: "Ordens abertas", value: executive.openOrders, icon: "location" },
+    { label: "Cobertura de coleta", value: `${executive.coveragePct}%`, icon: "check" },
+    { label: "Laudos processados", value: executive.labsProcessed, icon: "upload" },
+    { label: "Interpretações pendentes", value: executive.interpretationsPending, icon: "clock" },
+    { label: "Talhões críticos", value: executive.criticalFields, icon: "warning" },
+    { label: "Confiabilidade média", value: executive.avgConfidence != null ? `${Math.round(Number(executive.avgConfidence))}/100` : "—", icon: "shield" },
+  ] as const;
   return <>
     <Topbar eyebrow="Operação em tempo real" title={`Olá, ${firstName}.`} />
     <div className="content-wrap dashboard-page">
@@ -40,6 +59,27 @@ function DatabaseDashboard({ sessionName, snapshot, recent }: { sessionName: str
         <div><span className="eyebrow light">CENTRAL DE OPERAÇÕES</span><h2>{priority ? `${priority} item${priority === 1 ? "" : "s"} precisa${priority === 1 ? "" : "m"} de atenção.` : "Operação sem pendências críticas."}</h2><p>Os indicadores abaixo vêm diretamente do PostgreSQL e respeitam o tenant ativo da sessão.</p><div className="hero-actions"><Link href="/analises" className="button light">Abrir análises <Icon name="arrow" size={17}/></Link><Link href="/analises/nova" className="text-link light">Criar nova análise</Link></div></div>
         <div className="live-system-card"><span><i/>DADOS REAIS</span><strong>{snapshot.clients}</strong><small>clientes isolados nesta empresa</small><dl><div><dt>Revisões</dt><dd>{snapshot.awaitingReview}</dd></div><div><dt>Inconsistências</dt><dd>{snapshot.inconsistent}</dd></div><div><dt>Coletas</dt><dd>{snapshot.collectedPoints}</dd></div></dl></div>
       </section>
+
+      <section className="card" style={{ marginBottom: 18 }}>
+        <div className="field-ops-section-head compact"><div><span className="eyebrow">PAINEL EXECUTIVO</span><h2>Visão consolidada da operação</h2></div></div>
+        <DashboardFilters options={filterOptions}/>
+        <div className="executive-metric-grid">
+          {executiveMetrics.map((metric) => <div className="executive-metric" key={metric.label}><Icon name={metric.icon} size={17}/><div><strong>{metric.value}</strong><span>{metric.label}</span></div></div>)}
+        </div>
+        <div className="dashboard-teasers">
+          <Link href="/alertas" className="dashboard-teaser">
+            <Icon name="warning" size={20}/>
+            <div><strong>{alertCount} alerta(s) ativo(s)</strong><small>{criticalAlertCount} de criticidade alta</small></div>
+            <Icon name="arrow" size={16}/>
+          </Link>
+          <Link href="/mapas" className="dashboard-teaser">
+            <Icon name="map" size={20}/>
+            <div><strong>Mapa da operação</strong><small>{executive.fields} talhão(ões) georreferenciado(s)</small></div>
+            <Icon name="arrow" size={16}/>
+          </Link>
+        </div>
+      </section>
+
       <section className="metric-grid" aria-label="Indicadores reais">{metrics.map((metric)=><article className="metric-card" key={metric.label}><div className="metric-icon teal"><Icon name={metric.icon}/></div><div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small></div></article>)}</section>
       <section className="card analyses-card"><div className="card-header"><div><span className="eyebrow">FLUXO DE ANÁLISES</span><h2>Atualizações recentes</h2></div><Link href="/analises">Ver todas <Icon name="arrow" size={15}/></Link></div>{recent.length ? <div className="analysis-list">{recent.map((analysis)=>{const meta=analysisStatusMeta(analysis.status); return <Link className="analysis-row" href={`/analises/${analysis.id}`} key={analysis.id}><div className="analysis-id"><span>{analysis.code}</span><strong>{analysis.clientName}</strong><small>{analysis.fieldName} · {Number(analysis.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</small></div><div className="analysis-progress"><div><i style={{width:`${meta.progress}%`}}/></div><small>{meta.progress}% do fluxo</small></div><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><span className="analysis-updated">{formatRelativeOrDate(analysis.updatedAt)}</span><Icon name="chevron" size={18}/></Link>})}</div> : <div className="empty-state"><Icon name="flask"/><strong>Nenhuma análise ainda</strong><small>Crie a primeira análise para alimentar esta central com dados reais.</small><Link className="button primary" href="/analises/nova">Criar análise</Link></div>}</section>
       <section className="system-foundation-grid"><article className="card foundation-card"><Icon name="shield"/><span className="eyebrow">ISOLAMENTO</span><strong>Tenant aplicado no banco</strong><small>A sessão define `app.tenant_id` dentro da transação antes de acessar entidades operacionais.</small></article><article className="card foundation-card"><Icon name="history"/><span className="eyebrow">AUDITORIA</span><strong>Cadastros rastreáveis</strong><small>Criações de clientes, análises e importações registram autor, entidade e horário.</small></article><article className="card foundation-card"><Icon name="upload"/><span className="eyebrow">LABORATÓRIO</span><strong>CSV validado antes de persistir</strong><small>Bloqueios técnicos mantêm a interpretação indisponível até correção humana.</small></article></section>
