@@ -9,8 +9,16 @@ type ContextData = {
   clients: Array<{ id: string; name: string }>;
   properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string; boundary: Geometry | null }>;
   fields: Array<{ id: string; propertyId: string; name: string; areaHa: number; boundary: Geometry }>;
-  seasons: Array<{ id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; irrigated: boolean }>;
+  seasons: Array<{
+    id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; irrigated: boolean;
+    cropProfileId: string | null; cultivar: string | null; managementSystem: string | null; soilType: string | null; soilTexture: string | null; technicalRegionCode: string | null;
+  }>;
+  cropProfiles: Array<{ id: string; code: string; name: string; status: "DRAFT" | "ACTIVE" | "SUPERSEDED" }>;
+  technicalRegions: Array<{ id: string; code: string; name: string }>;
 };
+
+const MANAGEMENT_SYSTEMS = ["Plantio direto", "Cultivo mínimo", "Convencional"];
+const SOIL_TEXTURES = ["Arenosa", "Média", "Argilosa"];
 
 type Point = {
   id: string; code: string; sequence: number | null; latitude: number; longitude: number;
@@ -27,7 +35,7 @@ type Order = {
   propertyName: string; clientName: string; fieldBoundary: Geometry; plannedPoints: number; collectedPoints: number; points: Point[];
 };
 
-const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [] };
+const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], cropProfiles: [], technicalRegions: [] };
 
 function geoJsonObject(text: string) {
   const trimmed = text.trim();
@@ -85,10 +93,14 @@ export function FieldOperationsManager() {
 
   const [seasonFieldId, setSeasonFieldId] = useState("");
   const [seasonLabel, setSeasonLabel] = useState("2026/27");
-  const [currentCrop, setCurrentCrop] = useState("Soja");
+  const [cropProfileId, setCropProfileId] = useState("");
   const [nextCrop, setNextCrop] = useState("");
   const [yieldGoal, setYieldGoal] = useState("");
   const [irrigated, setIrrigated] = useState(false);
+  const [cultivar, setCultivar] = useState("");
+  const [managementSystem, setManagementSystem] = useState("");
+  const [soilTexture, setSoilTexture] = useState("");
+  const [technicalRegionCode, setTechnicalRegionCode] = useState("");
 
   const [editingPropertyId, setEditingPropertyId] = useState("");
   const [editPropertyName, setEditPropertyName] = useState("");
@@ -100,10 +112,11 @@ export function FieldOperationsManager() {
 
   const [editingSeasonId, setEditingSeasonId] = useState("");
   const [editSeasonLabel, setEditSeasonLabel] = useState("");
-  const [editCurrentCrop, setEditCurrentCrop] = useState("");
+  const [editCropProfileId, setEditCropProfileId] = useState("");
   const [editNextCrop, setEditNextCrop] = useState("");
   const [editYieldGoal, setEditYieldGoal] = useState("");
   const [editIrrigated, setEditIrrigated] = useState(false);
+  const [editCultivar, setEditCultivar] = useState("");
 
   const [orderSeasonId, setOrderSeasonId] = useState("");
   const [strategy, setStrategy] = useState<"GRID" | "IMPORTED">("GRID");
@@ -180,7 +193,11 @@ export function FieldOperationsManager() {
   async function createSeason() {
     setBusy("season"); setMessage(null);
     try {
-      await postJson("/api/crop-seasons", { fieldId: seasonFieldId, seasonLabel, currentCrop, nextCrop, yieldGoal: yieldGoal || null, yieldGoalUnit: yieldGoal ? "sc/ha" : null, irrigated });
+      const currentCrop = context.cropProfiles.find((profile)=>profile.id === cropProfileId)?.name ?? "";
+      await postJson("/api/crop-seasons", {
+        fieldId: seasonFieldId, seasonLabel, currentCrop, nextCrop, yieldGoal: yieldGoal || null, yieldGoalUnit: yieldGoal ? "sc/ha" : null, irrigated,
+        cropProfileId: cropProfileId || null, cultivar, managementSystem, soilTexture, technicalRegionCode,
+      });
       setMessage({ tone:"success", text:"Safra vinculada ao talhão." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao criar safra." }); }
@@ -252,13 +269,17 @@ export function FieldOperationsManager() {
   }
 
   function startEditSeason(season: ContextData["seasons"][number]) {
-    setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCurrentCrop(season.currentCrop ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : ""); setEditIrrigated(season.irrigated);
+    setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCropProfileId(season.cropProfileId ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : ""); setEditIrrigated(season.irrigated); setEditCultivar(season.cultivar ?? "");
   }
 
   async function saveSeason(id: string) {
     setBusy(`season-save-${id}`); setMessage(null);
     try {
-      await patchJson(`/api/crop-seasons/${id}`, { seasonLabel: editSeasonLabel, currentCrop: editCurrentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null, irrigated: editIrrigated });
+      const currentCrop = context.cropProfiles.find((profile)=>profile.id === editCropProfileId)?.name ?? "";
+      await patchJson(`/api/crop-seasons/${id}`, {
+        seasonLabel: editSeasonLabel, currentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null, irrigated: editIrrigated,
+        cropProfileId: editCropProfileId || null, cultivar: editCultivar,
+      });
       setEditingSeasonId(""); setMessage({ tone:"success", text:"Safra atualizada." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar safra." }); }
@@ -416,7 +437,11 @@ export function FieldOperationsManager() {
         <details><summary><span><b>3</b><strong>Safra</strong><small>Cultura e meta do contexto agronômico</small></span><Icon name="chevron" size={16}/></summary><div className="field-ops-form">
           <label><span>Talhão</span><select value={seasonFieldId} onChange={(e)=>setSeasonFieldId(e.target.value)}><option value="">Selecione</option>{context.fields.map((field)=><option key={field.id} value={field.id}>{field.name} · {Number(field.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</option>)}</select></label>
           <label><span>Safra</span><input value={seasonLabel} onChange={(e)=>setSeasonLabel(e.target.value)}/></label>
-          <label><span>Cultura atual</span><input value={currentCrop} onChange={(e)=>setCurrentCrop(e.target.value)}/></label>
+          <label><span>Cultura</span><select value={cropProfileId} onChange={(e)=>setCropProfileId(e.target.value)}><option value="">Selecione</option>{context.cropProfiles.map((profile)=><option key={profile.id} value={profile.id}>{profile.name}{profile.status === "DRAFT" ? " (aguardando homologação)" : ""}</option>)}</select></label>
+          <label><span>Cultivar/variedade</span><input value={cultivar} onChange={(e)=>setCultivar(e.target.value)} placeholder="Ex.: TMG 7062"/></label>
+          <label><span>Sistema de cultivo</span><select value={managementSystem} onChange={(e)=>setManagementSystem(e.target.value)}><option value="">Não informado</option>{MANAGEMENT_SYSTEMS.map((option)=><option key={option} value={option}>{option}</option>)}</select></label>
+          <label><span>Textura do solo</span><select value={soilTexture} onChange={(e)=>setSoilTexture(e.target.value)}><option value="">Não informada</option>{SOIL_TEXTURES.map((option)=><option key={option} value={option}>{option}</option>)}</select></label>
+          <label><span>Região técnica</span><select value={technicalRegionCode} onChange={(e)=>setTechnicalRegionCode(e.target.value)}><option value="">Não informada</option>{context.technicalRegions.map((region)=><option key={region.id} value={region.code}>{region.name}</option>)}</select></label>
           <label><span>Próxima cultura</span><input value={nextCrop} onChange={(e)=>setNextCrop(e.target.value)} placeholder="Milho"/></label>
           <label><span>Meta produtiva</span><input value={yieldGoal} onChange={(e)=>setYieldGoal(e.target.value)} inputMode="decimal" placeholder="75"/></label>
           <label><span>Área confirmada</span><input readOnly value={selectedField ? `${Number(selectedField.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha` : ""}/></label>
@@ -426,7 +451,8 @@ export function FieldOperationsManager() {
             {context.seasons.map((season)=>editingSeasonId === season.id ? (
               <div key={season.id} className="field-ops-list-row editing">
                 <input value={editSeasonLabel} onChange={(e)=>setEditSeasonLabel(e.target.value)} placeholder="Safra"/>
-                <input value={editCurrentCrop} onChange={(e)=>setEditCurrentCrop(e.target.value)} placeholder="Cultura atual"/>
+                <select value={editCropProfileId} onChange={(e)=>setEditCropProfileId(e.target.value)}><option value="">Cultura</option>{context.cropProfiles.map((profile)=><option key={profile.id} value={profile.id}>{profile.name}</option>)}</select>
+                <input value={editCultivar} onChange={(e)=>setEditCultivar(e.target.value)} placeholder="Cultivar"/>
                 <input value={editNextCrop} onChange={(e)=>setEditNextCrop(e.target.value)} placeholder="Próxima cultura"/>
                 <input value={editYieldGoal} onChange={(e)=>setEditYieldGoal(e.target.value)} inputMode="decimal" placeholder="Meta"/>
                 <label className="field-ops-checkbox"><input type="checkbox" checked={editIrrigated} onChange={(e)=>setEditIrrigated(e.target.checked)}/>Irrigado</label>
@@ -437,7 +463,7 @@ export function FieldOperationsManager() {
               </div>
             ) : (
               <div key={season.id} className="field-ops-list-row">
-                <span><strong>{season.seasonLabel}</strong><small>{context.fields.find((field)=>field.id === season.fieldId)?.name ?? "Talhão"} · {season.currentCrop || "cultura não informada"}{season.irrigated ? " · irrigado" : ""}</small></span>
+                <span><strong>{season.seasonLabel}</strong><small>{context.fields.find((field)=>field.id === season.fieldId)?.name ?? "Talhão"} · {season.currentCrop || "cultura não informada"}{season.cultivar ? ` "${season.cultivar}"` : ""}{season.irrigated ? " · irrigado" : ""}</small></span>
                 <span className="field-ops-list-actions">
                   <button type="button" className="icon-button" aria-label={`Editar ${season.seasonLabel}`} onClick={()=>startEditSeason(season)}><Icon name="edit" size={14}/></button>
                   <button type="button" className="icon-button" aria-label={`Excluir ${season.seasonLabel}`} disabled={busy === `season-delete-${season.id}`} onClick={()=>void removeSeason(season)}><Icon name={busy === `season-delete-${season.id}` ? "clock" : "trash"} size={14}/></button>

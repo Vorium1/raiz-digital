@@ -20,6 +20,12 @@ export async function POST(request: Request) {
     yieldGoal,
     yieldGoalUnit: typeof body.yieldGoalUnit === "string" ? body.yieldGoalUnit.trim() : null,
     irrigated: body.irrigated === true,
+    cropProfileId: typeof body.cropProfileId === "string" && body.cropProfileId ? body.cropProfileId : null,
+    cultivar: typeof body.cultivar === "string" ? body.cultivar.trim() : null,
+    managementSystem: typeof body.managementSystem === "string" ? body.managementSystem.trim() : null,
+    soilType: typeof body.soilType === "string" ? body.soilType.trim() : null,
+    soilTexture: typeof body.soilTexture === "string" ? body.soilTexture.trim() : null,
+    technicalRegionCode: typeof body.technicalRegionCode === "string" ? body.technicalRegionCode.trim() : null,
   });
   return Response.json({ season }, { status: 201 });
 }

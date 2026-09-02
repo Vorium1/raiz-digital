@@ -14,14 +14,30 @@ function isForeignKeyViolation(error: unknown) {
 
 export async function listAgronomicContext(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
-    const [clients, properties, fields, seasons, laboratories] = await Promise.all([
+    const [clients, properties, fields, seasons, laboratories, cropProfiles, technicalRegions] = await Promise.all([
       client.query(`SELECT id::text, name FROM clients ORDER BY name`),
       client.query(`SELECT id::text, client_id::text AS "clientId", name, municipality, state, CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::json END AS boundary FROM properties ORDER BY name`),
       client.query(`SELECT id::text, property_id::text AS "propertyId", name, area_ha::float8 AS "areaHa", ST_AsGeoJSON(boundary)::json AS boundary FROM fields ORDER BY name`),
-      client.query(`SELECT id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop", yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated FROM crop_seasons ORDER BY created_at DESC`),
+      client.query(
+        `SELECT id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop",
+                yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated,
+                crop_profile_id::text AS "cropProfileId", cultivar, management_system AS "managementSystem",
+                soil_type AS "soilType", soil_texture AS "soilTexture", technical_region_code AS "technicalRegionCode"
+         FROM crop_seasons ORDER BY created_at DESC`,
+      ),
       client.query(`SELECT id::text, name, tax_id AS "taxId" FROM laboratories WHERE active ORDER BY name`),
+      client.query(`SELECT id::text, code, name, status FROM crop_profiles ORDER BY name`),
+      client.query(`SELECT id::text, code, name FROM technical_regions ORDER BY name`),
     ]);
-    return { clients: clients.rows, properties: properties.rows, fields: fields.rows, seasons: seasons.rows, laboratories: laboratories.rows };
+    return {
+      clients: clients.rows,
+      properties: properties.rows,
+      fields: fields.rows,
+      seasons: seasons.rows,
+      laboratories: laboratories.rows,
+      cropProfiles: cropProfiles.rows,
+      technicalRegions: technicalRegions.rows,
+    };
   });
 }
 
@@ -206,14 +222,30 @@ export async function updateCropSeason(input: {
   yieldGoal?: number | null;
   yieldGoalUnit?: string | null;
   irrigated?: boolean;
+  cropProfileId?: string | null;
+  cultivar?: string | null;
+  managementSystem?: string | null;
+  soilType?: string | null;
+  soilTexture?: string | null;
+  technicalRegionCode?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `UPDATE crop_seasons
-       SET season_label = $3, current_crop = nullif($4,''), next_crop = nullif($5,''), yield_goal = $6, yield_goal_unit = nullif($7,''), irrigated = $8
+       SET season_label = $3, current_crop = nullif($4,''), next_crop = nullif($5,''), yield_goal = $6, yield_goal_unit = nullif($7,''), irrigated = $8,
+           crop_profile_id = $9::uuid, cultivar = nullif($10,''), management_system = nullif($11,''),
+           soil_type = nullif($12,''), soil_texture = nullif($13,''), technical_region_code = nullif($14,'')
        WHERE tenant_id = $1::uuid AND id = $2::uuid
-       RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop", yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated`,
-      [input.tenantId, input.cropSeasonId, input.seasonLabel, input.currentCrop ?? "", input.nextCrop ?? "", input.yieldGoal ?? null, input.yieldGoalUnit ?? "", input.irrigated ?? false],
+       RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop",
+                 yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated,
+                 crop_profile_id::text AS "cropProfileId", cultivar, management_system AS "managementSystem",
+                 soil_type AS "soilType", soil_texture AS "soilTexture", technical_region_code AS "technicalRegionCode"`,
+      [
+        input.tenantId, input.cropSeasonId, input.seasonLabel, input.currentCrop ?? "", input.nextCrop ?? "",
+        input.yieldGoal ?? null, input.yieldGoalUnit ?? "", input.irrigated ?? false,
+        input.cropProfileId ?? null, input.cultivar ?? "", input.managementSystem ?? "",
+        input.soilType ?? "", input.soilTexture ?? "", input.technicalRegionCode ?? "",
+      ],
     );
     const updated = result.rows[0];
     if (!updated) throw new CatalogError("Safra não encontrada.", 404);
@@ -251,13 +283,30 @@ export async function createCropSeason(input: {
   yieldGoal?: number | null;
   yieldGoalUnit?: string | null;
   irrigated?: boolean;
+  cropProfileId?: string | null;
+  cultivar?: string | null;
+  managementSystem?: string | null;
+  soilType?: string | null;
+  soilTexture?: string | null;
+  technicalRegionCode?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
-      `INSERT INTO crop_seasons (tenant_id, field_id, season_label, current_crop, next_crop, yield_goal, yield_goal_unit, irrigated)
-       VALUES ($1::uuid, $2::uuid, $3, nullif($4,''), nullif($5,''), $6, nullif($7,''), $8)
-       RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop", yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated`,
-      [input.tenantId, input.fieldId, input.seasonLabel, input.currentCrop ?? "", input.nextCrop ?? "", input.yieldGoal ?? null, input.yieldGoalUnit ?? "", input.irrigated ?? false],
+      `INSERT INTO crop_seasons
+       (tenant_id, field_id, season_label, current_crop, next_crop, yield_goal, yield_goal_unit, irrigated,
+        crop_profile_id, cultivar, management_system, soil_type, soil_texture, technical_region_code)
+       VALUES ($1::uuid, $2::uuid, $3, nullif($4,''), nullif($5,''), $6, nullif($7,''), $8,
+               $9::uuid, nullif($10,''), nullif($11,''), nullif($12,''), nullif($13,''), nullif($14,''))
+       RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop",
+                 yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated,
+                 crop_profile_id::text AS "cropProfileId", cultivar, management_system AS "managementSystem",
+                 soil_type AS "soilType", soil_texture AS "soilTexture", technical_region_code AS "technicalRegionCode"`,
+      [
+        input.tenantId, input.fieldId, input.seasonLabel, input.currentCrop ?? "", input.nextCrop ?? "",
+        input.yieldGoal ?? null, input.yieldGoalUnit ?? "", input.irrigated ?? false,
+        input.cropProfileId ?? null, input.cultivar ?? "", input.managementSystem ?? "",
+        input.soilType ?? "", input.soilTexture ?? "", input.technicalRegionCode ?? "",
+      ],
     );
     const created = result.rows[0];
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "CROP_SEASON_CREATED", entityType: "crop_season", entityId: created.id, metadata: { seasonLabel: created.seasonLabel } });
