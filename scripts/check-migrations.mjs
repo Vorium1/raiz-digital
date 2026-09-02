@@ -12,6 +12,7 @@ const loginAttempts = await readFile(new URL("../db/migrations/008_login_attempt
 const passwordReset = await readFile(new URL("../db/migrations/009_password_reset_tokens.sql", import.meta.url), "utf8");
 const twoFactor = await readFile(new URL("../db/migrations/010_two_factor_auth.sql", import.meta.url), "utf8");
 const totpReplay = await readFile(new URL("../db/migrations/011_totp_replay_protection.sql", import.meta.url), "utf8");
+const agronomicFoundation = await readFile(new URL("../db/migrations/012_agronomic_intelligence_foundation.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -39,4 +40,10 @@ assert.match(twoFactor, /ALTER TABLE users ADD COLUMN totp_secret/i);
 assert.match(twoFactor, /CREATE TABLE totp_backup_codes/i);
 assert.match(twoFactor, /CREATE TABLE pending_two_factor_logins/i);
 assert.match(totpReplay, /ALTER TABLE users ADD COLUMN totp_last_counter/i);
-console.log("migrations: contratos estruturais 001-011 aprovados");
+assert.match(agronomicFoundation, /CREATE TABLE crop_profiles/i);
+assert.match(agronomicFoundation, /CREATE TABLE crop_profile_parameters/i);
+assert.match(agronomicFoundation, /sufficiency_ranges jsonb/i);
+assert.match(agronomicFoundation, /ALTER COLUMN rule_set_id DROP NOT NULL/i);
+assert.match(agronomicFoundation, /not_interpretable_reason/i);
+assert.doesNotMatch(agronomicFoundation, /sufficiency_ranges jsonb NOT NULL/i);
+console.log("migrations: contratos estruturais 001-012 aprovados");
