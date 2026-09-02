@@ -9,7 +9,7 @@ type ContextData = {
   clients: Array<{ id: string; name: string }>;
   properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string; boundary: Geometry | null }>;
   fields: Array<{ id: string; propertyId: string; name: string; areaHa: number; boundary: Geometry }>;
-  seasons: Array<{ id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null }>;
+  seasons: Array<{ id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; irrigated: boolean }>;
 };
 
 type Point = {
@@ -87,6 +87,7 @@ export function FieldOperationsManager() {
   const [currentCrop, setCurrentCrop] = useState("Soja");
   const [nextCrop, setNextCrop] = useState("");
   const [yieldGoal, setYieldGoal] = useState("");
+  const [irrigated, setIrrigated] = useState(false);
 
   const [editingPropertyId, setEditingPropertyId] = useState("");
   const [editPropertyName, setEditPropertyName] = useState("");
@@ -101,6 +102,7 @@ export function FieldOperationsManager() {
   const [editCurrentCrop, setEditCurrentCrop] = useState("");
   const [editNextCrop, setEditNextCrop] = useState("");
   const [editYieldGoal, setEditYieldGoal] = useState("");
+  const [editIrrigated, setEditIrrigated] = useState(false);
 
   const [orderSeasonId, setOrderSeasonId] = useState("");
   const [strategy, setStrategy] = useState<"GRID" | "IMPORTED">("GRID");
@@ -174,7 +176,7 @@ export function FieldOperationsManager() {
   async function createSeason() {
     setBusy("season"); setMessage(null);
     try {
-      await postJson("/api/crop-seasons", { fieldId: seasonFieldId, seasonLabel, currentCrop, nextCrop, yieldGoal: yieldGoal || null, yieldGoalUnit: yieldGoal ? "sc/ha" : null });
+      await postJson("/api/crop-seasons", { fieldId: seasonFieldId, seasonLabel, currentCrop, nextCrop, yieldGoal: yieldGoal || null, yieldGoalUnit: yieldGoal ? "sc/ha" : null, irrigated });
       setMessage({ tone:"success", text:"Safra vinculada ao talhão." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao criar safra." }); }
@@ -246,13 +248,13 @@ export function FieldOperationsManager() {
   }
 
   function startEditSeason(season: ContextData["seasons"][number]) {
-    setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCurrentCrop(season.currentCrop ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : "");
+    setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCurrentCrop(season.currentCrop ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : ""); setEditIrrigated(season.irrigated);
   }
 
   async function saveSeason(id: string) {
     setBusy(`season-save-${id}`); setMessage(null);
     try {
-      await patchJson(`/api/crop-seasons/${id}`, { seasonLabel: editSeasonLabel, currentCrop: editCurrentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null });
+      await patchJson(`/api/crop-seasons/${id}`, { seasonLabel: editSeasonLabel, currentCrop: editCurrentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null, irrigated: editIrrigated });
       setEditingSeasonId(""); setMessage({ tone:"success", text:"Safra atualizada." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar safra." }); }
@@ -412,6 +414,7 @@ export function FieldOperationsManager() {
           <label><span>Próxima cultura</span><input value={nextCrop} onChange={(e)=>setNextCrop(e.target.value)} placeholder="Milho"/></label>
           <label><span>Meta produtiva</span><input value={yieldGoal} onChange={(e)=>setYieldGoal(e.target.value)} inputMode="decimal" placeholder="75"/></label>
           <label><span>Área confirmada</span><input readOnly value={selectedField ? `${Number(selectedField.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha` : ""}/></label>
+          <div className="field-ops-form-field"><span>Irrigação</span><label className="field-ops-checkbox"><input type="checkbox" checked={irrigated} onChange={(e)=>setIrrigated(e.target.checked)}/>Área irrigada</label></div>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "season" || !seasonFieldId || !seasonLabel} onClick={()=>void createSeason()}>{busy === "season" ? "Salvando…" : "Criar safra"}</button></div>
           {context.seasons.length > 0 && <div className="field-ops-wide field-ops-list">
             {context.seasons.map((season)=>editingSeasonId === season.id ? (
@@ -420,6 +423,7 @@ export function FieldOperationsManager() {
                 <input value={editCurrentCrop} onChange={(e)=>setEditCurrentCrop(e.target.value)} placeholder="Cultura atual"/>
                 <input value={editNextCrop} onChange={(e)=>setEditNextCrop(e.target.value)} placeholder="Próxima cultura"/>
                 <input value={editYieldGoal} onChange={(e)=>setEditYieldGoal(e.target.value)} inputMode="decimal" placeholder="Meta"/>
+                <label className="field-ops-checkbox"><input type="checkbox" checked={editIrrigated} onChange={(e)=>setEditIrrigated(e.target.checked)}/>Irrigado</label>
                 <span className="field-ops-list-actions">
                   <button className="button tiny" disabled={busy === `season-save-${season.id}`} onClick={()=>void saveSeason(season.id)}><Icon name="check" size={13}/></button>
                   <button className="icon-button" onClick={()=>setEditingSeasonId("")}><Icon name="close" size={13}/></button>
@@ -427,7 +431,7 @@ export function FieldOperationsManager() {
               </div>
             ) : (
               <div key={season.id} className="field-ops-list-row">
-                <span><strong>{season.seasonLabel}</strong><small>{context.fields.find((field)=>field.id === season.fieldId)?.name ?? "Talhão"} · {season.currentCrop || "cultura não informada"}</small></span>
+                <span><strong>{season.seasonLabel}</strong><small>{context.fields.find((field)=>field.id === season.fieldId)?.name ?? "Talhão"} · {season.currentCrop || "cultura não informada"}{season.irrigated ? " · irrigado" : ""}</small></span>
                 <span className="field-ops-list-actions">
                   <button type="button" className="icon-button" aria-label={`Editar ${season.seasonLabel}`} onClick={()=>startEditSeason(season)}><Icon name="edit" size={14}/></button>
                   <button type="button" className="icon-button" aria-label={`Excluir ${season.seasonLabel}`} disabled={busy === `season-delete-${season.id}`} onClick={()=>void removeSeason(season)}><Icon name={busy === `season-delete-${season.id}` ? "clock" : "trash"} size={14}/></button>

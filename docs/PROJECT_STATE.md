@@ -646,3 +646,22 @@ Testado contra o banco real: tentar cancelar uma ordem simulada como "em andamen
 mensagem clara); cancelar uma ordem realmente planejada funcionou; tentar cancelar de novo a mesma ordem já
 cancelada foi bloqueado pela mesma trava. Testado pela tela real (o botão aparece só na ordem certa e some
 depois de cancelada), desktop e celular, sem estouro de layout.
+
+## Campo "irrigado" da safra nunca aparecia no formulário
+
+Mais um caso do mesmo padrão desta sessão: a coluna `irrigated` existe em `crop_seasons` desde a primeira
+migração, e a API já sabia ler e gravar esse valor desde que a edição de safra foi criada mais cedo nesta
+sessão — só que nenhum formulário jamais mostrava essa opção. Toda safra cadastrada até agora ficou marcada
+como "não irrigada" por padrão, mesmo quando era.
+
+- Checkbox "Área irrigada" adicionado ao formulário de criar safra e ao formulário de editar (dentro da
+  lista de safras já cadastradas), em Coletas e mapas.
+- A lista de safras já cadastradas agora mostra "· irrigado" ao lado da cultura quando aplicável, pra ficar
+  visível sem precisar abrir a edição.
+- `listAgronomicContext` (usada para montar o contexto da tela) passou a trazer esse campo — antes nem
+  chegava no navegador.
+
+Testado com chamadas diretas à API contra o banco real (mais confiável que ler o texto da tela, que tem
+atraso de re-render): marcar irrigado como verdadeiro persiste e é confirmado por uma consulta separada;
+voltar para falso também persiste. Formulário testado visualmente em desktop, encaixando bem no grid
+existente.
