@@ -300,3 +300,29 @@ e `analyses.laboratory_id`, mas nada os conectava). Implementado:
 Testado contra o banco real (API direta e pela tela, desktop e celular): laboratório criado, aparece na
 listagem, vinculado à análise, nome aparece na página de detalhe. RBAC confirmado (perfil de leitura bloqueado
 ao tentar cadastrar).
+
+## Abas de Configurações conectadas a dados reais
+
+Os botões "Biblioteca técnica", "Laboratórios", "Mercado Pago", "E-mail e relatórios" e "Auditoria" existiam
+na tela de Configurações mas eram só texto — sem `onClick`, sem troca de conteúdo (a página era um Server
+Component, sem estado nenhum). Extraí a interatividade para `src/components/settings-tabs.tsx` (Client
+Component), mantendo a busca de dados no servidor:
+
+- **Usuários e permissões**: comportamento igual a antes, agora numa aba de verdade.
+- **Laboratórios**: lista os laboratórios reais (mesma API criada para a Fase C) e permite cadastrar um novo
+  ali mesmo.
+- **Auditoria**: mostra a trilha real de `audit_events` (ação, quem, quando), com rótulos legíveis em
+  português para as 10 ações que o sistema já registra. Esse dado já existia e já era gravado a cada criação
+  real — só nunca tinha tela para mostrar.
+- **Biblioteca técnica**, **Mercado Pago**, **E-mail e relatórios**: agora mostram "Ainda não implementado"
+  com uma frase explicando o motivo, em vez de simplesmente não fazer nada quando clicados.
+
+**Bug de responsividade encontrado e corrigido nesse processo** (fora do escopo original, mas achado ao testar
+a aba de Auditoria no celular): `.settings-grid` usava `grid-template-columns: 1fr` tanto no desktop quanto no
+mobile. Sem `minmax(0, ...)`, uma tabela larga (`min-width:760px`) força a própria coluna do grid a crescer
+para acomodá-la, e isso estourava a página inteira para o lado no celular — não bastava a tabela estar dentro
+de um `.data-card` com `overflow-x:auto`, porque o estouro acontecia uma camada acima, no grid. Esse bug já
+existia na tela original de Configurações (antes desta sessão), só nunca tinha sido percebido porque a tabela
+de usuários nunca tinha ficado larga o bastante para revelar o problema. Corrigido trocando para
+`grid-template-columns: minmax(0,1fr)` (e o equivalente no desktop, `240px minmax(0,1fr)`). Testado: sem
+estouro horizontal em nenhuma aba, nem no desktop nem no celular (390px).
