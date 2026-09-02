@@ -599,3 +599,29 @@ mudar perfil persiste; desativar bloqueia login imediatamente (403, "sem empresa
 reativar libera o login de novo, já com o novo perfil; tentar rebaixar o único administrador é bloqueado
 (409, mensagem clara); tentar autodesativar é bloqueado (400, mensagem clara); a sessão do administrador
 continua válida durante todo o processo. Testado em desktop e celular, sem estouro de layout.
+
+## Edição e desativação de laboratório
+
+Mesma lacuna de CRUD incompleto, desta vez em Laboratórios: só dava para cadastrar, nunca corrigir um nome
+digitado errado nem desativar um laboratório que a empresa parou de usar. A tabela já tinha a coluna
+`active` desde a primeira migração (usada só para filtrar a lista de seleção ao criar uma análise), mas
+nada na tela deixava desativar — mesmo padrão de campo "pronto no banco, nunca conectado" encontrado antes
+nesta sessão com a equipe.
+
+- `PATCH /api/laboratories/[id]` (novo): edita nome/CNPJ ou muda a situação (ativo/inativo). Mesmos perfis
+  que já podiam cadastrar (`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST`).
+- Desativar é um "soft delete" de propósito, não uma exclusão — a tabela de análises referencia o
+  laboratório, e um laudo já lançado não deve perder a rastreabilidade de onde veio. Um laboratório
+  desativado simplesmente some da lista de opções ao criar uma nova análise, mas continua visível (com o
+  status "Inativo") na tela de gestão, podendo ser reativado a qualquer momento.
+- A lista de gestão em Configurações agora busca todos os laboratórios (ativos e inativos); a lista usada
+  no formulário de nova análise continua mostrando só os ativos, como já era.
+- Formulário de "Cadastrar laboratório" agora só aparece para quem tem permissão de gerenciar (antes
+  aparecia pra qualquer perfil, inclusive Leitura, que sempre recebia erro 403 ao tentar usar).
+
+De quebra, a limpeza deste teste revelou dois laboratórios de teste ("Laboratório Teste UI ...") esquecidos
+de uma sessão anterior, ainda ativos e aparecendo como opção real de laboratório para qualquer análise nova
+— foram desativados como parte da verificação desta funcionalidade.
+
+Testado contra o banco real: editar nome persiste; desativar muda o status na tela e o item some da lista
+de seleção de "nova análise"; reativar traz de volta. Desktop, sem estouro de layout.

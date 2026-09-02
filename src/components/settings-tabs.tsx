@@ -9,7 +9,7 @@ import { auditActionLabel, auditEntityLabel } from "@/lib/audit-labels";
 import { formatRelativeOrDate } from "@/domain/analysis-ui";
 
 type Member = { id: string; name: string; email: string; role: string; active: boolean; lastLoginAt: string | null };
-type Laboratory = { id: string; name: string; taxId: string | null };
+type Laboratory = { id: string; name: string; taxId: string | null; active: boolean };
 type AuditEvent = { id: string; action: string; entityType: string; createdAt: string; actorName: string | null };
 
 const invitableRoles = [
@@ -37,7 +37,7 @@ const notImplementedCopy: Partial<Record<TabKey, string>> = {
   email: "Modelos de e-mail e envio automático de relatório ainda não existem.",
 };
 
-export function SettingsTabs({ members: initialMembers, laboratories: initialLaboratories, auditEvents, canManageTeam, twoFactorEnabled: initialTwoFactorEnabled, currentUserId }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; twoFactorEnabled: boolean; currentUserId: string }) {
+export function SettingsTabs({ members: initialMembers, laboratories: initialLaboratories, auditEvents, canManageTeam, canManageLabs, twoFactorEnabled: initialTwoFactorEnabled, currentUserId }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; canManageLabs: boolean; twoFactorEnabled: boolean; currentUserId: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("team");
   const [members, setMembers] = useState(initialMembers);
@@ -192,6 +192,46 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
       setPasswordError(error instanceof Error ? error.message : "Falha ao alterar senha.");
     } finally {
       setChangingPassword(false);
+    }
+  }
+
+  const [editingLabId, setEditingLabId] = useState("");
+  const [editLabName, setEditLabName] = useState("");
+  const [editLabTaxId, setEditLabTaxId] = useState("");
+  const [labBusy, setLabBusy] = useState("");
+
+  function startEditLab(lab: Laboratory) {
+    setEditingLabId(lab.id); setEditLabName(lab.name); setEditLabTaxId(lab.taxId ?? "");
+  }
+
+  async function saveLab(id: string) {
+    setLabBusy(`save-${id}`);
+    setLabError("");
+    try {
+      const response = await fetch(`/api/laboratories/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: editLabName, taxId: editLabTaxId }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível editar o laboratório.");
+      setLaboratories((current) => current.map((lab) => lab.id === id ? (payload.laboratory as Laboratory) : lab));
+      setEditingLabId("");
+    } catch (error) {
+      setLabError(error instanceof Error ? error.message : "Falha ao editar laboratório.");
+    } finally {
+      setLabBusy("");
+    }
+  }
+
+  async function toggleLabActive(lab: Laboratory) {
+    setLabBusy(`active-${lab.id}`);
+    setLabError("");
+    try {
+      const response = await fetch(`/api/laboratories/${lab.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ active: !lab.active }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar a situação.");
+      setLaboratories((current) => current.map((item) => item.id === lab.id ? (payload.laboratory as Laboratory) : item));
+    } catch (error) {
+      setLabError(error instanceof Error ? error.message : "Falha ao atualizar situação.");
+    } finally {
+      setLabBusy("");
     }
   }
 
@@ -361,17 +401,43 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
             {laboratories.length ? (
               <div className="data-card">
                 <table className="data-table">
-                  <thead><tr><th>Nome</th><th>CNPJ/CPF</th></tr></thead>
-                  <tbody>{laboratories.map((lab) => <tr key={lab.id}><td><strong>{lab.name}</strong></td><td>{lab.taxId || "—"}</td></tr>)}</tbody>
+                  <thead><tr><th>Nome</th><th>CNPJ/CPF</th><th>Situação</th>{canManageLabs && <th></th>}</tr></thead>
+                  <tbody>{laboratories.map((lab) => editingLabId === lab.id ? (
+                    <tr key={lab.id}>
+                      <td colSpan={2}>
+                        <input value={editLabName} onChange={(e) => setEditLabName(e.target.value)} placeholder="Nome" style={{ marginRight: 8 }} />
+                        <input value={editLabTaxId} onChange={(e) => setEditLabTaxId(e.target.value)} placeholder="CNPJ/CPF" />
+                      </td>
+                      <td><StatusBadge tone={lab.active ? "success" : "waiting"}>{lab.active ? "Ativo" : "Inativo"}</StatusBadge></td>
+                      <td className="client-row-actions">
+                        <button type="button" className="icon-button" disabled={labBusy === `save-${lab.id}`} onClick={() => void saveLab(lab.id)}><Icon name="check" size={15} /></button>
+                        <button type="button" className="icon-button" onClick={() => setEditingLabId("")}><Icon name="close" size={15} /></button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={lab.id}>
+                      <td><strong>{lab.name}</strong></td>
+                      <td>{lab.taxId || "—"}</td>
+                      <td><StatusBadge tone={lab.active ? "success" : "waiting"}>{lab.active ? "Ativo" : "Inativo"}</StatusBadge></td>
+                      {canManageLabs && (
+                        <td className="client-row-actions">
+                          <button type="button" className="icon-button" aria-label={`Editar ${lab.name}`} onClick={() => startEditLab(lab)}><Icon name="edit" size={15} /></button>
+                          <button type="button" className="button tiny" disabled={labBusy === `active-${lab.id}`} onClick={() => void toggleLabActive(lab)}>{labBusy === `active-${lab.id}` ? "…" : lab.active ? "Desativar" : "Reativar"}</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}</tbody>
                 </table>
               </div>
             ) : (
               <div className="empty-state"><Icon name="flask" /><strong>Nenhum laboratório cadastrado</strong><small>Cadastre abaixo, ou direto na tela de nova análise.</small></div>
             )}
-            <div className="new-lab-inline" style={{ margin: "0 20px 18px" }}>
-              <input value={newLabName} onChange={(event) => setNewLabName(event.target.value)} placeholder="Nome do laboratório" disabled={creatingLab} />
-              <button type="button" className="button secondary" disabled={creatingLab || !newLabName.trim()} onClick={() => void createLaboratory()}>{creatingLab ? "Salvando…" : "Cadastrar"}</button>
-            </div>
+            {canManageLabs && (
+              <div className="new-lab-inline" style={{ margin: "0 20px 18px" }}>
+                <input value={newLabName} onChange={(event) => setNewLabName(event.target.value)} placeholder="Nome do laboratório" disabled={creatingLab} />
+                <button type="button" className="button secondary" disabled={creatingLab || !newLabName.trim()} onClick={() => void createLaboratory()}>{creatingLab ? "Salvando…" : "Cadastrar"}</button>
+              </div>
+            )}
             {labError && <div className="import-message danger" style={{ margin: "0 20px 18px" }}><Icon name="warning" /><div><strong>Não foi possível cadastrar</strong><small>{labError}</small></div></div>}
           </>
         )}

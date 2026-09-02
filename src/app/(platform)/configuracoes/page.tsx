@@ -4,7 +4,7 @@ import { PageIntro } from "@/components/ui";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listTenantMembers } from "@/lib/repositories/team";
-import { listAgronomicContext } from "@/lib/repositories/catalog";
+import { listAllLaboratories } from "@/lib/repositories/catalog";
 import { listAuditEvents } from "@/lib/repositories/audit";
 import { getTwoFactorStatus } from "@/lib/auth/two-factor";
 import { SettingsTabs } from "@/components/settings-tabs";
@@ -14,15 +14,16 @@ export const metadata = { title: "Configurações" };
 export default async function SettingsPage() {
   if (!isDatabaseMode()) return <DemoSettings/>;
   const session = await requirePlatformSession();
-  const [members, context, auditEvents, twoFactor] = await Promise.all([
+  const [members, laboratories, auditEvents, twoFactor] = await Promise.all([
     listTenantMembers(session.tenantId, session.userId),
-    listAgronomicContext(session.tenantId, session.userId),
+    listAllLaboratories(session.tenantId, session.userId),
     listAuditEvents(session.tenantId, session.userId),
     getTwoFactorStatus(session.userId),
   ]);
+  const canManageLabs = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]).has(session.role);
   return <><Topbar eyebrow="Administração" title="Configurações"/><div className="content-wrap">
     <PageIntro title="Governança da plataforma" description={`Empresa ativa: ${session.tenantName}. Usuários, perfis e dados operacionais permanecem isolados pelo tenant da sessão.`}/>
-    <SettingsTabs members={members as any} laboratories={context.laboratories as any} auditEvents={auditEvents as any} canManageTeam={new Set(["SUPER_ADMIN","TENANT_ADMIN"]).has(session.role)} twoFactorEnabled={twoFactor.enabled} currentUserId={session.userId}/>
+    <SettingsTabs members={members as any} laboratories={laboratories as any} auditEvents={auditEvents as any} canManageTeam={new Set(["SUPER_ADMIN","TENANT_ADMIN"]).has(session.role)} canManageLabs={canManageLabs} twoFactorEnabled={twoFactor.enabled} currentUserId={session.userId}/>
   </div></>;
 }
 

@@ -25,11 +25,18 @@ export async function listAgronomicContext(tenantId: string, userId?: string) {
   });
 }
 
+export async function listAllLaboratories(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(`SELECT id::text, name, tax_id AS "taxId", active FROM laboratories ORDER BY active DESC, name`);
+    return result.rows;
+  });
+}
+
 export async function createLaboratory(input: { tenantId: string; userId: string; name: string; taxId?: string | null }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO laboratories (tenant_id, name, tax_id) VALUES ($1::uuid, $2, nullif($3,''))
-       RETURNING id::text, name, tax_id AS "taxId"`,
+       RETURNING id::text, name, tax_id AS "taxId", active`,
       [input.tenantId, input.name, input.taxId ?? ""],
     );
     const created = result.rows[0];
@@ -90,6 +97,34 @@ export async function createField(input: {
     if (!created || Number(created.areaHa) <= 0) throw new Error("Polígono inválido, vazio ou fora do limite cadastrado da propriedade.");
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "FIELD_CREATED", entityType: "field", entityId: created.id, metadata: { name: created.name, areaHa: created.areaHa } });
     return created;
+  });
+}
+
+export async function updateLaboratory(input: { tenantId: string; userId: string; laboratoryId: string; name: string; taxId?: string | null }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `UPDATE laboratories SET name = $3, tax_id = nullif($4,'')
+       WHERE tenant_id = $1::uuid AND id = $2::uuid
+       RETURNING id::text, name, tax_id AS "taxId", active`,
+      [input.tenantId, input.laboratoryId, input.name, input.taxId ?? ""],
+    );
+    const updated = result.rows[0];
+    if (!updated) throw new CatalogError("Laboratório não encontrado.", 404);
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "LABORATORY_UPDATED", entityType: "laboratory", entityId: updated.id, metadata: { name: updated.name } });
+    return updated;
+  });
+}
+
+export async function setLaboratoryActive(input: { tenantId: string; userId: string; laboratoryId: string; active: boolean }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `UPDATE laboratories SET active = $3 WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id::text, name, tax_id AS "taxId", active`,
+      [input.tenantId, input.laboratoryId, input.active],
+    );
+    const updated = result.rows[0];
+    if (!updated) throw new CatalogError("Laboratório não encontrado.", 404);
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: input.active ? "LABORATORY_REACTIVATED" : "LABORATORY_DEACTIVATED", entityType: "laboratory", entityId: updated.id, metadata: { name: updated.name } });
+    return updated;
   });
 }
 

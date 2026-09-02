@@ -1,6 +1,9 @@
 export const auditActionLabel: Record<string, string> = {
   ANALYSIS_CREATED: "Análise criada",
   LABORATORY_CREATED: "Laboratório cadastrado",
+  LABORATORY_UPDATED: "Laboratório editado",
+  LABORATORY_DEACTIVATED: "Laboratório desativado",
+  LABORATORY_REACTIVATED: "Laboratório reativado",
   PROPERTY_CREATED: "Propriedade cadastrada",
   PROPERTY_UPDATED: "Propriedade editada",
   PROPERTY_DELETED: "Propriedade excluída",
