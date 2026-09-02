@@ -110,6 +110,30 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
   });
 }
 
+/** Registro de toda interpretação já calculada nesta empresa — a trilha de auditoria da inteligência agronômica. */
+export async function listAllInterpretations(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT i.id::text, i.revision, i.status, i.created_at::text AS "createdAt",
+              i.structured_output->'confidence'->>'score' AS "confidenceScore",
+              a.id::text AS "analysisId", a.code AS "analysisCode",
+              c.name AS "clientName", f.name AS "fieldName", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
+              cp.name AS "cropProfileName"
+       FROM interpretations i
+       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN crop_profiles cp ON cp.id = i.crop_profile_id
+       WHERE i.tenant_id = $1::uuid
+       ORDER BY i.created_at DESC LIMIT 200`,
+      [tenantId],
+    );
+    return result.rows;
+  });
+}
+
 export async function getLatestInterpretation(tenantId: string, analysisId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(

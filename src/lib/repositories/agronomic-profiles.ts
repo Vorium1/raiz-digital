@@ -160,3 +160,28 @@ export async function listTechnicalRegions(tenantId: string, userId?: string) {
     return result.rows;
   });
 }
+
+export async function createTechnicalRegion(input: { tenantId: string; userId: string; code: string; name: string; description?: string | null }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `INSERT INTO technical_regions (code, name, description) VALUES ($1, $2, nullif($3,'')) RETURNING id::text, code, name, description`,
+      [input.code.trim().toUpperCase(), input.name.trim(), input.description ?? ""],
+    );
+    const created = result.rows[0];
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "TECHNICAL_REGION_CREATED", entityType: "technical_region", entityId: created.id, metadata: { code: created.code } });
+    return created;
+  });
+}
+
+/** Somente leitura por enquanto: rule_sets existe desde a migration 001 para uma futura camada de
+ * regras regionais mais amplas, mas o motor determinístico hoje resolve direto por crop_profiles. */
+export async function listRuleSets(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT id::text, code, semantic_version AS "semanticVersion", region_code AS "regionCode", supported_crops AS "supportedCrops",
+              status, valid_from::text AS "validFrom", valid_until::text AS "validUntil", created_at::text AS "createdAt"
+       FROM rule_sets ORDER BY created_at DESC`,
+    );
+    return result.rows;
+  });
+}

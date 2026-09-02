@@ -112,7 +112,7 @@ const PARAMETER_ALIASES: Record<string, string> = {
   clay: "CLAY",
 };
 
-const DEFAULT_UNITS: Record<string, string> = {
+export const DEFAULT_UNITS: Record<string, string> = {
   PH: "índice",
   SMP: "índice",
   P: "mg/dm³",
