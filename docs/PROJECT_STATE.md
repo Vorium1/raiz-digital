@@ -162,6 +162,17 @@ trabalham hoje, e rastreável (aparece de onde veio) como o `CLAUDE.md` exige.
 Testado contra o banco real: ordem com 6 pontos, laudo CSV importado com resultados para 2 desses pontos —
 o selo aparece corretamente só nos 2 pontos certos, com a contagem certa (2 e 1 resultados).
 
+## Limpeza dos dados de teste desta auditoria
+
+Removidos do banco de desenvolvimento (Supabase), com autorização explícita do responsável pelo projeto, os
+registros criados só para validar o sistema durante esta sessão: o tenant "Fazenda Teste B" (usado para o
+teste de isolamento entre empresas) e toda a árvore de dados de teste dentro de "Raiz Digital Demo" (clientes,
+propriedade, talhão, safra, ordens de coleta, pontos e análise com laudo importado). O banco ficou no mesmo
+estado de um `npm run seed:dev` recém-executado: só o tenant "Raiz Digital Demo", o usuário `admin@raiz.local`
+e os 4 usuários de teste de RBAC (`rbac-agronomist@raiz.local`, `rbac-field-tech@raiz.local`,
+`rbac-commercial@raiz.local`, `rbac-viewer@raiz.local`, mantidos para reuso em testes futuros de permissão —
+senha não registrada aqui por segurança; redefina com um script de update direto no banco se precisar).
+
 ## Outras notas desta auditoria
 
 - `scripts/seed-dev.mjs` não configurava SSL na conexão — corrigido para respeitar `DATABASE_SSL`, igual aos
