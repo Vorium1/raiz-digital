@@ -758,3 +758,30 @@ resíduo que quebre a próxima execução): 8 de 8 aprovados nas duas vezes. Um 
 e corrigido no próprio teste (não no sistema): ativar o 2FA e logar em seguida usando o "código de agora"
 duas vezes podia cair no mesmo passo de 30 segundos já consumido pela proteção contra replay — corrigido
 fazendo os testes usarem explicitamente o passo seguinte ao da ativação.
+
+## Verificação automática a cada envio ao GitHub (CI)
+
+Até agora, `typecheck`/`test:handoff`/`build` só rodavam quando alguém (eu, nesta sessão) lembrava de rodar
+manualmente antes de cada commit. Adicionado `.github/workflows/ci.yml`: toda vez que algo é enviado para
+`main` (ou aberto um pull request), o GitHub roda sozinho, de graça, os três passos — se algo quebrar, fica
+visível direto no GitHub, sem depender de ninguém lembrar de testar antes.
+
+Confirmado antes de configurar que os três passos rodam sem precisar de nenhum segredo (banco de dados,
+senha, chave) — testei localmente removendo temporariamente o `.env` e todas as variáveis de ambiente do
+banco, e tudo continuou funcionando normalmente. Por isso o CI não precisa de nenhuma configuração extra de
+segredo no GitHub. Os testes de ponta a ponta (`test:e2e`, que exigem banco real e navegador) continuam
+fora do CI por enquanto — rodam manualmente, como documentado em `e2e/README.md`.
+
+## Publicação do site num link público (em andamento)
+
+O usuário pediu um jeito mais simples de acompanhar o site do que o túnel temporário usado antes (que
+caiu sozinho e gerou confusão). Decisão técnica: publicar na Vercel (gratuita, feita pela mesma empresa do
+Next.js, conecta direto no GitHub e atualiza sozinha a cada envio — não precisa de "uma publicação por
+dia", fica sempre atualizado). Passei ao usuário o passo a passo simples (criar conta grátis, importar o
+repositório) e a lista de variáveis de ambiente para colar na Vercel. Detalhe técnico ajustado antes de
+recomendar: o armazenamento local de arquivo (`STORAGE_PROVIDER=local`, usado para guardar uma cópia do
+laudo original enviado) não funciona em ambiente serverless como a Vercel — orientei trocar para qualquer
+valor diferente de `local` nessa variável, o que já é tratado com segurança pelo código existente (a
+importação continua funcionando e os dados entram no banco normalmente; só a cópia do arquivo original
+não fica arquivada, uma limitação que já existia documentada como "provedor ainda não implementado").
+Aguardando o usuário concluir a etapa de conta/importação, que só ele pode fazer.
