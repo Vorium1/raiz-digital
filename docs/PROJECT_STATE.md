@@ -785,3 +785,19 @@ valor diferente de `local` nessa variável, o que já é tratado com segurança 
 importação continua funcionando e os dados entram no banco normalmente; só a cópia do arquivo original
 não fica arquivada, uma limitação que já existia documentada como "provedor ainda não implementado").
 Aguardando o usuário concluir a etapa de conta/importação, que só ele pode fazer.
+
+**Atualização — publicado com sucesso:** o usuário criou a conta na Vercel e importou o repositório
+(guiado passo a passo). Depois de liberar a permissão do GitHub App para o repositório `raiz-digital` e
+gerar um token de acesso pessoal, o restante — criar o projeto, configurar as 8 variáveis de ambiente,
+publicar em produção e apontar `APP_URL` para o endereço definitivo — foi feito diretamente via Vercel CLI
+(`npx vercel`, autenticado com o token que o usuário gerou e compartilhou).
+
+**Link permanente e ao vivo:** https://raiz-digital-brown.vercel.app — confirmado funcionando (`/login`
+responde 200, `/api/health` confirma `"database":"connected"`). Conectado ao GitHub: todo push para `main`
+dispara um novo deploy automático, sem precisar de nenhuma ação manual daqui pra frente.
+
+O token de acesso usado nesta sessão não foi salvo em nenhum arquivo do repositório nem persistido em
+disco — existiu só como variável de ambiente temporária durante os comandos do CLI. Se o usuário quiser
+revogá-lo por precaução (boa prática depois de compartilhar uma chave em texto), pode fazer isso em
+vercel.com/account/settings/tokens a qualquer momento; isso não derruba o site já publicado, só impede
+novos comandos de CLI de usarem essa chave específica.
