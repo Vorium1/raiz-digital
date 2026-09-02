@@ -689,3 +689,42 @@ abrir o campo de observação, digitar um texto, confirmar o ponto por GPS — a
 corretamente no banco junto com a confirmação (`collected_at` e `notes` preenchidos). Testado em desktop e
 celular, sem estouro de layout mesmo com o campo de observação aberto. O ponto de teste foi revertido ao
 estado original (não coletado, sem observação) ao final.
+
+## Revisão de segurança de tudo construído nesta sessão
+
+Antes de continuar acrescentando funcionalidade, rodei uma revisão de código de nível alto (vários agentes
+verificando ângulos diferentes: reaproveitamento, eficiência, isolamento entre empresas, comportamento
+removido, aderência ao `CLAUDE.md`, rastreamento entre arquivos, e um mergulho dedicado na segurança do
+2FA) sobre tudo commitado nesta sessão, do CRUD de clientes até a observação de coleta. A trilha de
+isolamento multiempresa (RLS + `tenant_id` em toda consulta) saiu limpa — nenhum vazamento entre empresas
+encontrado. Os achados reais, já corrigidos:
+
+- **2FA podia ser desligado sem senha.** `POST /api/auth/2fa/setup` só exigia sessão válida, e ao ser
+  chamado de novo (por exemplo, por alguém com uma sessão sequestrada) gerava um novo segredo e desligava
+  o 2FA existente na hora — sem pedir a senha, ao contrário do fluxo de desativar, que sempre exigiu. A
+  tela nunca oferecia esse caminho (só mostra "Ativar" quando desligado), mas a rota em si não impedia.
+  Corrigido: gerar um novo QR Code quando o 2FA **já está ativo** agora exige confirmar a senha atual,
+  igual ao botão "Desativar". A primeira configuração (sem 2FA ainda) continua sem pedir senha, já que
+  não há nada pra proteger ainda.
+- **Código TOTP podia ser reaproveitado por até ~90 segundos.** A verificação aceitava qualquer código
+  válido dentro da janela de tolerância, sem lembrar que aquele código específico (ou um mais antigo) já
+  tinha sido usado — alguém que visse um código de relance (registro de log, "shoulder surfing") podia
+  reusá-lo pra completar um segundo login independente. Corrigido com a migração `011_totp_replay_protection.sql`
+  (`users.totp_last_counter`): cada passo de 30 segundos só pode autenticar uma vez.
+- **Duas condições de corrida.** (1) Dois pedidos simultâneos de rebaixar/desativar administrador podiam,
+  em teoria, ler "sobra 1 administrador" antes de qualquer um confirmar, deixando a empresa sem nenhum
+  administrador ativo — corrigido travando as linhas de administrador (`FOR UPDATE`) antes de contar. (2) O
+  mesmo código de backup podia, em teoria, autenticar duas sessões simultâneas — corrigido trocando
+  "consultar depois atualizar" por um único `UPDATE ... WHERE usado_em IS NULL`, atômico.
+- **RBAC inconsistente em editar talhão.** `PATCH /api/fields/[id]` permitia ao perfil Comercial editar
+  qualquer talhão, mas esse perfil nunca teve permissão de *criar* um — resquício de copiar a lista de
+  perfis de outra rota parecida. Corrigido para bater exatamente com quem pode criar.
+- Pequenos ajustes de solidez: a resposta final do login por 2FA agora confere se a pessoa ainda tem acesso
+  à empresa **antes** de criar a sessão (mesma ordem do login por senha) em vez de criar a sessão e só
+  depois descobrir que não devia; inserção dos 10 códigos de backup passou de 10 consultas sequenciais para
+  uma só.
+
+Todas as correções testadas contra o banco real: reconfigurar o 2FA já ativo sem senha é bloqueado (400),
+com senha errada é bloqueado (401), com senha certa funciona; reusar o mesmo código TOTP em outro login é
+rejeitado; a trava do último administrador continua funcionando depois da correção; o perfil Comercial não
+consegue mais editar talhão (403). Nenhuma regressão nos fluxos que já funcionavam.

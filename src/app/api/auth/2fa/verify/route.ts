@@ -32,17 +32,24 @@ export async function POST(request: Request) {
       return Response.json({ error: "Código inválido. Tente novamente." }, { status: 422 });
     }
 
-    await deletePendingTwoFactorLogin(pending.id);
     const { userId, tenantId } = pending;
-    await createSession({ userId, tenantId, userAgent: request.headers.get("user-agent"), ipHash: ipHash(request) });
 
+    // Confere se o usuário ainda tem acesso a esta empresa ANTES de criar a sessão — mesma ordem do
+    // login por senha. Sem isso, alguém desativado por um admin durante os poucos minutos entre digitar
+    // a senha e o código ainda teria uma sessão/cookie criados antes de a checagem falhar.
     const [userResult, memberships] = await Promise.all([
       query<{ id: string; name: string; email: string }>("SELECT id::text, name, email::text FROM users WHERE id = $1::uuid", [userId]),
       membershipsForUser(userId),
     ]);
     const user = userResult.rows[0];
     const membership = memberships.find((item) => item.tenant_id === tenantId);
-    if (!user || !membership) return Response.json({ error: "Usuário não encontrado." }, { status: 404 });
+    if (!user || !membership) {
+      await deletePendingTwoFactorLogin(pending.id);
+      return Response.json({ error: "Sua conta não tem mais acesso a esta empresa." }, { status: 403 });
+    }
+
+    await deletePendingTwoFactorLogin(pending.id);
+    await createSession({ userId, tenantId, userAgent: request.headers.get("user-agent"), ipHash: ipHash(request) });
 
     return Response.json({ ok: true, user: { id: user.id, name: user.name, email: user.email }, tenant: { id: tenantId, name: membership.trade_name, role: membership.role } });
   } catch (error) {

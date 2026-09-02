@@ -51,15 +51,18 @@ export function totpAuthUri(input: { secret: string; accountLabel: string; issue
   return `otpauth://totp/${encodeURIComponent(label)}?${params.toString()}`;
 }
 
-export function verifyTotpCode(secretBase32: string, code: string) {
+/** Retorna o passo (contador) de 30s que bateu com o código, ou null se nenhum bateu. O chamador
+ *  deve rejeitar um contador já usado antes (ver users.totp_last_counter) para evitar reuso do
+ *  mesmo código dentro da janela de tolerância. */
+export function verifyTotpCode(secretBase32: string, code: string): number | null {
   const trimmed = code.trim();
-  if (!/^\d{6}$/.test(trimmed)) return false;
+  if (!/^\d{6}$/.test(trimmed)) return null;
   const secret = base32Decode(secretBase32);
   const currentCounter = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
   for (let offset = -TOTP_WINDOW; offset <= TOTP_WINDOW; offset++) {
-    if (hotp(secret, currentCounter + offset) === trimmed) return true;
+    if (hotp(secret, currentCounter + offset) === trimmed) return currentCounter + offset;
   }
-  return false;
+  return null;
 }
 
 export function generateBackupCodes(count = 10) {

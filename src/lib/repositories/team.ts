@@ -60,14 +60,18 @@ export async function inviteTeamMember(input: {
 const manageableRoles = new Set(["TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH", "COMMERCIAL", "VIEWER"]);
 const adminRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN"]);
 
-async function countActiveAdmins(client: import("pg").PoolClient, tenantId: string, excludingUserId?: string) {
-  const result = await client.query<{ count: number }>(
-    `SELECT count(*)::int AS count FROM tenant_members
+// Trava as linhas de administrador ativo antes de contar, para que duas requisições concorrentes
+// (ex.: rebaixar um admin e desativar outro ao mesmo tempo) não leiam a mesma contagem "sobrou 1"
+// antes de qualquer uma delas confirmar — sem isso, as duas passariam pela trava e a empresa
+// ficaria sem nenhum administrador ativo.
+async function countActiveAdminsLocked(client: import("pg").PoolClient, tenantId: string, excludingUserId?: string) {
+  const result = await client.query<{ user_id: string }>(
+    `SELECT user_id::text FROM tenant_members
      WHERE tenant_id = $1::uuid AND active = true AND role IN ('SUPER_ADMIN','TENANT_ADMIN')
-       AND ($2::uuid IS NULL OR user_id <> $2::uuid)`,
-    [tenantId, excludingUserId ?? null],
+     FOR UPDATE`,
+    [tenantId],
   );
-  return result.rows[0]?.count ?? 0;
+  return result.rows.filter((row) => row.user_id !== excludingUserId).length;
 }
 
 export async function updateTeamMemberRole(input: { tenantId: string; actorUserId: string; targetUserId: string; role: string }) {
@@ -81,7 +85,7 @@ export async function updateTeamMemberRole(input: { tenantId: string; actorUserI
     if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
 
     if (adminRoles.has(row.role) && !adminRoles.has(input.role) && row.active) {
-      const remaining = await countActiveAdmins(client, input.tenantId, input.targetUserId);
+      const remaining = await countActiveAdminsLocked(client, input.tenantId, input.targetUserId);
       if (remaining === 0) throw new TeamError("Não é possível rebaixar: este é o único administrador ativo da empresa.", 409);
     }
 
@@ -111,7 +115,7 @@ export async function setTeamMemberActive(input: { tenantId: string; actorUserId
     if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
 
     if (!input.active && adminRoles.has(row.role) && row.active) {
-      const remaining = await countActiveAdmins(client, input.tenantId, input.targetUserId);
+      const remaining = await countActiveAdminsLocked(client, input.tenantId, input.targetUserId);
       if (remaining === 0) throw new TeamError("Não é possível desativar: este é o único administrador ativo da empresa.", 409);
     }
 

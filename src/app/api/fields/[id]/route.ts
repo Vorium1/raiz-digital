@@ -1,7 +1,7 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { CatalogError, deleteField, updateField } from "@/lib/repositories/catalog";
 
-const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH", "COMMERCIAL"]);
+const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();

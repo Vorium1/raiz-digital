@@ -25,14 +25,16 @@ export async function confirmTwoFactorSetup(input: { userId: string; code: strin
   const result = await query<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = $1::uuid", [input.userId]);
   const secret = result.rows[0]?.totp_secret;
   if (!secret) throw new TwoFactorError("Nenhuma configuração de 2FA em andamento. Inicie novamente.", 409);
-  if (!verifyTotpCode(secret, input.code)) throw new TwoFactorError("Código inválido. Confira o horário do dispositivo e tente novamente.", 422);
+  const matchedCounter = verifyTotpCode(secret, input.code);
+  if (matchedCounter === null) throw new TwoFactorError("Código inválido. Confira o horário do dispositivo e tente novamente.", 422);
 
   const codes = generateBackupCodes();
-  await query("UPDATE users SET two_factor_enabled = true WHERE id = $1::uuid", [input.userId]);
+  await query("UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid", [input.userId, matchedCounter]);
   await query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
-  for (const code of codes) {
-    await query("INSERT INTO totp_backup_codes (user_id, code_hash) VALUES ($1::uuid, $2)", [input.userId, hashBackupCode(code)]);
-  }
+  await query(
+    `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
+    [input.userId, codes.map(hashBackupCode)],
+  );
   return { backupCodes: codes };
 }
 
@@ -47,20 +49,37 @@ export async function getTwoFactorStatus(userId: string) {
 }
 
 export async function verifyTwoFactorCode(userId: string, code: string) {
-  const result = await query<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = $1::uuid AND two_factor_enabled = true", [userId]);
-  const secret = result.rows[0]?.totp_secret;
-  if (!secret) return false;
-  if (verifyTotpCode(secret, code)) return true;
+  const result = await query<{ totp_secret: string | null; totp_last_counter: number | null }>(
+    "SELECT totp_secret, totp_last_counter FROM users WHERE id = $1::uuid AND two_factor_enabled = true",
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row?.totp_secret) return false;
 
+  const matchedCounter = verifyTotpCode(row.totp_secret, code);
+  if (matchedCounter !== null) {
+    // Só aceita se esse passo de 30s ainda não tiver sido usado (impede reaproveitar o mesmo código
+    // dentro da janela de tolerância) e só marca como usado se ainda for o maior contador na hora do
+    // UPDATE — evita que duas tentativas simultâneas com o mesmo código passem as duas.
+    const lastCounter = row.totp_last_counter;
+    if (lastCounter == null || matchedCounter > lastCounter) {
+      const updated = await query(
+        "UPDATE users SET totp_last_counter = $2 WHERE id = $1::uuid AND (totp_last_counter IS NULL OR totp_last_counter < $2)",
+        [userId, matchedCounter],
+      );
+      if ((updated.rowCount ?? 0) > 0) return true;
+    }
+  }
+
+  // UPDATE ... WHERE used_at IS NULL num único statement (em vez de SELECT e depois UPDATE) para que
+  // duas tentativas simultâneas com o mesmo código de backup não consigam as duas passar pela checagem
+  // antes de qualquer uma marcar o código como usado — só uma linha é afetada, a outra tentativa perde.
   const backupHash = hashBackupCode(code);
   const backup = await query<{ id: string }>(
-    "SELECT id::text FROM totp_backup_codes WHERE user_id = $1::uuid AND code_hash = $2 AND used_at IS NULL LIMIT 1",
+    "UPDATE totp_backup_codes SET used_at = now() WHERE user_id = $1::uuid AND code_hash = $2 AND used_at IS NULL RETURNING id::text",
     [userId, backupHash],
   );
-  const row = backup.rows[0];
-  if (!row) return false;
-  await query("UPDATE totp_backup_codes SET used_at = now() WHERE id = $1::uuid", [row.id]);
-  return true;
+  return backup.rows.length > 0;
 }
 
 export async function createPendingTwoFactorLogin(input: { userId: string; tenantId: string; userAgent?: string | null; ipHash?: string | null }) {

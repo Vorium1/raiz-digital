@@ -15,7 +15,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (typeof body.name === "string") {
       const name = body.name.trim();
       if (!name) return Response.json({ error: "Nome do laboratório é obrigatório." }, { status: 400 });
-      const laboratory = await updateLaboratory({ tenantId: session.tenantId, userId: session.userId, laboratoryId: id, name, taxId: body.taxId?.trim() ?? "" });
+      const taxId = typeof body.taxId === "string" ? body.taxId.trim() : "";
+      const laboratory = await updateLaboratory({ tenantId: session.tenantId, userId: session.userId, laboratoryId: id, name, taxId });
       return Response.json({ laboratory });
     }
     if (typeof body.active === "boolean") {
