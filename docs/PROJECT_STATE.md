@@ -728,3 +728,33 @@ Todas as correções testadas contra o banco real: reconfigurar o 2FA já ativo 
 com senha errada é bloqueado (401), com senha certa funciona; reusar o mesmo código TOTP em outro login é
 rejeitado; a trava do último administrador continua funcionando depois da correção; o perfil Comercial não
 consegue mais editar talhão (403). Nenhuma regressão nos fluxos que já funcionavam.
+
+## Testes automatizados de ponta a ponta (E2E) para 2FA e isolamento entre empresas
+
+A própria revisão de segurança encontrou uma lacuna estrutural: todo teste "contra o banco real" feito
+nesta sessão inteira foi um script avulso, rodado manualmente e depois descartado — nunca virou um teste
+que continua no repositório para alguém rodar de novo mais tarde. Isso não bate com a exigência do
+`CLAUDE.md` de "teste automatizado ou E2E compatível com o risco", especialmente para os dois fluxos mais
+sensíveis do sistema: 2FA e isolamento multiempresa.
+
+- Novo diretório `e2e/` com testes reais em Playwright (`@playwright/test`, adicionado como dependência de
+  desenvolvimento — grátis, roda local, mesma ferramenta já usada informalmente a sessão inteira para
+  verificação manual). `npm run test:e2e` roda a suíte contra um `npm run dev` já no ar.
+- `e2e/two-factor.spec.ts`: ativar gera QR code e 10 códigos de backup; login com 2FA pede o código, rejeita
+  errado, aceita certo; código TOTP não pode ser reaproveitado (a proteção contra replay corrigida acima,
+  agora com teste que trava isso permanentemente); reconfigurar 2FA já ativo exige senha; desativar exige
+  senha e realmente desliga a exigência.
+- `e2e/tenant-isolation.spec.ts`: valida a regra inegociável do `CLAUDE.md` ("toda entidade operacional deve
+  respeitar isolamento multiempresa") com duas empresas de verdade — uma empresa não vê nem consegue editar
+  cliente de outra, e a própria empresa continua funcionando normalmente (não é uma trava geral).
+- Duas contas de teste dedicadas foram criadas no banco de desenvolvimento com o próprio script de seed já
+  existente (`scripts/seed-dev.mjs`, reaproveitado sem alteração): `e2e-2fa@raiz.local` (testes de 2FA, no
+  tenant principal) e `e2e-tenant-b@raiz.local` (uma segunda empresa, "RAIZ E2E Isolamento", dedicada ao
+  teste de isolamento). Documentado em `e2e/README.md`, incluindo como recriá-las.
+- `.gitignore` ganhou as pastas que o Playwright gera (`test-results/`, `playwright-report/`).
+
+Rodado duas vezes seguidas contra o banco real para confirmar que os testes são repetíveis (não deixam
+resíduo que quebre a próxima execução): 8 de 8 aprovados nas duas vezes. Um detalhe de armadilha encontrado
+e corrigido no próprio teste (não no sistema): ativar o 2FA e logar em seguida usando o "código de agora"
+duas vezes podia cair no mesmo passo de 30 segundos já consumido pela proteção contra replay — corrigido
+fazendo os testes usarem explicitamente o passo seguinte ao da ativação.
