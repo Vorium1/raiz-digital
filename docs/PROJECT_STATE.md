@@ -258,3 +258,26 @@ variados sem os arquivos de origem em alta resolução e com fundo transparente.
 confirmar que quer adotar esse novo visual metálico como marca oficial (substituindo o guia atual), isso exige
 uma decisão de produto e, idealmente, os arquivos de origem em vetor/PNG transparente — ainda não implementado,
 aguardando confirmação.
+
+## Armazenamento do arquivo bruto do laudo
+
+Fechei outra pendência real: o sistema normalizava o laudo (CSV/XLSX) mas não guardava o arquivo original em
+lugar nenhum — só os dados extraídos. O schema já previa isso (`analyses.source_file_key text`, desde a
+migration 001) mas nada preenchia essa coluna. Criado `src/lib/storage.ts`: `saveRawImportFile` grava o
+arquivo bruto em disco local (pasta `storage/`, fora do Git) quando `STORAGE_PROVIDER=local` (o padrão hoje),
+organizado por `imports/<tenantId>/<analysisId>/<timestamp>-<nomeSanitizado>`. `commitCsvImport` chama essa
+função e grava a chave resultante em `analyses.source_file_key`. Se `STORAGE_PROVIDER` for outra coisa (ex.:
+`s3`, ainda não implementado), a função retorna `null` sem falhar o commit — a importação continua funcionando,
+só sem guardar o arquivo bruto, e isso fica registrado como pendência real, não escondido.
+
+De passagem, corrigi um bug pequeno no mesmo bloco: `analyses.source_type` estava sempre gravado como `'CSV'`,
+mesmo quando o laudo era uma planilha XLSX (agora usa `'XLSX'` corretamente nesse caso).
+
+Testado contra o banco real: laudo CSV importado, arquivo apareceu em disco no caminho esperado com o conteúdo
+exato enviado, e `analyses.source_file_key` gravado com a mesma chave.
+
+**Pendência explícita**: esse armazenamento local funciona bem para desenvolvimento e para produção self-hosted
+(o modelo que o `CLAUDE.md` prioriza), mas não persiste em ambientes serverless/efêmeros. Antes de produção em
+qualquer ambiente assim, será necessário implementar o provedor S3-compatível (`STORAGE_PROVIDER=s3`, variáveis
+já previstas em `.env.example`) — decisão de infraestrutura que envolve escolher/contratar um serviço, por isso
+não implementei sem confirmação.

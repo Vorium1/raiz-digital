@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { saveRawImportFile } from "@/lib/storage";
 
 export async function commitCsvImport(input: {
   tenantId: string;
@@ -25,6 +26,13 @@ export async function commitCsvImport(input: {
 
   const sha256 = createHash("sha256").update(input.content).digest("hex");
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
+  const stored = await saveRawImportFile({
+    tenantId: input.tenantId,
+    analysisId: input.analysisId,
+    fileName: input.fileName,
+    content: input.content,
+    encoding: isSpreadsheet ? "base64" : "utf8",
+  });
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const importResult = await client.query<{ id: string }>(
@@ -83,12 +91,21 @@ export async function commitCsvImport(input: {
     await client.query(
       `UPDATE analyses
        SET status = $3::analysis_status,
-           source_type = 'CSV',
+           source_type = $6,
+           source_file_key = coalesce($7, source_file_key),
            confidence_score = $4,
            confidence_level = $5,
            updated_at = now()
        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [input.tenantId, input.analysisId, preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED", preview.confidence.score, preview.confidence.level],
+      [
+        input.tenantId,
+        input.analysisId,
+        preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED",
+        preview.confidence.score,
+        preview.confidence.level,
+        isSpreadsheet ? "XLSX" : "CSV",
+        stored?.key ?? null,
+      ],
     );
 
     await writeAudit(client, {
