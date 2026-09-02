@@ -379,3 +379,32 @@ correta, outro e-mail seguiu funcionando normalmente (login 200).
 e-mails diferentes do mesmo lugar) ainda não existe. A tabela também cresce sem limpeza automática — hoje
 isso é aceitável (linhas pequenas, só tentativas falhas), mas antes de produção de longo prazo vale um job de
 limpeza periódica (que depende da fila em PostgreSQL ainda não construída, ver Fase C do roadmap).
+
+## Recuperação de senha (esqueci minha senha)
+
+Último item da lista "Antes de produção ainda faltam 2FA administrativo, recuperação de senha, convites" do
+`CLAUDE.md` que dava para fechar sem precisar de serviço novo — recuperação de senha para quem **não** está
+logado (o "Minha conta" desta sessão só resolvia para quem já estava logado).
+
+- `db/migrations/009_password_reset_tokens.sql`: tabela `password_reset_tokens` (token opaco com hash SHA-256
+  salvo, nunca o token bruto — mesmo padrão de `user_sessions`), com validade de 30 minutos e uso único.
+- `src/lib/email.ts`: adaptador de e-mail mínimo. Com `EMAIL_PROVIDER=console` (o padrão hoje), a mensagem é
+  só escrita no console do servidor em vez de enviada de verdade — é assim que se pega o link de redefinição
+  neste ambiente de desenvolvimento. Preparado para trocar por um provedor real depois, sem mexer no resto do
+  fluxo.
+- `POST /api/auth/forgot-password`: sempre responde a mesma mensagem genérica, exista ou não o e-mail
+  cadastrado — não dá pra usar essa rota para descobrir quem tem conta no sistema.
+- `POST /api/auth/reset-password`: valida o token (existe, não expirou, não foi usado), troca a senha e
+  **revoga todas as sessões ativas daquele usuário** — se alguém está redefinindo a senha, presume-se que a
+  conta pode ter sido comprometida, então qualquer sessão aberta em outro lugar é encerrada.
+- Telas novas `/esqueci-senha` e `/redefinir-senha`, e link "Esqueci minha senha" na tela de login.
+
+Testado contra o banco real, ponta a ponta: pedido de redefinição, link capturado no log do servidor,
+redefinição com sucesso, senha antiga passa a falhar (401) e a nova funciona (200), tentar reusar o mesmo
+token falha (422, uso único respeitado), sessão que estava ativa antes da redefinição é revogada (401 depois),
+e pedir redefinição para e-mail inexistente devolve a mesma resposta genérica (sem vazar quem existe).
+Testado pela tela real, desktop e celular, sem estouro de layout.
+
+Com isso, os três itens de autenticação que o `CLAUDE.md` listava como pendentes antes de produção têm uma
+primeira versão funcional: convite de usuário, troca de senha própria e recuperação de senha esquecida. Só
+2FA administrativo continua sem nenhuma implementação.

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 export function LoginForm() {
@@ -40,6 +41,7 @@ export function LoginForm() {
       <label>
         <span>Senha</span>
         <input name="password" type="password" autoComplete="current-password" minLength={10} required placeholder="••••••••••" />
+        <Link href="/esqueci-senha" className="forgot-password-link">Esqueci minha senha</Link>
       </label>
       {tenants.length > 0 && <label>
         <span>Empresa</span>
