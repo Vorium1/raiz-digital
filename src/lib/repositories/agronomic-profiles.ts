@@ -135,6 +135,25 @@ export async function upsertCropProfileParameter(input: {
   });
 }
 
+/**
+ * Homologa (ou reverte) um parâmetro de perfil de cultura. Só um parâmetro
+ * ACTIVE é usado pelo motor determinístico -- enquanto estiver DRAFT, ele
+ * aparece no cadastro mas nunca entra numa interpretação real.
+ */
+export async function setCropProfileParameterStatus(input: { tenantId: string; userId: string; parameterId: string; status: "DRAFT" | "ACTIVE" | "SUPERSEDED" }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `UPDATE crop_profile_parameters SET status = $2::crop_profile_status, updated_at = now() WHERE id = $1::uuid
+       RETURNING id::text, parameter_code AS "parameterCode", status`,
+      [input.parameterId, input.status],
+    );
+    const updated = result.rows[0];
+    if (!updated) throw new AgronomicProfileError("Parâmetro não encontrado.", 404);
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETER_STATUS_CHANGED", entityType: "crop_profile_parameter", entityId: updated.id, metadata: { status: input.status } });
+    return updated;
+  });
+}
+
 export async function listTechnicalRegions(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(`SELECT id::text, code, name, description FROM technical_regions ORDER BY name`);
