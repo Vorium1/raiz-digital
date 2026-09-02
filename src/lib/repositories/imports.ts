@@ -1,8 +1,89 @@
 import { createHash } from "node:crypto";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
+import type { PoolClient } from "pg";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { saveRawImportFile } from "@/lib/storage";
+
+/**
+ * Promove linhas validadas do laudo (staging em analysis_import_rows) para as
+ * tabelas normalizadas lab_samples/lab_results, que é o que o motor
+ * determinístico e o restante da plataforma realmente leem. Antes desta
+ * função o import commit só gravava em analysis_import_rows e nunca chegava
+ * a lab_results — a cadeia de rastreabilidade ficava quebrada exatamente
+ * nesse ponto (laudo → amostra → parâmetro).
+ *
+ * Só promove linhas cuja própria linha não tenha um BLOCKER (unidade/método
+ * desconhecidos, valor inválido etc.) — linhas bloqueadas continuam
+ * disponíveis em analysis_import_rows para conferência humana, mas nunca
+ * viram um lab_result "quase certo".
+ */
+async function promoteRowsToLabResults(
+  client: PoolClient,
+  input: { tenantId: string; analysisId: string; importId: string; rows: LabImportRow[]; issues: LabImportIssue[] },
+) {
+  const blockedLines = new Set(input.issues.filter((issue) => issue.severity === "BLOCKER" && issue.line != null).map((issue) => issue.line));
+  const promotable = input.rows.filter((row) => !blockedLines.has(row.sourceLine));
+  if (promotable.length === 0) return { promotedSamples: 0, promotedResults: 0 };
+
+  const analysisResult = await client.query<{ collectionOrderId: string | null }>(
+    `SELECT collection_order_id::text AS "collectionOrderId" FROM analyses WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+    [input.tenantId, input.analysisId],
+  );
+  const collectionOrderId = analysisResult.rows[0]?.collectionOrderId ?? null;
+
+  const bySample = new Map<string, LabImportRow[]>();
+  for (const row of promotable) {
+    const bucket = bySample.get(row.sampleCode);
+    if (bucket) bucket.push(row);
+    else bySample.set(row.sampleCode, [row]);
+  }
+
+  let promotedSamples = 0;
+  let promotedResults = 0;
+  for (const [sampleCode, sampleRows] of bySample) {
+    let samplePointId: string | null = null;
+    if (collectionOrderId) {
+      const pointResult = await client.query<{ id: string }>(
+        `SELECT id::text FROM sample_points WHERE tenant_id = $1::uuid AND collection_order_id = $2::uuid AND code = $3`,
+        [input.tenantId, collectionOrderId, sampleCode],
+      );
+      samplePointId = pointResult.rows[0]?.id ?? null;
+    }
+
+    const sampleResult = await client.query<{ id: string }>(
+      `INSERT INTO lab_samples (tenant_id, analysis_id, sample_point_id, laboratory_code)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+       ON CONFLICT (tenant_id, analysis_id, laboratory_code)
+       DO UPDATE SET sample_point_id = COALESCE(EXCLUDED.sample_point_id, lab_samples.sample_point_id)
+       RETURNING id::text`,
+      [input.tenantId, input.analysisId, samplePointId, sampleCode],
+    );
+    const labSampleId = sampleResult.rows[0].id;
+    promotedSamples += 1;
+
+    for (const row of sampleRows) {
+      await client.query(
+        `INSERT INTO lab_results (tenant_id, lab_sample_id, parameter_code, numeric_value, unit, analytical_method, source, original_payload)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'MEASURED', $7::jsonb)
+         ON CONFLICT (tenant_id, lab_sample_id, parameter_code, analytical_method)
+         DO UPDATE SET numeric_value = EXCLUDED.numeric_value, unit = EXCLUDED.unit, original_payload = EXCLUDED.original_payload`,
+        [
+          input.tenantId,
+          labSampleId,
+          row.parameterCode,
+          row.value,
+          row.unit,
+          row.method,
+          JSON.stringify({ sourceLine: row.sourceLine, importId: input.importId, unitInferred: row.unitInferred, methodInferred: row.methodInferred }),
+        ],
+      );
+      promotedResults += 1;
+    }
+  }
+
+  return { promotedSamples, promotedResults };
+}
 
 export async function commitCsvImport(input: {
   tenantId: string;
@@ -88,6 +169,14 @@ export async function commitCsvImport(input: {
       );
     }
 
+    const promoted = await promoteRowsToLabResults(client, {
+      tenantId: input.tenantId,
+      analysisId: input.analysisId,
+      importId,
+      rows: preview.rows,
+      issues: preview.issues,
+    });
+
     await client.query(
       `UPDATE analyses
        SET status = $3::analysis_status,
@@ -114,9 +203,16 @@ export async function commitCsvImport(input: {
       action: "LAB_IMPORT_COMMITTED",
       entityType: "analysis",
       entityId: input.analysisId,
-      metadata: { importId, sha256, blockers: preview.blockers, warnings: preview.warnings },
+      metadata: {
+        importId,
+        sha256,
+        blockers: preview.blockers,
+        warnings: preview.warnings,
+        promotedSamples: promoted.promotedSamples,
+        promotedResults: promoted.promotedResults,
+      },
     });
 
-    return { importId, preview, analysisStatus: preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED" };
+    return { importId, preview, analysisStatus: preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED", promoted };
   });
 }
