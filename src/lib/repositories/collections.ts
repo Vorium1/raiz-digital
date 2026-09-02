@@ -23,6 +23,7 @@ export type CollectionOrderPoint = {
   subsampleCount: number | null;
   accuracyM: number | null;
   gpsSource: string | null;
+  labResultCount: number;
 };
 
 export type CollectionOrderListItem = {
@@ -88,7 +89,14 @@ export async function listCollectionOrders(tenantId: string, userId?: string, cr
                'depthToCm', sp.depth_to_cm::float8,
                'subsampleCount', sp.subsample_count,
                'accuracyM', sp.accuracy_m::float8,
-               'gpsSource', sp.gps_source
+               'gpsSource', sp.gps_source,
+               'labResultCount', (
+                 SELECT count(*)::int
+                 FROM analysis_import_rows air
+                 JOIN analysis_imports ai ON ai.tenant_id = air.tenant_id AND ai.id = air.import_id
+                 JOIN analyses la ON la.tenant_id = ai.tenant_id AND la.id = ai.analysis_id
+                 WHERE la.tenant_id = sp.tenant_id AND la.collection_order_id = sp.collection_order_id AND air.sample_code = sp.code
+               )
              ) ORDER BY coalesce(sp.sequence, 2147483647), sp.code
            ) FILTER (WHERE sp.id IS NOT NULL),
            '[]'::jsonb

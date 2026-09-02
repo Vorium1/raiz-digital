@@ -146,6 +146,22 @@ RLS), no mesmo padrão já usado nas demais funções desse arquivo.
 **Ainda não testado** (permanece como pendência do `V0.5_INTERRUPTED.md`): talhões que cruzam zonas UTM,
 concorrência/reimportação simultânea, fluxo GPS em navegador real (só simulado via API).
 
+## Vínculo entre ponto de coleta e resultado de laboratório
+
+Fechei o elo que faltava na corrente "coleta → amostra → laudo". O esquema já previa a ligação
+(`analyses.collection_order_id` aponta para a ordem de coleta; `analysis_import_rows.sample_code` é o código
+da amostra no laudo) mas nada usava essa ligação — as tabelas `lab_samples`/`lab_results` de 001_initial.sql
+nunca chegaram a ser usadas pelo fluxo real de importação (que grava em `analysis_import_rows`).
+
+`listCollectionOrders` agora calcula, por ponto, quantos resultados de laudo têm o mesmo código do ponto
+dentro da mesma ordem de coleta (`labResultCount`). A tela de Coletas mostra um selo com esse número ao lado
+de cada ponto. É um vínculo "por coincidência de código" (o técnico de campo e o laboratório precisam usar o
+mesmo código na amostra), não uma chave estrangeira formal — condizente com como laboratórios reais
+trabalham hoje, e rastreável (aparece de onde veio) como o `CLAUDE.md` exige.
+
+Testado contra o banco real: ordem com 6 pontos, laudo CSV importado com resultados para 2 desses pontos —
+o selo aparece corretamente só nos 2 pontos certos, com a contagem certa (2 e 1 resultados).
+
 ## Outras notas desta auditoria
 
 - `scripts/seed-dev.mjs` não configurava SSL na conexão — corrigido para respeitar `DATABASE_SSL`, igual aos
