@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       userId: session.userId,
       code,
       name,
+      cropGroup: typeof body.cropGroup === "string" ? body.cropGroup : null,
       applicableRegions: Array.isArray(body.applicableRegions) ? (body.applicableRegions as string[]) : [],
       applicableSystems: Array.isArray(body.applicableSystems) ? (body.applicableSystems as string[]) : [],
       technicalNotes: typeof body.technicalNotes === "string" ? body.technicalNotes : null,

@@ -15,7 +15,8 @@
     "db:set-app-password": "node scripts/set-app-role-password.mjs",
     "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
     "test:engine": "node --experimental-strip-types scripts/test-agronomic-engine.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run check:migrations",
+    "test:ai-schema": "node --experimental-strip-types scripts/test-agronomic-narrative-schema.mjs",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:ai-schema && npm run check:migrations",
     "test:e2e": "playwright test"
   },
   "dependencies": {
