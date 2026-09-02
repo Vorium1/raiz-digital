@@ -281,6 +281,17 @@ export function FieldOperationsManager() {
     finally { setBusy(""); }
   }
 
+  async function cancelOrder(order: Order) {
+    if (!window.confirm(`Cancelar a ordem ${order.code}? Essa ação não pode ser desfeita.`)) return;
+    setBusy(`cancel-${order.id}`); setMessage(null);
+    try {
+      await patchJson(`/api/collection-orders/${order.id}`, { status: "CANCELED" });
+      setMessage({ tone:"success", text:`Ordem ${order.code} cancelada.` });
+      await loadAll(order.id);
+    } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao cancelar ordem." }); }
+    finally { setBusy(""); }
+  }
+
   async function importPoints(file?: File) {
     if (!file || !selectedOrder) return;
     setBusy("points"); setMessage(null);
@@ -450,7 +461,7 @@ export function FieldOperationsManager() {
 
       <div className="field-order-detail card">
         {!selectedOrder ? <div className="field-order-empty"><Icon name="location"/><strong>Selecione uma ordem.</strong></div> : <>
-          <div className="field-order-detail-head"><div><span className="eyebrow">{selectedOrder.status}</span><h2>{selectedOrder.code}</h2><p>{selectedOrder.clientName} · {selectedOrder.propertyName} · {selectedOrder.fieldName}</p></div><div className="order-progress-ring"><strong>{progress}%</strong><small>coletado</small></div></div>
+          <div className="field-order-detail-head"><div><span className="eyebrow">{selectedOrder.status}</span><h2>{selectedOrder.code}</h2><p>{selectedOrder.clientName} · {selectedOrder.propertyName} · {selectedOrder.fieldName}</p></div><div className="field-order-detail-actions">{selectedOrder.status === "PLANNED" && <button type="button" className="button ghost" disabled={busy === `cancel-${selectedOrder.id}`} onClick={()=>void cancelOrder(selectedOrder)}>{busy === `cancel-${selectedOrder.id}` ? "Cancelando…" : "Cancelar ordem"}</button>}<div className="order-progress-ring"><strong>{progress}%</strong><small>coletado</small></div></div></div>
           <FieldVectorMap order={selectedOrder}/>
           <div className="field-order-meta"><span><b>{selectedOrder.fieldAreaHa.toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</b><small>área</small></span><span><b>{selectedOrder.gridAreaHa ? `${selectedOrder.gridAreaHa} ha` : "GPS"}</b><small>estratégia</small></span><span><b>{selectedOrder.depthFromCm}–{selectedOrder.depthToCm} cm</b><small>profundidade</small></span><span><b>{selectedOrder.plannedPoints}</b><small>pontos</small></span></div>
           {selectedOrder.samplingStrategy !== "GRID" || selectedOrder.collectedPoints === 0 ? <label className="gps-import-button"><input type="file" accept=".csv,.txt,.geojson,.json" disabled={busy === "points"} onChange={(e)=>void importPoints(e.target.files?.[0])}/><Icon name="upload" size={16}/><span><strong>{busy === "points" ? "Validando pontos…" : "Importar / substituir pontos GPS"}</strong><small>CSV: código, latitude, longitude · ou FeatureCollection GeoJSON</small></span></label> : null}

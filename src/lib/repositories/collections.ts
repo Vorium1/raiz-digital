@@ -219,6 +219,30 @@ export async function createCollectionOrder(input: {
   });
 }
 
+export async function cancelCollectionOrder(input: { tenantId: string; userId: string; orderId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const current = await client.query<{ status: string; code: string }>(
+      `SELECT status, code FROM collection_orders WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [input.tenantId, input.orderId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new FieldOperationError("Ordem de coleta não encontrada.", 404);
+    if (row.status !== "PLANNED") {
+      throw new FieldOperationError("Só é possível cancelar uma ordem que ainda não teve nenhum ponto coletado.", 409);
+    }
+
+    await client.query(`UPDATE collection_orders SET status = 'CANCELED' WHERE tenant_id = $1::uuid AND id = $2::uuid`, [input.tenantId, input.orderId]);
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "COLLECTION_ORDER_CANCELED",
+      entityType: "collection_order",
+      entityId: input.orderId,
+      metadata: { code: row.code },
+    });
+  });
+}
+
 export async function importCollectionPoints(input: {
   tenantId: string;
   userId: string;

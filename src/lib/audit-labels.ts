@@ -21,6 +21,7 @@ export const auditActionLabel: Record<string, string> = {
   TEAM_MEMBER_DEACTIVATED: "Membro desativado",
   TEAM_MEMBER_REACTIVATED: "Membro reativado",
   COLLECTION_ORDER_CREATED: "Ordem de coleta criada",
+  COLLECTION_ORDER_CANCELED: "Ordem de coleta cancelada",
   COLLECTION_POINTS_IMPORTED: "Pontos de coleta importados",
   SAMPLE_POINT_COLLECTED: "Ponto coletado via GPS",
   LAB_IMPORT_COMMITTED: "Laudo laboratorial importado",

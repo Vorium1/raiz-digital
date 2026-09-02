@@ -625,3 +625,24 @@ de uma sessão anterior, ainda ativos e aparecendo como opção real de laborat�
 
 Testado contra o banco real: editar nome persiste; desativar muda o status na tela e o item some da lista
 de seleção de "nova análise"; reativar traz de volta. Desktop, sem estouro de layout.
+
+## Cancelar ordem de coleta
+
+A coluna `status` de `collection_orders` já previa o valor `CANCELED` desde a primeira migração (junto de
+`PLANNED`, `IN_PROGRESS`, `DONE`), mas nada no sistema nunca escrevia esse valor — mesmo padrão de "campo
+pronto no banco, nunca conectado a nenhuma ação" encontrado várias vezes nesta sessão (equipe, laboratórios,
+2FA). Uma ordem criada por engano, ou que não faz mais sentido, não tinha como sumir da operação.
+
+- `PATCH /api/collection-orders/[id]` (novo), aceitando `{ status: "CANCELED" }`. Só permite cancelar uma
+  ordem que ainda está `PLANNED` (nenhum ponto coletado ainda) — cancelar uma coleta já em andamento ou
+  concluída levanta perguntas maiores (o que fazer com os pontos já coletados e com laudos que já
+  referenciam essa ordem) que ficam para uma decisão de produto própria, não uma correção de lacuna simples
+  como esta.
+- Botão "Cancelar ordem" na tela de Coletas e mapas, ao lado do anel de progresso, visível só quando a
+  ordem selecionada ainda está planejada. Pede confirmação antes de agir.
+- Mesmos perfis que já podiam criar ordem (`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST`, `FIELD_TECH`).
+
+Testado contra o banco real: tentar cancelar uma ordem simulada como "em andamento" foi bloqueado (409,
+mensagem clara); cancelar uma ordem realmente planejada funcionou; tentar cancelar de novo a mesma ordem já
+cancelada foi bloqueado pela mesma trava. Testado pela tela real (o botão aparece só na ordem certa e some
+depois de cancelada), desktop e celular, sem estouro de layout.
