@@ -525,3 +525,30 @@ certo, login pedindo o código depois da senha, código errado rejeitado sem inv
 certo autentica normalmente, código de backup autentica e fica marcado como usado, reusar o mesmo código de
 backup é rejeitado, desativar exige senha e realmente desliga a exigência. Testado em desktop e celular, sem
 estouro de layout.
+
+## Notificações reais no sino do topo
+
+O sino no topo de toda tela (`Topbar`, componente usado em todas as páginas da plataforma) nunca teve
+nenhuma ação — não abria nada, e a bolinha vermelha de "não visto" aparecia sempre, fixa, mesmo sem
+nenhuma atividade nova. Mesma classe de bug já corrigida antes nesta sessão (controle que parece
+interativo mas não faz nada), só que espalhada pelo sistema inteiro em vez de uma tela só.
+
+- Novo `GET /api/notifications`, reaproveitando o `listAuditEvents` que já existia (mesma trilha de
+  auditoria já usada na aba Auditoria de Configurações) — sem tabela nova, sem dado inventado.
+- Clicar no sino abre um painel com as 10 atividades mais recentes da empresa (quem fez o quê e quando).
+  Fecha ao clicar fora ou apertar Esc.
+- A bolinha vermelha agora só aparece quando existe atividade mais nova do que a última vez que a pessoa
+  abriu o painel (guardado no navegador dela, por ser só uma conveniência visual por pessoa, não um dado que
+  precise ficar salvo no banco).
+- No modo demonstração o sino continua decorativo (coerente: ali não existe atividade real pra mostrar).
+
+De quebra, ao construir isso percebi que várias ações de auditoria criadas mais cedo nesta sessão (editar e
+excluir propriedade/talhão/safra/cliente, convite de equipe) nunca tinham entrado no dicionário de rótulos
+(`src/lib/audit-labels.ts`) — apareciam como código cru (ex.: `PROPERTY_UPDATED`) tanto no sino quanto na
+aba Auditoria de Configurações. Corrigido junto, adicionando os rótulos em português que faltavam.
+
+Testado contra o banco real: painel mostra atividade verdadeira (inclusive a limpeza de propriedades de
+teste feita mais cedo nesta sessão apareceu lá, com rótulo legível); bolinha some depois de abrir o painel e
+continua sumida depois de recarregar a página; fecha ao clicar fora; sem estouro de layout em desktop.
+Celular mantém o comportamento já existente de esconder o sino no topo compacto (decisão de design anterior
+a esta sessão, não alterada).

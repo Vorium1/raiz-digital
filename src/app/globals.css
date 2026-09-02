@@ -71,6 +71,18 @@ button { color: inherit; }
 .icon-button { align-items: center; background: white; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; display: flex; height: 40px; justify-content: center; padding: 0; width: 40px; }
 .notification-button { position: relative; }
 .notification-button i { background: var(--copper); border: 2px solid var(--paper); border-radius: 50%; height: 8px; position: absolute; right: 8px; top: 7px; width: 8px; }
+.notifications { position: relative; }
+.notifications-panel { background: white; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(16,35,31,.14); margin-top: 8px; max-height: 360px; overflow-y: auto; position: absolute; right: 0; top: 100%; width: 300px; z-index: 40; }
+.notifications-header { border-bottom: 1px solid var(--line); color: var(--forest); font-size: 9px; font-weight: 800; letter-spacing: .04em; padding: 12px 14px; text-transform: uppercase; }
+.notifications-empty { color: var(--muted); font-size: 9px; padding: 20px 14px; text-align: center; }
+.notifications-panel ul { list-style: none; margin: 0; padding: 0; }
+.notifications-panel li { border-bottom: 1px solid #f0f3f1; padding: 11px 14px; }
+.notifications-panel li:last-child { border-bottom: 0; }
+.notifications-panel li strong, .notifications-panel li span, .notifications-panel li small { display: block; }
+.notifications-panel li strong { font-size: 9px; }
+.notifications-panel li span { color: var(--muted); font-size: 8px; margin-top: 2px; }
+.notifications-panel li small { color: #9fb0a9; font-size: 7px; margin-top: 3px; }
+@media(max-width:520px) { .notifications-panel { right: -60px; width: 260px; } }
 .content-wrap { margin: 0 auto; max-width: 1540px; padding: 28px 36px 44px; }
 .eyebrow { color: var(--teal); font-size: 9px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
 .eyebrow.light { color: var(--cyan); }
