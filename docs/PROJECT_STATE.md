@@ -801,3 +801,26 @@ disco — existiu só como variável de ambiente temporária durante os comandos
 revogá-lo por precaução (boa prática depois de compartilhar uma chave em texto), pode fazer isso em
 vercel.com/account/settings/tokens a qualquer momento; isso não derruba o site já publicado, só impede
 novos comandos de CLI de usarem essa chave específica.
+
+## Correção real: a tipografia oficial da marca nunca era carregada
+
+O usuário pediu para conferir se toda a identidade visual (guia em `docs/brand/Guia_de_Marca_Raiz_Digital.pdf`)
+estava mesmo aplicada. Comparando item a item: logo, símbolo, paleta de cores (`#10231F`, `#00BFA6`,
+`#34D9D0`, `#B86F3C`, `#F2F5F0`), slogan ("Do solo à decisão, com precisão.") e o descritor
+("Inteligência Agronômica") já estavam corretos e consistentes em todo o site. Mas achei um problema real:
+`globals.css` declarava as fontes oficiais (Sora para títulos, Inter para o resto) como primeira opção,
+só que **nenhum lugar do código de fato carregava essas fontes** — sem link do Google Fonts, sem
+`next/font`, sem `@font-face`. Isso significa que, desde que a marca foi aplicada, o navegador de todo
+mundo sempre caiu no reserva (Segoe UI/Arial) sem ninguém perceber, porque visualmente a diferença é sutil
+à primeira vista.
+
+- `src/app/layout.tsx`: adicionado `next/font/google` para Sora (600/700, títulos) e Inter (400/500/600,
+  texto corrido) — a forma recomendada pelo próprio Next.js, que baixa e hospeda as fontes junto com o
+  site (sem depender do Google em tempo real) e já gera uma fonte reserva com métricas ajustadas para não
+  pular o layout enquanto carrega.
+- `globals.css`: as variáveis `--font-heading`/`--font-body` passaram a apontar para essas fontes de
+  verdade, mantendo Arial como alternativa de segurança em ambientes sem suporte — exatamente como o guia
+  de marca pede.
+
+Testado: confirmado via inspeção real do navegador que `h1` agora usa `Sora` e o `body` usa `Inter` (antes
+caía direto no reserva). Testado o site inteiro depois da troca — build limpo, nenhuma tela quebrou.

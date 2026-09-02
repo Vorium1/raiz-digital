@@ -13,8 +13,8 @@
   --warning: #d89943;
   --danger: #d9655a;
   --shadow: 0 12px 32px rgba(16, 35, 31, 0.07);
-  --font-heading: "Sora", "Avenir Next", "Segoe UI", sans-serif;
-  --font-body: "Inter", "Segoe UI", Arial, sans-serif;
+  --font-heading: var(--font-sora), "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: var(--font-inter), "Segoe UI", Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
