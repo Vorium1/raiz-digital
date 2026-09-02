@@ -408,3 +408,24 @@ Testado pela tela real, desktop e celular, sem estouro de layout.
 Com isso, os três itens de autenticação que o `CLAUDE.md` listava como pendentes antes de produção têm uma
 primeira versão funcional: convite de usuário, troca de senha própria e recuperação de senha esquecida. Só
 2FA administrativo continua sem nenhuma implementação.
+
+## Edição e exclusão de clientes
+
+Fechando uma lacuna de CRUD real: a API e a tela de Clientes só tinham criar e listar — nenhuma forma de
+corrigir um nome digitado errado ou remover um cadastro feito por engano. O ícone de seta em cada linha da
+lista nem tinha ação nenhuma (decorativo, sem link).
+
+- `PATCH /api/clients/[id]`: edita nome, CPF/CNPJ, e-mail, telefone e observações. Mesmos perfis que já
+  podiam criar cliente (`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST`, `COMMERCIAL`).
+- `DELETE /api/clients/[id]`: exclui, mas só `SUPER_ADMIN`/`TENANT_ADMIN` (mais restrito, de propósito —
+  excluir é mais sensível que editar). Se o cliente já tem propriedade ou talhão vinculado, o próprio banco
+  bloqueia a exclusão (chave estrangeira, sem `ON DELETE CASCADE` de propósito, para não apagar histórico
+  agronômico sem querer); a rota traduz esse erro em mensagem clara em vez de devolver o erro cru do
+  PostgreSQL.
+- Tela de Clientes ganhou os ícones de editar (lápis) e excluir (lixeira) em cada linha, substituindo a seta
+  decorativa. Editar abre o mesmo formulário de cadastro, pré-preenchido. Excluir pede confirmação antes.
+  Ícones "edit" e "trash" novos no conjunto de ícones do projeto (`src/components/icon.tsx`).
+
+Testado contra o banco real: criar, editar e excluir um cliente sem vínculos funcionou; excluir um cliente
+que já tinha propriedade foi bloqueado com mensagem clara (409); perfil sem permissão de exclusão foi
+bloqueado (403). Testado pela tela real, desktop e celular, sem estouro de layout.

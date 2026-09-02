@@ -2,7 +2,8 @@ type IconName =
   | "home" | "users" | "map" | "flask" | "file" | "history" | "wallet"
   | "settings" | "plus" | "bell" | "chevron" | "search" | "arrow"
   | "check" | "warning" | "clock" | "leaf" | "upload" | "layers"
-  | "location" | "calendar" | "dots" | "shield" | "sparkles" | "close" | "logout";
+  | "location" | "calendar" | "dots" | "shield" | "sparkles" | "close" | "logout"
+  | "edit" | "trash";
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></>,
@@ -31,6 +32,8 @@ const paths: Record<IconName, React.ReactNode> = {
   sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8zM5 13l.8 2.2L8 16l-2.2.8L5 19l-.8-2.2L2 16l2.2-.8z"/></>,
   close: <path d="M6 6l12 12M18 6 6 18"/>,
   logout: <><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></>,
+  edit: <><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>,
+  trash: <><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></>,
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {

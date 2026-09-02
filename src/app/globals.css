@@ -520,6 +520,10 @@ button { color: inherit; }
 .team-invite-grid input:focus,.team-invite-grid select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,166,.09)}
 @media(max-width:760px){.team-invite-grid,.team-invite-grid.password-grid{grid-template-columns:1fr}}
 .forgot-password-link{color:var(--teal);display:inline-block;font-size:9px;font-weight:700;margin-top:8px}
+.client-row-actions{display:flex;gap:6px;justify-content:flex-end}
+.client-row-actions .icon-button{background:transparent;border-color:transparent;height:30px;width:30px}
+.client-row-actions .icon-button:hover{background:#f4f7f4;border-color:var(--line)}
+.client-row-actions .icon-button:disabled{opacity:.5;pointer-events:none}
 
 @media(max-width:1100px){.field-order-form{grid-template-columns:repeat(3,1fr)}.field-ops-form{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.field-ops-live{grid-template-columns:1fr}.field-order-list{max-height:260px;overflow:auto}.field-order-form,.field-ops-form{grid-template-columns:1fr}.field-ops-wide{grid-column:auto}.field-vector-map{margin:0 12px}.field-vector-map svg{height:280px}.field-order-detail-head{padding:16px 14px 10px}.field-order-meta{margin:10px 12px;overflow-x:auto}.field-order-meta>span{min-width:100px}.gps-import-button{margin:10px 12px}.field-ops-section-head{padding:16px}.field-ops-section-head p{max-width:80%}.field-ops-form{padding:14px}.field-order-form{padding:16px 16px 8px}.field-ops-context{margin:0 16px 12px}.field-ops-actions{padding:0 16px 16px}.field-point-row{padding:10px 12px}.field-map-marker text{display:none}}
