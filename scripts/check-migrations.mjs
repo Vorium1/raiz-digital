@@ -7,6 +7,7 @@ const identity = await readFile(new URL("../db/migrations/003_identity_and_persi
 const fieldOps = await readFile(new URL("../db/migrations/004_field_operations.sql", import.meta.url), "utf8");
 const forceRls = await readFile(new URL("../db/migrations/005_force_row_level_security.sql", import.meta.url), "utf8");
 const appRole = await readFile(new URL("../db/migrations/006_app_runtime_role.sql", import.meta.url), "utf8");
+const appRolePortability = await readFile(new URL("../db/migrations/007_app_runtime_role_portability.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -25,4 +26,5 @@ assert.match(forceRls, /audit_events/i);
 assert.match(appRole, /CREATE ROLE raiz_app/i);
 assert.match(appRole, /NOBYPASSRLS/i);
 assert.doesNotMatch(appRole, /\bSUPERUSER\b/i);
-console.log("migrations: contratos estruturais 001-006 aprovados");
+assert.match(appRolePortability, /ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT/i);
+console.log("migrations: contratos estruturais 001-007 aprovados");

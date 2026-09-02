@@ -97,9 +97,14 @@ os dele, e sem contexto de tenant definido a consulta não retorna nenhuma linha
 direto quanto via API real (`/api/clients`, `/api/collection-orders/...`) com dois usuários logados de
 empresas diferentes.
 
-**Pendência explícita**: o `compose.yaml` local ainda cria um único papel (`raiz`) com superusuário, que
-sofre do mesmo problema. Antes de usar Docker local para qualquer teste de isolamento multiempresa, é
-necessário aplicar a mesma separação de papéis (administrativo vs. `raiz_app` restrito) nesse ambiente.
+**Atualização**: a migration 006 originalmente fixava `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`, o que só
+funcionava no Supabase (onde o papel administrativo se chama `postgres`). Corrigido pela migration
+`007_app_runtime_role_portability.sql`, que declara os privilégios padrão sem fixar o nome do papel — agora
+funciona igual em qualquer ambiente, incluindo o `compose.yaml` local (onde o papel administrativo é `raiz`).
+O `compose.yaml` local ainda cria `raiz` como superusuário (padrão da imagem oficial do Postgres) — isso
+continua correto para rodar migrations, mas antes de rodar a aplicação contra esse banco é necessário seguir
+os mesmos passos do README (`npm run db:migrate`, `npm run db:set-app-password`, preencher
+`APP_DATABASE_URL`) para que a aplicação use o papel restrito `raiz_app`, e não o `raiz` administrativo.
 
 ## Auditoria do bloco v0.5 (operações de campo)
 

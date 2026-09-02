@@ -18,7 +18,8 @@ A 0.4 mantém a UX construída nas versões 0.1–0.3 e conecta o primeiro núcl
 - Sessão opaca persistida no banco, com token bruto somente no cookie `HttpOnly` e SHA-256 no banco.
 - Senha com Argon2 (`@node-rs/argon2`).
 - Seleção de empresa no login quando o usuário pertence a mais de um tenant.
-- RLS nas entidades operacionais; cada transação define `app.tenant_id` e `app.user_id` antes das consultas.
+- RLS nas entidades operacionais, forçada (`FORCE ROW LEVEL SECURITY`) e validada com um papel de banco restrito (`raiz_app`, sem `BYPASSRLS`) usado pela aplicação em runtime — cada transação define `app.tenant_id` e `app.user_id` antes das consultas.
+- Editor cartográfico de coleta: mapa Leaflet para desenhar/visualizar o polígono de propriedade e talhão (`src/components/geo-map-input.tsx`), além de colar GeoJSON ou importar arquivo.
 - RBAC inicial nas APIs de escrita.
 - Auditoria usando a tabela `audit_events` já prevista na arquitetura inicial.
 - CRUD inicial persistente de clientes.
@@ -40,6 +41,11 @@ A 0.4 mantém a UX construída nas versões 0.1–0.3 e conecta o primeiro núcl
 docker compose up -d database
 ```
 
+Alternativa sem Docker: qualquer PostgreSQL/PostGIS acessível por `DATABASE_URL` serve, incluindo um
+projeto gratuito do Supabase usado **apenas como Postgres hospedado** (sem API/Auth/SDK do Supabase — ver
+`docs/PROJECT_STATE.md`, seção "Banco de desenvolvimento: Supabase Free"). Nesse caso, use a conexão via
+"Session pooler" se a rede não tiver IPv6, e defina `DATABASE_SSL=require`.
+
 ### 2. Variáveis
 
 ```bash
@@ -48,13 +54,19 @@ cp .env.example .env.local
 
 Defina uma senha forte em `SEED_ADMIN_PASSWORD` somente para o seed local.
 
-### 3. Dependências e migrations
+### 3. Dependências, migrations e papel restrito da aplicação
 
 ```bash
 npm install
 npm run db:migrate
+APP_DB_ROLE_PASSWORD=<gere uma senha forte> npm run db:set-app-password
 npm run seed:dev
 ```
+
+A migration `006_app_runtime_role.sql` cria o papel `raiz_app` (sem `BYPASSRLS`, sem ser dono de tabelas),
+usado pela aplicação para que o RLS realmente seja aplicado. `db:set-app-password` define a senha desse
+papel fora do Git. Preencha `APP_DATABASE_URL` no `.env.local` com esse papel e essa senha antes do próximo
+passo — sem isso, a aplicação cai de volta no papel administrativo (`DATABASE_URL`), que ignora o RLS.
 
 ### 4. Aplicação
 
@@ -84,6 +96,6 @@ Neste ambiente de geração, os três primeiros foram executados. `npm install`,
 
 ## Ainda não é produção
 
-Permanecem pendentes, entre outros itens: 2FA administrativo, recuperação de senha, convite de usuários, storage S3 real, editor cartográfico de coleta, XLSX/PDF, rule set agronômico homologado, revisão/aprovação executável, relatório PDF assinado, webhook Mercado Pago validado e testes E2E contra PostgreSQL/PostGIS real.
+Permanecem pendentes, entre outros itens: 2FA administrativo, recuperação de senha, convite de usuários, storage S3 real, XLSX/PDF, rule set agronômico homologado (requer revisão de especialista agrônomo antes de qualquer cálculo/recomendação chegar ao usuário — ver `docs/MOTOR_AGRONOMICO.md`), revisão/aprovação executável, relatório PDF assinado, webhook Mercado Pago validado.
 
 Leia `docs/ARCHITECTURE.md`, `docs/MOTOR_AGRONOMICO.md` e `docs/HANDOFF_V0.4.md` antes de avançar o motor técnico.
