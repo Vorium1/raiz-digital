@@ -979,3 +979,82 @@ impede, pelo próprio formato dos tipos, que uma IA futura substitua uma classif
 provedor no futuro (ex.: um adaptador Anthropic) não deveria exigir tocar no motor determinístico nem nas
 telas que o consomem. Integração real só deve acontecer mediante autorização explícita — não incluída
 neste bloco.
+
+## Valor operacional e comercial sobre a fundação (mapa, relatórios, alertas, dashboard, biblioteca, comparativos)
+
+Bloco seguinte, aprovado pelo diretor do projeto para transformar a fundação técnica em produto
+visível ao cliente. Nenhuma migration nova foi necessária — tudo consome o schema já criado no bloco
+anterior. Nenhuma IA foi conectada.
+
+**Mapa agronômico (`/mapas`, e embutido em `/coletas`)** — `RealFieldMap` ganhou coloração por
+classificação homologada (prop `colorFor`/`legend` opcionais, uso simples anterior preservado),
+seletor de parâmetro/status e alternância Pontos/Interpolação em `AgronomicMapExplorer`.
+Interpolação espacial fica bloqueada com mensagem explícita até haver critério técnico homologado —
+nunca gera zona estimada. Bug real encontrado e corrigido durante a implementação original do mapa:
+o polígono/pontos só apareciam depois de uma segunda renderização por causa de uma corrida entre o
+carregamento assíncrono do Leaflet e o efeito de desenho.
+
+**Relatórios (`/relatorios` + 4 tipos)** — fecha o elo mapa → relatório da rastreabilidade. Análise por
+talhão, coleta, evolução histórica e executivo da propriedade, cada um puxando cliente/propriedade/
+talhão/safra/período/parâmetros/pontos/mapa/classificações homologadas/pendências/revisão/responsável
+direto do banco. Exportação em PDF via impressão nativa do navegador (CSS de impressão dedicado,
+sem dependência nova). Publicar um relatório grava em `reports` e só é permitido para interpretação já
+aprovada. Bug real corrigido durante a validação: os relatórios usavam `logo-dark.svg` com um filtro
+CSS de inversão de cor (gerava cores erradas) em vez do `logo-light.svg` correto já disponível em
+`public/brand/` para fundo branco.
+
+**Alertas (`/alertas`)** — 10 categorias reais (coleta atrasada, pontos não coletados, laudo aguardando
+importação, dado inválido, interpretação aguardando revisão, parâmetro sem homologação, talhão sem
+cultura/safra, análise parada há mais de 14 dias, inconsistência de rastreabilidade), cada uma com
+criticidade e link direto ao problema. Nenhum item decorativo.
+
+**Painel executivo (`/dashboard`)** — `getExecutiveDashboard` agrega clientes, propriedades, área
+total, talhões, safras em andamento, ordens abertas, cobertura de coleta, laudos processados,
+interpretações pendentes, talhões críticos e confiabilidade média, filtrável por cliente/propriedade/
+safra via querystring.
+
+**Biblioteca Técnica (`/biblioteca-tecnica`, restrita a admin/agrônomo)** — CRUD real de culturas e
+parâmetros (categoria, profundidade, métodos aceitos, faixas de suficiência, criticidade), homologação
+explícita DRAFT → ACTIVE. `rule_sets` listado como somente leitura (reservado, o motor hoje resolve
+direto por perfil de cultura). Métodos/unidades reconhecidos exibidos a partir da mesma constante já
+usada pelo importador de laudo, sem duplicar dado.
+
+**Comparativos (`/comparativos`)** — talhão×talhão, safra×safra, ponto×ponto, propriedade×propriedade,
+sempre a partir de classificação já homologada ou resultado laboratorial real.
+
+**Inteligência Agronômica (`/inteligencia`)** — registro/trilha de auditoria de toda interpretação já
+calculada nesta empresa.
+
+**Navegação reorganizada** — menu lateral e sheet mobile unificados numa fonte só
+(`src/lib/navigation.ts`), filtrados pelo papel real da sessão. Propriedades/Talhões/Safras continuam
+na mesma tela já testada (`FieldOperationsManager`) via âncoras (`#propriedades`/`#talhoes`/`#safras`)
+em vez de um split arriscado de componente. Bug real encontrado e corrigido na validação final: "Usuários
+& Permissões" e "Configurações" apontavam para o mesmo href, o que fazia o filtro do Sidebar remover os
+dois da lista rolável por engano (administrador ficava sem o item no menu) — corrigido com uma âncora
+distinta.
+
+### Validação final deste bloco
+
+`typecheck`, `build` e `npm run test:handoff` completos e limpos. Teste de RLS entre as duas empresas
+reais do banco (`Raiz Digital Demo` e `RAIZ E2E Isolamento`) contra as rotas novas
+(`/api/collection-orders/[id]/map-layer`, `/api/analyses/[id]/interpretation`, `/api/comparisons`,
+página de relatório) confirmado sem vazamento — `crop_profiles`/`crop_profile_parameters` continuam
+visíveis para as duas empresas de propósito, por serem catálogo técnico global, não dado operacional.
+Verificado com Playwright real (desktop 1440px e mobile 390px) em 8 telas novas: sem overflow, sem erro
+de console. Durante a validação, um 500 intermitente em `/api/collection-orders` sob carga concorrente
+foi investigado a fundo: não era bug de código (confirmado com 8 requisições simultâneas bem-sucedidas
+após reiniciar o servidor de desenvolvimento) — era acúmulo de conexões de um processo `next dev` que
+ficou de pé por horas nesta sessão longa, artefato só de ambiente de desenvolvimento.
+
+### Pendências que dependem de agrônomo (reforço do bloco anterior)
+
+Continuam as mesmas: nenhuma `sufficiency_ranges` real cadastrada (só o exemplo de teste, removido),
+métodos aceitos por parâmetro/cultura, regiões técnicas e seus perfis válidos, critério de densidade
+para liberar interpolação espacial no mapa, aprovação final de cada interpretação.
+
+### Pendências antes de conectar IA
+
+`AgronomicExplanationProvider` continua desconectado (`resolveAgronomicExplanationProvider()` sempre
+retorna `null`), como pedido explicitamente — a integração só deve começar depois de autorização
+explícita, e o pedido desta fase foi "mapa, relatório, alertas, dashboard e biblioteca técnica
+funcionando primeiro", o que está cumprido.
