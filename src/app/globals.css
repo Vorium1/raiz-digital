@@ -532,8 +532,8 @@ button { color: inherit; }
 .team-invite{border-top:1px solid var(--line);margin:0 20px;padding:18px 0}
 .team-invite h3{font-family:var(--font-heading);font-size:13px;margin:0 0 4px}
 .team-invite p{color:var(--muted);font-size:9px;margin:0 0 12px}
-.team-invite-grid{display:grid;gap:10px;grid-template-columns:1fr 1fr 160px auto;margin-bottom:12px}
-.team-invite-grid.password-grid{grid-template-columns:1fr 1fr 1fr auto}
+.team-invite-grid{display:grid;gap:10px;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 160px auto;margin-bottom:12px}
+.team-invite-grid.password-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto}
 .team-invite-grid input,.team-invite-grid select{background:white;border:1px solid #d7dfda;border-radius:8px;height:40px;outline:none;padding:0 12px}
 .team-invite-grid input:focus,.team-invite-grid select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,166,.09)}
 @media(max-width:760px){.team-invite-grid,.team-invite-grid.password-grid{grid-template-columns:1fr}}

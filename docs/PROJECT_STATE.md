@@ -823,4 +823,12 @@ mundo sempre caiu no reserva (Segoe UI/Arial) sem ninguém perceber, porque visu
   de marca pede.
 
 Testado: confirmado via inspeção real do navegador que `h1` agora usa `Sora` e o `body` usa `Inter` (antes
-caía direto no reserva). Testado o site inteiro depois da troca — build limpo, nenhuma tela quebrou.
+caía direto no reserva). Confirmado também no site já publicado na Vercel, não só localmente.
+
+Ao varrer o site inteiro atrás de regressão de layout depois da troca (fontes diferentes têm medidas
+diferentes, então um texto pode passar a ocupar mais espaço), encontrei um estouro horizontal real em
+Configurações → Minha conta: o botão "Alterar senha" ficou um pouco mais largo com a fonte Inter de
+verdade e estourou a grade do formulário — mesma causa raiz de um bug já corrigido antes nesta sessão
+(`.settings-grid`): colunas de grid `1fr` sem `minmax(0,1fr)` não conseguem encolher abaixo do próprio
+conteúdo. Corrigido em `.team-invite-grid`/`.team-invite-grid.password-grid`. Revarrido depois da correção:
+9 telas × 3 larguras (1280px, 1440px, celular) = 27 combinações, nenhum estouro.
