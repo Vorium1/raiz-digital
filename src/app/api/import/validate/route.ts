@@ -1,8 +1,8 @@
-import { buildLabImportPreview } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 
-const MAX_BODY_BYTES = 4_000_000;
+const MAX_BODY_BYTES = 6_000_000;
 
 export async function POST(request: Request) {
   if (isDatabaseMode() && !(await getPlatformSession())) {
@@ -24,14 +24,18 @@ export async function POST(request: Request) {
     };
 
     if (typeof body.content !== "string" || !body.content.trim()) {
-      return Response.json({ error: "Conteúdo CSV não informado." }, { status: 400 });
+      return Response.json({ error: "Conteúdo do arquivo não informado." }, { status: 400 });
     }
 
-    const preview = buildLabImportPreview(body.content, body.fileName ?? "laudo.csv", {
+    const fileName = body.fileName ?? "laudo.csv";
+    const importContext = {
       fallbackMethod: body.fallbackMethod,
       hasAgronomicContext: body.hasAgronomicContext,
       spatialLinked: body.spatialLinked,
-    });
+    };
+    const preview = isSpreadsheetFileName(fileName)
+      ? buildLabImportPreviewFromXlsxBase64(body.content, fileName, importContext)
+      : buildLabImportPreview(body.content, fileName, importContext);
 
     return Response.json(preview, { status: 200 });
   } catch (error) {

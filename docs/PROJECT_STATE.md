@@ -7,7 +7,7 @@ Data do handoff: 2026-09-01
 
 | Área | Estado | Observação |
 |---|---|---|
-| Identidade visual | Consolidada | Guia oficial incluído |
+| Identidade visual | Consolidada, símbolo corrigido | Guia oficial incluído; bug no arquivo de logo corrigido (ver seção própria) |
 | Navegação/UX base | Implementada | Desktop + mobile |
 | PostgreSQL/PostGIS | Validado em banco real | Migrations 001-006 aplicadas contra Supabase (dev); grid PostGIS/UTM testado com talhão real |
 | Multiempresa | Validado E2E com 2 tenants | Testado via API real (login + criação + listagem cruzada) |
@@ -209,3 +209,52 @@ sincronizado corretamente com a caixa de texto.
 Decisão técnica: usei apenas `leaflet` (biblioteca principal, sem plugins adicionais como `leaflet-draw`) e
 implementei a interação de desenho manualmente, para manter a dependência mínima, gratuita e substituível —
 alinhado ao critério do `CLAUDE.md` de preferir a solução mais simples e barata.
+
+## XLSX no laudo laboratorial (Fase C do roadmap)
+
+`domain/lab-import.ts` foi separado em duas camadas: `buildLabImportPreviewFromMatrix` (o motor de validação
+já existente — detecção de formato, aliases de parâmetro, unidades, confiança) e duas entradas: `buildLabImportPreview`
+(CSV, como já era) e `buildLabImportPreviewFromXlsxBase64` (nova, lê a primeira aba da planilha via `xlsx`).
+Nenhuma regra de validação foi duplicada ou reescrita. `/api/import/validate`, `/api/import/commit` e o
+`LabImporter` (tela de upload) agora aceitam `.xlsx`/`.xls` além de `.csv`/`.txt`; o navegador lê o arquivo como
+base64 (`FileReader.readAsDataURL`) para planilhas. PDF continua não suportado — a mensagem na tela deixa isso
+explícito, sem sugerir suporte que não existe.
+
+Dependência: instalei `xlsx` direto do pacote oficial do SheetJS hospedado pelos próprios mantenedores
+(`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`), não a versão do registro do npm — a versão do npm
+tem duas vulnerabilidades de severidade alta sem correção (Prototype Pollution e ReDoS) que os próprios
+mantenedores só corrigem na distribuição própria. Como o recurso lê arquivo enviado por qualquer usuário
+autenticado, essa vulnerabilidade importava de verdade; `npm audit` confirma 0 vulnerabilidades com a versão
+usada.
+
+Testado contra o banco real: planilha de teste com 5 linhas/2 amostras importada com sucesso via API direta e
+via upload real pelo formulário (Playwright simulando um usuário real), `source_format` gravado como `XLSX`,
+e o selo de vínculo com ponto de coleta (feature anterior) funcionou automaticamente com os dados vindos da
+planilha, sem nenhuma mudança adicional — confirma que a unificação do motor de validação está correta.
+
+## Correção do símbolo da marca (bug real, não escolha de estilo)
+
+Ao aplicar a identidade visual em mais lugares do site (pedido do responsável pelo projeto), encontrei um bug
+já existente: `public/brand/logo-dark.svg` e `logo-light.svg` tentavam carregar o símbolo (grade + R + raízes)
+de um arquivo externo (`raiz-digital-simbolo-fundo-escuro.svg` / `...-fundo-claro.svg`) que nunca existiu na
+pasta `public/brand`. Por isso a logo aparecia **só como texto** ("RAIZ DIGITAL"), sem o símbolo, em toda a
+plataforma (login, barra lateral) — mesmo com o guia de marca oficial (`docs/brand/Guia_de_Marca_Raiz_Digital.pdf`)
+já definindo o símbolo corretamente e o arquivo `public/brand/symbol-dark.svg` já existindo (só nunca foi
+referenciado de um jeito que funcionasse).
+
+Corrigido embutindo o símbolo diretamente dentro de `logo-dark.svg`/`logo-light.svg` (SVG aninhado, sem
+depender de arquivo externo — mais robusto). Criei também `public/brand/symbol-light.svg` (variante para fundo
+claro, que faltava) e `src/app/icon.svg` (favicon da aba do navegador, usando o símbolo sobre fundo grafite).
+Confirmado visualmente rodando o site de verdade: o símbolo (grade em ciano, "R" em branco/grafite conforme o
+fundo, raízes em cobre) aparece corretamente no login, na barra lateral e na aba do navegador.
+
+**Nota de transparência**: o responsável pelo projeto também compartilhou imagens de um conceito visual
+alternativo para o símbolo — um render 3D metálico/cromado com efeito de brilho e textura de circuito. Não
+usei esse conceito na implementação porque (1) o guia de marca oficial (`Guia_de_Marca_Raiz_Digital.pdf`,
+versão 1.0) já define e explica o símbolo atual em detalhe, com regra explícita de "não usar efeitos: evite
+sombras, contornos e brilho" — o que o render metálico contraria diretamente; e (2) as imagens enviadas eram
+arquivos de imagem comuns (PNG) com fundo sólido, não teriam ficado limpas ao integrar num site com fundos
+variados sem os arquivos de origem em alta resolução e com fundo transparente. Se o responsável pelo projeto
+confirmar que quer adotar esse novo visual metálico como marca oficial (substituindo o guia atual), isso exige
+uma decisão de produto e, idealmente, os arquivos de origem em vetor/PNG transparente — ainda não implementado,
+aguardando confirmação.

@@ -1,7 +1,7 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { commitCsvImport } from "@/lib/repositories/imports";
 
-const MAX_BODY_BYTES = 4_000_000;
+const MAX_BODY_BYTES = 6_000_000;
 
 export async function POST(request: Request) {
   const session = await getPlatformSession();

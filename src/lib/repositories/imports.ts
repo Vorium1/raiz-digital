@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { buildLabImportPreview } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 
@@ -13,11 +13,15 @@ export async function commitCsvImport(input: {
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
 }) {
-  const preview = buildLabImportPreview(input.content, input.fileName, {
+  const isSpreadsheet = isSpreadsheetFileName(input.fileName);
+  const importContext = {
     fallbackMethod: input.fallbackMethod,
     hasAgronomicContext: input.hasAgronomicContext,
     spatialLinked: input.spatialLinked,
-  });
+  };
+  const preview = isSpreadsheet
+    ? buildLabImportPreviewFromXlsxBase64(input.content, input.fileName, importContext)
+    : buildLabImportPreview(input.content, input.fileName, importContext);
 
   const sha256 = createHash("sha256").update(input.content).digest("hex");
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
@@ -39,7 +43,7 @@ export async function commitCsvImport(input: {
         input.analysisId,
         input.fileName,
         sha256,
-        preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE",
+        isSpreadsheet ? "XLSX" : preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE",
         persistedStatus,
         JSON.stringify(preview.detectedHeaders),
         preview.rows.length,

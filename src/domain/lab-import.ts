@@ -1,3 +1,5 @@
+import * as XLSX from "xlsx";
+
 export type LabImportSeverity = "BLOCKER" | "WARNING" | "INFO";
 
 export type LabImportIssue = {
@@ -283,16 +285,12 @@ function dedupeRows(rows: LabImportRow[], issues: LabImportIssue[]) {
   });
 }
 
-export function buildLabImportPreview(
-  content: string,
-  fileName = "laudo.csv",
-  context: LabImportContext = {},
+export function buildLabImportPreviewFromMatrix(
+  matrix: string[][],
+  fileName: string,
+  context: LabImportContext,
+  delimiter: ";" | "," | "\t",
 ): LabImportPreview {
-  if (!content.trim()) throw new Error("O arquivo está vazio.");
-  if (content.length > 3_500_000) throw new Error("O CSV excede o limite de 3,5 MB desta etapa do MVP.");
-
-  const delimiter = detectDelimiter(content);
-  const matrix = parseDelimited(content, delimiter);
   if (matrix.length < 2) throw new Error("O arquivo precisa conter cabeçalho e ao menos uma linha de dados.");
 
   const detectedHeaders = matrix[0].map((item) => item.trim());
@@ -403,4 +401,47 @@ export function buildLabImportPreview(
     confidence,
     detectedHeaders,
   };
+}
+
+export function buildLabImportPreview(
+  content: string,
+  fileName = "laudo.csv",
+  context: LabImportContext = {},
+): LabImportPreview {
+  if (!content.trim()) throw new Error("O arquivo está vazio.");
+  if (content.length > 3_500_000) throw new Error("O CSV excede o limite de 3,5 MB desta etapa do MVP.");
+
+  const delimiter = detectDelimiter(content);
+  const matrix = parseDelimited(content, delimiter);
+  return buildLabImportPreviewFromMatrix(matrix, fileName, context, delimiter);
+}
+
+export function xlsxMatrixFromBase64(base64: string): string[][] {
+  const workbook = XLSX.read(base64, { type: "base64" });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) throw new Error("A planilha não possui nenhuma aba.");
+  const sheet = workbook.Sheets[firstSheetName];
+  const matrix = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: "" });
+  return matrix.map((row) => row.map((cell) => String(cell ?? "").trim()));
+}
+
+export function buildLabImportPreviewFromXlsxBase64(
+  base64: string,
+  fileName = "laudo.xlsx",
+  context: LabImportContext = {},
+): LabImportPreview {
+  if (!base64.trim()) throw new Error("O arquivo está vazio.");
+  if (base64.length > 5_000_000) throw new Error("A planilha excede o limite de tamanho desta etapa do MVP.");
+
+  let matrix: string[][];
+  try {
+    matrix = xlsxMatrixFromBase64(base64);
+  } catch (error) {
+    throw new Error(error instanceof Error ? `Não foi possível ler a planilha: ${error.message}` : "Não foi possível ler a planilha.");
+  }
+  return buildLabImportPreviewFromMatrix(matrix, fileName, context, ";");
+}
+
+export function isSpreadsheetFileName(fileName: string) {
+  return /\.xlsx?$/i.test(fileName);
 }

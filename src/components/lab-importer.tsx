@@ -10,6 +10,18 @@ type Props = {
   onFileReady?: (file: { fileName: string; content: string } | null) => void;
 };
 
+function readAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
 const levelLabel: Record<LabImportPreview["confidence"]["level"], string> = {
   HIGH: "Alta",
   ADEQUATE: "Adequada",
@@ -34,18 +46,20 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
     setError("");
 
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !["csv", "txt"].includes(extension)) {
-      setError("Nesta versão funcional, use CSV. XLSX e PDF entram no próximo adaptador sem alterar o motor de validação.");
+    const isSpreadsheet = extension === "xlsx" || extension === "xls";
+    if (!extension || !["csv", "txt", "xlsx", "xls"].includes(extension)) {
+      setError("Nesta versão funcional, use CSV ou XLSX. PDF ainda não é suportado.");
       return;
     }
-    if (file.size > 3_500_000) {
-      setError("O CSV excede 3,5 MB. Divida o arquivo por área ou laboratório nesta etapa do MVP.");
+    const maxSize = isSpreadsheet ? 4_500_000 : 3_500_000;
+    if (file.size > maxSize) {
+      setError(`O arquivo excede ${(maxSize / 1_000_000).toLocaleString("pt-BR")} MB. Divida por área ou laboratório nesta etapa do MVP.`);
       return;
     }
 
     setLoading(true);
     try {
-      const content = await file.text();
+      const content = isSpreadsheet ? await readAsBase64(file) : await file.text();
       const response = await fetch("/api/import/validate", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -72,10 +86,10 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
   return (
     <div className="lab-importer">
       <label className={`upload-zone ${preview ? "has-file" : ""} ${error ? "has-error" : ""}`}>
-        <input type="file" accept=".csv,.txt,.xlsx,.xls,.pdf" onChange={(event) => void processFile(event.target.files?.[0])}/>
+        <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={(event) => void processFile(event.target.files?.[0])}/>
         <div className="upload-icon"><Icon name={preview ? "check" : loading ? "clock" : "upload"} size={27}/></div>
-        <strong>{loading ? "Validando estrutura e resultados…" : fileName || "Arraste o laudo CSV ou clique para selecionar"}</strong>
-        <small>{preview ? `${preview.rows.length} resultados normalizados · ${preview.sampleCount} amostras` : "CSV funcional · XLSX/PDF preparados para adaptador posterior · máximo 3,5 MB"}</small>
+        <strong>{loading ? "Validando estrutura e resultados…" : fileName || "Arraste o laudo CSV/XLSX ou clique para selecionar"}</strong>
+        <small>{preview ? `${preview.rows.length} resultados normalizados · ${preview.sampleCount} amostras` : "CSV ou XLSX · primeira aba da planilha · PDF ainda não suportado"}</small>
       </label>
 
       {error && <div className="import-message danger"><Icon name="warning" size={18}/><div><strong>Arquivo não processado</strong><small>{error}</small></div></div>}
