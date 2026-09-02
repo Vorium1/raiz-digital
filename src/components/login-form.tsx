@@ -10,6 +10,7 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; role: string }>>([]);
+  const [pendingToken, setPendingToken] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,6 +26,7 @@ export function LoginForm() {
     setLoading(false);
     if (!response.ok) {
       if (payload.code === "TENANT_REQUIRED" && Array.isArray(payload.tenants)) setTenants(payload.tenants);
+      if (payload.code === "TOTP_REQUIRED" && payload.pendingToken) { setPendingToken(payload.pendingToken); return; }
       setError(payload.error ?? "Não foi possível entrar.");
       return;
     }
@@ -32,8 +34,46 @@ export function LoginForm() {
     router.refresh();
   }
 
+  async function submitTwoFactor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/auth/2fa/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pendingToken, code: form.get("code") }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    setLoading(false);
+    if (!response.ok) {
+      setError(payload.error ?? "Não foi possível validar o código.");
+      if (response.status === 401) setPendingToken("");
+      return;
+    }
+    router.replace("/dashboard");
+    router.refresh();
+  }
+
+  if (pendingToken) {
+    return (
+      <form key="two-factor-step" className="login-form" onSubmit={submitTwoFactor}>
+        <label>
+          <span>Código de verificação</span>
+          <input name="code" type="text" inputMode="numeric" autoComplete="one-time-code" autoFocus required placeholder="000000" maxLength={9} />
+        </label>
+        <small className="login-security"><Icon name="shield" size={13}/> Abra seu aplicativo autenticador e digite o código de 6 dígitos, ou use um código de backup.</small>
+        {error && <div className="login-error"><Icon name="warning" size={16}/><span>{error}</span></div>}
+        <button className="button primary login-submit" disabled={loading}>
+          {loading ? "Verificando…" : "Confirmar"}<Icon name="arrow" size={16}/>
+        </button>
+        <button type="button" className="button secondary" onClick={()=>{setPendingToken("");setError("");}}>Voltar</button>
+      </form>
+    );
+  }
+
   return (
-    <form className="login-form" onSubmit={submit}>
+    <form key="password-step" className="login-form" onSubmit={submit}>
       <label>
         <span>E-mail</span>
         <input name="email" type="email" autoComplete="email" required placeholder="voce@empresa.com.br" />

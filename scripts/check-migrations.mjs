@@ -10,6 +10,7 @@ const appRole = await readFile(new URL("../db/migrations/006_app_runtime_role.sq
 const appRolePortability = await readFile(new URL("../db/migrations/007_app_runtime_role_portability.sql", import.meta.url), "utf8");
 const loginAttempts = await readFile(new URL("../db/migrations/008_login_attempts.sql", import.meta.url), "utf8");
 const passwordReset = await readFile(new URL("../db/migrations/009_password_reset_tokens.sql", import.meta.url), "utf8");
+const twoFactor = await readFile(new URL("../db/migrations/010_two_factor_auth.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -33,4 +34,7 @@ assert.match(loginAttempts, /CREATE TABLE login_attempts/i);
 assert.match(loginAttempts, /login_attempts_email_idx/i);
 assert.match(passwordReset, /CREATE TABLE password_reset_tokens/i);
 assert.match(passwordReset, /token_hash text NOT NULL UNIQUE/i);
-console.log("migrations: contratos estruturais 001-009 aprovados");
+assert.match(twoFactor, /ALTER TABLE users ADD COLUMN totp_secret/i);
+assert.match(twoFactor, /CREATE TABLE totp_backup_codes/i);
+assert.match(twoFactor, /CREATE TABLE pending_two_factor_logins/i);
+console.log("migrations: contratos estruturais 001-010 aprovados");

@@ -520,6 +520,13 @@ button { color: inherit; }
 .team-invite-grid input:focus,.team-invite-grid select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,166,.09)}
 @media(max-width:760px){.team-invite-grid,.team-invite-grid.password-grid{grid-template-columns:1fr}}
 .forgot-password-link{color:var(--teal);display:inline-block;font-size:9px;font-weight:700;margin-top:8px}
+.two-factor-setup{align-items:flex-start;display:flex;gap:16px}
+.two-factor-setup img{background:white;border:1px solid var(--line);border-radius:10px;flex-shrink:0;padding:8px}
+.two-factor-setup p{color:var(--muted);font-size:9px;line-height:1.6;margin:0 0 10px}
+.two-factor-setup p code{background:rgba(0,0,0,.06);border-radius:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8px;padding:1px 5px;word-break:break-all}
+.backup-codes-grid{display:grid;gap:8px;grid-template-columns:repeat(2,1fr);margin:10px 0}
+.backup-codes-grid code{background:rgba(0,0,0,.08);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;padding:6px 8px;text-align:center}
+@media(max-width:760px){.two-factor-setup{flex-direction:column}.two-factor-setup img{align-self:center}}
 .client-row-actions{display:flex;gap:6px;justify-content:flex-end}
 .client-row-actions .icon-button{background:transparent;border-color:transparent;height:30px;width:30px}
 .client-row-actions .icon-button:hover{background:#f4f7f4;border-color:var(--line)}

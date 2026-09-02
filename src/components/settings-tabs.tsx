@@ -37,7 +37,7 @@ const notImplementedCopy: Partial<Record<TabKey, string>> = {
   email: "Modelos de e-mail e envio automático de relatório ainda não existem.",
 };
 
-export function SettingsTabs({ members, laboratories: initialLaboratories, auditEvents, canManageTeam }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean }) {
+export function SettingsTabs({ members, laboratories: initialLaboratories, auditEvents, canManageTeam, twoFactorEnabled: initialTwoFactorEnabled }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; twoFactorEnabled: boolean }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("team");
   const [laboratories, setLaboratories] = useState(initialLaboratories);
@@ -71,6 +71,66 @@ export function SettingsTabs({ members, laboratories: initialLaboratories, audit
       setInviteError(error instanceof Error ? error.message : "Falha ao convidar membro.");
     } finally {
       setInviting(false);
+    }
+  }
+
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(initialTwoFactorEnabled);
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [showDisableForm, setShowDisableForm] = useState(false);
+
+  async function startTwoFactorSetup() {
+    setTwoFactorBusy(true);
+    setTwoFactorError("");
+    try {
+      const response = await fetch("/api/auth/2fa/setup", { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível iniciar a configuração.");
+      setTwoFactorSetup({ secret: payload.secret, qrCodeDataUrl: payload.qrCodeDataUrl });
+    } catch (error) {
+      setTwoFactorError(error instanceof Error ? error.message : "Falha ao iniciar configuração do 2FA.");
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function confirmTwoFactorSetup() {
+    setTwoFactorBusy(true);
+    setTwoFactorError("");
+    try {
+      const response = await fetch("/api/auth/2fa/confirm", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: twoFactorCode }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Código inválido.");
+      setBackupCodes(payload.backupCodes as string[]);
+      setTwoFactorEnabled(true);
+      setTwoFactorSetup(null);
+      setTwoFactorCode("");
+    } catch (error) {
+      setTwoFactorError(error instanceof Error ? error.message : "Falha ao confirmar o 2FA.");
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function disableTwoFactorSubmit() {
+    setTwoFactorBusy(true);
+    setTwoFactorError("");
+    try {
+      const response = await fetch("/api/auth/2fa", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: disablePassword }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível desativar.");
+      setTwoFactorEnabled(false);
+      setShowDisableForm(false);
+      setDisablePassword("");
+      setBackupCodes(null);
+    } catch (error) {
+      setTwoFactorError(error instanceof Error ? error.message : "Falha ao desativar o 2FA.");
+    } finally {
+      setTwoFactorBusy(false);
     }
   }
 
@@ -189,6 +249,56 @@ export function SettingsTabs({ members, laboratories: initialLaboratories, audit
               </div>
               {passwordError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível alterar</strong><small>{passwordError}</small></div></div>}
               {passwordSuccess && <div className="import-message success"><Icon name="check" /><div><strong>Senha alterada com sucesso</strong><small>Use a nova senha no próximo login.</small></div></div>}
+            </div>
+
+            <div className="team-invite">
+              <h3>Verificação em duas etapas</h3>
+              <p>Exige um código do seu celular (Google Authenticator, Authy ou similar) além da senha para entrar na conta.</p>
+
+              {backupCodes && (
+                <div className="import-message success">
+                  <Icon name="shield" />
+                  <div>
+                    <strong>2FA ativado. Guarde estes códigos de backup em local seguro:</strong>
+                    <small>Cada um funciona uma única vez, caso você perca acesso ao aplicativo autenticador. Eles não serão mostrados de novo.</small>
+                    <div className="backup-codes-grid">{backupCodes.map((code) => <code key={code}>{code}</code>)}</div>
+                    <button type="button" className="button secondary" onClick={() => setBackupCodes(null)}>Já guardei, fechar</button>
+                  </div>
+                </div>
+              )}
+
+              {!backupCodes && twoFactorEnabled && !showDisableForm && (
+                <div className="import-message"><Icon name="shield" /><div><strong>Verificação em duas etapas está ativada</strong><small>Sua conta exige o código do aplicativo autenticador a cada login.</small></div><button type="button" className="button secondary" onClick={() => setShowDisableForm(true)}>Desativar</button></div>
+              )}
+
+              {!backupCodes && twoFactorEnabled && showDisableForm && (
+                <div className="team-invite-grid password-grid">
+                  <input value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} placeholder="Confirme sua senha" type="password" disabled={twoFactorBusy} />
+                  <button type="button" className="button secondary" disabled={twoFactorBusy || !disablePassword} onClick={() => void disableTwoFactorSubmit()}>{twoFactorBusy ? "Desativando…" : "Confirmar e desativar"}</button>
+                  <button type="button" className="button tiny" onClick={() => { setShowDisableForm(false); setDisablePassword(""); setTwoFactorError(""); }}>Cancelar</button>
+                </div>
+              )}
+
+              {!backupCodes && !twoFactorEnabled && !twoFactorSetup && (
+                <button type="button" className="button secondary" disabled={twoFactorBusy} onClick={() => void startTwoFactorSetup()}>{twoFactorBusy ? "Gerando…" : "Ativar verificação em duas etapas"}</button>
+              )}
+
+              {!backupCodes && !twoFactorEnabled && twoFactorSetup && (
+                <div className="two-factor-setup">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={twoFactorSetup.qrCodeDataUrl} alt="QR Code para configurar o autenticador" width={180} height={180} />
+                  <div>
+                    <p>Escaneie com o aplicativo autenticador, ou digite manualmente: <code>{twoFactorSetup.secret}</code></p>
+                    <div className="team-invite-grid password-grid">
+                      <input value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="Código de 6 dígitos" inputMode="numeric" disabled={twoFactorBusy} />
+                      <button type="button" className="button secondary" disabled={twoFactorBusy || twoFactorCode.length < 6} onClick={() => void confirmTwoFactorSetup()}>{twoFactorBusy ? "Confirmando…" : "Confirmar e ativar"}</button>
+                      <button type="button" className="button tiny" onClick={() => { setTwoFactorSetup(null); setTwoFactorCode(""); setTwoFactorError(""); }}>Cancelar</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {twoFactorError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível concluir</strong><small>{twoFactorError}</small></div></div>}
             </div>
           </>
         )}

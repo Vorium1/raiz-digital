@@ -20,13 +20,14 @@ type LoginUser = {
   name: string;
   email: string;
   password_hash: string | null;
+  two_factor_enabled: boolean;
 };
 
 type Membership = { tenant_id: string; trade_name: string; role: string };
 
 export async function findUserByEmail(email: string) {
   const result = await query<LoginUser>(
-    "SELECT id, name, email::text, password_hash FROM users WHERE email = $1::citext LIMIT 1",
+    "SELECT id, name, email::text, password_hash, two_factor_enabled FROM users WHERE email = $1::citext LIMIT 1",
     [email.trim().toLowerCase()],
   );
   return result.rows[0] ?? null;

@@ -482,3 +482,46 @@ Testado contra o banco real: editar propriedade e confirmar que o nome muda pers
 celular, sem estouro de layout); excluir propriedade/talhão com vínculo bloqueado com 409 e mensagem clara;
 criar uma propriedade descartável e excluí-la com sucesso (200); excluir talhão com safra vinculada bloqueado
 (409); excluir safra com ordem de coleta vinculada bloqueado (409).
+
+## Verificação em duas etapas (2FA administrativo)
+
+Último item da lista de autenticação pendente do `CLAUDE.md`. A coluna `two_factor_enabled` já existia em
+`users` desde a primeira migração, mas nunca tinha sido usada — o campo estava só reservado no schema.
+
+- Migração `010_two_factor_auth.sql`: adiciona `users.totp_secret`; cria `totp_backup_codes` (códigos de
+  backup de uso único, guardados só como hash, nunca em texto puro — mesmo padrão de token opaco já usado
+  em `password_reset_tokens`); cria `pending_two_factor_logins` (o estado intermediário entre "senha
+  confirmada" e "sessão criada", enquanto o código de 6 dígitos não é digitado).
+- TOTP implementado do zero em `src/lib/auth/totp.ts` (base32, HMAC-SHA1, RFC 6238), sem depender de nenhum
+  serviço externo — só `node:crypto`. A implementação foi validada byte a byte contra a biblioteca `otplib`
+  (referência de mercado) antes de entrar em produção: os dois lados geram exatamente o mesmo código de 6
+  dígitos para o mesmo segredo, então qualquer aplicativo autenticador padrão (Google Authenticator, Authy,
+  Microsoft Authenticator) funciona normalmente.
+- `qrcode` (pacote npm, MIT, 0 vulnerabilidades, roda 100% local) só para desenhar o QR code do segredo —
+  nenhuma chamada de rede, nenhum serviço pago envolvido.
+- Fluxo: usuário ativa em Configurações → Minha conta → "Verificação em duas etapas" (disponível pra
+  qualquer perfil, não só administrador — mais seguro sem motivo técnico pra restringir). Escaneia o QR,
+  confirma um código pra ativar de verdade, recebe 10 códigos de backup mostrados uma única vez. No login
+  seguinte, depois da senha certa, a tela pede o código do aplicativo (ou um código de backup, se perdeu o
+  celular). Desativar exige confirmar a senha atual.
+- Reaproveita o mesmo limite de tentativas (`login_attempts`) já usado no login por senha: passado o limite,
+  a tentativa de código também fica bloqueada por um tempo, evitando força bruta no código de 6 dígitos.
+
+Dois bugs reais encontrados e corrigidos durante o próprio teste, antes de qualquer commit:
+1. O código digitado errado também invalidava a tentativa de login (o token temporário era apagado do banco
+   assim que lido, mesmo quando o código estava errado) — corrigido separando "ler o token" de "consumir o
+   token", só apagando depois que o código bate.
+2. Depois do código certo, a resposta final dava "usuário não encontrado" — a consulta buscava o vínculo
+   direto na tabela `tenant_members`, que tem RLS (isolamento por empresa) e não estava com o contexto de
+   tenant configurado nessa conexão. Corrigido reaproveitando a mesma function seura que o login por senha já
+   usa (`app.user_memberships`) em vez de consultar a tabela protegida diretamente.
+3. (Achado à parte, na tela) O campo de código do login mostrava o e-mail digitado na etapa anterior, porque
+   o React reaproveitava o mesmo campo de texto do formulário de senha. Corrigido dando uma identidade
+   (`key`) diferente para cada etapa do formulário de login, forçando a troca real do campo.
+
+Testado contra o banco real, ponta a ponta, com uma conta de teste descartada ao final (2FA desativado,
+segredo e códigos de backup apagados, para não deixar a conta real travada): ativar, confirmar com código
+certo, login pedindo o código depois da senha, código errado rejeitado sem invalidar a tentativa, código
+certo autentica normalmente, código de backup autentica e fica marcado como usado, reusar o mesmo código de
+backup é rejeitado, desativar exige senha e realmente desliga a exigência. Testado em desktop e celular, sem
+estouro de layout.

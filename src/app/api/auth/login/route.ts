@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createSession, findUserByEmail, membershipsForUser } from "@/lib/auth/session";
 import { verifyPassword } from "@/lib/auth/password";
 import { isLoginLocked, recordFailedLogin } from "@/lib/auth/rate-limit";
+import { createPendingTwoFactorLogin } from "@/lib/auth/two-factor";
 
 function ipHash(request: Request) {
   const raw = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "";
@@ -54,6 +55,16 @@ export async function POST(request: Request) {
 
     if (!selected) {
       return Response.json({ error: "Empresa não autorizada para este usuário." }, { status: 403 });
+    }
+
+    if (user.two_factor_enabled) {
+      const pendingToken = await createPendingTwoFactorLogin({
+        userId: user.id,
+        tenantId: selected.tenant_id,
+        userAgent: request.headers.get("user-agent"),
+        ipHash: ipHash(request),
+      });
+      return Response.json({ code: "TOTP_REQUIRED", pendingToken }, { status: 401 });
     }
 
     await createSession({
