@@ -3,12 +3,21 @@ import { test, expect } from "@playwright/test";
 // Valida a regra inegociável do CLAUDE.md: "Toda entidade operacional deve respeitar isolamento
 // multiempresa." Usa duas contas de tenants diferentes (ver e2e/README.md) e confirma que uma não
 // enxerga dado nenhum da outra, tanto pela tela quanto pela API.
+//
+// As senhas NUNCA ficam no código (o repositório é público) — vêm de variáveis de ambiente,
+// exatamente como `SEED_ADMIN_PASSWORD` em scripts/seed-dev.mjs. Ver e2e/README.md.
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} precisa estar definida para rodar os testes e2e (ver e2e/README.md).`);
+  return value;
+}
+
 const TENANT_A_EMAIL = "admin@raiz.local";
-const TENANT_A_PASSWORD = "65peUFtuygkN";
+const TENANT_A_PASSWORD = requiredEnv("E2E_ADMIN_PASSWORD");
 const TENANT_A_KNOWN_CLIENT = "Fazenda Bela Vista";
 
 const TENANT_B_EMAIL = "e2e-tenant-b@raiz.local";
-const TENANT_B_PASSWORD = "E2eTenantB12345";
+const TENANT_B_PASSWORD = requiredEnv("E2E_TENANT_B_PASSWORD");
 
 test("empresa B nao ve clientes da empresa A", async ({ page }) => {
   await page.goto("/login");

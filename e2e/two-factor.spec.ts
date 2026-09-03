@@ -5,8 +5,14 @@ import { totpAtCounter, currentTotpCounter } from "./helpers/totp";
 // Cobre o fluxo de 2FA (src/lib/auth/two-factor.ts, src/lib/auth/totp.ts e as rotas
 // src/app/api/auth/2fa/*) contra o banco real. Usa uma conta dedicada (e2e-2fa@raiz.local, ver
 // e2e/README.md) para não interferir em contas usadas por gente de verdade.
+//
+// Senha vem de variável de ambiente (repositório é público, nunca commitar senha real).
 const EMAIL = "e2e-2fa@raiz.local";
-const PASSWORD = "E2eTwoFactor12345";
+const PASSWORD = (() => {
+  const value = process.env.E2E_TWO_FACTOR_PASSWORD;
+  if (!value) throw new Error("E2E_TWO_FACTOR_PASSWORD precisa estar definida para rodar os testes e2e (ver e2e/README.md).");
+  return value;
+})();
 
 function dbUrl() {
   const url = process.env.DATABASE_URL;

@@ -8,23 +8,35 @@ fluxos de maior risco, onde um teste manual não é suficiente para confiar no c
 ## Pré-requisitos
 
 1. `npm run dev` rodando (em outro terminal), com `.env` configurado apontando para o banco real.
-2. As contas de teste abaixo precisam existir. Crie-as (uma vez só) com o script de seed já existente:
+2. As contas de teste abaixo precisam existir. Crie-as (uma vez só) com o script de seed já existente —
+   escolha suas próprias senhas (nunca reaproveite as de contas reais; guarde-as só localmente, nunca
+   neste arquivo nem em código commitado):
 
 ```bash
 # conta dedicada aos testes de 2FA, no tenant principal
 SEED_TENANT_NAME="Raiz Digital Demo" SEED_ADMIN_NAME="E2E Two Factor" \
-SEED_ADMIN_EMAIL="e2e-2fa@raiz.local" SEED_ADMIN_PASSWORD="E2eTwoFactor12345" \
+SEED_ADMIN_EMAIL="e2e-2fa@raiz.local" SEED_ADMIN_PASSWORD="<escolha uma senha forte>" \
 npm run seed:dev
 
 # segunda empresa, para o teste de isolamento multiempresa
 SEED_TENANT_NAME="RAIZ E2E Isolamento" SEED_ADMIN_NAME="E2E Tenant B" \
-SEED_ADMIN_EMAIL="e2e-tenant-b@raiz.local" SEED_ADMIN_PASSWORD="E2eTenantB12345" \
+SEED_ADMIN_EMAIL="e2e-tenant-b@raiz.local" SEED_ADMIN_PASSWORD="<escolha uma senha forte>" \
 npm run seed:dev
 ```
 
 O teste de isolamento também espera que a conta `admin@raiz.local` (senha em `SEED_ADMIN_PASSWORD` do
 `.env`) tenha ao menos um cliente chamado "Fazenda Bela Vista" — já existe no banco de desenvolvimento
 usado durante o handoff.
+
+3. As senhas usadas para login em cada teste vêm de variáveis de ambiente (nunca do código-fonte, já que
+   o repositório é público) — defina-as antes de rodar:
+
+```bash
+E2E_ADMIN_PASSWORD="<senha de admin@raiz.local>" \
+E2E_TENANT_B_PASSWORD="<senha de e2e-tenant-b@raiz.local>" \
+E2E_TWO_FACTOR_PASSWORD="<senha de e2e-2fa@raiz.local>" \
+npm run test:e2e
+```
 
 ## Rodando
 
