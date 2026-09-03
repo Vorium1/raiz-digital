@@ -12,6 +12,7 @@ export type PlatformSession = {
   tenantId: string;
   tenantName: string;
   role: string;
+  isPlatformCurator: boolean;
   expiresAt: string;
 };
 
@@ -87,6 +88,7 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
        t.id::text AS "tenantId",
        t.trade_name AS "tenantName",
        membership.role::text AS role,
+       u.is_platform_curator AS "isPlatformCurator",
        s.expires_at::text AS "expiresAt"
      FROM user_sessions s
      JOIN users u ON u.id = s.user_id

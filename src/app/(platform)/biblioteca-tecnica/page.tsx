@@ -39,7 +39,7 @@ export default async function TechnicalLibraryPage() {
       <Topbar eyebrow="Administração" title="Biblioteca Técnica"/>
       <div className="content-wrap">
         <PageIntro title="Culturas, parâmetros e regras homologadas" description="Toda regra usada pelo motor determinístico é rastreável até aqui. Faixas de suficiência ficam em DRAFT até um agrônomo responsável homologar — nunca entram em uma interpretação real antes disso."/>
-        <TechnicalLibraryManager referenceUnits={DEFAULT_UNITS}/>
+        <TechnicalLibraryManager referenceUnits={DEFAULT_UNITS} canCurate={session.isPlatformCurator}/>
       </div>
     </>
   );

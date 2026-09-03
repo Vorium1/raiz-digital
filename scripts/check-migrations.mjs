@@ -16,6 +16,7 @@ const agronomicFoundation = await readFile(new URL("../db/migrations/012_agronom
 const aiLayer = await readFile(new URL("../db/migrations/013_ai_layer_and_crop_catalog.sql", import.meta.url), "utf8");
 const reportBranding = await readFile(new URL("../db/migrations/014_report_branding.sql", import.meta.url), "utf8");
 const areaHistory = await readFile(new URL("../db/migrations/015_area_history_and_input_audit.sql", import.meta.url), "utf8");
+const platformCurator = await readFile(new URL("../db/migrations/016_platform_curator.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -63,4 +64,5 @@ assert.match(areaHistory, /CREATE TABLE field_yield_history/i);
 assert.match(areaHistory, /CREATE TABLE input_recommendations/i);
 assert.match(areaHistory, /CREATE TABLE input_applications/i);
 assert.match(areaHistory, /FORCE ROW LEVEL SECURITY/i);
-console.log("migrations: contratos estruturais 001-015 aprovados");
+assert.match(platformCurator, /ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_curator/i);
+console.log("migrations: contratos estruturais 001-016 aprovados");

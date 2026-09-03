@@ -1442,3 +1442,51 @@ Claude Code envia acento via `curl`, não um bug do banco nem da aplicação —
 texto por um arquivo UTF-8 em vez de digitado direto no comando).
 
 Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo dos blocos anteriores.
+
+## Restrição de quem pode editar a base técnica compartilhada (2026-09-03)
+
+Ao planejar como o Rafael Cabeda (Cabeda Pesquisa) usaria a plataforma, o diretor corrigiu uma suposição
+minha: a RAIZ Digital precisa ser autônoma via IA, o agrônomo de cada empresa cliente é quem valida o
+resultado e cobra do cliente final, e o Rafael presta assessoria pontual — ele não é um usuário do dia a
+dia e não precisa de um painel próprio. Isso levou a investigar o que ele de fato usaria: a Biblioteca
+Técnica (culturas, parâmetros, faixas de suficiência, fontes técnicas, regiões técnicas), que **já era uma
+base única, compartilhada por todas as empresas clientes** (`crop_profiles`, `crop_profile_parameters`,
+`technical_sources`, `technical_regions` nunca tiveram `tenant_id`, desde a fundação do motor agronômico).
+
+Isso expôs uma lacuna real, não relacionada ao Rafael especificamente: **qualquer usuário com papel
+SUPER_ADMIN/TENANT_ADMIN/AGRONOMIST em QUALQUER empresa cliente conseguia cadastrar e homologar essa base
+única** — ou seja, o agrônomo da Grão Sul (ou de um futuro cliente como Cotrijal) podia alterar uma faixa
+técnica usada por todas as outras empresas ao mesmo tempo. Nunca foi decisão de produto, foi lacuna de
+autorização.
+
+Corrigido com um sinalizador global por usuário, `users.is_platform_curator` (migration
+`016_platform_curator.sql`) — deliberadamente **não** ligado a papel de empresa, porque curadoria da
+ciência da plataforma não tem relação com qual empresa o usuário está usando no momento:
+- As 7 rotas de escrita/homologação das 4 tabelas compartilhadas (`crop-profiles`,
+  `crop-profiles/[id]/status`, `crop-profiles/[id]/parameters`, `crop-profile-parameters/[id]/status`,
+  `technical-sources`, `technical-sources/[id]/status`, `technical-regions`) agora exigem
+  `session.isPlatformCurator`, não mais o papel dentro da empresa. Leitura continua aberta a
+  SUPER_ADMIN/TENANT_ADMIN/AGRONOMIST de qualquer empresa (precisam ver o catálogo para montar uma safra).
+- `TechnicalLibraryManager` (tela) recebe `canCurate` e esconde os formulários de cadastro e os botões
+  "Homologar"/"Reverter" para quem não é curador, com um aviso explicando o motivo — em vez de mostrar um
+  botão que só daria erro 403.
+- `scripts/set-platform-curator.mjs` (`npm run db:set-platform-curator`, variáveis `CURATOR_EMAIL` e
+  `CURATOR_VALUE`) concede ou revoga a curadoria por e-mail — é assim que o diretor deve conceder o acesso
+  para o Rafael e para o outro diretor quando tiverem conta na plataforma.
+
+**Testes**: `npm run typecheck`, `npm run build` e `npm run check:migrations` limpos. End-to-end real
+contra o banco de dev: confirmado 403 nas 2 rotas testadas diretamente (criar cultura, homologar cultura)
+com o sinalizador desligado; concedido o sinalizador sem precisar logar de novo (a sessão consulta o banco
+a cada requisição, não fica em cache) e confirmado 201/200 nas mesmas rotas; revertido depois. Verificado
+visualmente via CDP nos dois estados (com e sem curadoria) em desktop e mobile — o aviso, a ausência dos
+formulários e dos botões de homologação aparecem corretamente para quem não é curador, sem overflow em
+nenhum tamanho de tela.
+
+**Nota**: ficou uma cultura de teste ("Cultura Teste" / código TESTE, em DRAFT) na base compartilhada do
+banco de dev — não existe rota de exclusão para `crop_profiles` (é um catálogo versionado e auditado, não
+apagável por design), então não deu para limpar via API. É inofensiva (claramente marcada como teste, em
+DRAFT) mas fica registrado aqui para não confundir ninguém depois.
+
+Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo dos blocos anteriores. A conta
+de demonstração `admin@raiz.local` (tenant "Raiz Digital Demo") ficou marcada como curadora nesse banco de
+dev, para facilitar testes futuros da Biblioteca Técnica.

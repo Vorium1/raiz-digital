@@ -1,8 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { AgronomicProfileError, createCropProfile, listCropProfiles } from "@/lib/repositories/agronomic-profiles";
 
-const homologationRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
-
 export async function GET() {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
@@ -13,7 +11,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
-  if (!homologationRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode cadastrar culturas." }, { status: 403 });
+  if (!session.isPlatformCurator) return Response.json({ error: "A base técnica é compartilhada entre todas as empresas: só um curador da plataforma pode cadastrar culturas." }, { status: 403 });
 
   try {
     const body = (await request.json()) as Record<string, unknown>;

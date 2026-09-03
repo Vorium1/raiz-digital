@@ -33,7 +33,7 @@ async function patchJson(url: string, body: unknown) {
   return payload;
 }
 
-export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Record<string, string> }) {
+export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referenceUnits: Record<string, string>; canCurate: boolean }) {
   const [profiles, setProfiles] = useState<CropProfile[]>([]);
   const [regions, setRegions] = useState<TechnicalRegion[]>([]);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
@@ -177,13 +177,16 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
   return (
     <div className="field-ops-stack">
       {message && <div className={`field-ops-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={17}/><span>{message.text}</span></div>}
+      {!canCurate && <div className="field-ops-inline-warning"><Icon name="shield" size={16}/><span>Você pode consultar a base técnica compartilhada, mas só um curador da plataforma (diretoria ou o agrônomo pesquisador responsável) pode cadastrar ou homologar itens aqui.</span></div>}
 
       <details open><summary><span><b>1</b><strong>Culturas</strong><small>Catálogo versionado, extensível — sem lógica fixa por cultura</small></span><Icon name="chevron" size={16}/></summary>
         <div className="field-ops-form">
+          {canCurate && <>
           <label><span>Código</span><input value={newCropCode} onChange={(e) => setNewCropCode(e.target.value)} placeholder="AVEIA"/></label>
           <label><span>Nome</span><input value={newCropName} onChange={(e) => setNewCropName(e.target.value)} placeholder="Aveia"/></label>
           <label><span>Grupo (organizacional)</span><select value={newCropGroup} onChange={(e) => setNewCropGroup(e.target.value as typeof newCropGroup)}><option value="">Não definido</option><option value="VERAO">Culturas de verão</option><option value="INVERNO">Culturas de inverno</option></select></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "crop" || !newCropCode || !newCropName} onClick={() => void createCrop()}>{busy === "crop" ? "Salvando…" : "Cadastrar cultura"}</button></div>
+          </>}
           <div className="field-ops-wide field-ops-list">
             {(["VERAO", "INVERNO", ""] as const).map((group) => {
               const groupProfiles = profiles.filter((p) => (p.cropGroup ?? "") === group);
@@ -196,7 +199,7 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
                       <span onClick={() => setSelectedProfileId(profile.id)} style={{ cursor: "pointer" }}><strong>{profile.name}</strong><small>{profile.code} · v{profile.semanticVersion}</small></span>
                       <span className="field-ops-list-actions">
                         <StatusBadge tone={STATUS_TONE[profile.status]}>{profile.status}</StatusBadge>
-                        <button className="button tiny" disabled={busy === `crop-status-${profile.id}`} onClick={() => void toggleCropStatus(profile)}>{profile.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>
+                        {canCurate && <button className="button tiny" disabled={busy === `crop-status-${profile.id}`} onClick={() => void toggleCropStatus(profile)}>{profile.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>}
                       </span>
                     </div>
                   ))}
@@ -210,6 +213,7 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
       <details open={Boolean(selectedProfileId)}><summary><span><b>2</b><strong>Parâmetros do perfil selecionado</strong><small>{selectedProfile ? selectedProfile.name : "Selecione uma cultura acima"}</small></span><Icon name="chevron" size={16}/></summary>
         {selectedProfileId ? (
           <div className="field-ops-form">
+            {canCurate && <>
             <label><span>Parâmetro</span><input value={paramCode} onChange={(e) => setParamCode(e.target.value)} placeholder="PH"/></label>
             <label><span>Categoria</span><select value={paramCategory} onChange={(e) => setParamCategory(e.target.value as typeof paramCategory)}><option value="QUIMICO">Químico</option><option value="FISICO">Físico</option><option value="MICROBIOLOGICO">Microbiológico</option></select></label>
             <label><span>Profundidade de (cm)</span><input value={paramDepthFrom} onChange={(e) => setParamDepthFrom(e.target.value)} inputMode="decimal"/></label>
@@ -219,13 +223,14 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
             <label><span>Criticidade</span><select value={paramCriticality} onChange={(e) => setParamCriticality(e.target.value as typeof paramCriticality)}><option value="">Não definida</option><option value="BAIXA">Baixa</option><option value="MEDIA">Média</option><option value="ALTA">Alta</option></select></label>
             <label className="field-ops-wide"><span>Faixas de suficiência (JSON, ordenadas do menor para o maior — deixe vazio para "aguardando homologação")</span><textarea value={paramRangesText} onChange={(e) => setParamRangesText(e.target.value)} rows={3}/></label>
             <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "param" || !paramCode} onClick={() => void saveParameter()}>{busy === "param" ? "Salvando…" : "Salvar parâmetro"}</button></div>
+            </>}
             <div className="field-ops-wide field-ops-list">
               {parameters.map((parameter) => (
                 <div key={parameter.id} className="field-ops-list-row">
                   <span><strong>{parameter.parameterCode}</strong><small>{parameter.parameterCategory} · {parameter.depthFromCm ?? "?"}-{parameter.depthToCm ?? "?"}cm · {parameter.sufficiencyRanges ? `${parameter.sufficiencyRanges.length} faixas` : "aguardando homologação"}</small></span>
                   <span className="field-ops-list-actions">
                     <StatusBadge tone={STATUS_TONE[parameter.status]}>{parameter.status}</StatusBadge>
-                    <button className="button tiny" disabled={busy === `param-status-${parameter.id}` || !parameter.sufficiencyRanges} title={!parameter.sufficiencyRanges ? "Cadastre as faixas antes de homologar" : undefined} onClick={() => void toggleParameterStatus(parameter)}>{parameter.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>
+                    {canCurate && <button className="button tiny" disabled={busy === `param-status-${parameter.id}` || !parameter.sufficiencyRanges} title={!parameter.sufficiencyRanges ? "Cadastre as faixas antes de homologar" : undefined} onClick={() => void toggleParameterStatus(parameter)}>{parameter.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>}
                   </span>
                 </div>
               ))}
@@ -237,9 +242,11 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
 
       <details><summary><span><b>3</b><strong>Regiões técnicas</strong><small>Escopo de validade de perfis e regras</small></span><Icon name="chevron" size={16}/></summary>
         <div className="field-ops-form">
+          {canCurate && <>
           <label><span>Código</span><input value={newRegionCode} onChange={(e) => setNewRegionCode(e.target.value)} placeholder="RS-PLANALTO"/></label>
           <label><span>Nome</span><input value={newRegionName} onChange={(e) => setNewRegionName(e.target.value)} placeholder="Planalto Médio - RS"/></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "region" || !newRegionCode || !newRegionName} onClick={() => void createRegion()}>{busy === "region" ? "Salvando…" : "Cadastrar região"}</button></div>
+          </>}
           <div className="field-ops-wide field-ops-list">
             {regions.map((region) => <div key={region.id} className="field-ops-list-row"><span><strong>{region.name}</strong><small>{region.code}</small></span></div>)}
             {!regions.length && <p className="report-empty-note" style={{ padding: 12 }}>Nenhuma região técnica cadastrada ainda.</p>}
@@ -265,18 +272,20 @@ export function TechnicalLibraryManager({ referenceUnits }: { referenceUnits: Re
 
       <details><summary><span><b>6</b><strong>Fontes técnicas</strong><small>Base de conhecimento — só ACTIVE pode ser citada pela IA</small></span><Icon name="chevron" size={16}/></summary>
         <div className="field-ops-form">
+          {canCurate && <>
           <label><span>Título</span><input value={newSourceTitle} onChange={(e) => setNewSourceTitle(e.target.value)} placeholder="Manual de adubação e calagem RS/SC"/></label>
           <label><span>Instituição/autoria</span><input value={newSourceInstitution} onChange={(e) => setNewSourceInstitution(e.target.value)} placeholder="CQFS RS/SC"/></label>
           <label><span>Cultura</span><select value={newSourceCropProfileId} onChange={(e) => setNewSourceCropProfileId(e.target.value)}><option value="">Não vinculada</option>{profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           <label><span>Assunto</span><input value={newSourceSubject} onChange={(e) => setNewSourceSubject(e.target.value)} placeholder="Faixas de suficiência de fósforo"/></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "source" || !newSourceTitle} onClick={() => void createSource()}>{busy === "source" ? "Salvando…" : "Cadastrar fonte técnica"}</button></div>
+          </>}
           <div className="field-ops-wide field-ops-list">
             {sources.length ? sources.map((source) => (
               <div key={source.id} className="field-ops-list-row">
                 <span><strong>{source.title}</strong><small>{[source.institution, source.editionYear, source.cropProfileName, source.subject].filter(Boolean).join(" · ") || "sem detalhes adicionais"}</small></span>
                 <span className="field-ops-list-actions">
                   <StatusBadge tone={STATUS_TONE[source.status]}>{source.status}</StatusBadge>
-                  <button className="button tiny" disabled={busy === `source-status-${source.id}`} onClick={() => void toggleSourceStatus(source)}>{source.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>
+                  {canCurate && <button className="button tiny" disabled={busy === `source-status-${source.id}`} onClick={() => void toggleSourceStatus(source)}>{source.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>}
                 </span>
               </div>
             )) : <p className="report-empty-note" style={{ padding: 12 }}>Nenhuma fonte técnica cadastrada ainda. Enquanto não houver nenhuma ACTIVE, a IA não cita nenhuma referência bibliográfica.</p>}
