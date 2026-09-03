@@ -2,6 +2,11 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import type { ImportedPoint } from "@/domain/field-operations";
 
+/** Teto de pontos por ordem de coleta nesta versão — tanto para grid automático (PostGIS) quanto
+ *  para importação (CSV/GeoJSON). Arbitrário, sem embasamento agronômico; existe para conter o
+ *  tamanho de payload/UI enquanto não há paginação de pontos. Ver docs/V0.5_INTERRUPTED.md. */
+const MAX_POINTS_PER_ORDER = 2000;
+
 export class FieldOperationError extends Error {
   constructor(message: string, public status = 400, public details?: Record<string, unknown>) {
     super(message);
@@ -198,7 +203,7 @@ export async function createCollectionOrder(input: {
                   $5, $6, 'POSTGIS_GRID',
                   jsonb_build_object('strategy','SQUARE_GRID','gridAreaHa',$4::float8,'utmSrid',utm_srid)
            FROM normalized
-           WHERE seq <= 2000
+           WHERE seq <= ${MAX_POINTS_PER_ORDER}
            RETURNING 1
          ) SELECT count(*)::int AS count FROM inserted`,
         [input.tenantId, input.cropSeasonId, order.id, gridAreaHa, input.depthFromCm, input.depthToCm],
@@ -253,7 +258,7 @@ export async function importCollectionPoints(input: {
   replaceExisting?: boolean;
 }) {
   if (!input.points.length) throw new FieldOperationError("Nenhum ponto válido para importar.");
-  if (input.points.length > 2000) throw new FieldOperationError("Importação limitada a 2.000 pontos por ordem nesta versão.");
+  if (input.points.length > MAX_POINTS_PER_ORDER) throw new FieldOperationError(`Importação limitada a ${MAX_POINTS_PER_ORDER.toLocaleString("pt-BR")} pontos por ordem nesta versão.`);
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const orderContext = await client.query<{ depthFromCm: number; depthToCm: number; collectedPoints: number }>(
