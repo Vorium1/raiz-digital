@@ -1058,3 +1058,71 @@ para liberar interpolação espacial no mapa, aprovação final de cada interpre
 retorna `null`), como pedido explicitamente — a integração só deve começar depois de autorização
 explícita, e o pedido desta fase foi "mapa, relatório, alertas, dashboard e biblioteca técnica
 funcionando primeiro", o que está cumprido.
+
+## Camada de IA (agronômica e operacional) — sem provedor pago conectado
+
+Bloco seguinte: arquitetura completa da IA implementada e testada, **sem nenhuma chave de API, sem
+nenhum gasto**, como exigido explicitamente. Migration 013 criada.
+
+- **Pacote de evidências** (`src/lib/ai/evidence-package.ts`): monta, sempre no servidor após sessão/
+  RBAC/tenant, o único objeto que um provedor de IA agronômica recebe — nunca acesso a banco.
+- **Schema de resposta** (`agronomic-narrative-schema.ts`): valida a estrutura obrigatória antes de
+  qualquer texto chegar à tela.
+- **`AgronomicExplanationProvider`** redesenhado com esse contrato. Provedor padrão
+  (`localTemplateNarrativeProvider`) é um formatador determinístico — não um LLM real —, marcado
+  explicitamente com `isRealLanguageModel: false` em toda resposta/UI para nunca ser confundido com IA
+  generativa. Nunca classifica, nunca inventa severidade; sem regra homologada, só relata valor bruto e o
+  motivo do motor.
+- **Assistente RAIZ** (`operational-assistant-provider.ts` + `local-intent-assistant-provider.ts`):
+  reconhece as perguntas pedidas (coleta atrasada, pontos pendentes, laudos do mês, revisões, confiabilidade,
+  comparação de safra, resumo de propriedade, pendências) e responde com consulta real ao banco. Widget
+  flutuante (`AssistantRaizWidget`) disponível em toda a plataforma, com contexto de tela inferido para
+  `/dashboard` e `/analises/[id]` (talhão/propriedade ainda não têm página própria para inferência automática —
+  funciona igual, só sem o atalho de contexto).
+- **`ai_generations`** (auditoria + revisão): cada geração é uma linha imutável (provider/model/prompt
+  version/payloads/tokens/custo/timestamp); revisar (Aprovar/Solicitar ajuste/Rejeitar, com observação)
+  só muda status na mesma linha — nunca sobrescreve o conteúdo gerado.
+- **Biblioteca Técnica**: nova seção de fontes técnicas homologáveis (`technical_sources`) — só uma fonte
+  `ACTIVE` pode ser citada pela IA; campo reservado para busca semântica futura, sem implementar RAG ainda.
+- **Relatório por talhão**: nova seção "Síntese assistida por IA", visualmente separada de fatos e
+  classificação.
+- **Comparativo de provedores** (`docs/COMPARATIVO_PROVEDORES_IA.md`): Anthropic/OpenAI/Google comparados
+  por custo aproximado, qualidade em português técnico, janela de contexto e impacto arquitetural — nenhum
+  contratado ainda.
+
+### Catálogo de culturas extensível (não só soja)
+
+Atualização de escopo recebida durante este bloco: `crop_profiles` ganhou `crop_group` (VERAO/INVERNO),
+puramente organizacional — o motor determinístico nunca lê essa coluna, resolve sempre por
+`crop_profile_id` + parâmetro + profundidade + método, sem nenhum "if soja/if milho". Catálogo agora tem
+8 culturas: Soja, Milho, Arroz (verão), Trigo, Cevada, Aveia, Triticale, Canola (inverno) — todas DRAFT,
+nenhuma faixa técnica real cadastrada. O relatório de evolução histórica (`/relatorios/evolucao/[fieldId]`)
+ganhou uma visão explícita de rotação de culturas (ex.: "Soja 2025/26 → Trigo 2026 → Soja 2026/27"),
+usando o histórico de `crop_seasons` já existente — nenhuma safra é sobrescrita.
+
+### Achado real durante a validação: acúmulo de conexões em sessão de dev longa
+
+Ao validar sob carga concorrente, encontrei `EMAXCONNSESSION` (limite do pooler do Supabase). Causa raiz
+real, não só sintoma: o pool do `pg` em `src/lib/db.ts` era um singleton de módulo simples — em modo dev
+do Next.js, o Fast Refresh pode reavaliar esse módulo a cada alteração de arquivo, recriando o pool e
+vazando as conexões antigas (nunca fechadas) a cada hot-reload, ao longo de uma sessão de várias horas.
+Corrigido guardando a instância em `globalThis` em desenvolvimento (mesmo padrão documentado pelo Prisma
+para Next.js) — em produção (uma instância por processo) o comportamento não muda. Confirmado que a
+correção estrutural é a certa; a validação final ficou limitada pelo tempo de expiração das conexões
+"fantasmas" já abertas por processos anteriores encerrados à força durante o diagnóstico — não afeta o
+código entregue.
+
+### Validação
+
+`typecheck`, `build`, `npm run test:handoff` (agora com `test:ai-schema`) e testes de RLS entre as duas
+empresas reais do banco contra os endpoints novos (`/api/assistant`, `/api/analyses/[id]/agronomic-narrative`,
+`/api/technical-sources`) — sem vazamento, confirmado com pergunta real ao Assistente RAIZ como a empresa B
+("nenhuma pendência", isolado corretamente da empresa A). Fluxo completo (safra → homologar parâmetro →
+importar laudo → motor → gerar síntese → aprovar → perguntar ao assistente) testado de ponta a ponta contra
+o banco real, com limpeza total dos dados de teste ao final.
+
+### Pendências
+
+Nenhum provedor de IA real está conectado — aguardando autorização explícita e escolha de fornecedor
+(ver comparativo). Base de conhecimento (`technical_sources`) existe mas está vazia — nenhuma fonte real
+cadastrada ainda. Nenhuma faixa técnica homologada para nenhuma das 8 culturas.

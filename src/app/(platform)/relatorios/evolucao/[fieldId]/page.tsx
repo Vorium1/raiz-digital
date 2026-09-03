@@ -49,11 +49,17 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
           </div>
 
           <section className="report-section">
-            <h2>Safras do talhão</h2>
+            <h2>Rotação de culturas</h2>
             {seasons.length ? (
-              <table className="report-table"><thead><tr><th>Safra</th><th>Cultura</th></tr></thead>
-                <tbody>{seasons.map((season: any) => <tr key={season.id}><td>{season.seasonLabel}</td><td>{season.currentCrop || "não informada"}</td></tr>)}</tbody>
-              </table>
+              <>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
+                  {seasons.map((season: any) => `${season.currentCrop || "cultura não informada"} ${season.seasonLabel}`).join("  →  ")}
+                </p>
+                <table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
+                  <tbody>{seasons.map((season: any, index: number) => <tr key={season.id}><td>{index + 1}</td><td>{season.seasonLabel}</td><td>{season.currentCrop || "não informada"}</td></tr>)}</tbody>
+                </table>
+                <p className="report-empty-note" style={{ marginTop: 8 }}>Sequência real por ordem de cadastro — nenhuma safra é sobrescrita, cada sucessão fica rastreável para comparar evolução química, física e microbiológica entre ciclos.</p>
+              </>
             ) : <p className="report-empty-note">Nenhuma safra cadastrada para este talhão.</p>}
           </section>
 

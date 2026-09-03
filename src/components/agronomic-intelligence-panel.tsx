@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
+import { AgronomicNarrativePanel } from "@/components/agronomic-narrative-panel";
 
 type ParameterInterpretation =
   | { sampleCode: string; parameterCode: string; interpretable: true; classification: string; matchedParameter: { id: string; criticality: string | null } }
@@ -135,6 +136,8 @@ export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { 
               <ul>{history.map((item) => <li key={item.id}>#{item.revision} · {STATUS_LABEL[item.status] ?? item.status} · {new Date(item.createdAt).toLocaleString("pt-BR")}</li>)}</ul>
             </details>
           )}
+
+          <AgronomicNarrativePanel analysisId={analysisId} hasClassifications={Boolean(latest.structuredOutput?.interpretation.length)} canRun={canRun} canReview={canReview}/>
         </>
       )}
     </div>

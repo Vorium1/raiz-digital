@@ -9,6 +9,7 @@ import { RealFieldMap } from "@/components/real-field-map";
 import { StatusBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
+import { getLatestAgronomicNarrative } from "@/lib/repositories/ai-generations";
 import { analysisStatusMeta } from "@/domain/analysis-ui";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
@@ -18,7 +19,10 @@ export const metadata = { title: "Relatório de análise por talhão" };
 export default async function FieldAnalysisReportPage({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
   const session = await requirePlatformSession();
-  const data = await getFieldAnalysisReportData(session.tenantId, analysisId, session.userId);
+  const [data, narrative] = await Promise.all([
+    getFieldAnalysisReportData(session.tenantId, analysisId, session.userId),
+    getLatestAgronomicNarrative(session.tenantId, analysisId, session.userId),
+  ]);
   if (!data) notFound();
   const { analysis, points, results, interpretation } = data;
   const meta = analysisStatusMeta(analysis.status);
@@ -108,6 +112,18 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
               </table>
             ) : <p className="report-empty-note">Nenhuma interpretação calculada ainda — sem recomendação ou classificação inventada.</p>}
           </section>
+
+          {narrative && (
+            <section className="report-section narrative-report-section">
+              <h2>Síntese assistida por IA</h2>
+              <p className="report-empty-note" style={{ marginBottom: 10 }}>
+                {narrative.responsePayload.isRealLanguageModel ? `Gerado por ${narrative.provider}.` : "Gerado por motor de texto local (sem custo) — reformata os fatos e a classificação já calculados, não é um modelo de linguagem real ainda."}
+                {" "}Status: {narrative.status === "APPROVED" ? "aprovada por revisão profissional." : "aguardando ou pendente de revisão profissional — não é conclusão definitiva."}
+              </p>
+              <p style={{ fontSize: 12, fontWeight: 600 }}>{narrative.responsePayload.narrative.summary}</p>
+              {narrative.responsePayload.narrative.observations.length > 0 && <ul style={{ fontSize: 11, paddingLeft: 18 }}>{narrative.responsePayload.narrative.observations.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>}
+            </section>
+          )}
 
           {structured?.interpretation?.some((item) => !item.interpretable) && (
             <section className="report-section">

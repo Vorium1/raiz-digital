@@ -1,5 +1,6 @@
 import { MobileNavigation } from "@/components/mobile-navigation";
 import { Sidebar } from "@/components/sidebar";
+import { AssistantRaizWidget } from "@/components/assistant-raiz-widget";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { getDashboardSnapshot } from "@/lib/repositories/dashboard";
@@ -13,6 +14,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
       <Sidebar tenantName={session?.tenantName} userName={session?.name} role={session?.role} pendingAnalyses={pendingAnalyses} />
       <main id="conteudo-principal" className="main-content" tabIndex={-1}>{children}</main>
       <MobileNavigation role={session?.role} />
+      {session && <AssistantRaizWidget/>}
     </div>
   );
 }
