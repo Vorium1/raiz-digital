@@ -1202,3 +1202,66 @@ na mensagem do commit `c5a2ff3`.
 `npx playwright test` (as 3 suítes: `tenant-isolation`, `two-factor`, `field-operations-isolation`) —
 13/13 passando contra o banco de dev real, com limpeza confirmada ao final (exceto o resíduo descrito
 acima, que é intencional/documentado, não uma falha de limpeza).
+
+## Remediação de segurança e RBAC de campo — autorizada pelo diretor (2026-09-03)
+
+Continuação do achado de segurança do bloco anterior, agora com autorização explícita do diretor pra
+agir. Nada aqui envolveu decisão agronômica, IA paga ou gasto.
+
+**Rotação das senhas expostas** — as 3 senhas reais que estavam em texto puro no histórico do git
+(`admin@raiz.local`, `e2e-tenant-b@raiz.local`, `e2e-2fa@raiz.local`) foram trocadas por senhas novas,
+fortes e aleatórias. Feito sem nenhuma escrita direta no banco: usei o próprio fluxo de "esqueci minha
+senha" do app (pedido → token aparece no log do servidor porque `EMAIL_PROVIDER=console` em dev →
+redefinir senha), o mesmo caminho que um usuário real percorreria. Confirmado depois: as 3 senhas
+antigas agora retornam 401 (login rejeitado — de fato invalidadas), as 3 contas continuam funcionando
+normalmente com a senha nova. Aproveitei o mesmo mecanismo pra definir a primeira senha das 4 contas
+`rbac-*` (nunca tiveram senha conhecida nesta sessão). Script reutilizável:
+`scripts/rotate-e2e-passwords.mjs`. Senhas novas guardadas só em `.env.e2e.local` (raiz do projeto,
+coberto por `.env*` no `.gitignore`, nunca commitado, nunca impresso no terminal nem mostrado ao
+diretor — pedido explícito dele).
+
+**Testes de RBAC por papel** — última pendência de `docs/V0.5_INTERRUPTED.md` sobre operações de
+campo. Nova suíte `e2e/field-operations-rbac.spec.ts` (5 testes): confirma que os 4 papéis sempre
+conseguem ler (`GET /api/collection-orders`, `GET map-layer`), que `AGRONOMIST`/`FIELD_TECH`
+conseguem criar, importar pontos, coletar e cancelar ordem, e que `COMMERCIAL`/`VIEWER` recebem 403 em
+toda tentativa de escrita — inclusive contra uma ordem real já existente de outro papel, não só a
+própria. Suíte completa (4 arquivos, 19 testes) rodada em conjunto, com workers paralelos: 19/19.
+
+**Varredura completa do histórico do git** — usando `git log --all -G'<regex>'` (busca por commits que
+adicionaram ou removeram uma linha correspondente, em toda a história, não só no estado atual), cobri
+sistematicamente: senha em texto puro, `DATABASE_URL`/string de conexão com credencial embutida,
+token/API key/secret genérico, string no formato JWT, menções a `supabase.co`/`service_role`, chave de
+provedor de e-mail (SendGrid/Resend/SMTP), token Vercel, `AUTH_SECRET`/token Mercado Pago com valor
+real, e qualquer arquivo `.env*` ou com nome de credencial (`.pem`, `.key`, `id_rsa` etc.) já commitado
+em qualquer momento, mesmo que apagado depois. **Resultado: nenhum outro segredo real encontrado.** A
+única exposição real confirmada é a já conhecida e corrigida (as 3 senhas, introduzidas no commit
+`75a2807` em 2026-09-02T15:59:43-03:00 e removidas do código em `5c5eb13` às 22:54:53-03:00 do mesmo
+dia — ~7h de exposição, assumindo o repositório já era público nesse intervalo, o que não dá pra
+confirmar com certeza retroativamente pela API do GitHub). O `DATABASE_URL` que aparece no primeiro
+commit é só o placeholder de `.env.example` (`raiz:raiz@localhost`, credencial local de Docker, nunca
+alcançável de fora da máquina do desenvolvedor) — não é uma exposição real.
+
+**Visibilidade do repositório** — não consegui trocar de público pra privado diretamente: não há `gh`
+(GitHub CLI) instalado neste ambiente nem token do GitHub disponível. Passo a passo pro diretor fazer:
+github.com/Vorium1/raiz-digital → aba **Settings** → rolar até **Danger Zone** (final da página) →
+**Change repository visibility** → **Change to private** → digitar o nome do repositório pra confirmar.
+
+**Limpeza de resíduo de teste** — autorizada explicitamente ("remova, se for seguro"). Antes de apagar
+qualquer coisa, confirmei por leitura que as 27 ordens de coleta de teste acumuladas durante a noite
+(código `OC-260903-*`, 2-3 pontos cada, `sampling_strategy = 'IMPORTED'`) não tinham nenhum
+`lab_samples` nem `analyses` vinculado — zero risco de apagar dado de laudo real. As duas ordens
+originais de 81 pontos (`OC-260902-*`, as únicas com `sampling_strategy = 'GRID'`) foram preservadas,
+nunca fizeram parte da lista de apagar. Removidas 27 ordens e 77 pontos associados. **`audit_events`
+foi deixado intacto de propósito**: `entity_id` ali não tem chave estrangeira (é referência solta por
+design, para sobreviver à exclusão da entidade original) — apagar registro de auditoria, mesmo de
+dado de teste, seria destruir histórico, não limpeza. Confirmado depois: só as 2 ordens reais
+permanecem na lista, suíte e2e completa revalidada (19/19) após a limpeza.
+
+### Pendências que ficam para o diretor
+
+- Trocar a visibilidade do repositório pra privado (passo a passo acima).
+- Confirmar/decidir se aceita o risco residual das ~7h de exposição das 3 senhas antigas (já
+  invalidadas; risco só existiria se alguém tivesse copiado a senha *durante* essa janela e ainda
+  assim só dá acesso a contas de teste do ambiente de desenvolvimento, nunca produção).
+- Confirmação do banco usado por Preview vs. Produção no Vercel (Settings → Environment Variables) —
+  segue pendente desde o bloco anterior.
