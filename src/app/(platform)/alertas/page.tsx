@@ -5,6 +5,7 @@ import { EmptyState, PageIntro } from "@/components/ui";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listOperationalAlerts, type AlertCriticality } from "@/lib/repositories/alerts";
+import { demoAlerts } from "@/lib/demo-data";
 
 export const metadata = { title: "Alertas" };
 
@@ -12,7 +13,26 @@ const CRITICALITY_LABEL: Record<AlertCriticality, string> = { ALTA: "Alta", MEDI
 
 export default async function AlertsPage() {
   if (!isDatabaseMode()) {
-    return <><Topbar eyebrow="Operação · demonstração" title="Alertas"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo.</span></div><PageIntro title="Central operacional" description="Coleta atrasada, laudo pendente, revisão aguardando, inconsistência de dados — tudo num só lugar."/><div className="data-card"><EmptyState icon="map" title="Disponível no modo com banco real" description="Conecte DATA_MODE=database para ver os alertas reais desta operação."/></div></div></>;
+    const byCriticality: Record<AlertCriticality, typeof demoAlerts[number][]> = { ALTA: [], MEDIA: [], BAIXA: [] };
+    for (const alert of demoAlerts) byCriticality[alert.criticality].push(alert);
+    return <><Topbar eyebrow="Operação · demonstração" title="Alertas"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplos ilustrativos, não são alertas reais.</span></div><PageIntro title="Central operacional" description="Coleta atrasada, laudo pendente, revisão aguardando, inconsistência de dados — tudo num só lugar."/>
+      <div className="alerts-summary">
+        <div className="alerts-summary-card alta"><b>{byCriticality.ALTA.length}</b><span>criticidade alta</span></div>
+        <div className="alerts-summary-card media"><b>{byCriticality.MEDIA.length}</b><span>criticidade média</span></div>
+        <div className="alerts-summary-card baixa"><b>{byCriticality.BAIXA.length}</b><span>criticidade baixa</span></div>
+      </div>
+      {(["ALTA", "MEDIA", "BAIXA"] as const).map((level) => byCriticality[level].length > 0 && (
+        <section className="card" style={{ marginBottom: 16 }} key={level}>
+          <div className="field-ops-section-head compact"><div><span className="eyebrow">{CRITICALITY_LABEL[level].toUpperCase()}</span><h2>{byCriticality[level].length} alerta(s)</h2></div></div>
+          {byCriticality[level].map((alert) => (
+            <div key={alert.id} className="alert-row">
+              <span className={`alert-dot ${level.toLowerCase()}`}/>
+              <span className="alert-row-body"><strong>{alert.title}</strong><small>{alert.category} · {alert.description}</small></span>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div></>;
   }
   const session = await requirePlatformSession();
   const alerts = await listOperationalAlerts(session.tenantId, session.userId);

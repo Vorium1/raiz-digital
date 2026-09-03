@@ -5,6 +5,7 @@ import { EmptyState, PageIntro, StatusBadge } from "@/components/ui";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listAllInterpretations } from "@/lib/repositories/interpretations";
+import { demoInterpretationsLog } from "@/lib/demo-data";
 
 export const metadata = { title: "Inteligência Agronômica" };
 
@@ -19,7 +20,25 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "review" | 
 
 export default async function AgronomicIntelligenceHubPage() {
   if (!isDatabaseMode()) {
-    return <><Topbar eyebrow="Inteligência · demonstração" title="Inteligência Agronômica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo.</span></div><PageIntro title="Registro de interpretações" description="Toda vez que o motor determinístico roda, fica registrado aqui — com regra usada, versão e status de revisão."/></div></>;
+    return <><Topbar eyebrow="Inteligência · demonstração" title="Inteligência Agronômica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplos ilustrativos.</span></div><PageIntro title="Registro de interpretações" description="Toda vez que o motor determinístico roda, fica registrado aqui — com regra usada, versão e status de revisão."/>
+      <section className="card"><table className="report-table">
+        <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
+        <tbody>{demoInterpretationsLog.map((item) => {
+          const meta = STATUS_META[item.status] ?? { label: item.status, tone: "waiting" as const };
+          return (
+            <tr key={`${item.code}-${item.revision}`}>
+              <td><Link href={`/analises/${item.code}`}>{item.code}</Link> · rev {item.revision}</td>
+              <td>{item.client} · {item.field}</td>
+              <td>{item.season} · {item.crop}</td>
+              <td>{item.cropProfile}</td>
+              <td>{item.confidence}</td>
+              <td><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></td>
+              <td>{new Date(item.createdAt).toLocaleString("pt-BR")}</td>
+            </tr>
+          );
+        })}</tbody>
+      </table></section>
+    </div></>;
   }
   const session = await requirePlatformSession();
   const interpretations = await listAllInterpretations(session.tenantId, session.userId);

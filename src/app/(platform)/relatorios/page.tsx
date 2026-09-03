@@ -8,13 +8,26 @@ import { listAnalyses } from "@/lib/repositories/analyses";
 import { listCollectionOrders } from "@/lib/repositories/collections";
 import { listAgronomicContext } from "@/lib/repositories/catalog";
 import { listPublishedReports } from "@/lib/repositories/reports";
+import { analyses as demoAnalysesList } from "@/lib/demo-data";
 
 export const metadata = { title: "Relatórios" };
 
 export default async function ReportsPage() {
   const database = isDatabaseMode();
   if (!database) {
-    return <><Topbar eyebrow="Entrega · demonstração" title="Relatórios"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo.</span></div><PageIntro title="Documentos técnicos publicados" description="Laudos oficiais com mapas, memória técnica, assinatura do responsável e QR Code de validação."/><div className="data-card"><EmptyState icon="file" title="Nenhum relatório nesta demonstração" description="Quando uma interpretação for aprovada, a versão oficial aparecerá aqui com histórico e link seguro para envio." action={{ href: "/analises", label: "Ver análises" }}/></div></div></>;
+    const published = demoAnalysesList.filter((item) => item.status === "Aprovada");
+    return <><Topbar eyebrow="Entrega · demonstração" title="Relatórios"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo.</span></div><PageIntro title="Documentos técnicos publicados" description="Laudos oficiais com mapas, memória técnica, assinatura do responsável e QR Code de validação."/>
+      <section className="card" style={{ marginBottom: 18 }}>
+        <div className="field-ops-section-head compact"><div><span className="eyebrow">PUBLICADOS · EXEMPLO</span><h2>Documentos publicados ({published.length})</h2></div></div>
+        {published.map((item) => (
+          <Link key={item.id} href={`/analises/${item.id}`} className="report-list-item" style={{ padding: "12px 22px" }}>
+            <span><strong>{item.id} · {item.area}</strong><small>{item.client} · publicado por Agrônomo responsável (exemplo) · assinatura digital + QR Code de validação</small></span>
+            <Icon name="arrow" size={15}/>
+          </Link>
+        ))}
+      </section>
+      <div className="data-card"><EmptyState icon="file" title="Os demais relatórios aparecem aqui após aprovação" description="Publicado só a partir de interpretação já revisada e aprovada pelo profissional responsável — nunca automaticamente." action={{ href: "/analises", label: "Ver análises" }}/></div>
+    </div></>;
   }
 
   const session = await requirePlatformSession();
