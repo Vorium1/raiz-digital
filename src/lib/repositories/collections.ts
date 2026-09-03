@@ -94,10 +94,9 @@ export async function listCollectionOrders(tenantId: string, userId?: string, cr
                'notes', sp.notes,
                'labResultCount', (
                  SELECT count(*)::int
-                 FROM analysis_import_rows air
-                 JOIN analysis_imports ai ON ai.tenant_id = air.tenant_id AND ai.id = air.import_id
-                 JOIN analyses la ON la.tenant_id = ai.tenant_id AND la.id = ai.analysis_id
-                 WHERE la.tenant_id = sp.tenant_id AND la.collection_order_id = sp.collection_order_id AND air.sample_code = sp.code
+                 FROM lab_results lr
+                 JOIN lab_samples ls ON ls.tenant_id = lr.tenant_id AND ls.id = lr.lab_sample_id
+                 WHERE ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
                )
              ) ORDER BY coalesce(sp.sequence, 2147483647), sp.code
            ) FILTER (WHERE sp.id IS NOT NULL),
