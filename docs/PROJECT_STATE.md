@@ -1351,3 +1351,37 @@ mesma trava de segurança bloqueia uma IA de alterar suas próprias permissões,
 **Testes**: `npm run typecheck` e `npm run build` limpos. As 6 telas verificadas visualmente (desktop
 1440px e mobile 390px) contra o servidor real em `DATA_MODE=demo`, incluindo antes/depois do fix de
 overflow via inspeção real do DOM (não só olhando print).
+
+## Histórico de área e condição física na tela de safra (2026-09-03)
+
+A partir de uma estruturação conjunta com o Rafael Cabeda (Cabeda Pesquisa) sobre como aumentar a
+assertividade das recomendações, a migration `015_area_history_and_input_audit.sql` (só estrutura, sem
+nenhum coeficiente agronômico inventado) ganhou a tela de preenchimento: o agrônomo já pode registrar em
+campo, no cadastro/edição de safra, os 7 campos novos de `crop_seasons` — próximo cultivar, nível
+tecnológico pretendido, nível de compactação do solo, área de pisoteio/pecuária, área de cabeceira, se a
+área é de abertura e há quantos anos é cultivada — mesmo antes de existir qualquer regra de cálculo
+homologada que os use. Isso evita reentrada de dado depois: quando os coeficientes reais chegarem, o
+histórico já vai estar sendo capturado.
+
+Alcance desta mudança: `src/lib/repositories/catalog.ts` (`listAgronomicContext`, `createCropSeason`,
+`updateCropSeason` — SELECT/INSERT/UPDATE e tipos TypeScript), as duas rotas de API de safra (validação de
+`technologyLevel`/`soilCompactionLevel` contra os valores aceitos pelo `CHECK` do banco, número
+não-negativo para as áreas em hectare, inteiro não-negativo para anos de cultivo) e
+`field-operations-manager.tsx` (formulário de criação e a linha de edição inline, ambos já preparados
+para `flex-wrap`, sem precisar redesenhar o layout).
+
+Ainda não incluídos neste bloco (ficam para depois, também dependentes de homologação do Rafael): tela de
+histórico de produtividade real por safra (`field_yield_history`, tabela distinta da meta `yield_goal`) e
+a tela de comparação recomendado × usado de insumo (`input_recommendations`/`input_applications`).
+
+**Testes**: `npm run typecheck`, `npm run build` e `npm run check:migrations` limpos. Testado end-to-end
+contra o banco real de desenvolvimento (Supabase) via a própria API da aplicação — POST e PATCH de safra
+com os 7 campos, incluindo um caso de valores inválidos (nível tecnológico fora do enum, área negativa)
+para confirmar que a API descarta e não só o banco; dado de teste removido depois. Verificado visualmente
+via CDP (Edge headless) em desktop 1440px e mobile 390px, formulário de criação e linha de edição, sem
+overflow horizontal em nenhum dos dois.
+
+Publicado em `develop` (commit `7d64615`). Merge para `main` ainda pendente nesta sessão: o classificador
+de segurança do modo automático bloqueou o `git checkout main && git merge develop`, mesmo com a
+autorização de publicação recorrente já concedida pelo diretor — mesma trava já documentada na seção
+anterior. Fica para o diretor rodar localmente ou aprovar via prompt de permissão.
