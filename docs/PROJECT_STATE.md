@@ -1553,3 +1553,29 @@ tudo excluído depois. Painel verificado visualmente em desktop e mobile, sem ov
 Publicado em `develop`. Amanhã, com a chave da Anthropic, falta: testar `claude-prescription-provider.ts`
 contra a API real e corrigir os 3 pontos incertos citados acima; e então validar uma prescrição completa,
 ponta a ponta, com um caso real.
+
+## Comparação recomendado × usado, com aviso automático (2026-09-03)
+
+Fecha o pedido original da estruturação com o Rafael, que ficava pendente desde que `input_recommendations`
+e `input_applications` foram criadas (migration 015): agora que a prescrição por IA aprovada finalmente
+alimenta `input_recommendations` de verdade (bloco anterior), dá para comparar cada insumo recomendado com
+o que realmente foi aplicado — e avisar automaticamente quando ficou abaixo do recomendado, exatamente como
+pedido desde a primeira conversa ("se for menos deve gerar um aviso").
+
+`getInputComparisonForAnalysis` (`src/lib/repositories/catalog.ts`) pega a última recomendação de cada
+insumo e soma as aplicações **na mesma unidade** — de propósito nunca converte entre unidades diferentes
+(ex.: "2 t/ha" vs "300 kg"), porque isso seria inventar uma precisão de conversão que não existe; quando as
+unidades divergem, o status vira "unidade diferente — confira manualmente" em vez de arriscar uma conta
+errada. Cinco estados possíveis: conforme (±5%), abaixo do recomendado, acima do recomendado, unidade
+diferente, ainda não aplicado. Rota `src/app/api/analyses/[id]/input-comparison/route.ts` (só leitura) e
+painel novo `src/components/input-comparison-panel.tsx`, encaixado na tela de uma análise logo acima do
+registro de aplicação de insumo, com um aviso destacado quando há subaplicação.
+
+**Testado de verdade** contra o banco de dev: criei uma recomendação e uma aplicação abaixo dela (2 t/ha
+aplicado de 2,5 t/ha recomendado) e confirmei o status "abaixo do recomendado"; uma aplicação dentro da
+faixa (status "conforme"); uma aplicação na unidade errada de propósito (confirmei que NÃO tentou comparar,
+virou "unidade diferente"); e um insumo recomendado sem nenhuma aplicação ainda (status "ainda não
+aplicado"). Os 4 casos bateram exatamente com o esperado. `npm run typecheck` e `npm run build` limpos.
+Verificado visualmente em desktop e mobile via CDP, com os 4 estados visíveis ao mesmo tempo, sem overflow.
+
+Publicado em `develop`.

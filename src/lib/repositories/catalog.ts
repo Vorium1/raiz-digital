@@ -459,3 +459,52 @@ export async function deleteInputApplication(input: { tenantId: string; userId: 
     return deleted;
   });
 }
+
+/**
+ * Compara, por insumo, a última recomendação (imutável, gerada por
+ * prescrição de IA aprovada) com o total realmente aplicado. Só soma
+ * aplicações na MESMA unidade da recomendação -- comparar "2 t/ha" com
+ * "300 kg" sem converter seria inventar precisão que não existe. Quando há
+ * aplicação só em outra unidade, o status vira UNIT_MISMATCH em vez de
+ * tentar adivinhar.
+ */
+export async function getInputComparisonForAnalysis(tenantId: string, analysisId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `WITH latest_recommendations AS (
+         SELECT DISTINCT ON (input_type) input_type, quantity, unit, calculation_source, calculated_at
+         FROM input_recommendations WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid
+         ORDER BY input_type, calculated_at DESC
+       ),
+       applied_totals AS (
+         SELECT input_type, unit, SUM(quantity) AS total_quantity
+         FROM input_applications WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid
+         GROUP BY input_type, unit
+       ),
+       any_applied AS (
+         SELECT DISTINCT input_type FROM input_applications WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid
+       )
+       SELECT r.input_type AS "inputType", r.quantity::float8 AS "recommendedQuantity", r.unit AS "recommendedUnit",
+              r.calculation_source AS "calculationSource", r.calculated_at::text AS "recommendedAt",
+              a.total_quantity::float8 AS "appliedQuantity", a.unit AS "appliedUnit",
+              (aa.input_type IS NOT NULL) AS "hasAnyApplication"
+       FROM latest_recommendations r
+       LEFT JOIN applied_totals a ON a.input_type = r.input_type AND a.unit = r.unit
+       LEFT JOIN any_applied aa ON aa.input_type = r.input_type
+       ORDER BY r.input_type`,
+      [tenantId, analysisId],
+    );
+    return result.rows.map((row) => {
+      let status: "OK" | "UNDER" | "OVER" | "UNIT_MISMATCH" | "NOT_APPLIED";
+      if (row.appliedQuantity != null) {
+        const ratio = row.appliedQuantity / row.recommendedQuantity;
+        status = ratio < 0.95 ? "UNDER" : ratio > 1.1 ? "OVER" : "OK";
+      } else if (row.hasAnyApplication) {
+        status = "UNIT_MISMATCH";
+      } else {
+        status = "NOT_APPLIED";
+      }
+      return { ...row, status };
+    });
+  });
+}
