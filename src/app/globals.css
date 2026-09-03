@@ -616,6 +616,13 @@ button { color: inherit; }
 .report-toolbar{align-items:center;display:flex;justify-content:space-between;margin-bottom:16px}
 .report-header{align-items:flex-start;border-bottom:2px solid var(--forest);display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:16px}
 .report-header .brand-logo{font-size:10px;height:30px}
+.report-brand{align-items:center;display:inline-flex;gap:10px}
+.report-brand-logo{height:34px;object-fit:contain;width:auto}
+.report-brand-name{color:var(--ink);font-family:var(--font-heading);font-size:15px;letter-spacing:-.02em}
+.report-brand-signature{margin-top:36px;max-width:260px}
+.report-brand-signature-line{border-top:1px solid var(--ink);margin-bottom:8px;width:100%}
+.report-brand-signature strong{display:block;font-size:11px}
+.report-brand-signature small{color:var(--muted);display:block;font-size:9px;margin-top:2px}
 .report-header-meta{text-align:right}
 .report-header-meta span{color:var(--muted);display:block;font-size:9px;letter-spacing:.04em;text-transform:uppercase}
 .report-header-meta strong{display:block;font-family:var(--font-heading);font-size:13px;margin-top:2px}

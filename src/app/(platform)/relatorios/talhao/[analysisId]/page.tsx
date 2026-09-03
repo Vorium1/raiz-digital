@@ -1,4 +1,3 @@
-import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
@@ -6,10 +5,12 @@ import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { PublishReportButton } from "@/components/publish-report-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { StatusBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
 import { getLatestAgronomicNarrative } from "@/lib/repositories/ai-generations";
+import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 import { analysisStatusMeta } from "@/domain/analysis-ui";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
@@ -19,9 +20,10 @@ export const metadata = { title: "Relatório de análise por talhão" };
 export default async function FieldAnalysisReportPage({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
   const session = await requirePlatformSession();
-  const [data, narrative] = await Promise.all([
+  const [data, narrative, branding] = await Promise.all([
     getFieldAnalysisReportData(session.tenantId, analysisId, session.userId),
     getLatestAgronomicNarrative(session.tenantId, analysisId, session.userId),
+    getTenantBranding(session.tenantId),
   ]);
   if (!data) notFound();
   const { analysis, points, results, interpretation } = data;
@@ -45,7 +47,7 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
 
         <article className="report-doc">
           <header className="report-header">
-            <BrandLogo variant="light" />
+            <ReportBrand branding={branding} />
             <div className="report-header-meta">
               <span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{analysis.code}</strong>
@@ -139,6 +141,7 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
             <div><span>Responsável técnico</span>{interpretation?.approvedByName || interpretation?.reviewedByName || "—"}</div>
             <div><span>Base técnica</span>{interpretation?.cropProfileName || "—"}</div>
           </div>
+          <ReportSignature branding={branding} />
         </article>
       </div>
     </>

@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BrandLogo } from "@/components/brand-logo";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
+import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPropertyExecutiveReportData } from "@/lib/repositories/reports";
+import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 
 export const metadata = { title: "Relatório executivo da propriedade" };
 
 export default async function PropertyExecutiveReportPage({ params }: { params: Promise<{ propertyId: string }> }) {
   const { propertyId } = await params;
   const session = await requirePlatformSession();
-  const data = await getPropertyExecutiveReportData(session.tenantId, propertyId, session.userId);
+  const [data, branding] = await Promise.all([
+    getPropertyExecutiveReportData(session.tenantId, propertyId, session.userId),
+    getTenantBranding(session.tenantId),
+  ]);
   if (!data) notFound();
   const { property, fields, analysesSummary } = data;
   const totalArea = fields.reduce((sum: number, field: any) => sum + Number(field.areaHa), 0);
@@ -27,7 +31,7 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
         <div className="report-toolbar no-print"><span className="report-empty-note">Visão consolidada real da carteira desta propriedade.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
-            <BrandLogo variant="light" />
+            <ReportBrand branding={branding} />
             <div className="report-header-meta"><span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong></div>
           </header>
           <h1 className="report-title">Relatório executivo da propriedade</h1>
@@ -55,6 +59,7 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
               </table>
             ) : <p className="report-empty-note">Nenhum talhão cadastrado nesta propriedade.</p>}
           </section>
+          <ReportSignature branding={branding} />
         </article>
       </div>
     </>

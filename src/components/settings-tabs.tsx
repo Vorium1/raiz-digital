@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui";
 import { roleLabel } from "@/lib/role-labels";
 import { auditActionLabel, auditEntityLabel } from "@/lib/audit-labels";
 import { formatRelativeOrDate } from "@/domain/analysis-ui";
+import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 
 type Member = { id: string; name: string; email: string; role: string; active: boolean; lastLoginAt: string | null };
 type Laboratory = { id: string; name: string; taxId: string | null; active: boolean };
@@ -34,10 +35,9 @@ type TabKey = (typeof tabs)[number]["key"];
 const notImplementedCopy: Partial<Record<TabKey, string>> = {
   library: "A biblioteca de laboratórios e métodos homologados entra na Fase C do roadmap.",
   billing: "A cobrança via Mercado Pago fica desativada até a homologação do webhook (ver Financeiro).",
-  email: "Modelos de e-mail e envio automático de relatório ainda não existem.",
 };
 
-export function SettingsTabs({ members: initialMembers, laboratories: initialLaboratories, auditEvents, canManageTeam, canManageLabs, twoFactorEnabled: initialTwoFactorEnabled, currentUserId }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; canManageLabs: boolean; twoFactorEnabled: boolean; currentUserId: string }) {
+export function SettingsTabs({ members: initialMembers, laboratories: initialLaboratories, auditEvents, canManageTeam, canManageLabs, twoFactorEnabled: initialTwoFactorEnabled, currentUserId, branding: initialBranding, canManageBranding }: { members: Member[]; laboratories: Laboratory[]; auditEvents: AuditEvent[]; canManageTeam: boolean; canManageLabs: boolean; twoFactorEnabled: boolean; currentUserId: string; branding: TenantBranding; canManageBranding: boolean }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("team");
   const [members, setMembers] = useState(initialMembers);
@@ -253,6 +253,38 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
     }
   }
 
+  const [branding, setBranding] = useState(initialBranding);
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [brandingError, setBrandingError] = useState("");
+  const [brandingSaved, setBrandingSaved] = useState(false);
+  const [responsibleNameDraft, setResponsibleNameDraft] = useState(initialBranding.responsibleName ?? "");
+  const [responsibleRegistrationDraft, setResponsibleRegistrationDraft] = useState(initialBranding.responsibleRegistration ?? "");
+
+  async function patchBranding(input: { logoDataUrl?: string | null; responsibleName?: string | null; responsibleRegistration?: string | null }) {
+    setBrandingSaving(true);
+    setBrandingError("");
+    setBrandingSaved(false);
+    try {
+      const response = await fetch("/api/tenant-branding", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível salvar.");
+      setBranding(payload.branding as TenantBranding);
+      setBrandingSaved(true);
+    } catch (error) {
+      setBrandingError(error instanceof Error ? error.message : "Falha ao salvar a marca dos relatórios.");
+    } finally {
+      setBrandingSaving(false);
+    }
+  }
+
+  function handleLogoFile(file: File) {
+    if (file.size > 150_000) { setBrandingError("Logo muito grande. Envie um arquivo de até 150 KB (PNG, JPG, WEBP ou SVG)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => { void patchBranding({ logoDataUrl: reader.result as string }); };
+    reader.onerror = () => setBrandingError("Não foi possível ler o arquivo.");
+    reader.readAsDataURL(file);
+  }
+
   return (
     <div className="settings-grid">
       <section className="card settings-menu">
@@ -466,7 +498,61 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
           </>
         )}
 
-        {(tab === "library" || tab === "billing" || tab === "email") && (
+        {tab === "email" && (
+          <>
+            <div className="card-header"><div><span className="eyebrow">MARCA DO RELATÓRIO</span><h2>Como o relatório sai pro produtor</h2></div></div>
+            <div style={{ padding: "0 22px 22px" }}>
+              <p className="report-empty-note" style={{ margin: "0 0 16px" }}>
+                Cada relatório em PDF sai com este logo e este responsável técnico, no lugar da marca RAIZ Digital —
+                é a sua empresa entregando, não a nossa. Sem logo configurado, o relatório usa o padrão RAIZ Digital.
+              </p>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+                <div style={{ width: 96, height: 96, border: "1px dashed var(--line)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#fafbfa" }}>
+                  {branding.logoDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={branding.logoDataUrl} alt={branding.displayName} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                  ) : <Icon name="file" size={22} />}
+                </div>
+                {canManageBranding ? (
+                  <div>
+                    <label className="button secondary" style={{ cursor: "pointer" }}>
+                      <Icon name="upload" size={14} />{branding.logoDataUrl ? "Trocar logo" : "Enviar logo"}
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: "none" }}
+                        onChange={(event) => { const file = event.target.files?.[0]; if (file) handleLogoFile(file); event.target.value = ""; }} />
+                    </label>
+                    {branding.logoDataUrl && (
+                      <button type="button" className="button ghost" style={{ marginLeft: 8 }} disabled={brandingSaving} onClick={() => void patchBranding({ logoDataUrl: null })}>Remover</button>
+                    )}
+                    <small style={{ display: "block", color: "var(--muted)", fontSize: 8, marginTop: 6 }}>PNG, JPG, WEBP ou SVG · até 150 KB</small>
+                  </div>
+                ) : <small style={{ color: "var(--muted)", fontSize: 9 }}>Só administradores podem alterar a marca dos relatórios.</small>}
+              </div>
+
+              {canManageBranding && (
+                <div className="form-grid" style={{ maxWidth: 420 }}>
+                  <label><span>Responsável técnico (assina o relatório)</span>
+                    <input value={responsibleNameDraft} onChange={(event) => setResponsibleNameDraft(event.target.value)} placeholder="Nome do agrônomo responsável" />
+                  </label>
+                  <label><span>Registro profissional</span>
+                    <input value={responsibleRegistrationDraft} onChange={(event) => setResponsibleRegistrationDraft(event.target.value)} placeholder="Ex.: CREA-RS 123456" />
+                  </label>
+                  <button type="button" className="button primary full" disabled={brandingSaving}
+                    onClick={() => void patchBranding({ responsibleName: responsibleNameDraft.trim() || null, responsibleRegistration: responsibleRegistrationDraft.trim() || null })}>
+                    {brandingSaving ? "Salvando…" : "Salvar responsável"}
+                  </button>
+                </div>
+              )}
+
+              {brandingError && <div className="import-message danger" style={{ marginTop: 14 }}><Icon name="warning" /><div><strong>Não foi possível salvar</strong><small>{brandingError}</small></div></div>}
+              {brandingSaved && !brandingError && <div className="import-message success" style={{ marginTop: 14 }}><Icon name="check" /><div><strong>Salvo</strong><small>Os próximos relatórios já saem com essa marca.</small></div></div>}
+            </div>
+
+            <div className="empty-state"><Icon name="clock" /><strong>Envio automático de e-mail ainda não existe</strong><small>Por enquanto, o relatório é baixado/impresso e enviado manualmente pela sua empresa.</small></div>
+          </>
+        )}
+
+        {(tab === "library" || tab === "billing") && (
           <div className="empty-state"><Icon name="clock" /><strong>Ainda não implementado</strong><small>{notImplementedCopy[tab]}</small></div>
         )}
       </section>

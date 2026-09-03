@@ -7,6 +7,7 @@ import { listTenantMembers } from "@/lib/repositories/team";
 import { listAllLaboratories } from "@/lib/repositories/catalog";
 import { listAuditEvents } from "@/lib/repositories/audit";
 import { getTwoFactorStatus } from "@/lib/auth/two-factor";
+import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 import { SettingsTabs } from "@/components/settings-tabs";
 
 export const metadata = { title: "Configurações" };
@@ -14,16 +15,18 @@ export const metadata = { title: "Configurações" };
 export default async function SettingsPage() {
   if (!isDatabaseMode()) return <DemoSettings/>;
   const session = await requirePlatformSession();
-  const [members, laboratories, auditEvents, twoFactor] = await Promise.all([
+  const [members, laboratories, auditEvents, twoFactor, branding] = await Promise.all([
     listTenantMembers(session.tenantId, session.userId),
     listAllLaboratories(session.tenantId, session.userId),
     listAuditEvents(session.tenantId, session.userId),
     getTwoFactorStatus(session.userId),
+    getTenantBranding(session.tenantId),
   ]);
   const canManageLabs = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]).has(session.role);
+  const canManageTeam = new Set(["SUPER_ADMIN", "TENANT_ADMIN"]).has(session.role);
   return <><Topbar eyebrow="Administração" title="Configurações"/><div className="content-wrap">
     <PageIntro title="Governança da plataforma" description={`Empresa ativa: ${session.tenantName}. Usuários, perfis e dados operacionais permanecem isolados pelo tenant da sessão.`}/>
-    <SettingsTabs members={members as any} laboratories={laboratories as any} auditEvents={auditEvents as any} canManageTeam={new Set(["SUPER_ADMIN","TENANT_ADMIN"]).has(session.role)} canManageLabs={canManageLabs} twoFactorEnabled={twoFactor.enabled} currentUserId={session.userId}/>
+    <SettingsTabs members={members as any} laboratories={laboratories as any} auditEvents={auditEvents as any} canManageTeam={canManageTeam} canManageLabs={canManageLabs} twoFactorEnabled={twoFactor.enabled} currentUserId={session.userId} branding={branding} canManageBranding={canManageTeam}/>
   </div></>;
 }
 

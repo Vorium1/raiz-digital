@@ -1,18 +1,22 @@
-import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getCollectionReportData } from "@/lib/repositories/reports";
+import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 
 export const metadata = { title: "Relatório de coleta" };
 
 export default async function CollectionReportPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
   const session = await requirePlatformSession();
-  const data = await getCollectionReportData(session.tenantId, orderId, session.userId);
+  const [data, branding] = await Promise.all([
+    getCollectionReportData(session.tenantId, orderId, session.userId),
+    getTenantBranding(session.tenantId),
+  ]);
   if (!data) notFound();
   const { order, points } = data;
   const collected = points.filter((point: any) => point.collectedAt);
@@ -26,7 +30,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
         <div className="report-toolbar no-print"><span className="report-empty-note">Dados reais do PostGIS — nenhum ponto ou coordenada inventada.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
-            <BrandLogo variant="light" />
+            <ReportBrand branding={branding} />
             <div className="report-header-meta"><span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong><span style={{ marginTop: 6 }}>Ordem</span><strong>{order.code}</strong></div>
           </header>
           <h1 className="report-title">Relatório de coleta</h1>
@@ -56,6 +60,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
               </table>
             ) : <p className="report-empty-note">Nenhum ponto gerado ainda para esta ordem.</p>}
           </section>
+          <ReportSignature branding={branding} />
         </article>
       </div>
     </>

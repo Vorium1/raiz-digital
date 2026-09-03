@@ -1,17 +1,21 @@
-import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
+import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getHistoricalEvolutionReportData } from "@/lib/repositories/reports";
+import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 
 export const metadata = { title: "Relatório de evolução histórica" };
 
 export default async function EvolutionReportPage({ params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const session = await requirePlatformSession();
-  const data = await getHistoricalEvolutionReportData(session.tenantId, fieldId, session.userId);
+  const [data, branding] = await Promise.all([
+    getHistoricalEvolutionReportData(session.tenantId, fieldId, session.userId),
+    getTenantBranding(session.tenantId),
+  ]);
   if (!data) notFound();
   const { field, seasons, analyses } = data;
 
@@ -35,7 +39,7 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
         <div className="report-toolbar no-print"><span className="report-empty-note">Só compara classificações já homologadas — sem tendência estimada.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
-            <BrandLogo variant="light" />
+            <ReportBrand branding={branding} />
             <div className="report-header-meta"><span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong></div>
           </header>
           <h1 className="report-title">Relatório de evolução histórica</h1>
@@ -73,6 +77,7 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
           )) : (
             <section className="report-section"><h2>Classificações homologadas</h2><p className="report-empty-note">Ainda não há interpretações homologadas suficientes para montar histórico comparável por parâmetro. A RAIZ não estima tendência sem dado real compatível.</p></section>
           )}
+          <ReportSignature branding={branding} />
         </article>
       </div>
     </>
