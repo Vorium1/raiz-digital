@@ -1,0 +1,14 @@
+-- Nova espécie de geração de IA: além da síntese que só explica uma
+-- interpretação já calculada (AGRONOMIC_NARRATIVE), passa a existir a
+-- prescrição -- a IA recebe todo o contexto real (laudo, solo, cultivar,
+-- meta produtiva, histórico) e propõe diagnóstico + dose de calcário,
+-- fertilizante e corretivo, com justificativa por decisão. Continua
+-- passando pelo mesmo fluxo de ai_generations: nasce PENDING_REVIEW,
+-- nunca vira recomendação oficial (input_recommendations) sem um
+-- profissional aprovar -- ver reviewAgronomicPrescription.
+--
+-- Fora de um bloco BEGIN/COMMIT de propósito: ALTER TYPE ... ADD VALUE
+-- não pode ser combinado, na mesma transação, com o uso do valor novo --
+-- manter este arquivo com um único comando evita qualquer risco disso,
+-- independente da versão do Postgres.
+ALTER TYPE ai_generation_kind ADD VALUE IF NOT EXISTS 'AGRONOMIC_PRESCRIPTION';

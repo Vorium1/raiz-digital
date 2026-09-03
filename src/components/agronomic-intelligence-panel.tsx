@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { AgronomicNarrativePanel } from "@/components/agronomic-narrative-panel";
+import { AgronomicPrescriptionPanel } from "@/components/agronomic-prescription-panel";
 
 type ParameterInterpretation =
   | { sampleCode: string; parameterCode: string; interpretable: true; classification: string; matchedParameter: { id: string; criticality: string | null } }
@@ -138,6 +139,7 @@ export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { 
           )}
 
           <AgronomicNarrativePanel analysisId={analysisId} hasClassifications={Boolean(latest.structuredOutput?.interpretation.length)} canRun={canRun} canReview={canReview}/>
+          <AgronomicPrescriptionPanel analysisId={analysisId} hasLabResults={Boolean(latest.structuredOutput?.facts.length)} canRun={canRun} canReview={canReview}/>
         </>
       )}
     </div>

@@ -1490,3 +1490,66 @@ DRAFT) mas fica registrado aqui para não confundir ninguém depois.
 Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo dos blocos anteriores. A conta
 de demonstração `admin@raiz.local` (tenant "Raiz Digital Demo") ficou marcada como curadora nesse banco de
 dev, para facilitar testes futuros da Biblioteca Técnica.
+
+## Prescrição agronômica assistida por IA (2026-09-03)
+
+Mudança de direção explícita do diretor: em vez de esperar o Rafael pré-cadastrar faixa por faixa na
+Biblioteca Técnica antes de qualquer parecer existir, a IA passa a receber o contexto real completo de
+cada análise (laudo, tipo de solo, cultivar, meta produtiva, nível tecnológico, compactação, histórico de
+produtividade) e **pesquisar** — em fontes técnicas reconhecidas (Manual de Calagem e Adubação RS/SC,
+Embrapa) — para propor diagnóstico e dose de calcário/fertilizante/corretivo, com justificativa explícita
+por decisão. A IA nunca decide sozinha o que é oficial: toda prescrição nasce marcada como sugestão,
+`PENDING_REVIEW`, e só vira recomendação oficial depois que um agrônomo responsável da empresa cliente
+revisa e aprova — a mesma trava que já existia para a síntese de IA (`ai_generations`), reaproveitada.
+
+Achado importante ao mapear o código antes de mexer: **hoje não existe nenhum motor, nem determinístico
+nem de IA, que calcule dose de insumo** — o motor determinístico só classifica "baixo/adequado/alto"; a
+tabela `input_recommendations` (criada na migration 015) nunca teve um produtor real. Essa é literalmente
+a primeira peça que calcula e propõe dose nesta plataforma.
+
+**O que foi construído:**
+- Migration `017_agronomic_prescription.sql`: novo valor `AGRONOMIC_PRESCRIPTION` no enum
+  `ai_generation_kind` (reaproveita a tabela `ai_generations` já existente, não cria tabela nova).
+- `src/lib/ai/agronomic-prescription-schema.ts`: formato estrito da resposta da IA — diagnóstico por
+  parâmetro, recomendação (insumo/dose/unidade/justificativa), práticas físicas de manejo, informação
+  faltante declarada pela própria IA, fontes consultadas. Nunca aceita um formato parcial.
+- `src/lib/ai/prescription-evidence-package.ts`: monta o pacote de dados reais que a IA recebe —
+  reaproveita e estende o padrão já usado pela síntese de IA, incluindo agora os campos novos da migration
+  015 (nível tecnológico, compactação, pisoteio, cabeceira, irrigação, área de abertura) e o histórico de
+  produtividade real (`field_yield_history`). Nunca dá acesso a banco pra IA — só o pacote já filtrado.
+- `src/lib/ai/agronomic-prescription-provider.ts` + `providers/claude-prescription-provider.ts` +
+  `providers/unavailable-prescription-provider.ts`: sem `ANTHROPIC_API_KEY` configurada, qualquer geração
+  falha com um erro claro — nunca inventa uma prescrição falsa pra "parecer pronto".
+- `src/lib/repositories/ai-generations.ts`: `recordAgronomicPrescriptionGeneration` /
+  `getLatestAgronomicPrescription` / `reviewAgronomicPrescription` — a aprovação é o único jeito de uma
+  recomendação da IA virar `input_recommendations` (a tabela oficial usada na comparação recomendado ×
+  usado com `input_applications`, construída no bloco anterior). Enquanto não aprovada, a prescrição existe
+  só dentro de `ai_generations`, nunca alimenta a tabela oficial — tudo dentro da mesma transação.
+- Rotas `src/app/api/analyses/[id]/agronomic-prescription/route.ts` (gerar/consultar) e
+  `src/app/api/agronomic-prescriptions/[id]/review/route.ts` (aprovar/pedir ajuste/rejeitar).
+- `src/components/agronomic-prescription-panel.tsx`, encaixado dentro do painel de Inteligência Agronômica
+  já existente na tela de uma análise — visível mesmo quando o motor determinístico não conseguiu
+  interpretar nada (exatamente o cenário em que a prescrição da IA mais ajuda).
+
+**Aviso explícito sobre o que NÃO foi testado**: `claude-prescription-provider.ts` (a chamada real para a
+API da Anthropic, com a ferramenta de busca na web) nunca foi executada contra a API de verdade — foi
+escrita sem a chave, que chega numa sessão seguinte. Três pontos específicos precisam ser confirmados na
+primeira execução real (documentados em comentário no topo do próprio arquivo): o nome exato da ferramenta
+de busca na web, se ainda precisa de header de beta, e se uma chamada HTTP basta ou se é preciso um laço de
+tool-use. Até lá, qualquer resposta em formato inesperado vira erro claro, nunca uma prescrição inventada.
+
+**Testado de verdade nesta sessão** (tudo que não depende da chave): `npm run typecheck`, `npm run build` e
+`npm run check:migrations` limpos. Migration aplicada no banco de dev real. Contra o servidor real:
+confirmei que, sem laudo vinculado, a rota recusa com 409; inseri um laudo mínimo de teste (via importação
+real, que travou em validação de método analítico não relacionada a este recurso — troquei para inserção
+direta e controlada de `lab_samples`/`lab_results`, com limpeza depois) e confirmei que, com laudo mas sem
+chave de IA, a rota falha com 502 e a mensagem exata aparece na tela (verificado clicando de verdade,
+via CDP) — nada é salvo nesse caminho. Testei a parte mais arriscada — a promoção de uma prescrição
+aprovada para `input_recommendations` — inserindo uma geração sintética `PENDING_REVIEW` com dados válidos,
+aprovando via API real, e confirmando que as 2 recomendações apareceram corretas em `input_recommendations`
+com rastreabilidade (`calculation_source = ai_generations:<id>`) e os 2 eventos de auditoria esperados;
+tudo excluído depois. Painel verificado visualmente em desktop e mobile, sem overflow.
+
+Publicado em `develop`. Amanhã, com a chave da Anthropic, falta: testar `claude-prescription-provider.ts`
+contra a API real e corrigir os 3 pontos incertos citados acima; e então validar uma prescrição completa,
+ponta a ponta, com um caso real.
