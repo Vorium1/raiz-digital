@@ -4,6 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { AgronomicIntelligencePanel } from "@/components/agronomic-intelligence-panel";
+import { InputApplicationsManager } from "@/components/input-applications-manager";
 import { analyses, demoInterpretation, demoNarrative } from "@/lib/demo-data";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -45,7 +46,7 @@ function RealAnalysisDetail({ analysis, canRun, canReview }: { analysis: any; ca
         <div className="review-grid"><div className="review-summary"><span>Cultura</span><strong>{analysis.currentCrop || "Não informada"}</strong><small>Próxima: {analysis.nextCrop || "não informada"}</small></div><div className="review-summary"><span>Meta produtiva</span><strong>{analysis.yieldGoal ?? "—"} {analysis.yieldGoalUnit ?? ""}</strong><small>Contexto da safra</small></div><div className="review-summary"><span>Coleta</span><strong>{analysis.collectionCode || "Sem ordem vinculada"}</strong><small>Rastreabilidade de campo</small></div><div className="review-summary"><span>Laboratório</span><strong>{analysis.laboratoryName || "Não identificado"}</strong><small>{analysis.importCount} importação(ões)</small></div></div>
         <AgronomicIntelligencePanel analysisId={analysis.id} canRun={canRun} canReview={canReview}/>
       </div></section></div>
-      <aside className="review-sidebar"><section className="card trace-card"><div className="card-header"><div><span className="eyebrow">RASTREABILIDADE</span><h2>Registro atual</h2></div></div><dl className="detail-list"><div><dt>ID</dt><dd>{analysis.id.slice(0,8)}…</dd></div><div><dt>Fonte</dt><dd>{analysis.sourceType || "Não definida"}</dd></div><div><dt>Importações</dt><dd>{analysis.importCount}</dd></div><div><dt>Amostras normalizadas</dt><dd>{analysis.labSampleCount}</dd></div><div><dt>Atualização</dt><dd>{formatRelativeOrDate(analysis.updatedAt)}</dd></div></dl></section><section className="card"><div className="review-actions"><small className="audit-hint"><Icon name="history" size={12}/>Mudanças de cadastro e importações são registradas na trilha de auditoria.</small></div></section></aside>
+      <aside className="review-sidebar"><section className="card trace-card"><div className="card-header"><div><span className="eyebrow">RASTREABILIDADE</span><h2>Registro atual</h2></div></div><dl className="detail-list"><div><dt>ID</dt><dd>{analysis.id.slice(0,8)}…</dd></div><div><dt>Fonte</dt><dd>{analysis.sourceType || "Não definida"}</dd></div><div><dt>Importações</dt><dd>{analysis.importCount}</dd></div><div><dt>Amostras normalizadas</dt><dd>{analysis.labSampleCount}</dd></div><div><dt>Atualização</dt><dd>{formatRelativeOrDate(analysis.updatedAt)}</dd></div></dl></section><section className="card"><div className="review-actions"><small className="audit-hint"><Icon name="history" size={12}/>Mudanças de cadastro e importações são registradas na trilha de auditoria.</small></div></section><InputApplicationsManager analysisId={analysis.id} canEdit={canRun}/></aside>
     </div>
   </div></>;
 }

@@ -1409,3 +1409,36 @@ sem overflow horizontal; a lista e o formulário aparecem corretamente nos dois 
 Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo do bloco anterior (trava de
 permissão do Claude Code para ações em `main`) — por pedido do diretor, essa etapa de publicação fica
 acumulada para ser resolvida numa sessão dedicada a isso, em vez de interromper a cada bloco concluído.
+
+## Registro do que foi realmente aplicado no talhão (2026-09-03)
+
+Metade "capturável hoje" do par recomendado × usado que o Rafael estruturou: `input_applications` (o que
+foi de fato aplicado em campo — calcário, fertilizante, corretivo) ganhou uma tela, dentro da própria
+página de uma análise (`/analises/[id]`), como um card novo "Insumos aplicados" na coluna lateral. A outra
+metade (`input_recommendations`, o que o motor teria recomendado, e o aviso automático de subaplicação)
+continua sem tela: ela só existiria depois que o motor determinístico já calcular uma recomendação real, o
+que depende das fórmulas do Rafael — construir só a metade "recomendado" agora seria gerar tela vazia sem
+função. `listInputApplications`/`createInputApplication`/`deleteInputApplication` em
+`src/lib/repositories/catalog.ts`; rotas `src/app/api/input-applications/route.ts` (GET por análise, POST)
+e `.../[id]/route.ts` (DELETE); componente `src/components/input-applications-manager.tsx`.
+
+**Dois problemas reais encontrados e corrigidos durante o teste, antes de considerar pronto** (nenhum dos
+dois foi visível em `typecheck`/`build`, só apareceu testando de verdade contra o banco e olhando a tela):
+1. A consulta de listagem juntava `input_applications` com `users` (para mostrar quem aplicou) e tinha
+   `id` sem prefixo de tabela — o Postgres não sabe se é o `id` da aplicação ou do usuário e rejeita a
+   consulta (`column reference "id" is ambiguous"`). Toda consulta agora prefixa a tabela (`ia.id`, não
+   `id`). Sem esse teste real, o endpoint de listagem ficaria quebrado (erro 500) mesmo com o `build`
+   aprovado, porque erro de SQL só aparece rodando contra o banco de verdade.
+2. O formulário reaproveitou a grade de 4 colunas usada na tela de Coletas (`field-ops-form`), mas aqui
+   ele mora numa coluna lateral estreita (~320px) da tela de Análises — a grade de 4 colunas não cabe
+   nesse espaço e os campos ficaram cortados. Criada uma grade própria para colunas laterais
+   (`.sidebar-form` em `globals.css`), específica para esse tipo de espaço estreito.
+
+**Testes**: `npm run typecheck` e `npm run build` limpos. Depois de corrigir os dois problemas acima:
+end-to-end real contra o banco de dev (criar, listar, excluir, um valor zero rejeitado pela API) e
+verificação visual via CDP em desktop 1440px e mobile 390px — sem overflow, campos legíveis, acentuação
+correta (o teste inicial mostrou "Calcário" corrompido, mas era só um artefato de como o terminal do
+Claude Code envia acento via `curl`, não um bug do banco nem da aplicação — confirmado reenviando o mesmo
+texto por um arquivo UTF-8 em vez de digitado direto no comando).
+
+Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo dos blocos anteriores.

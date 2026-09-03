@@ -403,3 +403,59 @@ export async function deleteFieldYieldHistory(input: { tenantId: string; userId:
     return deleted;
   });
 }
+
+export async function listInputApplications(tenantId: string, analysisId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT ia.id::text, ia.analysis_id::text AS "analysisId", ia.input_type AS "inputType", ia.quantity::float8 AS quantity, ia.unit,
+              ia.applied_at::text AS "appliedAt", ia.notes, ia.created_at AS "createdAt", u.name AS "appliedByName"
+       FROM input_applications ia LEFT JOIN users u ON u.id = ia.applied_by
+       WHERE ia.tenant_id = $1::uuid AND ia.analysis_id = $2::uuid ORDER BY ia.created_at DESC`,
+      [tenantId, analysisId],
+    );
+    return result.rows;
+  });
+}
+
+export async function createInputApplication(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+  inputType: string;
+  quantity: number;
+  unit: string;
+  appliedAt?: string | null;
+  notes?: string | null;
+}) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    let result;
+    try {
+      result = await client.query(
+        `INSERT INTO input_applications (tenant_id, analysis_id, input_type, quantity, unit, applied_at, applied_by, notes)
+         VALUES ($1::uuid, $2::uuid, $3, $4, $5, nullif($6,'')::date, $7::uuid, nullif($8,''))
+         RETURNING id::text, analysis_id::text AS "analysisId", input_type AS "inputType", quantity::float8 AS quantity, unit,
+                   applied_at::text AS "appliedAt", notes, created_at AS "createdAt"`,
+        [input.tenantId, input.analysisId, input.inputType, input.quantity, input.unit, input.appliedAt ?? "", input.userId, input.notes ?? ""],
+      );
+    } catch (error) {
+      if (isForeignKeyViolation(error)) throw new CatalogError("Análise não encontrada.", 404);
+      throw error;
+    }
+    const created = result.rows[0];
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "INPUT_APPLICATION_CREATED", entityType: "input_application", entityId: created.id, metadata: { analysisId: created.analysisId, inputType: created.inputType, quantity: created.quantity, unit: created.unit } });
+    return created;
+  });
+}
+
+export async function deleteInputApplication(input: { tenantId: string; userId: string; applicationId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query<{ id: string; inputType: string }>(
+      `DELETE FROM input_applications WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id::text, input_type AS "inputType"`,
+      [input.tenantId, input.applicationId],
+    );
+    const deleted = result.rows[0];
+    if (!deleted) throw new CatalogError("Registro de aplicação não encontrado.", 404);
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "INPUT_APPLICATION_DELETED", entityType: "input_application", entityId: deleted.id, metadata: { inputType: deleted.inputType } });
+    return deleted;
+  });
+}

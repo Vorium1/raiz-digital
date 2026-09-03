@@ -755,4 +755,10 @@ button { color: inherit; }
 .narrative-reviewer-note{background:white;border:1px solid var(--line);border-radius:8px;font-size:11px;margin:10px 0;padding:9px 11px}
 .narrative-review-form{margin-top:12px}
 .narrative-review-form textarea{background:white;border:1px solid var(--line);border-radius:9px;font-size:11px;padding:9px 11px;width:100%}
+.sidebar-form{display:grid;gap:10px}
+.sidebar-form label>span{color:#52615b;display:block;font-size:8px;font-weight:700;margin-bottom:5px}
+.sidebar-form input,.sidebar-form select{background:white;border:1px solid #d7dfda;border-radius:8px;height:36px;outline:none;padding:0 9px;width:100%}
+.sidebar-form input:focus,.sidebar-form select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,166,.08)}
+.sidebar-form-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+.sidebar-form .form-submit{margin-top:2px}
 .narrative-review-actions{display:flex;gap:8px;margin-top:8px}
