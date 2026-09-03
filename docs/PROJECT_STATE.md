@@ -1302,10 +1302,31 @@ dashboard, formulários, alertas, relatórios, comparativos etc.) — hardening 
 que apareceu primeiro.
 
 **Ainda faltam** (menor prioridade comercial, não mexido ainda): biblioteca técnica e configurações
-continuam com o modo demo vazio. E uma lacuna de produto real identificada na conversa com o diretor,
-ainda não construída: hoje o relatório em PDF sai com a marca RAIZ Digital, não com o layout/assinatura
-de cada empresa cliente (Grão Sul, Cotrijal etc.) — importante pro "aperto de mão com o produtor"
-descrito como parte central do modelo de negócio.
+continuam com o modo demo vazio.
+
+## Relatório com a marca de cada empresa cliente (2026-09-03)
+
+Lacuna real de produto (não só de demonstração) identificada na mesma conversa: construída e testada
+contra o banco real no mesmo bloco de trabalho.
+
+Migration 014 (`tenants.report_logo_data_url`, `report_responsible_name`, `report_responsible_registration`).
+Logo guardado como data URI direto na coluna — não em arquivo local, porque `STORAGE_PROVIDER=local`
+não sobrevive a um deploy na Vercel (filesystem efêmero) e S3 real não está configurado; limite de
+150 KB no upload evita inchar a tabela. Nova aba em Configurações ("E-mail e relatórios", que já
+existia como "não implementado" e foi reaproveitada) permite ao administrador enviar o logo e definir
+responsável técnico + registro profissional (ex.: CREA). Os 4 tipos de relatório (talhão, coleta,
+propriedade, evolução) usam a marca do cliente quando configurada, com fallback automático pro logo
+padrão da RAIZ Digital quando não configurada — nunca fica sem marca nenhuma.
+
+Testado de ponta a ponta contra o banco real via Playwright: upload de logo → mensagem de sucesso →
+salvar responsável → abrir relatório real → logo e assinatura aparecem corretos. Dado de teste
+(logo verde de exemplo, nome fictício) limpo depois via a própria API, sem sobra. `typecheck`, `build`,
+`check:migrations` e as 19 suítes e2e revalidados depois da mudança — todos passando.
+
+**Pendência real, ainda não resolvida**: uma solução de armazenamento de arquivo de verdade (S3/R2/
+Supabase Storage) seria o próximo passo natural se o tamanho do logo precisar crescer muito além de
+150 KB, ou se surgir necessidade de guardar outros arquivos maiores (ex.: PDF do laudo original bruto)
+— não provisionado agora, por não haver credencial/autorização explícita para novo serviço externo.
 
 **Testes**: `npm run typecheck` e `npm run build` limpos. As 6 telas verificadas visualmente (desktop
 1440px e mobile 390px) contra o servidor real em `DATA_MODE=demo`, incluindo antes/depois do fix de
