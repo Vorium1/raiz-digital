@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import { Icon } from "@/components/icon";
 import { initials, roleLabel } from "@/lib/role-labels";
 import { visibleNavigationSections } from "@/lib/navigation";
@@ -22,7 +22,7 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
   return (
     <aside className="sidebar">
       <Link className="brand" href="/dashboard" aria-label="Raiz Digital - Início">
-        <Image src="/brand/logo-dark.svg" alt="Raiz Digital" width={184} height={46} priority />
+        <BrandLogo variant="dark" height={38} priority />
       </Link>
 
       <div className="tenant-switcher" aria-label={`Empresa atual: ${tenantLabel}`}>

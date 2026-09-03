@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
@@ -45,7 +45,7 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
 
         <article className="report-doc">
           <header className="report-header">
-            <Image src="/brand/logo-light.svg" alt="Raiz Digital" width={150} height={38}/>
+            <BrandLogo variant="light" />
             <div className="report-header-meta">
               <span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{analysis.code}</strong>

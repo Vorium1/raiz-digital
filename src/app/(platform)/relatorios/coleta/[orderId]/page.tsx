@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
@@ -26,7 +26,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
         <div className="report-toolbar no-print"><span className="report-empty-note">Dados reais do PostGIS — nenhum ponto ou coordenada inventada.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
-            <Image src="/brand/logo-light.svg" alt="Raiz Digital" width={150} height={38}/>
+            <BrandLogo variant="light" />
             <div className="report-header-meta"><span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong><span style={{ marginTop: 6 }}>Ordem</span><strong>{order.code}</strong></div>
           </header>
           <h1 className="report-title">Relatório de coleta</h1>

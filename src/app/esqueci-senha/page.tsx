@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import { ForgotPasswordForm } from "@/components/forgot-password-form";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
@@ -13,7 +14,7 @@ export default async function ForgotPasswordPage() {
   return (
     <main className="login-page">
       <section className="login-brand-panel">
-        <img src="/brand/logo-dark.svg" alt="RAIZ Digital · Inteligência Agronômica" />
+        <BrandLogo variant="dark" priority />
         <div>
           <span className="eyebrow light">INTELIGÊNCIA AGRONÔMICA</span>
           <h1>Do solo à decisão,<br/>com precisão.</h1>

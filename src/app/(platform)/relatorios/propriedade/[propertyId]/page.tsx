@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -27,7 +27,7 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
         <div className="report-toolbar no-print"><span className="report-empty-note">Visão consolidada real da carteira desta propriedade.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
-            <Image src="/brand/logo-light.svg" alt="Raiz Digital" width={150} height={38}/>
+            <BrandLogo variant="light" />
             <div className="report-header-meta"><span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong></div>
           </header>
           <h1 className="report-title">Relatório executivo da propriedade</h1>
