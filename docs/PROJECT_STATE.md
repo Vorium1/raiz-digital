@@ -3,6 +3,14 @@
 Data do handoff: 2026-09-01
 Última auditoria registrada: 2026-09-02 (Claude Code, banco real via Supabase)
 
+## Fluxo de deploy (a partir de 2026-09-02)
+
+- `main` = produção. Só recebe merge depois de aprovação explícita do responsável do produto, olhando o Preview.
+- `develop` = branch permanente de desenvolvimento/homologação. Branches de funcionalidade (`feat/...`) nascem dela.
+- Todo push que não seja em `main` gera automaticamente um Vercel Preview Deployment (URL `*.vercel.app` própria), nunca produção.
+- O domínio de produção (`raiz-digital-brown.vercel.app`) só muda depois de merge em `main`.
+- Fluxo obrigatório: desenvolvimento → testes → branch não-`main` → Preview → aprovação → merge em `main` → produção.
+
 ## Estado executivo
 
 | Área | Estado | Observação |
