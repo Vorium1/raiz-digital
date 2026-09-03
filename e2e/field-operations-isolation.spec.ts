@@ -204,3 +204,59 @@ test.describe("concorrencia: duas importacoes simultaneas na mesma ordem nova", 
     expect(layer.payload.points.length).toBe(3);
   });
 });
+
+test.describe("regra: distancia maxima entre GPS observado e ponto planejado", () => {
+  // Formula real (collections.ts, collectSamplePoint): permitido = maior entre 75m, precisao*2 e
+  // (lado do grid)/2. Para uma ordem sem grid (gridAreaHa nulo) e sem accuracyM informado, o piso é
+  // sempre 75m — é esse piso que os dois casos abaixo testam, com um ponto real do talhão de teste.
+  let orderId: string;
+
+  test.afterAll(async ({ browser }) => {
+    if (!orderId) return;
+    const page = await browser.newPage();
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    // Mesma limitação documentada no describe "regra: nao substituir...": depois que a 2a coleta
+    // (dentro do limite) for bem-sucedida o status vira IN_PROGRESS e cancelar deixa de ser possível.
+    await api(page, `/api/collection-orders/${orderId}`, { method: "PATCH", body: { status: "CANCELED" } });
+    await page.close();
+  });
+
+  test("rejeita GPS a ~224m (fora do limite) e aceita a ~20m (dentro do limite) do mesmo ponto", async ({ page }) => {
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    const listA = await api(page, "/api/collection-orders");
+    const cropSeasonId = listA.payload.orders[0]?.cropSeasonId;
+
+    const created = await api(page, "/api/collection-orders", {
+      method: "POST",
+      body: { cropSeasonId, samplingStrategy: "IMPORTED", depthFromCm: 0, depthToCm: 20 },
+    });
+    orderId = created.payload.order.id;
+    await api(page, `/api/collection-orders/${orderId}/points`, {
+      method: "POST",
+      body: { fileName: "pontos.csv", content: INSIDE_FIELD_POINTS_CSV }, // T01 em -28.256,-52.416
+    });
+    const layer = await api(page, `/api/collection-orders/${orderId}/map-layer`);
+    const pointId = layer.payload.points.find((p: { code: string }) => p.code === "T01")?.id;
+    expect(pointId).toBeTruthy();
+
+    // ~100m ao norte + ~200m a leste de T01 = ~224m de distância (dist. euclidiana), acima do piso de 75m.
+    const tooFar = await api(page, `/api/collection-orders/${orderId}/points/${pointId}`, {
+      method: "PATCH",
+      body: { latitude: -28.255102, longitude: -52.41396 },
+    });
+    expect(tooFar.status).toBe(409);
+    expect(tooFar.payload.details?.allowedMeters).toBe(75);
+    expect(tooFar.payload.details?.distanceMeters).toBeGreaterThan(75);
+
+    // confirma que a rejeicao nao gravou nada: o ponto continua sem coleta.
+    const layerAfterReject = await api(page, `/api/collection-orders/${orderId}/map-layer`);
+    expect(layerAfterReject.payload.points.find((p: { id: string }) => p.id === pointId)?.collectedAt).toBeNull();
+
+    // ~20m ao norte de T01, dentro do piso de 75m — deve suceder.
+    const closeEnough = await api(page, `/api/collection-orders/${orderId}/points/${pointId}`, {
+      method: "PATCH",
+      body: { latitude: -28.25582, longitude: -52.416 },
+    });
+    expect(closeEnough.status).toBe(200);
+  });
+});
