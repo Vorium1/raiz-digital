@@ -497,7 +497,7 @@ button { color: inherit; }
 .empty-state strong { color:var(--forest); font-family:var(--font-heading); font-size:15px; margin-bottom:5px; }
 .empty-state small { font-size:8px; line-height:1.5; max-width:360px; }
 .demo-banner { align-items:center; background:#fff8e9; border:1px solid #f1dfb7; border-radius:9px; color:#8c6525; display:flex; font-size:8px; gap:7px; margin-bottom:12px; padding:9px 11px; }
-@media (max-width:900px) { .login-page { grid-template-columns:1fr; }.login-brand-panel { min-height:270px; padding:32px; }.login-brand-panel h1 { font-size:38px; }.login-brand-panel p { display:none; }.login-card-wrap { padding:38px 24px 50px; }.form-grid.compact { grid-template-columns:1fr 1fr; } }
+@media (max-width:900px) { .login-page { grid-template-columns:minmax(0,1fr); }.login-brand-panel { min-height:270px; padding:32px; }.login-brand-panel h1 { font-size:38px; }.login-brand-panel p { display:none; }.login-card-wrap { padding:38px 24px 50px; }.form-grid.compact { grid-template-columns:1fr 1fr; } }
 @media (max-width:520px) { .login-brand-panel { min-height:220px; }.login-brand-panel .brand-logo { font-size:15px; height:48px; }.login-brand-panel h1 { font-size:31px; }.form-grid.compact { grid-template-columns:1fr; }.inline-form-footer { align-items:stretch; flex-direction:column; gap:12px; }.inline-form-footer .button { width:100%; } }
 .login-form select { background:white; border:1px solid #dce4df; border-radius:9px; color:var(--forest); min-height:44px; outline:0; padding:0 13px; width:100%; }
 .login-form select:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(0,191,166,.09); }
