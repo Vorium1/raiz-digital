@@ -1,7 +1,7 @@
 # Estado do Projeto — RAIZ Digital
 
 Data do handoff: 2026-09-01
-Última auditoria registrada: 2026-09-02 (Claude Code, banco real via Supabase)
+Última auditoria registrada: 2026-09-03 (Claude Code, banco real via Supabase — sessão noturna autônoma)
 
 ## Fluxo de deploy (a partir de 2026-09-02)
 
@@ -1134,3 +1134,71 @@ o banco real, com limpeza total dos dados de teste ao final.
 Nenhum provedor de IA real está conectado — aguardando autorização explícita e escolha de fornecedor
 (ver comparativo). Base de conhecimento (`technical_sources`) existe mas está vazia — nenhuma fonte real
 cadastrada ainda. Nenhuma faixa técnica homologada para nenhuma das 8 culturas.
+
+## Fluxo de deploy, marca oficial e auditoria noturna (2026-09-02/03)
+
+Bloco de trabalho autônomo, autorizado explicitamente pelo diretor do projeto ("trabalhe com os
+processos mais longos... confio em você") enquanto ele estava fora. Nada aqui envolveu decisão
+agronômica, conexão de IA paga ou gasto — dentro dos limites já combinados.
+
+**Fluxo de deploy** — branch `develop` criada a partir de `main` (produção continua vinculada só a
+`main`, nada em produção foi alterado). Confirmado com push real que `develop` gera Preview
+deployment separado (`raiz-digital-git-develop-guilherme-figueiredo-lagaggio.vercel.app`, protegido
+por login do Vercel) e não toca o domínio de produção. **Achado**: o plano gratuito do Vercel tem
+limite diário de deployments — foi atingido durante a sessão ("Deployment rate limited — retry in 24
+hours"), então o penúltimo/último commits da noite só vão gerar Preview quando o limite resetar
+sozinho. Banco usado por Preview vs. Produção **ainda não confirmado** — precisa do diretor checar
+Settings → Environment Variables no painel do Vercel (pedido feito, resposta pendente).
+
+**Marca oficial** — símbolo real (arquivo fornecido pelo usuário, recortado sem redesenhar nada) e
+paleta oficial (`#0B0D10`/`#F4F5F7`/`#00C4D6`/`#B86F3E`) aplicados em todo o site: sidebar, login,
+esqueci/redefinir senha, 4 cabeçalhos de relatório, favicon. Componente novo `BrandLogo` (ícone real +
+wordmark tipografado em Sora/Inter, conforme guia de marca) substitui o SVG achatado antigo.
+
+**Bug real de mobile encontrado e corrigido, sem relação com a logo**: no breakpoint mobile, o grid da
+tela de login usava `grid-template-columns:1fr`, que não encolhe abaixo do conteúdo (clássico "grid
+blowout") — a página ficava mais larga que a tela e cortava texto/campos. Corrigido para
+`minmax(0,1fr)`. Confirmado antes/depois com screenshot real via CDP do Chrome/Edge em 390px.
+
+**Achado de segurança, corrigido**: o repositório é público no GitHub (`Vorium1/raiz-digital`) e três
+senhas reais de contas de teste (`admin@raiz.local`, `e2e-tenant-b@raiz.local`, `e2e-2fa@raiz.local`)
+estavam commitadas em texto puro em `e2e/*.spec.ts` e `e2e/README.md` — viola a regra de nunca expor
+segredo no repositório. Os três arquivos agora leem a senha de variável de ambiente (mesmo padrão de
+`SEED_ADMIN_PASSWORD`). **As três senhas antigas não foram trocadas** — mutação direta de credenciais
+no banco foi bloqueada pelo classificador de segurança do modo automático (corretamente: é ação que
+merece aprovação humana). Continuam válidas e continuam no histórico do git. Fica como decisão
+pendente do diretor: trocar ou aceitar o risco residual (conta de dev, não produção).
+
+**Operações de campo — cobertura de teste nova** (fechando pendências de `docs/V0.5_INTERRUPTED.md`,
+detalhe item a item lá): mapeado o código real com um agente de exploração antes de mexer em qualquer
+coisa. Corrigido um bug real: `listCollectionOrders` calculava `labResultCount` casando texto
+(`sample_code`), um caminho paralelo e frágil, em vez do FK real (`lab_samples.sample_point_id`) já
+usado em `map-data.ts`/`comparisons.ts`/`alerts.ts`/`interpretations.ts` — alinhado ao padrão
+existente. Nomeado o limite de 2.000 pontos por ordem (`MAX_POINTS_PER_ORDER`), que era dois literais
+soltos. Nova suíte `e2e/field-operations-isolation.spec.ts` (5 testes, todos rodados de verdade contra
+o banco de dev, reaproveitando as contas já existentes de `tenant-isolation.spec.ts` — nenhuma conta
+nova precisou ser criada): RLS cross-tenant (leitura + 4 tentativas de escrita cross-tenant, todas
+404, dado da empresa A confirmado intacto depois), a regra de não substituir pontos após coleta
+iniciada (409), e concorrência de importação (duas chamadas simultâneas não duplicam nem corrompem
+pontos). Durante a escrita dos testes encontrei e corrigi dois bugs nos próprios testes antes de
+considerar isso pronto (um deles fazia o teste "passar" sem provar isolamento de verdade, por causa de
+validação de payload disparando antes do filtro por tenant) — detalhado nos comentários do arquivo e
+na mensagem do commit `c5a2ff3`.
+
+**Pendências reais deixadas para o diretor decidir ou para uma próxima sessão**:
+- RBAC por papel (viewer/comercial/agrônomo/técnico de campo) nas rotas de ordem de coleta continua
+  sem teste automatizado — as 4 contas de teste existem no banco com o papel certo, mas a senha delas
+  não é conhecida nesta sessão, e redefini-la exige escrita direta no banco (bloqueado, ver acima).
+- comportamento em talhão que cruza zona UTM, e teste dedicado do limite de distância GPS
+  (`collectSamplePoint`) — ainda não verificados com caso real, só o caminho feliz foi exercitado.
+- resíduo pequeno e inofensivo no banco de dev: algumas ordens de coleta de teste (3 pontos, sem
+  laudo, tenant "Raiz Digital Demo", códigos `OC-260903-*`) ficaram presas em `IN_PROGRESS` — não
+  existe hoje um jeito de cancelar/apagar uma ordem depois que a coleta começou (regra de negócio, não
+  bug). Só afeta a lista de ordens de coleta desse tenant de teste, nenhum dado real.
+- URL do Preview e confirmação do banco usado por Preview/Produção — pedido feito ao diretor, resposta
+  ainda pendente.
+
+**Testes realizados**: `npm run typecheck` e `npm run build` limpos após cada mudança de código.
+`npx playwright test` (as 3 suítes: `tenant-isolation`, `two-factor`, `field-operations-isolation`) —
+13/13 passando contra o banco de dev real, com limpeza confirmada ao final (exceto o resíduo descrito
+acima, que é intencional/documentado, não uma falha de limpeza).
