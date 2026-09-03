@@ -30,6 +30,23 @@ export default async function SettingsPage() {
   </div></>;
 }
 
+const DEMO_MEMBERS = [
+  { name: "Gui Bortoluzzi", email: "gui@graosul.com.br", role: "Administrador", status: "Ativo" },
+  { name: "Ana Paula Ferreira", email: "ana.ferreira@graosul.com.br", role: "Agrônoma", status: "Ativo" },
+  { name: "Lucas Martins", email: "lucas.martins@graosul.com.br", role: "Técnico de campo", status: "Ativo" },
+  { name: "Marina Souza", email: "marina.souza@graosul.com.br", role: "Comercial", status: "Convite enviado" },
+] as const;
+
 function DemoSettings() {
-  return <><Topbar eyebrow="Administração · demonstração" title="Configurações"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração. Usuários abaixo são exemplos de UX e não representam contas reais.</span></div><PageIntro title="Governança da plataforma" description="Visual de usuários, integrações e biblioteca técnica."/><div className="data-card"><div className="empty-state"><Icon name="settings"/><strong>Configurações demonstrativas</strong><small>Ative DATA_MODE=database para visualizar os membros reais do tenant.</small></div></div></div></>;
+  return <><Topbar eyebrow="Administração · demonstração" title="Configurações"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração. Usuários abaixo são exemplos de UX e não representam contas reais.</span></div><PageIntro title="Governança da plataforma" description="Usuários, perfis de acesso, laboratórios homologados e marca dos relatórios — tudo isolado por empresa."/>
+    <section className="card">
+      <div className="field-ops-section-head compact"><div><span className="eyebrow">USUÁRIOS · EXEMPLO</span><h2>Equipe ({DEMO_MEMBERS.length})</h2></div></div>
+      <table className="report-table">
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th></tr></thead>
+        <tbody>{DEMO_MEMBERS.map((member) => (
+          <tr key={member.email}><td>{member.name}</td><td>{member.email}</td><td>{member.role}</td><td>{member.status}</td></tr>
+        ))}</tbody>
+      </table>
+    </section>
+  </div></>;
 }
