@@ -1265,3 +1265,48 @@ permanecem na lista, suíte e2e completa revalidada (19/19) após a limpeza.
   assim só dá acesso a contas de teste do ambiente de desenvolvimento, nunca produção).
 - Confirmação do banco usado por Preview vs. Produção no Vercel (Settings → Environment Variables) —
   segue pendente desde o bloco anterior.
+
+## Modo demonstração enriquecido — vitrine pra reunião com cliente corporativo (2026-09-03)
+
+Contexto de negócio recebido do diretor: a RAIZ Digital está sendo vendida como plataforma B2B pra
+cooperativas e revendas grandes do agro (negociação em andamento com a Grão Sul, de Palmeira das
+Missões; mira futura em Cotrijal, Agrofel e mercado nacional). O agrônomo da empresa cliente continua
+sendo quem assina e entrega o laudo ao produtor — a IA nunca substitui essa responsabilidade, só
+acelera e aprofunda a análise técnica por trás dela. Esse modelo já é exatamente o que o projeto vinha
+construindo (motor determinístico + revisão humana obrigatória + trilha de auditoria); o que faltava
+era a vitrine pra mostrar isso a um comprador que nunca viu o produto rodando.
+
+**Achado**: 8 das 15 telas de conteúdo caíam num padrão "banner + card vazio" em `DATA_MODE=demo`
+(mapeado com agente de exploração antes de mexer em qualquer coisa) — incluindo a tela mais importante
+de todas para uma demonstração comercial, o laudo/diagnóstico individual, que só mostrava um ícone com
+o texto "esta visualização serve apenas para validar UX". Isso explica a sensação de "plataforma
+pobre, poucas seções" relatada — não era falta de funcionalidade construída, era falta de exemplo pra
+mostrar sem tocar em dado real (o que a regra de nunca exibir número fictício em produção proíbe).
+
+**Feito**: enriquecidas as 6 telas de maior peso comercial (laudo individual, relatórios, alertas,
+inteligência agronômica, mapas, comparativos) com exemplo completo e coerente em torno de um caso só
+(Fazenda Horizonte · Talhão Norte · Soja) — resultado de laboratório com 12 linhas classificadas,
+síntese explicativa completa (resumo, observações, pontos de atenção, tendências, fontes técnicas),
+relatório publicado, alertas reais de operação, registro de auditoria, mapa colorido por classificação
+e comparativo entre talhões. Sempre com aviso visível de "modo demonstração" — nunca finge ser dado
+real. Detalhe técnico: reaproveita exatamente os mesmos componentes/classes CSS do modo com banco real
+(`AgronomicIntelligencePanel`, `AgronomicNarrativePanel`), então o exemplo tem a cara idêntica ao
+produto de verdade, não é uma tela paralela "de mentira".
+
+**Bug real encontrado e corrigido, afeta o produto de verdade (não só a demonstração)**: testando a
+nova tela de laudo em celular (390px), a página inteira estourava a largura da tela — mesma causa raiz
+do bug de login já corrigido nesta sessão (grid CSS com `1fr` puro em vez de `minmax(0,1fr)`, que não
+encolhe abaixo do conteúdo). Dessa vez, em vez de corrigir só o caso pontual, foi feita uma varredura:
+encontradas e corrigidas **16 ocorrências** do mesmo padrão de risco em todo `globals.css` (grids de
+dashboard, formulários, alertas, relatórios, comparativos etc.) — hardening geral, não só o sintoma
+que apareceu primeiro.
+
+**Ainda faltam** (menor prioridade comercial, não mexido ainda): biblioteca técnica e configurações
+continuam com o modo demo vazio. E uma lacuna de produto real identificada na conversa com o diretor,
+ainda não construída: hoje o relatório em PDF sai com a marca RAIZ Digital, não com o layout/assinatura
+de cada empresa cliente (Grão Sul, Cotrijal etc.) — importante pro "aperto de mão com o produtor"
+descrito como parte central do modelo de negócio.
+
+**Testes**: `npm run typecheck` e `npm run build` limpos. As 6 telas verificadas visualmente (desktop
+1440px e mobile 390px) contra o servidor real em `DATA_MODE=demo`, incluindo antes/depois do fix de
+overflow via inspeção real do DOM (não só olhando print).
