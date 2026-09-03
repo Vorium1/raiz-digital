@@ -13,6 +13,8 @@ type ContextData = {
   seasons: Array<{
     id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; irrigated: boolean;
     cropProfileId: string | null; cultivar: string | null; managementSystem: string | null; soilType: string | null; soilTexture: string | null; technicalRegionCode: string | null;
+    nextCultivar: string | null; technologyLevel: string | null; soilCompactionLevel: string | null; livestockTrampleAreaHa: number | null; headlandAreaHa: number | null;
+    isFirstYearArea: boolean | null; cultivationYears: number | null;
   }>;
   cropProfiles: Array<{ id: string; code: string; name: string; status: "DRAFT" | "ACTIVE" | "SUPERSEDED" }>;
   technicalRegions: Array<{ id: string; code: string; name: string }>;
@@ -20,6 +22,10 @@ type ContextData = {
 
 const MANAGEMENT_SYSTEMS = ["Plantio direto", "Cultivo mínimo", "Convencional"];
 const SOIL_TEXTURES = ["Arenosa", "Média", "Argilosa"];
+const TECHNOLOGY_LEVELS = ["BAIXO", "MEDIO", "ALTO"];
+const COMPACTION_LEVELS = ["NENHUM", "BAIXO", "MEDIO", "ALTO"];
+const TECHNOLOGY_LEVEL_LABELS: Record<string, string> = { BAIXO: "Baixo", MEDIO: "Médio", ALTO: "Alto" };
+const COMPACTION_LEVEL_LABELS: Record<string, string> = { NENHUM: "Nenhum", BAIXO: "Baixo", MEDIO: "Médio", ALTO: "Alto" };
 
 type Point = {
   id: string; code: string; sequence: number | null; latitude: number; longitude: number;
@@ -75,6 +81,13 @@ export function FieldOperationsManager() {
   const [managementSystem, setManagementSystem] = useState("");
   const [soilTexture, setSoilTexture] = useState("");
   const [technicalRegionCode, setTechnicalRegionCode] = useState("");
+  const [nextCultivar, setNextCultivar] = useState("");
+  const [technologyLevel, setTechnologyLevel] = useState("");
+  const [soilCompactionLevel, setSoilCompactionLevel] = useState("");
+  const [livestockTrampleAreaHa, setLivestockTrampleAreaHa] = useState("");
+  const [headlandAreaHa, setHeadlandAreaHa] = useState("");
+  const [isFirstYearArea, setIsFirstYearArea] = useState(false);
+  const [cultivationYears, setCultivationYears] = useState("");
 
   const [editingPropertyId, setEditingPropertyId] = useState("");
   const [editPropertyName, setEditPropertyName] = useState("");
@@ -91,6 +104,13 @@ export function FieldOperationsManager() {
   const [editYieldGoal, setEditYieldGoal] = useState("");
   const [editIrrigated, setEditIrrigated] = useState(false);
   const [editCultivar, setEditCultivar] = useState("");
+  const [editNextCultivar, setEditNextCultivar] = useState("");
+  const [editTechnologyLevel, setEditTechnologyLevel] = useState("");
+  const [editSoilCompactionLevel, setEditSoilCompactionLevel] = useState("");
+  const [editLivestockTrampleAreaHa, setEditLivestockTrampleAreaHa] = useState("");
+  const [editHeadlandAreaHa, setEditHeadlandAreaHa] = useState("");
+  const [editIsFirstYearArea, setEditIsFirstYearArea] = useState(false);
+  const [editCultivationYears, setEditCultivationYears] = useState("");
 
   const [orderSeasonId, setOrderSeasonId] = useState("");
   const [strategy, setStrategy] = useState<"GRID" | "IMPORTED">("GRID");
@@ -181,7 +201,11 @@ export function FieldOperationsManager() {
       await postJson("/api/crop-seasons", {
         fieldId: seasonFieldId, seasonLabel, currentCrop, nextCrop, yieldGoal: yieldGoal || null, yieldGoalUnit: yieldGoal ? "sc/ha" : null, irrigated,
         cropProfileId: cropProfileId || null, cultivar, managementSystem, soilTexture, technicalRegionCode,
+        nextCultivar, technologyLevel: technologyLevel || null, soilCompactionLevel: soilCompactionLevel || null,
+        livestockTrampleAreaHa: livestockTrampleAreaHa || null, headlandAreaHa: headlandAreaHa || null,
+        isFirstYearArea, cultivationYears: cultivationYears || null,
       });
+      setNextCultivar(""); setTechnologyLevel(""); setSoilCompactionLevel(""); setLivestockTrampleAreaHa(""); setHeadlandAreaHa(""); setIsFirstYearArea(false); setCultivationYears("");
       setMessage({ tone:"success", text:"Safra vinculada ao talhão." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao criar safra." }); }
@@ -254,6 +278,9 @@ export function FieldOperationsManager() {
 
   function startEditSeason(season: ContextData["seasons"][number]) {
     setEditingSeasonId(season.id); setEditSeasonLabel(season.seasonLabel); setEditCropProfileId(season.cropProfileId ?? ""); setEditNextCrop(season.nextCrop ?? ""); setEditYieldGoal(season.yieldGoal != null ? String(season.yieldGoal) : ""); setEditIrrigated(season.irrigated); setEditCultivar(season.cultivar ?? "");
+    setEditNextCultivar(season.nextCultivar ?? ""); setEditTechnologyLevel(season.technologyLevel ?? ""); setEditSoilCompactionLevel(season.soilCompactionLevel ?? "");
+    setEditLivestockTrampleAreaHa(season.livestockTrampleAreaHa != null ? String(season.livestockTrampleAreaHa) : ""); setEditHeadlandAreaHa(season.headlandAreaHa != null ? String(season.headlandAreaHa) : "");
+    setEditIsFirstYearArea(season.isFirstYearArea ?? false); setEditCultivationYears(season.cultivationYears != null ? String(season.cultivationYears) : "");
   }
 
   async function saveSeason(id: string) {
@@ -263,6 +290,9 @@ export function FieldOperationsManager() {
       await patchJson(`/api/crop-seasons/${id}`, {
         seasonLabel: editSeasonLabel, currentCrop, nextCrop: editNextCrop, yieldGoal: editYieldGoal || null, yieldGoalUnit: editYieldGoal ? "sc/ha" : null, irrigated: editIrrigated,
         cropProfileId: editCropProfileId || null, cultivar: editCultivar,
+        nextCultivar: editNextCultivar, technologyLevel: editTechnologyLevel || null, soilCompactionLevel: editSoilCompactionLevel || null,
+        livestockTrampleAreaHa: editLivestockTrampleAreaHa || null, headlandAreaHa: editHeadlandAreaHa || null,
+        isFirstYearArea: editIsFirstYearArea, cultivationYears: editCultivationYears || null,
       });
       setEditingSeasonId(""); setMessage({ tone:"success", text:"Safra atualizada." });
       await loadAll();
@@ -427,9 +457,16 @@ export function FieldOperationsManager() {
           <label><span>Textura do solo</span><select value={soilTexture} onChange={(e)=>setSoilTexture(e.target.value)}><option value="">Não informada</option>{SOIL_TEXTURES.map((option)=><option key={option} value={option}>{option}</option>)}</select></label>
           <label><span>Região técnica</span><select value={technicalRegionCode} onChange={(e)=>setTechnicalRegionCode(e.target.value)}><option value="">Não informada</option>{context.technicalRegions.map((region)=><option key={region.id} value={region.code}>{region.name}</option>)}</select></label>
           <label><span>Próxima cultura</span><input value={nextCrop} onChange={(e)=>setNextCrop(e.target.value)} placeholder="Milho"/></label>
+          <label><span>Próximo cultivar</span><input value={nextCultivar} onChange={(e)=>setNextCultivar(e.target.value)} placeholder="Ex.: P3862"/></label>
           <label><span>Meta produtiva</span><input value={yieldGoal} onChange={(e)=>setYieldGoal(e.target.value)} inputMode="decimal" placeholder="75"/></label>
           <label><span>Área confirmada</span><input readOnly value={selectedField ? `${Number(selectedField.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha` : ""}/></label>
           <div className="field-ops-form-field"><span>Irrigação</span><label className="field-ops-checkbox"><input type="checkbox" checked={irrigated} onChange={(e)=>setIrrigated(e.target.checked)}/>Área irrigada</label></div>
+          <label><span>Nível tecnológico pretendido</span><select value={technologyLevel} onChange={(e)=>setTechnologyLevel(e.target.value)}><option value="">Não informado</option>{TECHNOLOGY_LEVELS.map((level)=><option key={level} value={level}>{TECHNOLOGY_LEVEL_LABELS[level]}</option>)}</select></label>
+          <label><span>Compactação do solo</span><select value={soilCompactionLevel} onChange={(e)=>setSoilCompactionLevel(e.target.value)}><option value="">Não informada</option>{COMPACTION_LEVELS.map((level)=><option key={level} value={level}>{COMPACTION_LEVEL_LABELS[level]}</option>)}</select></label>
+          <label><span>Área de pisoteio/pecuária</span><div className="input-suffix"><input value={livestockTrampleAreaHa} onChange={(e)=>setLivestockTrampleAreaHa(e.target.value)} inputMode="decimal" placeholder="0"/><b>ha</b></div></label>
+          <label><span>Área de cabeceira</span><div className="input-suffix"><input value={headlandAreaHa} onChange={(e)=>setHeadlandAreaHa(e.target.value)} inputMode="decimal" placeholder="0"/><b>ha</b></div></label>
+          <label><span>Anos de cultivo da área</span><input value={cultivationYears} onChange={(e)=>setCultivationYears(e.target.value)} inputMode="numeric" placeholder="Ex.: 8"/></label>
+          <div className="field-ops-form-field"><span>Área de abertura</span><label className="field-ops-checkbox"><input type="checkbox" checked={isFirstYearArea} onChange={(e)=>setIsFirstYearArea(e.target.checked)}/>Primeiro ano de cultivo</label></div>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "season" || !seasonFieldId || !seasonLabel} onClick={()=>void createSeason()}>{busy === "season" ? "Salvando…" : "Criar safra"}</button></div>
           {context.seasons.length > 0 && <div className="field-ops-wide field-ops-list">
             {context.seasons.map((season)=>editingSeasonId === season.id ? (
@@ -440,6 +477,13 @@ export function FieldOperationsManager() {
                 <input value={editNextCrop} onChange={(e)=>setEditNextCrop(e.target.value)} placeholder="Próxima cultura"/>
                 <input value={editYieldGoal} onChange={(e)=>setEditYieldGoal(e.target.value)} inputMode="decimal" placeholder="Meta"/>
                 <label className="field-ops-checkbox"><input type="checkbox" checked={editIrrigated} onChange={(e)=>setEditIrrigated(e.target.checked)}/>Irrigado</label>
+                <input value={editNextCultivar} onChange={(e)=>setEditNextCultivar(e.target.value)} placeholder="Próximo cultivar"/>
+                <select value={editTechnologyLevel} onChange={(e)=>setEditTechnologyLevel(e.target.value)}><option value="">Nível tecnológico</option>{TECHNOLOGY_LEVELS.map((level)=><option key={level} value={level}>{TECHNOLOGY_LEVEL_LABELS[level]}</option>)}</select>
+                <select value={editSoilCompactionLevel} onChange={(e)=>setEditSoilCompactionLevel(e.target.value)}><option value="">Compactação</option>{COMPACTION_LEVELS.map((level)=><option key={level} value={level}>{COMPACTION_LEVEL_LABELS[level]}</option>)}</select>
+                <input value={editLivestockTrampleAreaHa} onChange={(e)=>setEditLivestockTrampleAreaHa(e.target.value)} inputMode="decimal" placeholder="Pisoteio (ha)"/>
+                <input value={editHeadlandAreaHa} onChange={(e)=>setEditHeadlandAreaHa(e.target.value)} inputMode="decimal" placeholder="Cabeceira (ha)"/>
+                <input value={editCultivationYears} onChange={(e)=>setEditCultivationYears(e.target.value)} inputMode="numeric" placeholder="Anos de cultivo"/>
+                <label className="field-ops-checkbox"><input type="checkbox" checked={editIsFirstYearArea} onChange={(e)=>setEditIsFirstYearArea(e.target.checked)}/>Área de abertura</label>
                 <span className="field-ops-list-actions">
                   <button className="button tiny" disabled={busy === `season-save-${season.id}`} onClick={()=>void saveSeason(season.id)}><Icon name="check" size={13}/></button>
                   <button className="icon-button" onClick={()=>setEditingSeasonId("")}><Icon name="close" size={13}/></button>
