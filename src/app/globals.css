@@ -1,18 +1,20 @@
 :root {
-  --forest: #10231f;
-  --forest-2: #18342d;
-  --teal: #00bfa6;
-  --cyan: #34d9d0;
-  --copper: #b86f3c;
-  --paper: #f2f5f0;
+  /* Paleta oficial definitiva (Guia de Marca RAIZ Digital): Grafite #0B0D10,
+     Branco #F4F5F7, Turquesa Digital #00C4D6, Cobre Raiz #B86F3E. */
+  --forest: #0b0d10;
+  --forest-2: #16181c;
+  --teal: #00c4d6;
+  --cyan: #4dd9e6;
+  --copper: #b86f3e;
+  --paper: #f4f5f7;
   --surface: #ffffff;
-  --ink: #17241f;
-  --muted: #68746f;
-  --line: #dfe6e1;
+  --ink: #14161a;
+  --muted: #6b7178;
+  --line: #e2e4e7;
   --success: #29966f;
   --warning: #d89943;
   --danger: #d9655a;
-  --shadow: 0 12px 32px rgba(16, 35, 31, 0.07);
+  --shadow: 0 12px 32px rgba(11, 13, 16, 0.08);
   --font-heading: var(--font-sora), "Avenir Next", "Segoe UI", sans-serif;
   --font-body: var(--font-inter), "Segoe UI", Arial, sans-serif;
 }

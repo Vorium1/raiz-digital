@@ -61,7 +61,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
     const rings = ringsToLatLngs(geometry);
     if (!rings.length) return;
     rings.forEach((ring) => {
-      L.polygon(ring, { color: "#00BFA6", weight: 2, fillOpacity: 0.18 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
+      L.polygon(ring, { color: "#00C4D6", weight: 2, fillOpacity: 0.18 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
     });
     const bounds = L.latLngBounds(rings.flat());
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 17 });
@@ -73,7 +73,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
     const rings = ringsToLatLngs(referenceBoundary);
     if (!rings.length) return;
     rings.forEach((ring) => {
-      L.polygon(ring, { color: "#B86F3C", weight: 1.5, dashArray: "4 4", fillOpacity: 0.05 }).addTo(referenceLayerRef.current as Leaflet.LayerGroup);
+      L.polygon(ring, { color: "#B86F3E", weight: 1.5, dashArray: "4 4", fillOpacity: 0.05 }).addTo(referenceLayerRef.current as Leaflet.LayerGroup);
     });
     if (!parseGeometry(value)) {
       const bounds = L.latLngBounds(rings.flat());
@@ -85,13 +85,13 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
     shapeLayerRef.current?.clearLayers();
     const points = drawPointsRef.current;
     points.forEach((point) => {
-      L.circleMarker(point, { radius: 5, color: "#00BFA6", fillColor: "#00BFA6", fillOpacity: 1 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
+      L.circleMarker(point, { radius: 5, color: "#00C4D6", fillColor: "#00C4D6", fillOpacity: 1 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
     });
     if (points.length > 1) {
-      L.polyline(points, { color: "#00BFA6", weight: 2 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
+      L.polyline(points, { color: "#00C4D6", weight: 2 }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
     }
     if (points.length > 2) {
-      L.polygon(points, { color: "#00BFA6", weight: 2, fillOpacity: 0.15, dashArray: "3 5" }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
+      L.polygon(points, { color: "#00C4D6", weight: 2, fillOpacity: 0.15, dashArray: "3 5" }).addTo(shapeLayerRef.current as Leaflet.LayerGroup);
     }
   }
 

@@ -67,7 +67,7 @@ export function RealFieldMap({
 
   function defaultColor(point: MapPoint) {
     const collected = Boolean(point.collectedAt);
-    return { stroke: collected ? "#00BFA6" : "#B86F3C", fill: collected ? "#00BFA6" : "#F2C879", fillOpacity: collected ? 0.9 : 0.6 };
+    return { stroke: collected ? "#00C4D6" : "#B86F3E", fill: collected ? "#00C4D6" : "#F2C879", fillOpacity: collected ? 0.9 : 0.6 };
   }
 
   function drawLayers(L: typeof Leaflet, map: Leaflet.Map) {
@@ -80,7 +80,7 @@ export function RealFieldMap({
     const { boundary, points, colorFor } = latestRef.current;
     const rings = geometryRings(boundary);
     rings.forEach((ring) => {
-      L.polygon(ring, { color: "#00BFA6", weight: 2, fillOpacity: 0.08 }).addTo(boundaryLayer);
+      L.polygon(ring, { color: "#00C4D6", weight: 2, fillOpacity: 0.08 }).addTo(boundaryLayer);
     });
 
     const bounds: [number, number][] = [...rings.flat()];
@@ -140,7 +140,7 @@ export function RealFieldMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boundary, points, colorFor]);
 
-  const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00BFA6" }, { label: "Pendente", color: "#B86F3C" }];
+  const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;
   const showAgronomicFields = selectedPoint && selectedPoint.value !== undefined;
 

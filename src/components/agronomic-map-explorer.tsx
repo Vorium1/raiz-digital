@@ -75,7 +75,7 @@ export function AgronomicMapExplorer() {
   const colorFor = useCallback((point: MapPoint) => {
     if (!parameter) {
       const collected = Boolean(point.collectedAt);
-      return { stroke: collected ? "#00BFA6" : "#B86F3C", fill: collected ? "#00BFA6" : "#F2C879", fillOpacity: collected ? 0.9 : 0.6 };
+      return { stroke: collected ? "#00C4D6" : "#B86F3E", fill: collected ? "#00C4D6" : "#F2C879", fillOpacity: collected ? 0.9 : 0.6 };
     }
     if (point.interpretable) {
       const color = classificationColor(point.classification);
@@ -85,7 +85,7 @@ export function AgronomicMapExplorer() {
   }, [parameter]);
 
   const legend = useMemo(() => {
-    if (!parameter) return [{ label: "Coletado", color: "#00BFA6" }, { label: "Pendente", color: "#B86F3C" }];
+    if (!parameter) return [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
     const present = new Set((layer?.points ?? []).map((point) => point.classification).filter(Boolean) as string[]);
     const entries = Array.from(present).map((label) => ({ label, color: classificationColor(label) }));
     entries.push({ label: "Sem classificação", color: "#9AA79F" });

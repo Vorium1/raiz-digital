@@ -23,7 +23,7 @@
      inkscape:deskcolor="#d1d1d1" />
   <g
      fill="none"
-     stroke="#00bfa6"
+     stroke="#00C4D6"
      stroke-width="12"
      stroke-linecap="round"
      stroke-linejoin="round"
@@ -51,7 +51,7 @@
        id="path14" />
   </g>
   <g
-     fill="#34d9d0"
+     fill="#4DD9E6"
      id="g42">
     <path
        id="circle18"
@@ -91,12 +91,12 @@
        d="m 360,216 a 10,10 0 0 1 -10,10 10,10 0 0 1 -10,-10 10,10 0 0 1 10,-10 10,10 0 0 1 10,10 z" />
   </g>
   <path
-     fill="#F2F5F0"
+     fill="#F4F5F7"
      d="M172 151 H295 C349 151 381 179 381 225 C381 263 358 289 321 300 L393 414 H313 L250 309 H240 V414 H172 V216 H240 V254 H291 C309 254 320 243 320 226 C320 210 309 201 291 201 H172 Z"
      id="path44" />
   <g
      fill="none"
-     stroke="#b86f3c"
+     stroke="#B86F3E"
      stroke-width="12"
      stroke-linecap="round"
      stroke-linejoin="round"
@@ -121,7 +121,7 @@
        id="path56" />
   </g>
   <g
-     fill="#b86f3c"
+     fill="#B86F3E"
      id="g74">
     <path
        id="circle60"

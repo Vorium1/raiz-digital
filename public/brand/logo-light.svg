@@ -23,7 +23,7 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1" />
   <svg x="20" y="15" width="420" height="420" viewBox="0 0 512 512" id="image2">
-    <g fill="none" stroke="#00bfa6" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <g fill="none" stroke="#00C4D6" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
       <path d="m 82,92 78,-24 h 90 l 84,32" />
       <path d="m 61,151 84,-26 h 95 l 109,29" />
       <path d="m 50,214 90,-20 h 95 l 115,22" />
@@ -32,7 +32,7 @@
       <path d="m 250,68 -10,57 -5,69" />
       <path d="m 334,100 15,54 1,62" />
     </g>
-    <g fill="#34d9d0">
+    <g fill="#4DD9E6">
       <path d="M 92,92 A 10,10 0 0 1 82,102 10,10 0 0 1 72,92 10,10 0 0 1 82,82 10,10 0 0 1 92,92 Z" />
       <path d="M 170,68 A 10,10 0 0 1 160,78 10,10 0 0 1 150,68 10,10 0 0 1 160,58 10,10 0 0 1 170,68 Z" />
       <path d="M 260,68 A 10,10 0 0 1 250,78 10,10 0 0 1 240,68 10,10 0 0 1 250,58 10,10 0 0 1 260,68 Z" />
@@ -46,8 +46,8 @@
       <path d="m 245,194 a 10,10 0 0 1 -10,10 10,10 0 0 1 -10,-10 10,10 0 0 1 10,-10 10,10 0 0 1 10,10 z" />
       <path d="m 360,216 a 10,10 0 0 1 -10,10 10,10 0 0 1 -10,-10 10,10 0 0 1 10,-10 10,10 0 0 1 10,10 z" />
     </g>
-    <path fill="#10231F" d="M172 151 H295 C349 151 381 179 381 225 C381 263 358 289 321 300 L393 414 H313 L250 309 H240 V414 H172 V216 H240 V254 H291 C309 254 320 243 320 226 C320 210 309 201 291 201 H172 Z" />
-    <g fill="none" stroke="#b86f3c" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#0B0D10" d="M172 151 H295 C349 151 381 179 381 225 C381 263 358 289 321 300 L393 414 H313 L250 309 H240 V414 H172 V216 H240 V254 H291 C309 254 320 243 320 226 C320 210 309 201 291 201 H172 Z" />
+    <g fill="none" stroke="#B86F3E" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
       <path d="M 172,189 V 292" />
       <path d="M 172,292 82,363" />
       <path d="M 172,292 121,411" />
@@ -55,7 +55,7 @@
       <path d="m 172,292 60,128" />
       <path d="m 172,292 111,78" />
     </g>
-    <g fill="#b86f3c">
+    <g fill="#B86F3E">
       <path d="m 185,189 a 13,13 0 0 1 -13,13 13,13 0 0 1 -13,-13 13,13 0 0 1 13,-13 13,13 0 0 1 13,13 z" />
       <path d="m 185,292 a 13,13 0 0 1 -13,13 13,13 0 0 1 -13,-13 13,13 0 0 1 13,-13 13,13 0 0 1 13,13 z" />
       <path d="M 92,363 A 10,10 0 0 1 82,373 10,10 0 0 1 72,363 10,10 0 0 1 82,353 10,10 0 0 1 92,363 Z" />
@@ -70,14 +70,14 @@
      y1="60"
      x2="470"
      y2="410"
-     stroke="#00BFA6"
+     stroke="#00C4D6"
      stroke-width="3"
      opacity="0.7"
      id="line4" />
   <g
      aria-label="RAIZ"
      id="text6"
-     style="font-weight:700;font-size:150px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:2;fill:#10231f">
+     style="font-weight:700;font-size:150px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:2;fill:#0B0D10">
     <path
        d="m 583.83301,149.13574 q 8.8623,0 12.6709,-3.2959 3.88183,-3.29589 3.88183,-10.83984 0,-7.4707 -3.88183,-10.69336 -3.8086,-3.22266 -12.6709,-3.22266 h -11.86524 v 28.05176 z m -11.86524,19.48242 V 210 H 543.76953 V 100.64941 h 43.06641 q 21.60644,0 31.64062,7.25098 10.10742,7.25098 10.10742,22.92481 0,10.83984 -5.27343,17.79785 -5.2002,6.958 -15.74707,10.2539 5.78613,1.31836 10.32714,6.00586 4.61426,4.61426 9.30176,14.0625 L 642.5,210 h -30.0293 l -13.33008,-27.17285 q -4.02832,-8.20313 -8.20312,-11.20606 -4.10156,-3.00293 -10.98633,-3.00293 z"
        id="path64" />
@@ -94,7 +94,7 @@
   <g
      aria-label="DIGITAL"
      id="text8"
-     style="font-weight:700;font-size:64px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:23;fill:#00bfa6">
+     style="font-weight:700;font-size:64px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:23;fill:#00C4D6">
     <path
        d="m 555.90625,262.4375 v 28.46875 h 4.3125 q 7.375,0 11.25,-3.65625 3.90625,-3.65625 3.90625,-10.625 0,-6.9375 -3.875,-10.5625 -3.875,-3.625 -11.28125,-3.625 z M 543.875,253.34375 h 12.6875 q 10.625,0 15.8125,1.53125 5.21875,1.5 8.9375,5.125 3.28125,3.15625 4.875,7.28125 1.59375,4.125 1.59375,9.34375 0,5.28125 -1.59375,9.4375 -1.59375,4.125 -4.875,7.28125 -3.75,3.625 -9,5.15625 -5.25,1.5 -15.75,1.5 H 543.875 Z"
        id="path73" />
@@ -122,13 +122,13 @@
      y1="337"
      x2="930"
      y2="337"
-     stroke="#B86F3C"
+     stroke="#B86F3E"
      stroke-width="3"
      id="line10" />
   <g
      aria-label="INTELIGÊNCIA AGRONÔMICA"
      id="text12"
-     style="font-weight:500;font-size:31px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:5;fill:#10231f">
+     style="font-weight:500;font-size:31px;font-family:'DejaVu Sans', Arial, sans-serif;letter-spacing:5;fill:#0B0D10">
     <path
        d="m 541.04248,359.40088 h 3.05762 V 382 h -3.05762 z"
        id="path88" />
@@ -199,7 +199,7 @@
   <g
      aria-label="by Vorium"
      id="text16"
-     style="font-size:25px;font-family:'DejaVu Sans', Arial, sans-serif;fill:#10231f">
+     style="font-size:25px;font-family:'DejaVu Sans', Arial, sans-serif;fill:#0B0D10">
     <path
        d="m 1204.1704,410.17627 q 0,-2.47803 -1.0254,-3.88184 -1.0132,-1.41601 -2.7954,-1.41601 -1.7822,0 -2.8076,1.41601 -1.0132,1.40381 -1.0132,3.88184 0,2.47803 1.0132,3.89404 1.0254,1.40381 2.8076,1.40381 1.7822,0 2.7954,-1.40381 1.0254,-1.41601 1.0254,-3.89404 z m -7.6416,-4.77295 q 0.708,-1.2207 1.7822,-1.80664 1.0865,-0.59814 2.5879,-0.59814 2.4903,0 4.0406,1.97753 1.5625,1.97754 1.5625,5.2002 0,3.22266 -1.5625,5.20019 -1.5503,1.97754 -4.0406,1.97754 -1.5014,0 -2.5879,-0.58593 -1.0742,-0.59815 -1.7822,-1.81885 V 417 h -2.2583 v -18.99414 h 2.2583 z"
        id="path133" />
