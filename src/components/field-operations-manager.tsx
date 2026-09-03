@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { RealFieldMap } from "@/components/real-field-map";
+import { FieldYieldHistoryManager } from "@/components/field-yield-history-manager";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 type ContextData = {
@@ -500,6 +501,9 @@ export function FieldOperationsManager() {
             ))}
           </div>}
         </div></details>
+        <details id="produtividade"><summary><span><b>4</b><strong>Produtividade real</strong><small>Histórico de safras já colhidas, por talhão</small></span><Icon name="chevron" size={16}/></summary>
+          <FieldYieldHistoryManager fields={context.fields}/>
+        </details>
       </div>
     </section>
 

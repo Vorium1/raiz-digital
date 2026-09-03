@@ -1370,9 +1370,9 @@ não-negativo para as áreas em hectare, inteiro não-negativo para anos de cult
 `field-operations-manager.tsx` (formulário de criação e a linha de edição inline, ambos já preparados
 para `flex-wrap`, sem precisar redesenhar o layout).
 
-Ainda não incluídos neste bloco (ficam para depois, também dependentes de homologação do Rafael): tela de
-histórico de produtividade real por safra (`field_yield_history`, tabela distinta da meta `yield_goal`) e
-a tela de comparação recomendado × usado de insumo (`input_recommendations`/`input_applications`).
+Ainda não incluído neste bloco (fica para depois, também dependente de homologação do Rafael): a tela de
+comparação recomendado × usado de insumo (`input_recommendations`/`input_applications`). O histórico de
+produtividade real por safra (`field_yield_history`) foi implementado logo em seguida — ver seção abaixo.
 
 **Testes**: `npm run typecheck`, `npm run build` e `npm run check:migrations` limpos. Testado end-to-end
 contra o banco real de desenvolvimento (Supabase) via a própria API da aplicação — POST e PATCH de safra
@@ -1385,3 +1385,27 @@ Publicado em `develop` (commit `7d64615`). Merge para `main` ainda pendente nest
 de segurança do modo automático bloqueou o `git checkout main && git merge develop`, mesmo com a
 autorização de publicação recorrente já concedida pelo diretor — mesma trava já documentada na seção
 anterior. Fica para o diretor rodar localmente ou aprovar via prompt de permissão.
+
+## Histórico de produtividade real por talhão (2026-09-03)
+
+Sequência direta do bloco anterior: implementada a tela de `field_yield_history` — o agrônomo registra, por
+talhão, a produtividade realmente colhida em safras passadas (safra, cultura, cultivar opcional, valor,
+unidade, origem do dado), separado da meta (`yield_goal`, que é sempre da PRÓXIMA safra). Serve tanto como
+registro histórico quanto, no futuro, para calibrar a confiabilidade da própria recomendação comparando
+meta × realizado ao longo dos anos.
+
+Implementado como funcionalidade completa (criar, listar, excluir — sem editar, por ser um registro
+histórico: corrigir é excluir e recriar): `listFieldYieldHistory`/`createFieldYieldHistory`/
+`deleteFieldYieldHistory` em `src/lib/repositories/catalog.ts`; rotas `src/app/api/field-yield-history/
+route.ts` (GET por talhão, POST) e `.../[id]/route.ts` (DELETE); componente novo
+`src/components/field-yield-history-manager.tsx`, mantido separado de `field-operations-manager.tsx` (que
+já estava grande) e encaixado como item "4" do acordeão de Área/Talhão/Safra em `coletas`.
+
+**Testes**: `npm run typecheck`, `npm run build` limpos. End-to-end real contra o banco de dev: criar,
+listar, excluir, e um caso de valor negativo rejeitado pela API (status 400, mensagem clara, nada chega a
+gravar) — dado de teste removido depois. Verificado visualmente via CDP em desktop 1440px e mobile 390px,
+sem overflow horizontal; a lista e o formulário aparecem corretamente nos dois tamanhos.
+
+Publicado em `develop`. Merge para `main` segue pendente pelo mesmo motivo do bloco anterior (trava de
+permissão do Claude Code para ações em `main`) — por pedido do diretor, essa etapa de publicação fica
+acumulada para ser resolvida numa sessão dedicada a isso, em vez de interromper a cada bloco concluído.

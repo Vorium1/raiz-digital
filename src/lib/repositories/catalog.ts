@@ -347,3 +347,59 @@ export async function createCropSeason(input: {
     return created;
   });
 }
+
+export async function listFieldYieldHistory(tenantId: string, fieldId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", crop, cultivar,
+              yield_value::float8 AS "yieldValue", yield_unit AS "yieldUnit", source, created_at AS "createdAt"
+       FROM field_yield_history WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY created_at DESC`,
+      [tenantId, fieldId],
+    );
+    return result.rows;
+  });
+}
+
+export async function createFieldYieldHistory(input: {
+  tenantId: string;
+  userId: string;
+  fieldId: string;
+  seasonLabel: string;
+  crop: string;
+  cultivar?: string | null;
+  yieldValue: number;
+  yieldUnit: string;
+  source?: string | null;
+}) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    let result;
+    try {
+      result = await client.query(
+        `INSERT INTO field_yield_history (tenant_id, field_id, season_label, crop, cultivar, yield_value, yield_unit, source, created_by)
+         VALUES ($1::uuid, $2::uuid, $3, $4, nullif($5,''), $6, $7, nullif($8,''), $9::uuid)
+         RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", crop, cultivar,
+                   yield_value::float8 AS "yieldValue", yield_unit AS "yieldUnit", source, created_at AS "createdAt"`,
+        [input.tenantId, input.fieldId, input.seasonLabel, input.crop, input.cultivar ?? "", input.yieldValue, input.yieldUnit, input.source ?? "", input.userId],
+      );
+    } catch (error) {
+      if (isForeignKeyViolation(error)) throw new CatalogError("Talhão não encontrado.", 404);
+      throw error;
+    }
+    const created = result.rows[0];
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "FIELD_YIELD_HISTORY_CREATED", entityType: "field_yield_history", entityId: created.id, metadata: { fieldId: created.fieldId, seasonLabel: created.seasonLabel, yieldValue: created.yieldValue } });
+    return created;
+  });
+}
+
+export async function deleteFieldYieldHistory(input: { tenantId: string; userId: string; entryId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query<{ id: string; seasonLabel: string }>(
+      `DELETE FROM field_yield_history WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id::text, season_label AS "seasonLabel"`,
+      [input.tenantId, input.entryId],
+    );
+    const deleted = result.rows[0];
+    if (!deleted) throw new CatalogError("Registro de produtividade não encontrado.", 404);
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "FIELD_YIELD_HISTORY_DELETED", entityType: "field_yield_history", entityId: deleted.id, metadata: { seasonLabel: deleted.seasonLabel } });
+    return deleted;
+  });
+}
