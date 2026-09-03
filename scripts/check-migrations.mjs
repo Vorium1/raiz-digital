@@ -15,6 +15,7 @@ const totpReplay = await readFile(new URL("../db/migrations/011_totp_replay_prot
 const agronomicFoundation = await readFile(new URL("../db/migrations/012_agronomic_intelligence_foundation.sql", import.meta.url), "utf8");
 const aiLayer = await readFile(new URL("../db/migrations/013_ai_layer_and_crop_catalog.sql", import.meta.url), "utf8");
 const reportBranding = await readFile(new URL("../db/migrations/014_report_branding.sql", import.meta.url), "utf8");
+const areaHistory = await readFile(new URL("../db/migrations/015_area_history_and_input_audit.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -56,4 +57,10 @@ assert.match(reportBranding, /ALTER TABLE tenants/i);
 assert.match(reportBranding, /report_logo_data_url/i);
 assert.match(reportBranding, /report_responsible_name/i);
 assert.match(reportBranding, /report_responsible_registration/i);
-console.log("migrations: contratos estruturais 001-014 aprovados");
+assert.match(areaHistory, /ADD COLUMN IF NOT EXISTS next_cultivar/i);
+assert.match(areaHistory, /ADD COLUMN IF NOT EXISTS is_first_year_area/i);
+assert.match(areaHistory, /CREATE TABLE field_yield_history/i);
+assert.match(areaHistory, /CREATE TABLE input_recommendations/i);
+assert.match(areaHistory, /CREATE TABLE input_applications/i);
+assert.match(areaHistory, /FORCE ROW LEVEL SECURITY/i);
+console.log("migrations: contratos estruturais 001-015 aprovados");
