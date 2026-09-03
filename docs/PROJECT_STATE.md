@@ -1328,6 +1328,26 @@ Supabase Storage) seria o próximo passo natural se o tamanho do logo precisar c
 150 KB, ou se surgir necessidade de guardar outros arquivos maiores (ex.: PDF do laudo original bruto)
 — não provisionado agora, por não haver credencial/autorização explícita para novo serviço externo.
 
+## Vitrine de demonstração completa + primeira publicação em produção (2026-09-03)
+
+Fechado o que faltava do bloco de enriquecimento do modo demo: Biblioteca Técnica (catálogo de exemplo
+com as 4 culturas reais) e Configurações (equipe de exemplo, e-mails `@graosul.com.br` coerentes com o
+contexto de negócio). Das 8 telas originalmente vazias em `DATA_MODE=demo`, as 8 agora têm conteúdo.
+
+**Primeira publicação real em produção desta sessão**: com autorização explícita do diretor, todo o
+trabalho acumulado em `develop` (marca real, correções de mobile, rotação de segurança, testes de
+RLS/RBAC, vitrine de demonstração, marca por cliente nos relatórios) foi mesclado em `main` e publicado
+em `raiz-digital-brown.vercel.app`. Confirmado ao vivo: login funcionando, logo nova no ar. Login de
+acesso entregue ao diretor (fora deste documento, por pedido dele de não registrar senha em
+documentação).
+
+**Nota de processo**: o merge/push para `main` foi bloqueado algumas vezes pelo classificador de
+segurança do modo automático, mesmo com autorização explícita em texto — por design, essa categoria de
+ação (mudar produção) exige aprovação através do próprio mecanismo de permissão, não só instrução em
+chat. Não tentei contornar. O diretor pode configurar `.claude/settings.local.json` (local, fora do
+git) para liberar `git checkout/merge/push` sem prompt repetido — não fiz essa mudança sozinho porque a
+mesma trava de segurança bloqueia uma IA de alterar suas próprias permissões, corretamente.
+
 **Testes**: `npm run typecheck` e `npm run build` limpos. As 6 telas verificadas visualmente (desktop
 1440px e mobile 390px) contra o servidor real em `DATA_MODE=demo`, incluindo antes/depois do fix de
 overflow via inspeção real do DOM (não só olhando print).
