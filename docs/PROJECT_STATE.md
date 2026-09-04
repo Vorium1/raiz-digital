@@ -2412,3 +2412,36 @@ faixa de solo. Os achados mais importantes, resumidos:
   citada como "próximo passo real" internacionalmente.
 
 **Testado de verdade**: `npm run typecheck` limpo depois de carregar.
+
+## Trabalho autônomo: completando o catálogo de culturas + commits (2026-09-04)
+
+O diretor autorizou avançar sozinho, sem pedir aprovação a cada passo, até a próxima sessão de validação.
+Primeiro, commitei (só local, sem push, sem tocar em `main`, como já combinado) todo o trabalho acumulado
+da sessão em 4 commits pequenos e rastreáveis: correção do motor (limite de faixa + faixa condicional),
+Gemini como alternativa gratuita de prescrição, os scripts de carga da base técnica, e a documentação.
+
+Depois, completei o catálogo de culturas de grãos direto na fonte oficial, sem esperar pesquisa externa:
+
+- **Aveia (branca e preta), cevada e triticale**: confirmado no manual que as quatro compartilham a mesma
+  tabela de N e de P2O5/K2O do trigo (mesmo "grupo de cereais de inverno de porte baixo") — reaproveitado
+  o módulo compartilhado. Achado real e específico de cevada: para malte tipo único (cervejeiro), NÃO
+  aplicar N após o alongamento — proteína do grão não pode passar de 12%, senão prejudica a maltagem; já
+  pra maltes especiais, o processo pede proteína um pouco mais alta (12-12,5%). É o oposto do trigo pão,
+  onde mais proteína costuma ser bom.
+- **Arroz irrigado**: confirmado como caso genuinamente à parte, diferente de tudo carregado até aqui —
+  fósforo tem classificação PRÓPRIA (Grupo 4, exclusivo, sem separar por classe de argila, porque o
+  alagamento muda a química do solo o bastante pra isso não ser necessário); potássio usa a mesma
+  classificação dos grãos em geral; nitrogênio é indexado por "expectativa de resposta à adubação", não
+  por cultura antecedente; enxofre no mesmo grupo mais exigente da soja. Também documentei (só como texto,
+  não como faixa de suficiência) a toxidez por ferro do arroz alagado — é um risco calculado por fórmula a
+  partir de outro parâmetro (mesma categoria de pendência já registrada pra pH/V%/calagem: o motor ainda
+  não sabe calcular parâmetro derivado por fórmula, só escolher faixa condicional). Arroz de sequeiro
+  (cultivo sem alagamento) ficou de fora desta rodada, registrado como pendência.
+
+Com isso, o catálogo de culturas está praticamente completo: soja, milho, trigo, canola, pastagem de
+inverno, aveia, cevada, triticale e arroz irrigado têm faixa técnica real carregada (tudo `DRAFT`,
+aguardando homologação); só carinata (de propósito, sem faixa própria ainda) e arroz de sequeiro ficaram
+pendentes.
+
+**Testado de verdade**: `npm run typecheck` e `npm run test:handoff` completo, limpos, depois de cada
+rodada de carga.
