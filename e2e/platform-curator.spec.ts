@@ -60,6 +60,11 @@ test("nao-curador consegue ler a base tecnica mas e bloqueado (403) em toda escr
 
   const createRegion = await api(page, "/api/technical-regions", { method: "POST", body: { code: "E2E-NAO-DEVE-EXISTIR", name: "Região que não deve existir" } });
   expect(createRegion.status).toBe(403);
+
+  // Mesma trava aplicada à pesquisa periódica (construída dois dias depois da restrição original) --
+  // nunca deve gastar nenhum request de IA para quem não é curador.
+  const runResearch = await api(page, "/api/knowledge-research", { method: "POST", body: {} });
+  expect(runResearch.status).toBe(403);
 });
 
 test("curador consegue homologar um perfil de cultura existente (estado restaurado ao final)", async ({ page }) => {
@@ -79,5 +84,16 @@ test("curador consegue homologar um perfil de cultura existente (estado restaura
     const revert = await api(page, `/api/crop-profiles/${target.id}/status`, { method: "PATCH", body: { status: "DRAFT" } });
     expect(revert.status).toBe(200);
     expect(revert.payload.cropProfile.status).toBe("DRAFT");
+  }
+
+  // Curador passa da checagem de autorização da pesquisa periódica -- só testado quando NENHUMA chave
+  // de IA está configurada no ambiente que roda o teste, porque só aí a chamada é garantidamente
+  // gratuita (cai no caminho "nenhum provedor disponível", nunca chega a gastar). Com alguma chave
+  // configurada, chamar essa rota de verdade dispararia uma pesquisa paga -- por segurança financeira,
+  // o teste pula essa parte nesse caso em vez de arriscar gasto real num teste automatizado.
+  const anyProviderConfigured = Boolean(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY);
+  if (!anyProviderConfigured) {
+    const runResearch = await api(page, "/api/knowledge-research", { method: "POST", body: {} });
+    expect(runResearch.status).not.toBe(403);
   }
 });

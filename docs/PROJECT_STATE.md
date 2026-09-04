@@ -1818,3 +1818,24 @@ valor original (50), sem resíduo.
 Publicado em `develop`. Com isso, as duas peças de segurança/custo mais sensíveis construídas nesta
 sessão (curadoria da base técnica e teto mensal por empresa) têm proteção automatizada contra regressão
 futura, não só verificação manual do dia em que foram construídas.
+
+## E2E da curadoria estendido para a pesquisa periódica, com trava financeira (2026-09-04)
+
+Faltava a mesma trava de curadoria aplicada à rota `/api/knowledge-research` — construída dois dias depois
+da restrição original, então não fazia parte de `platform-curator.spec.ts`. Estendido: não-curador toma
+403 (sem custo nenhum, a checagem de papel vem antes de qualquer coisa); curador não é bloqueado por
+permissão (403).
+
+**Cuidado deliberado, pensando na chave que chega ainda hoje**: a parte "curador não é bloqueado" só roda
+de verdade quando **nenhuma chave de IA está configurada** no ambiente que executa o teste — checado via
+`process.env` dentro do próprio teste. O motivo: assim que uma chave real existir, chamar essa rota de
+verdade dispara um ciclo de pesquisa pago de verdade (uma chamada de IA por cultura cadastrada). Rodar
+esse teste automatizado sem essa trava, depois que a chave estiver configurada, gastaria dinheiro real
+toda vez que alguém rodasse `npm run test:e2e` — inclusive sem querer, numa sessão futura. Com a chave
+configurada, o teste pula essa parte específica (o resto da suíte continua normal) em vez de arriscar.
+
+**Testado de verdade**: `npm run typecheck` limpo; suíte completa de E2E — **22/22 specs passaram** de
+novo com essa peça a mais, no ambiente de hoje (sem nenhuma chave ainda, então a parte nova rodou por
+completo, não pulou).
+
+Publicado em `develop`.
