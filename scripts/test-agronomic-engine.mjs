@@ -128,4 +128,98 @@ function makeParam(overrides = {}) {
   assert.equal(result.pendencies.length, 1);
 }
 
-console.log("agronomic-engine: 11 cenários aprovados");
+// 12. Duas faixas para o mesmo parâmetro/profundidade/método, SEM condição
+// declarada em nenhuma delas -> cadastro ambíguo, nunca escolhe a primeira
+// arbitrariamente (bug real encontrado ao carregar P/K da CQFS-RS/SC: antes
+// dessa checagem, `methodMatches[0]` pegava sempre a mesma faixa e ignorava
+// as outras 3 classes de argila/CTC silenciosamente).
+{
+  const profile = makeProfile({
+    parameters: [
+      makeParam({ id: "p-classe-1", parameterCode: "P", sufficiencyRanges: [{ label: "Baixo", max: 6 }, { label: "Alto", min: 6 }] }),
+      makeParam({ id: "p-classe-2", parameterCode: "P", sufficiencyRanges: [{ label: "Baixo", max: 8 }, { label: "Alto", min: 8 }] }),
+    ],
+  });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "P", value: 7, method: "CaCl2" })] });
+  assert.equal(result.interpretation[0].code, "NO_CONDITION_MATCH");
+}
+
+// 13. Faixa condicionada (ex.: P por classe de argila) mas o parâmetro
+// condicionante (CLAY) não foi informado na mesma amostra -> nunca supõe.
+{
+  const profile = makeProfile({
+    parameters: [
+      makeParam({ id: "p-classe-1", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 0, conditionMax: 20, sufficiencyRanges: [{ label: "Baixo", max: 6 }, { label: "Alto", min: 6 }] }),
+      makeParam({ id: "p-classe-2", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 21, conditionMax: 100, sufficiencyRanges: [{ label: "Baixo", max: 8 }, { label: "Alto", min: 8 }] }),
+    ],
+  });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "P", value: 7, method: "CaCl2" })] });
+  assert.equal(result.interpretation[0].code, "CONDITION_PARAMETER_MISSING");
+}
+
+// 14. Parâmetro condicionante informado, mas fora de todas as classes cadastradas.
+{
+  const profile = makeProfile({
+    parameters: [
+      makeParam({ id: "p-classe-1", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 0, conditionMax: 20, sufficiencyRanges: [{ label: "Baixo", max: 6 }, { label: "Alto", min: 6 }] }),
+      makeParam({ id: "p-classe-2", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 21, conditionMax: 60, sufficiencyRanges: [{ label: "Baixo", max: 8 }, { label: "Alto", min: 8 }] }),
+    ],
+  });
+  const result = runAgronomicEngine({
+    cropProfile: profile,
+    labResults: [makeResult({ parameterCode: "P", value: 7, method: "CaCl2" }), makeResult({ parameterCode: "CLAY", value: 85, method: "" })],
+  });
+  assert.equal(result.interpretation[0].code, "NO_CONDITION_MATCH");
+}
+
+// 15. Caminho feliz: escolhe a faixa certa entre várias condicionadas usando
+// outro resultado da MESMA amostra -- réplica minificada do caso real
+// (P pela CQFS-RS/SC, faixa depende da classe de argila do mesmo talhão).
+{
+  const profile = makeProfile({
+    parameters: [
+      makeParam({ id: "p-classe-1", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 60.0001, conditionMax: null, sufficiencyRanges: [{ label: "Baixo", max: 6 }, { label: "Alto", min: 6 }] }),
+      makeParam({ id: "p-classe-4", parameterCode: "P", conditionParameterCode: "CLAY", conditionMin: 0, conditionMax: 20, sufficiencyRanges: [{ label: "Baixo", max: 20 }, { label: "Alto", min: 20 }] }),
+    ],
+  });
+  const result = runAgronomicEngine({
+    cropProfile: profile,
+    labResults: [makeResult({ parameterCode: "P", value: 15, method: "CaCl2" }), makeResult({ parameterCode: "CLAY", value: 10, method: "" })],
+  });
+  assert.equal(result.interpretation[0].interpretable, true);
+  assert.equal(result.interpretation[0].classification, "Baixo"); // classe 4 (argila 10%): 15 < 20 -> Baixo
+  assert.equal(result.interpretation[0].matchedParameter.id, "p-classe-4");
+}
+
+// 16-18. Fronteira de faixa: a fonte (CQFS-RS/SC) escreve "9,1-18,0" seguido
+// de ">18,0" -- o valor exato do corte pertence à faixa de baixo (inclusive
+// no max), só valores ESTRITAMENTE maiores entram na faixa de cima (sem
+// `max`). Cross-validado em 2026-09-04 comparando duas pesquisas de IA
+// independentes contra o mesmo manual oficial -- achamos que o motor fazia
+// o oposto (tratava o corte como já sendo da faixa de cima).
+{
+  const bands = [
+    { label: "Baixo", max: 9.0 },
+    { label: "Alto", min: 9.1, max: 18.0 },
+    { label: "Muito Alto", min: 18.0 },
+  ];
+  const profile = makeProfile({ parameters: [makeParam({ sufficiencyRanges: bands })] });
+
+  // 16. Exatamente no corte superior de uma faixa do meio -> pertence a ELA, não à próxima.
+  {
+    const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ value: 18.0 })] });
+    assert.equal(result.interpretation[0].classification, "Alto");
+  }
+  // 17. Estritamente acima do corte -> só agora entra na faixa de cima.
+  {
+    const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ value: 18.01 })] });
+    assert.equal(result.interpretation[0].classification, "Muito Alto");
+  }
+  // 18. Exatamente no corte da faixa mais baixa (sem `min`) -> ainda pertence a ela.
+  {
+    const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ value: 9.0 })] });
+    assert.equal(result.interpretation[0].classification, "Baixo");
+  }
+}
+
+console.log("agronomic-engine: 18 cenários aprovados");

@@ -29,6 +29,19 @@ export type CropProfileParameterDef = {
   sufficiencyRanges: SufficiencyBand[] | null;
   criticality: "BAIXA" | "MEDIA" | "ALTA" | null;
   status: "DRAFT" | "ACTIVE" | "SUPERSEDED";
+  /**
+   * Condição opcional: esta faixa só é válida quando o parâmetro
+   * `conditionParameterCode` (medido na MESMA amostra) tem valor dentro de
+   * [conditionMin, conditionMax]. Existe porque, na ciência do solo
+   * brasileira, P e K quase sempre têm faixa de suficiência condicionada a
+   * outro parâmetro do mesmo solo (classe de argila para P, classe de CTC
+   * para K) -- sem isso, múltiplas faixas para o mesmo parâmetro/profundidade
+   * seriam indistinguíveis. null nos três campos = sem condição (se aplica
+   * sempre que parâmetro/profundidade/método baterem).
+   */
+  conditionParameterCode: string | null;
+  conditionMin: number | null;
+  conditionMax: number | null;
 };
 
 export type CropProfileDef = {
@@ -84,7 +97,9 @@ export type ParameterInterpretation =
         | "METHOD_NOT_SUPPORTED"
         | "DEPTH_UNKNOWN"
         | "DEPTH_NOT_COVERED"
-        | "NO_MATCHING_BAND";
+        | "NO_MATCHING_BAND"
+        | "CONDITION_PARAMETER_MISSING"
+        | "NO_CONDITION_MATCH";
     };
 
 export type EngineConfidence = {
@@ -118,16 +133,30 @@ function depthCompatible(resultFrom: number | null, resultTo: number | null, rul
   return resultFrom >= ruleF && resultTo <= ruleT;
 }
 
+/**
+ * As tabelas técnicas brasileiras (CQFS-RS/SC e equivalentes) escrevem faixa
+ * como "9,1-18,0" seguida de ">18,0" -- ou seja, o valor 18,0 exato pertence
+ * à faixa de baixo (o corte é no máximo, inclusive), e só valores
+ * ESTRITAMENTE maiores entram na faixa de cima (que não tem `max`, só
+ * `min`). Faixa sem `min` (a mais baixa) é "≤ max", inclusive. Faixa com os
+ * dois é "min a max", inclusive nos dois lados -- o "buraco" aparente entre
+ * o max de uma faixa e o min da próxima (ex.: 18,0 e 18,1) é só precisão
+ * decimal da fonte, não uma lacuna real. Cross-validado por duas pesquisas
+ * de IA independentes (2026-09-04) contra o mesmo manual oficial.
+ */
 function classifyValue(value: number, bands: SufficiencyBand[]): string | null {
   for (const band of bands) {
     const min = band.min ?? -Infinity;
-    const max = band.max ?? Infinity;
-    if (value >= min && value < max) return band.label;
+    if (band.max == null) {
+      if (value > min) return band.label; // faixa mais alta: estritamente maior que o mínimo
+    } else if (value >= min && value <= band.max) {
+      return band.label;
+    }
   }
   return null;
 }
 
-function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null): ParameterInterpretation {
+function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null, sampleResults: LabResultInput[]): ParameterInterpretation {
   const base = { sampleCode: result.sampleCode, parameterCode: result.parameterCode };
 
   if (!cropProfile) {
@@ -152,7 +181,35 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
     return { ...base, interpretable: false, reason: `Método "${result.method}" não está entre os métodos aceitos para ${result.parameterCode} neste perfil.`, code: "METHOD_NOT_SUPPORTED" };
   }
 
-  const matched = methodMatches[0];
+  let matched: CropProfileParameterDef;
+  if (methodMatches.length === 1 && !methodMatches[0].conditionParameterCode) {
+    matched = methodMatches[0];
+  } else {
+    // Múltiplas faixas para o mesmo parâmetro/profundidade/método: precisam
+    // de uma condição (ex.: classe de argila para P, classe de CTC para K)
+    // para escolher a certa -- nunca pega a primeira arbitrariamente.
+    const conditioned = methodMatches.filter((param) => param.conditionParameterCode);
+    if (conditioned.length === 0) {
+      // Nenhuma tem condição declarada mas há mais de uma -- cadastro
+      // ambíguo (curador precisa revisar), não decide sozinho.
+      return { ...base, interpretable: false, reason: `${result.parameterCode} tem mais de uma faixa homologada para a mesma profundidade/método, sem condição para escolher entre elas -- revisão de cadastro necessária.`, code: "NO_CONDITION_MATCH" };
+    }
+    const conditionParamCode = conditioned[0].conditionParameterCode!;
+    const conditionResult = sampleResults.find((r) => r.parameterCode === conditionParamCode);
+    if (!conditionResult) {
+      return { ...base, interpretable: false, reason: `A faixa de ${result.parameterCode} depende do valor de ${conditionParamCode} na mesma amostra, mas esse resultado não foi informado.`, code: "CONDITION_PARAMETER_MISSING" };
+    }
+    const matchingCondition = conditioned.find((param) => {
+      const min = param.conditionMin ?? -Infinity;
+      const max = param.conditionMax ?? Infinity;
+      return conditionResult.value >= min && conditionResult.value <= max;
+    });
+    if (!matchingCondition) {
+      return { ...base, interpretable: false, reason: `O valor de ${conditionParamCode} (${conditionResult.value}) não se encaixa em nenhuma classe condicional homologada para ${result.parameterCode}.`, code: "NO_CONDITION_MATCH" };
+    }
+    matched = matchingCondition;
+  }
+
   if (!matched.sufficiencyRanges || matched.sufficiencyRanges.length === 0) {
     return { ...base, interpretable: false, reason: `${result.parameterCode} está cadastrado no perfil, mas as faixas de suficiência ainda aguardam homologação técnica.`, code: "AWAITING_HOMOLOGATION" };
   }
@@ -167,7 +224,7 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
 
 export function runAgronomicEngine(input: EngineInput): EngineResult {
   const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method }));
-  const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile));
+  const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));
 
   const interpretableCount = interpretation.filter((item) => item.interpretable).length;
   const total = interpretation.length;

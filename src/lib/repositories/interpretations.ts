@@ -41,7 +41,9 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
           `SELECT id::text, parameter_code AS "parameterCode", parameter_category AS "parameterCategory",
                   depth_from_cm::float8 AS "depthFromCm", depth_to_cm::float8 AS "depthToCm",
                   analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
-                  sufficiency_ranges AS "sufficiencyRanges", criticality, status
+                  sufficiency_ranges AS "sufficiencyRanges", criticality, status,
+                  condition_parameter_code AS "conditionParameterCode",
+                  condition_min::float8 AS "conditionMin", condition_max::float8 AS "conditionMax"
            FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid`,
           [analysis.cropProfileId],
         );
