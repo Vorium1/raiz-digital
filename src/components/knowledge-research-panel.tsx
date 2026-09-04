@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 
-type PerCropSummary = { cropCode: string; cropName: string; sourcesCreated: number; error: string | null };
+type ProviderResult = { provider: string; model: string; sourcesCreated: number; error: string | null };
+type PerCropSummary = { cropCode: string; cropName: string; sourcesCreated: number; providerResults: ProviderResult[] };
 type LastRun = {
   id: string;
   createdAt: string;
   tokensUsed: number | null;
   costUsd: number | null;
-  responsePayload: { perCrop: PerCropSummary[]; totalSourcesCreated: number };
+  responsePayload: { perCrop: PerCropSummary[]; totalSourcesCreated: number; providersUsed: string[] };
 };
 
 /**
@@ -57,8 +58,9 @@ export function KnowledgeResearchPanel({ canCurate }: { canCurate: boolean }) {
         <div className="field-ops-wide">
           {lastRun ? (
             <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--muted)" }}>
-              Última pesquisa: {new Date(lastRun.createdAt).toLocaleString("pt-BR")} · {lastRun.responsePayload.totalSourcesCreated} fonte(s) criada(s)
-              {lastRun.responsePayload.perCrop.some((c) => c.error) ? ` · atenção: ${lastRun.responsePayload.perCrop.filter((c) => c.error).length} cultura(s) falharam` : ""}
+              Última pesquisa: {new Date(lastRun.createdAt).toLocaleString("pt-BR")} · provedores: {lastRun.responsePayload.providersUsed?.join(", ") || "—"} ·{" "}
+              {lastRun.responsePayload.totalSourcesCreated} fonte(s) criada(s)
+              {(() => { const failed = lastRun.responsePayload.perCrop.flatMap((c) => c.providerResults.filter((p) => p.error)); return failed.length > 0 ? ` · atenção: ${failed.length} tentativa(s) de provedor falharam` : ""; })()}
             </p>
           ) : (
             <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--muted)" }}>Nenhuma pesquisa rodada ainda.</p>

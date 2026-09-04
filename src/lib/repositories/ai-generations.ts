@@ -261,11 +261,14 @@ export function knowledgeResearchCooldownRemainingDays(lastRunCreatedAt: string 
 export async function recordKnowledgeResearchRun(input: {
   tenantId: string;
   userId: string;
-  provider: string;
-  model: string;
+  providersUsed: string[];
   promptVersion: string;
   requestPayload: unknown;
-  perCrop: Array<{ cropId: string; cropCode: string; cropName: string; sources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string; content: string; regionCode: string | null }>; error: string | null }>;
+  perCrop: Array<{
+    cropId: string; cropCode: string; cropName: string;
+    sources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string; content: string; regionCode: string | null }>;
+    providerResults: Array<{ provider: string; model: string; sourcesCreated: number; error: string | null }>;
+  }>;
   tokensUsed?: number | null;
   costUsd?: number | null;
 }) {
@@ -283,14 +286,14 @@ export async function recordKnowledgeResearchRun(input: {
       }
     }
 
-    const summary = input.perCrop.map((crop) => ({ cropCode: crop.cropCode, cropName: crop.cropName, sourcesCreated: crop.sources.length, error: crop.error }));
+    const summary = input.perCrop.map((crop) => ({ cropCode: crop.cropCode, cropName: crop.cropName, sourcesCreated: crop.sources.length, providerResults: crop.providerResults }));
     const created = await client.query(
       `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
        VALUES ($1::uuid, 'KNOWLEDGE_RESEARCH', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, 'APPROVED', $9::uuid)
        RETURNING id::text, created_at::text AS "createdAt"`,
       [
-        input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload),
-        JSON.stringify({ perCrop: summary, totalSourcesCreated: createdSourceIds.length }),
+        input.tenantId, input.providersUsed.join(",") || "none", "multiple", input.promptVersion, JSON.stringify(input.requestPayload),
+        JSON.stringify({ perCrop: summary, totalSourcesCreated: createdSourceIds.length, providersUsed: input.providersUsed }),
         input.tokensUsed ?? null, input.costUsd ?? null, input.userId,
       ],
     );

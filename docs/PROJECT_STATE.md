@@ -1669,3 +1669,38 @@ usado, pesquisa periódica):
 - **Sem sujeira**: nenhum `console.log`/`TODO`/`FIXME` deixado no código novo (fora os avisos deliberados
   de "não testado contra a API real" nos dois arquivos que dependem da chave); árvore de trabalho limpa,
   sem script de teste temporário esquecido.
+
+## Pesquisa periódica passa a ser multiprovedor (2026-09-04)
+
+Pedido do diretor antes de conectar a chave da Anthropic à tarde: não travar a pesquisa periódica num único
+provedor. Agora `resolveAvailableKnowledgeResearchProviders()` (`src/lib/ai/knowledge-research-provider.ts`)
+devolve todo provedor com chave configurada no servidor (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`GEMINI_API_KEY`, nessa ordem) — de um até os três. Cada ciclo de pesquisa roda **todos** os provedores
+disponíveis pra cada cultura, de forma independente; cada fonte encontrada é marcada, dentro do próprio
+`content`, com qual IA a produziu (`[Pesquisado por anthropic/claude-opus-5]`, etc.) antes de virar uma
+linha DRAFT em `technical_sources`.
+
+Decisão deliberada de **não** construir um "algoritmo de consenso" automático que decide sozinho qual
+resposta está certa quando os provedores divergem — duas IAs erradas concordando entre si não vira verdade.
+Em vez disso, todas as versões independentes ficam lado a lado na Biblioteca Técnica, e é o curador humano
+quem cruza e homologa — mais material pra decidir, decisão continua sendo humana, alinhado com a regra
+inegociável do projeto.
+
+Criados `providers/openai-knowledge-research-provider.ts` (Responses API, ferramenta `web_search_preview`)
+e `providers/gemini-knowledge-research-provider.ts` (Generative Language API, ferramenta `google_search`) —
+**nenhum dos dois foi executado contra a API real** (mesma ressalva do provedor da Anthropic: nomes exatos
+de ferramenta/modelo podem precisar ajuste na primeira execução real). Nota registrada para o diretor: o
+Gemini tem um nível gratuito real e contínuo (com limite de uso), diferente da Anthropic/OpenAI, que só dão
+crédito de teste inicial — vale conferir o limite atual no console do Google antes de contar com isso pra
+produção. `unavailable-knowledge-research-provider.ts` (do bloco de ontem) foi removido — não faz mais
+sentido no desenho de lista, uma lista vazia de provedores já é o estado "nenhum configurado".
+
+**Testado de verdade**: `npm run typecheck`, `npm run build` e `npm run test:handoff` limpos. Contra o
+servidor real: confirmado erro claro e completo (citando as 3 variáveis de ambiente) quando nenhum
+provedor está configurado, inclusive clicando de verdade na tela via CDP. Testada separadamente, com uma
+réplica exata da consulta SQL de gravação, a situação de 2 provedores bem-sucedidos e 1 falhando pra a
+mesma cultura: as fontes de cada provedor foram criadas corretamente marcadas, e o resumo por provedor
+refletiu certo o sucesso e a falha simultâneos — tudo excluído depois.
+
+Publicado em `develop`. Continua faltando só uma coisa pra virar realidade: a primeira chave de verdade,
+que chega à tarde.
