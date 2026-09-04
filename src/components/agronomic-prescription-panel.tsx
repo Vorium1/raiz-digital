@@ -25,6 +25,7 @@ type Generation = {
 };
 
 type HistoryEntry = { id: string; status: string; createdAt: string; reviewedByName: string | null };
+type Usage = { monthlyLimit: number; usedThisMonth: number };
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "review" | "waiting" | "danger" }> = {
   PENDING_REVIEW: { label: "Sugestão de IA — aguardando revisão profissional", tone: "waiting" },
@@ -42,6 +43,7 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "review" | 
 export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, canReview }: { analysisId: string; hasLabResults: boolean; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Generation | null | undefined>(undefined);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -51,6 +53,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
     const data = await response.json().catch(() => ({}));
     setLatest(data.latest ?? null);
     setHistory(data.history ?? []);
+    setUsage(data.usage ?? null);
   }
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -92,6 +95,8 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         {latest && <StatusBadge tone={STATUS_META[latest.status]?.tone ?? "waiting"}>{STATUS_META[latest.status]?.label ?? latest.status}</StatusBadge>}
       </div>
 
+      {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso deste mês: {usage.usedThisMonth}/{usage.monthlyLimit} prescrições da empresa.</p>}
+
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
 
       {!latest ? (
@@ -99,7 +104,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           <Icon name="sparkles" size={22}/>
           <div>
             <p>Nenhuma prescrição gerada ainda para esta análise.</p>
-            {canRun && <button className="button secondary" disabled={busy} onClick={() => void generate()}>{busy ? "Gerando…" : "Gerar prescrição com IA"}</button>}
+            {canRun && <button className="button secondary" disabled={busy || Boolean(usage && usage.usedThisMonth >= usage.monthlyLimit)} onClick={() => void generate()}>{busy ? "Gerando…" : usage && usage.usedThisMonth >= usage.monthlyLimit ? "Limite mensal atingido" : "Gerar prescrição com IA"}</button>}
           </div>
         </div>
       ) : (
@@ -150,7 +155,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
             </div>
           )}
 
-          {canRun && latest.status === "CHANGES_REQUESTED" && <button className="button ghost" disabled={busy} onClick={() => void generate()}>{busy ? "Gerando…" : "Gerar nova versão"}</button>}
+          {canRun && latest.status === "CHANGES_REQUESTED" && <button className="button ghost" disabled={busy || Boolean(usage && usage.usedThisMonth >= usage.monthlyLimit)} onClick={() => void generate()}>{busy ? "Gerando…" : usage && usage.usedThisMonth >= usage.monthlyLimit ? "Limite mensal atingido" : "Gerar nova versão"}</button>}
 
           {history.length > 1 && (
             <details className="agro-history"><summary>Histórico de gerações ({history.length})</summary>

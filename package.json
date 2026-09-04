@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:set-app-password": "node scripts/set-app-role-password.mjs",
     "db:set-platform-curator": "node scripts/set-platform-curator.mjs",
+    "db:set-prescription-limit": "node scripts/set-tenant-prescription-limit.mjs",
     "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
     "test:engine": "node --experimental-strip-types scripts/test-agronomic-engine.mjs",
     "test:ai-schema": "node --experimental-strip-types scripts/test-agronomic-narrative-schema.mjs",

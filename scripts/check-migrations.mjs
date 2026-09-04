@@ -19,6 +19,7 @@ const areaHistory = await readFile(new URL("../db/migrations/015_area_history_an
 const platformCurator = await readFile(new URL("../db/migrations/016_platform_curator.sql", import.meta.url), "utf8");
 const agronomicPrescription = await readFile(new URL("../db/migrations/017_agronomic_prescription.sql", import.meta.url), "utf8");
 const knowledgeResearch = await readFile(new URL("../db/migrations/018_knowledge_research.sql", import.meta.url), "utf8");
+const prescriptionLimit = await readFile(new URL("../db/migrations/019_tenant_prescription_limit.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -69,4 +70,5 @@ assert.match(areaHistory, /FORCE ROW LEVEL SECURITY/i);
 assert.match(platformCurator, /ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_curator/i);
 assert.match(agronomicPrescription, /ALTER TYPE ai_generation_kind ADD VALUE IF NOT EXISTS 'AGRONOMIC_PRESCRIPTION'/i);
 assert.match(knowledgeResearch, /ALTER TYPE ai_generation_kind ADD VALUE IF NOT EXISTS 'KNOWLEDGE_RESEARCH'/i);
-console.log("migrations: contratos estruturais 001-018 aprovados");
+assert.match(prescriptionLimit, /ADD COLUMN IF NOT EXISTS monthly_prescription_limit/i);
+console.log("migrations: contratos estruturais 001-019 aprovados");

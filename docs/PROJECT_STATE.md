@@ -1735,3 +1735,35 @@ mostrando "Abaixo do recomendado" no insumo testado. Confirmado, antes e depois 
 largas rolam dentro da própria caixa em vez de estourar a tela. Dado de teste removido depois.
 
 Publicado em `develop`.
+
+## Limite mensal de prescrições por IA, por empresa cliente (2026-09-04)
+
+Pedido do diretor de ontem, ainda sem depender de chave: "limitar por mês quantas empresa pode usar" — a
+alavanca de controle de custo por plano vendido. `tenants.monthly_prescription_limit` (migration 019,
+default 50, cobre a faixa de 30-50 laudos/mês discutida) é checado **antes** de qualquer chamada de IA na
+rota de gerar prescrição — estourou o limite, nem chega a gastar. Contagem é sempre "desde o início do mês
+corrente"; zera sozinha no mês seguinte, sem job nenhum, só porque a janela do filtro SQL muda. Ajustar o
+limite de uma empresa é `npm run db:set-prescription-limit` com `TENANT_NAME` e `PRESCRIPTION_LIMIT` — o
+mesmo padrão do `db:set-platform-curator` de dois dias atrás. Deliberadamente **não** dei ao próprio
+cliente (SUPER_ADMIN/TENANT_ADMIN da empresa) o poder de mudar o próprio limite — isso é a RAIZ Digital
+controlando o que vendeu, não algo que o cliente ajusta sozinho.
+
+**Bug real encontrado e corrigido durante o teste** (não visível em `typecheck`/`build`, mesma classe de
+erro já documentada nesta sessão duas vezes): a consulta de uso mensal juntava `tenants` (sem RLS) com
+`ai_generations` (que tem `FORCE ROW LEVEL SECURITY`) usando a conexão `query()` simples, sem contexto de
+tenant definido — resultado: a contagem sempre vinha zero, mesmo com gerações reais existindo, porque a
+trava de RLS bloqueia silenciosamente a subconsulta sem `app.tenant_id` na sessão. Corrigido trocando para
+`withTenant(...)`. Fica registrado como lição recorrente: qualquer consulta nova que toque uma tabela com
+`FORCE ROW LEVEL SECURITY` precisa passar pela conexão com contexto de tenant, nunca pela conexão simples
+— mesmo que pareça inofensivo "só juntar com uma tabela sem RLS".
+
+**Testado de verdade**: `npm run typecheck`, `npm run build`, `npm run test:handoff` e
+`npm run check:migrations` limpos. Migration aplicada no banco de dev real. Contra o servidor real: confirmei
+o padrão (0 usadas / 50 de limite); usei o script novo pra zerar o limite da empresa de teste e confirmei
+que a rota de gerar prescrição recusa com 429 e mensagem clara **antes** de tentar chamar a IA; inseri uma
+geração de teste (mesmo com status REJEITADA) e confirmei que ela contou pro uso do mês — foi exatamente
+aí que apareceu o bug do RLS, corrigido e reconfirmado com o mesmo teste até contar certo (0 → 1). Restaurei
+o limite pra 50 e limpei o dado de teste depois. Painel da prescrição mostrando "Uso deste mês: 0/50"
+verificado visualmente, sem overflow.
+
+Publicado em `develop`.
