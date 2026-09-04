@@ -1799,3 +1799,22 @@ suíte de E2E depende ter senha estável.
 a rodada completa depois da rotação de senha.
 
 Publicado em `develop`.
+
+## Teste automatizado (E2E) para o limite mensal de prescrição (2026-09-04)
+
+Mesmo raciocínio do bloco anterior, aplicado à outra peça sensível de hoje: o teto mensal por empresa é
+uma alavanca de custo real (dinheiro), então merece a mesma proteção duradoura que a curadoria já ganhou.
+`e2e/tenant-prescription-limit.spec.ts` zera o limite da empresa "Raiz Digital Demo" direto no banco (não
+existe rota de API pra isso, de propósito — o próprio cliente não deve poder mudar o próprio teto),
+confirma que a rota de gerar prescrição recusa com 429 e a mensagem certa ("0/0") **antes** de sequer
+checar se a análise existe (usei um ID de análise inexistente de propósito — prova que a ordem das
+checagens está certa: nunca arrisca custo antes de verificar o teto), e sempre restaura o limite original
+no `afterAll`, mesmo se o teste falhar no meio.
+
+**Testado de verdade**: `npm run typecheck` limpo; a suíte completa de E2E rodou de novo com essa peça a
+mais — **22/22 specs passaram**; confirmei depois, direto no banco, que o limite da empresa voltou pro
+valor original (50), sem resíduo.
+
+Publicado em `develop`. Com isso, as duas peças de segurança/custo mais sensíveis construídas nesta
+sessão (curadoria da base técnica e teto mensal por empresa) têm proteção automatizada contra regressão
+futura, não só verificação manual do dia em que foram construídas.
