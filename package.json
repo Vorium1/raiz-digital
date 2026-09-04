@@ -17,7 +17,9 @@
     "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
     "test:engine": "node --experimental-strip-types scripts/test-agronomic-engine.mjs",
     "test:ai-schema": "node --experimental-strip-types scripts/test-agronomic-narrative-schema.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:ai-schema && npm run check:migrations",
+    "test:prescription-schema": "node --experimental-strip-types scripts/test-agronomic-prescription-schema.mjs",
+    "test:research-schema": "node --experimental-strip-types scripts/test-knowledge-research-schema.mjs",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run check:migrations",
     "test:e2e": "playwright test"
   },
   "dependencies": {

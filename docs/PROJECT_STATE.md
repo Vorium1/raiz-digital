@@ -1638,3 +1638,34 @@ visualmente em desktop e mobile, incluindo o clique real no botão mostrando o e
 Publicado em `develop`. Amanhã, junto com o teste do laudo com a chave real: rodar a pesquisa periódica
 pela primeira vez de verdade, homologar as fontes que ela trouxer na Biblioteca Técnica, e então testar um
 laudo completo já se baseando nessa base recém-pesquisada.
+
+## Revisão do dia: testes, permissões e limpeza (2026-09-03)
+
+Antes de fechar o dia, revisão do que foi construído nos 6 blocos acima (campos de safra, histórico de
+produtividade, insumo aplicado, curadoria da base técnica, prescrição por IA, comparação recomendado ×
+usado, pesquisa periódica):
+
+- **`npm run test:handoff` completo, limpo** — nenhuma regressão nos testes automatizados já existentes
+  (importação de laudo, segurança de sessão, operações de campo, motor agronômico).
+- **Lacuna de teste encontrada e corrigida**: os dois formatos novos de resposta de IA
+  (`agronomic-prescription-schema.ts`, `knowledge-research-schema.ts`) tinham validação escrita mas nenhum
+  teste automatizado dedicado — diferente do padrão já existente pra `agronomic-narrative-schema.ts`.
+  Criados `scripts/test-agronomic-prescription-schema.mjs` (13 cenários) e
+  `scripts/test-knowledge-research-schema.mjs` (9 cenários), cobrindo especificamente as regras de negócio
+  que mais importam aqui (dose zero ou negativa nunca passa; item sem `title`/`subject`/`content` é
+  rejeitado; campo secundário malformado como `editionYear` vira `null` em vez de derrubar o item inteiro).
+  Ambos entraram em `npm run test:handoff`.
+- **Auditoria de autorização**: conferidas as 17 rotas de API criadas/alteradas hoje — todas as 17
+  verificam sessão, e toda escrita (POST/PATCH/DELETE) tem checagem de papel ou de curadoria; nenhuma
+  ficou só de leitura sem querer.
+- **Auditoria de isolamento por tenant**: revisado todo SQL novo em `catalog.ts` e `ai-generations.ts` —
+  toda tabela com RLS (`crop_seasons`, `field_yield_history`, `input_applications`, `input_recommendations`,
+  `ai_generations`) tem `tenant_id` na cláusula `WHERE`/`VALUES`; as tabelas genuinamente globais
+  (`crop_profiles`, `technical_sources`, `technical_regions`) continuam corretamente sem filtro de tenant,
+  por desenho.
+- **Sem segredo vazado**: nenhum componente client (`"use client"`) referencia `ANTHROPIC_API_KEY` ou
+  qualquer variável de ambiente de servidor — as chamadas à IA ficam inteiramente em módulos de servidor
+  (`src/lib/ai/`), nunca expostas ao navegador.
+- **Sem sujeira**: nenhum `console.log`/`TODO`/`FIXME` deixado no código novo (fora os avisos deliberados
+  de "não testado contra a API real" nos dois arquivos que dependem da chave); árvore de trabalho limpa,
+  sem script de teste temporário esquecido.
