@@ -2474,3 +2474,30 @@ substitui a trava de segurança que já existia.
 
 **Testado de verdade**: chamada real à API do Gemini (4x, scratchpad, fora da suíte automática já que
 consome rede/quota), `npm run typecheck` limpo depois do ajuste no texto dos dois provedores.
+
+## Fechamento do bloco autônomo: suíte E2E completa + build de produção (2026-09-04)
+
+Antes de encerrar o trabalho autônomo desta sessão, rodei a verificação mais completa possível: subi o
+servidor de desenvolvimento de verdade e rodei a suíte E2E inteira (login real, 2FA, isolamento entre duas
+empresas, RBAC por papel, curadoria da base técnica, limite mensal de prescrição) contra o banco real —
+**22/22 testes passaram** — e depois `npm run build` (build de produção) limpo, sem erro. Isso cobre tudo
+que foi tocado nesta sessão: correção do motor, novo provedor Gemini, e toda a carga da base técnica.
+
+Servidor de desenvolvimento encerrado ao final (não ficou nada rodando em segundo plano).
+
+**Resumo do que ficou pronto nesta sessão, pra retomar semana que vem**: 6 commits locais (não publicados
+no GitHub, como já combinado — decisão de deploy/publicação continua em aberto pro diretor decidir);
+motor determinístico corrigido (faixa condicional + limite de fronteira); Gemini funcionando como
+alternativa gratuita de prescrição, testado de ponta a ponta contra a API real (achado real corrigido no
+caminho); base técnica de soja, milho, trigo, canola, pastagem de inverno, aveia, cevada, triticale e
+arroz irrigado carregada e verificada (tudo `DRAFT`, aguardando homologação profissional); carinata com
+status honesto documentado (sem faixa própria ainda); duas fontes gerais (poder acidificante de
+fertilizante, tendências globais validadas). Suíte completa de testes (unitários + E2E + build) verde.
+
+**Pendências reais que ficam para a próxima sessão, não escondidas**: homologação profissional de tudo que
+está `DRAFT` (nenhuma dessas faixas afeta análise real até isso acontecer — é a trava de propósito);
+decisão sobre publicar/mesclar os commits locais; teste de uma prescrição real de ponta a ponta dentro da
+aplicação (via API HTTP real, não só a chamada direta ao provedor que já fiz); arroz de sequeiro; parâmetro
+calculado por fórmula no motor (pH/V%/calagem/P-rem/toxidez de ferro — mesma pendência registrada várias
+vezes ao longo do dia); UI de curadoria ainda sem campo pra editar a condição de faixa (`condition_min`/
+`condition_max`) — hoje só dá pra popular via script.
