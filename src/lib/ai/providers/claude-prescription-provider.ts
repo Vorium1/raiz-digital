@@ -6,29 +6,29 @@ import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription
  * AVISO -- ESTE ARQUIVO NUNCA FOI EXECUTADO CONTRA A API REAL.
  * Escrito sem `ANTHROPIC_API_KEY` disponível nesta sessão (chave chega
  * numa sessão seguinte). O formato da chamada segue a documentação da
- * Anthropic Messages API conhecida no momento da escrita, mas os 3 pontos
- * abaixo precisam ser confirmados/corrigidos na primeira execução real:
- *   1. O nome exato do tipo da ferramenta de busca na web (aqui:
- *      "web_search_20250305") pode ter mudado de versão.
- *   2. Se ainda é necessário um header `anthropic-beta` para essa
- *      ferramenta, ou se já é funcionalidade estável (GA).
- *   3. Se uma única chamada HTTP basta (ferramenta de busca executada no
- *      servidor da Anthropic, resultado já embutido na mesma resposta) ou
- *      se é preciso um laço de tool-use no cliente.
- * Até isso ser confirmado, qualquer erro de formato de resposta é
- * capturado e vira um erro claro (nunca uma prescrição inventada) --
- * ver o catch em `prescribe`.
+ * Anthropic Messages API conhecida no momento da escrita.
+ *
+ * Decisão do diretor (2026-09-03): o laudo do dia a dia NÃO pesquisa mais
+ * na internet -- isso ficou caro/imprevisível por laudo. Só a pesquisa
+ * periódica (`claude-knowledge-research-provider.ts`, que roda raramente,
+ * sob controle do curador) usa a ferramenta de busca; o laudo de cada
+ * análise só lê o que já foi pesquisado e homologado em
+ * `technical_sources` (chega aqui via `evidence.technicalSources[].content`).
+ * Se a base ainda não tiver conteúdo suficiente pra um tema, a IA deve
+ * declarar isso em `missingInformation`, nunca sair pesquisando por conta
+ * própria. Qualquer erro de formato de resposta é capturado e vira um erro
+ * claro (nunca uma prescrição inventada) -- ver o catch em `prescribe`.
  */
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v1-unverified";
+const PROMPT_VERSION = "prescription-v2-knowledge-base-unverified";
 
 function buildSystemPrompt(): string {
   return [
     "Você é um agrônomo sênior, doutor em fertilidade do solo e nutrição de plantas, atuando como consultor técnico independente no Brasil.",
-    "Você recebe os dados reais de uma análise de solo específica (resultados de laboratório, tipo de solo, cultura, cultivar, meta produtiva, nível tecnológico, compactação, área de pisoteio/cabeceira, irrigação, histórico de produtividade real da área).",
-    "Regra absoluta: você NUNCA inventa um dado que não foi fornecido. Se faltar informação relevante para uma decisão, declare isso explicitamente em `missingInformation` — nunca assuma um valor.",
-    "Você DEVE pesquisar e se basear em metodologia técnica reconhecida e atual — prioritariamente o Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e Santa Catarina (CQFS RS/SC), publicações da Embrapa, e outras fontes técnicas de extensão rural brasileiras equivalentes à cultura e região informadas. Cite exatamente o que usou em `sources`.",
+    "Você recebe os dados reais de uma análise de solo específica (resultados de laboratório, tipo de solo, cultura, cultivar, meta produtiva, nível tecnológico, compactação, área de pisoteio/cabeceira, irrigação, histórico de produtividade real da área) e um conjunto de fontes técnicas (`technicalSources`) já pesquisadas e homologadas por um agrônomo responsável da plataforma.",
+    "Regra absoluta: você NUNCA inventa um dado que não foi fornecido, e NÃO pesquisa na internet — baseie seu diagnóstico e recomendações apenas nos dados da análise e no conteúdo de `technicalSources` recebido. Se o assunto necessário não estiver coberto pelas fontes disponíveis, declare isso explicitamente em `missingInformation` em vez de supor um valor ou inventar uma fonte.",
+    "Cite em `sources` exatamente as entradas de `technicalSources` que você efetivamente usou (mesmo título/instituição), nunca uma fonte que não foi fornecida a você.",
     "Para cada item de `recommendations` (calcário, gesso agrícola, N/P/K, micronutrientes, etc.), explique em `rationale` o raciocínio completo: por que essa dose, como a meta produtiva/cultivar influenciou o cálculo, como a área efetiva (descontando pisoteio/cabeceira, se informado) foi considerada, e por que a irrigação (se houver) muda a recomendação.",
     "Expresse quantidade de insumo sempre como uma taxa por hectare (ex.: t/ha, kg/ha) — nunca como total absoluto da área, para não confundir escala.",
     "Se a compactação do solo for MEDIA ou ALTA, inclua em `managementPractices` as práticas físicas de manejo recomendadas (ex.: escarificação, rotação com planta de cobertura de raiz agressiva), com a justificativa dentro do próprio texto.",
@@ -72,7 +72,6 @@ export const claudePrescriptionProvider: AgronomicPrescriptionProvider = {
         max_tokens: 8000,
         system: buildSystemPrompt(),
         messages: [{ role: "user", content: buildUserMessage(request.evidence) }],
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
       }),
     });
 

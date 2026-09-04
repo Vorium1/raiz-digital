@@ -25,7 +25,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   analysis: { id: string; code: string; status: string; createdAt: string };
   results: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string; method: string }>;
   yieldHistory: Array<{ seasonLabel: string; crop: string; cultivar: string | null; yieldValue: number; yieldUnit: string }>;
-  technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null }>;
+  technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null; content: string | null }>;
 };
 
 export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string, userId: string, analysisId: string): Promise<AgronomicPrescriptionEvidencePackage | null> {
@@ -73,7 +73,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
 
     const sourcesResult = base.cropProfileId
       ? await client.query(
-          `SELECT title, institution, edition_year AS "editionYear", subject FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
+          `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
           [base.cropProfileId],
         )
       : { rows: [] };

@@ -223,3 +223,82 @@ export async function recordOperationalAssistantGeneration(input: {
     return created;
   });
 }
+
+/**
+ * Última pesquisa periódica da base de conhecimento -- usado tanto pra
+ * mostrar "quando rodou pela última vez" na tela quanto pra impedir
+ * (`runKnowledgeResearchNotAllowedYet`) rodar de novo cedo demais e estourar
+ * o orçamento combinado com o diretor sem querer.
+ */
+export async function getLastKnowledgeResearchRun(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT id::text, created_at::text AS "createdAt", tokens_used AS "tokensUsed", cost_usd::float8 AS "costUsd", response_payload AS "responsePayload"
+       FROM ai_generations WHERE tenant_id = $1::uuid AND kind = 'KNOWLEDGE_RESEARCH' ORDER BY created_at DESC LIMIT 1`,
+      [tenantId],
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+const KNOWLEDGE_RESEARCH_COOLDOWN_DAYS = 25;
+
+export function knowledgeResearchCooldownRemainingDays(lastRunCreatedAt: string | null): number {
+  if (!lastRunCreatedAt) return 0;
+  const daysSince = (Date.now() - new Date(lastRunCreatedAt).getTime()) / 86_400_000;
+  return Math.max(0, Math.ceil(KNOWLEDGE_RESEARCH_COOLDOWN_DAYS - daysSince));
+}
+
+/**
+ * Persiste o resultado de uma pesquisa periódica já executada (o
+ * chamador -- a rota -- já correu a IA por cultura; aqui só grava). Cada
+ * fonte encontrada vira uma linha DRAFT em `technical_sources`, sujeita à
+ * mesma homologação humana de sempre; a linha em `ai_generations` é só o
+ * registro/auditoria do ciclo (custo, quantas fontes, quais culturas
+ * falharam), nasce já APPROVED porque não é ela quem carrega a afirmação
+ * técnica -- as fontes DRAFT que ela gera é que precisam de homologação.
+ */
+export async function recordKnowledgeResearchRun(input: {
+  tenantId: string;
+  userId: string;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  requestPayload: unknown;
+  perCrop: Array<{ cropId: string; cropCode: string; cropName: string; sources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string; content: string; regionCode: string | null }>; error: string | null }>;
+  tokensUsed?: number | null;
+  costUsd?: number | null;
+}) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const createdSourceIds: string[] = [];
+    for (const crop of input.perCrop) {
+      for (const source of crop.sources) {
+        const inserted = await client.query(
+          `INSERT INTO technical_sources (title, institution, edition_year, crop_profile_id, region_code, subject, content, authored_by)
+           VALUES ($1, nullif($2,''), $3, $4::uuid, nullif($5,''), $6, $7, $8::uuid)
+           RETURNING id::text`,
+          [source.title, source.institution ?? "", source.editionYear, crop.cropId, source.regionCode ?? "", source.subject, source.content, input.userId],
+        );
+        createdSourceIds.push(inserted.rows[0].id);
+      }
+    }
+
+    const summary = input.perCrop.map((crop) => ({ cropCode: crop.cropCode, cropName: crop.cropName, sourcesCreated: crop.sources.length, error: crop.error }));
+    const created = await client.query(
+      `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
+       VALUES ($1::uuid, 'KNOWLEDGE_RESEARCH', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, 'APPROVED', $9::uuid)
+       RETURNING id::text, created_at::text AS "createdAt"`,
+      [
+        input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload),
+        JSON.stringify({ perCrop: summary, totalSourcesCreated: createdSourceIds.length }),
+        input.tokensUsed ?? null, input.costUsd ?? null, input.userId,
+      ],
+    );
+    const generation = created.rows[0];
+    await writeAudit(client, {
+      tenantId: input.tenantId, userId: input.userId, action: "KNOWLEDGE_RESEARCH_RUN", entityType: "ai_generation", entityId: generation.id,
+      metadata: { sourcesCreated: createdSourceIds.length, cropsResearched: input.perCrop.length, tokensUsed: input.tokensUsed ?? null },
+    });
+    return { ...generation, sourcesCreated: createdSourceIds.length, perCrop: summary };
+  });
+}

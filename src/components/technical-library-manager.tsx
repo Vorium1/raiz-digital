@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
+import { KnowledgeResearchPanel } from "@/components/knowledge-research-panel";
 
 type CropProfile = { id: string; code: string; name: string; semanticVersion: string; status: "DRAFT" | "ACTIVE" | "SUPERSEDED"; cropGroup: string | null; technicalNotes: string | null };
 type CropProfileParameter = {
@@ -178,6 +179,8 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
     <div className="field-ops-stack">
       {message && <div className={`field-ops-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={17}/><span>{message.text}</span></div>}
       {!canCurate && <div className="field-ops-inline-warning"><Icon name="shield" size={16}/><span>Você pode consultar a base técnica compartilhada, mas só um curador da plataforma (diretoria ou o agrônomo pesquisador responsável) pode cadastrar ou homologar itens aqui.</span></div>}
+
+      <KnowledgeResearchPanel canCurate={canCurate}/>
 
       <details open><summary><span><b>1</b><strong>Culturas</strong><small>Catálogo versionado, extensível — sem lógica fixa por cultura</small></span><Icon name="chevron" size={16}/></summary>
         <div className="field-ops-form">

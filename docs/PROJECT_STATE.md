@@ -1579,3 +1579,62 @@ aplicado"). Os 4 casos bateram exatamente com o esperado. `npm run typecheck` e 
 Verificado visualmente em desktop e mobile via CDP, com os 4 estados visíveis ao mesmo tempo, sem overflow.
 
 Publicado em `develop`.
+
+## Pesquisa periódica: base de conhecimento em vez de busca por laudo (2026-09-03)
+
+Mudança de arquitetura vinda de uma ideia do diretor, e que é melhor do que o desenho original de ontem:
+em vez de cada laudo pesquisar na internet (caro, imprevisível, repete a mesma pesquisa toda vez — fósforo
+não muda de mês em mês), a plataforma passa a **pesquisar de vez em quando** (o curador decide quando,
+com um botão — o plano é a cada ~30 dias) e guardar o que encontrar na própria base de conhecimento
+(`technical_sources`, que já existia desde a fundação do motor agronômico, migration 013, com
+`embedding_ref` já reservado para isso). O laudo do dia a dia passa a **ler** essa base, sem pesquisar de
+novo — mais barato, mais rápido, e mais consistente (todo laudo do mês usa a mesma base homologada, em vez
+de cada busca poder trazer algo diferente).
+
+Um esclarecimento técnico importante que expliquei ao diretor: isso não é "ensinar" a IA no sentido de
+treinar/memória permanente dentro do modelo — cada chamada de API é isolada, a IA não lembra sozinha da
+vez anterior. O efeito prático desejado (a IA "sabendo" o que já foi pesquisado) é obtido guardando o
+conhecimento pesquisado no **nosso próprio banco**, e entregando esse conteúdo como contexto em toda
+geração de laudo — tecnicamente chamado de RAG (Retrieval-Augmented Generation). Isso é melhor pro
+negócio: a base de conhecimento é ativo da RAIZ Digital, não fica presa dentro de um provedor de IA
+específico.
+
+**O que foi construído:**
+- Migration `018_knowledge_research.sql`: novo valor `KNOWLEDGE_RESEARCH` no enum `ai_generation_kind`
+  (mesma tabela `ai_generations` de sempre — usada aqui só como registro/auditoria do ciclo de pesquisa,
+  nunca como afirmação técnica em si).
+- `src/lib/ai/knowledge-research-schema.ts` + `knowledge-research-provider.ts` +
+  `providers/claude-knowledge-research-provider.ts` (**não testado contra a API real** — mesma ressalva do
+  bloco de ontem sobre a ferramenta de busca) + `providers/unavailable-knowledge-research-provider.ts`
+  (falha honesta sem chave). Esta é a **única** parte da IA agronômica que ainda pesquisa na internet — de
+  propósito isolada aqui, com `max_tokens`/`web_search.max_uses` limitados por chamada para manter o custo
+  de cada ciclo previsível e baixo (referência combinada com o diretor: ~R$50/ciclo).
+- `runKnowledgeResearch`/`recordKnowledgeResearchRun`/`getLastKnowledgeResearchRun` em
+  `src/lib/repositories/ai-generations.ts`: roda a pesquisa uma vez por cultura cadastrada, grava cada
+  fonte encontrada como `technical_sources` **DRAFT** (nunca ACTIVE automaticamente — precisa de
+  homologação humana, igual a qualquer fonte técnica já existente), e um trava de 25 dias entre ciclos
+  (`force: true` permite rodar antes, deliberadamente, se precisar) para não estourar o orçamento sem
+  querer clicando duas vezes.
+- Rota `src/app/api/knowledge-research/route.ts` (GET status/última pesquisa, POST roda um ciclo —
+  curador-only) e painel `src/components/knowledge-research-panel.tsx`, encaixado como item "0" (antes de
+  "Culturas") na Biblioteca Técnica, visível só para curadores.
+- **O laudo do dia a dia mudou junto**: `claude-prescription-provider.ts` não usa mais a ferramenta de
+  busca na web — agora só lê `evidence.technicalSources[].content` (a base já pesquisada/homologada,
+  campo `content` que a tela do laudo não usava antes e agora passou a incluir em
+  `prescription-evidence-package.ts`). Se a base não cobrir um assunto ainda, a IA é instruída a declarar
+  isso em `missingInformation`, nunca a sair pesquisando por conta própria. Isso também reduz a incerteza
+  técnica do arquivo do bloco de ontem: sem a ferramenta de busca, a chamada do laudo fica mais simples e
+  mais previsível de acertar na primeira execução real.
+
+**Testado de verdade nesta sessão** (tudo que não depende da chave): `npm run typecheck`, `npm run build` e
+`npm run check:migrations` limpos. Migration aplicada no banco de dev real. Contra o servidor real:
+confirmei 403 pra quem não é curador; confirmei 502 honesto sem chave (testado clicando de verdade na tela,
+via CDP, não só por API); inseri um ciclo de pesquisa sintético recente e confirmei que a trava de 25 dias
+bloqueia (409, com a contagem certa de dias restantes) e que `force:true` passa por cima dela; verifiquei
+separadamente, com uma réplica exata da consulta SQL de gravação, que uma fonte pesquisada realmente vira
+uma linha `technical_sources` em DRAFT, vinculada à cultura certa — tudo excluído depois. Painel verificado
+visualmente em desktop e mobile, incluindo o clique real no botão mostrando o erro honesto na tela.
+
+Publicado em `develop`. Amanhã, junto com o teste do laudo com a chave real: rodar a pesquisa periódica
+pela primeira vez de verdade, homologar as fontes que ela trouxer na Biblioteca Técnica, e então testar um
+laudo completo já se baseando nessa base recém-pesquisada.
