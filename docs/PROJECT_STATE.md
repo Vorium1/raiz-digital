@@ -1767,3 +1767,35 @@ o limite pra 50 e limpei o dado de teste depois. Painel da prescrição mostrand
 verificado visualmente, sem overflow.
 
 Publicado em `develop`.
+
+## Teste automatizado (E2E) para a curadoria da base técnica (2026-09-04)
+
+Diferença de propósito importante em relação a tudo que testei manualmente nos blocos acima: um teste
+manual (curl, CDP) prova que o código funciona hoje; um teste automatizado em `e2e/` prova que continua
+funcionando amanhã, mesmo depois de outra sessão mexer em código relacionado sem saber desse detalhe.
+A restrição de curadoria (`0f4b0b0`, dois dias atrás) é a peça de segurança mais sensível construída nesta
+sessão — impede que o agrônomo de uma empresa cliente altere a base científica usada por todas as outras
+— e ainda não tinha essa proteção duradoura. `e2e/platform-curator.spec.ts`: um teste confirma que um
+não-curador lê normalmente mas toma 403 em toda tentativa de escrita (criar cultura, homologar cultura,
+criar fonte técnica, criar região); outro confirma que um curador consegue homologar de verdade,
+devolvendo o registro ao estado em que encontrou no `finally` (nunca deixa resíduo). Reaproveita as contas
+fixas já existentes (`admin@raiz.local`, já curador; `rbac-agronomist@raiz.local`, não-curador) — nenhuma
+conta nova criada.
+
+**Lição registrada, não um bug de código**: rodando a suíte completa (`npx playwright test`) pra confirmar
+que o teste novo não quebrou nada, a suíte de 2FA falhou por faltar `DATABASE_URL` no shell (variável
+separada da senha) — falso alarme da forma como rodei o comando, não um problema real; confirmado rodando
+de novo com as duas variáveis presentes, 21/21 passaram. Mais importante: o login do curador falhou na
+primeira tentativa porque a senha de `admin@raiz.local` em `.env.e2e.local` estava desatualizada — ao
+longo do dia, repeti `npm run seed:dev` várias vezes pra pegar uma senha de teste rápida pra essa MESMA
+conta (usada em testes manuais via curl), e cada chamada sobrescreve a senha real. Corrigido rodando
+`node scripts/rotate-e2e-passwords.mjs` (o fluxo já documentado, nunca escreve direto no banco) pra
+resincronizar as 7 contas fixas. Lição pra próxinas sessões: usar uma conta de teste **separada** (outro
+e-mail) pra testes manuais avulsos, nunca reaproveitar `admin@raiz.local` — ela é uma conta fixa que a
+suíte de E2E depende ter senha estável.
+
+**Testado de verdade**: `npm run typecheck` limpo. `npx playwright test` — as 21 specs de E2E do projeto
+(2FA, isolamento entre empresas, RBAC de operação de campo, e as 2 novas de curadoria) passaram, incluindo
+a rodada completa depois da rotação de senha.
+
+Publicado em `develop`.

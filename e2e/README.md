@@ -33,6 +33,11 @@ tenant "Raiz Digital Demo": `rbac-agronomist@raiz.local` (AGRONOMIST), `rbac-fie
 (FIELD_TECH), `rbac-commercial@raiz.local` (COMMERCIAL), `rbac-viewer@raiz.local` (VIEWER). Já existem
 no banco de desenvolvimento do handoff.
 
+`platform-curator.spec.ts` (curadoria da base técnica compartilhada — crop_profiles/technical_sources/
+technical_regions, sem tenant_id) não precisa de conta nova: reaproveita `admin@raiz.local` (já marcado
+curador nesta base de dev, `db:set-platform-curator`) e `rbac-agronomist@raiz.local` (não-curador) —
+mesmas senhas `E2E_ADMIN_PASSWORD`/`E2E_RBAC_AGRONOMIST_PASSWORD` já usadas pelos outros testes.
+
 3. As senhas usadas para login em cada teste vêm de variáveis de ambiente (nunca do código-fonte, já que
    o repositório é público) — defina-as antes de rodar:
 
