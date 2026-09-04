@@ -2564,3 +2564,47 @@ citáveis, que não podem ser confundidas com essa:
 Conteúdo atualizado e regravado no banco (`technical_sources`, tema geral, `crop_profile_id IS NULL`,
 status `DRAFT`, ainda pendente de homologação profissional como todo o resto). Script:
 `scripts/seed-poder-acidificante-fertilizante.mjs`.
+
+## Motor de calagem (dose de calcário) — primeira versão, método da saturação por bases (2026-09-04)
+
+Item que ficou pendente desde a entrega do "parâmetro derivado por fórmula" começou a ser resolvido: a
+correção de acidez do solo é uma **dose contínua** (t/ha de calcário), categoria diferente da classificação
+Baixo/Médio/Alto que o motor já resolve — por isso ganhou módulo próprio,
+`src/domain/liming-engine.ts`, em vez de forçar dentro de `agronomic-engine.ts`.
+
+**Decisão de escopo, importante**: o Manual CQFS-RS/SC 2016 descreve DOIS métodos pra estimar a dose de
+calcário — (a) tabela de lookup por índice SMP (Tabela 5.2, ~75 números) e (b) fórmula por saturação de
+bases (item 5.2.1: `NC = [(V1-V2)/100] × CTCpH7,0`). **Só o método (b) foi implementado.** Motivo: o texto
+extraído do PDF oficial pra conferência saiu com a formatação de colunas da Tabela 5.2 degradada o
+suficiente pra tornar arriscada a transcrição célula-por-célula (~25 linhas × 3 colunas) — e o próprio
+manual autoriza o método da saturação por bases como alternativa equivalente ("as doses… são
+semelhantes"), então preferi implementar a fórmula limpa e citável a arriscar digitar errado uma tabela
+grande a partir de um texto degradado. A Tabela 5.2 (método por índice SMP) fica pendente até eu conseguir
+conferir número por número direto contra o PDF (não contra o `.txt` extraído) — não é limitação técnica,
+é decisão de não arriscar dado agronômico errado.
+
+**O que foi implementado e testado** (`scripts/test-liming-engine.mjs`, 8 cenários, todos com números
+verificados à mão contra a fórmula):
+- `estimateHAlFromSmpIndex` — acidez potencial (H+Al) a partir do índice SMP (fórmula de Kaminski et al.,
+  2001), útil porque a maioria dos laudos de laboratório traz o índice SMP mas não traz CTCpH7,0 pronta.
+- `computeCtcPh7` / `computeBaseSaturationPercent` — CTC a pH 7,0 e saturação por bases (V%) a partir dos
+  cátions trocáveis, ambas fórmulas literais do capítulo de métodos do manual.
+- `computeLimingDoseByBaseSaturation` — a dose em si: recebe pH-alvo (5,5/6,0/6,5, cada um já mapeado pro
+  V% correspondente que o manual declara: 65/75/85%), V% medido e CTCpH7,0, devolve a dose em t/ha (PRNT
+  100%) ou explica por que calagem não é indicada (solo já na meta ou acima dela — nunca dose negativa).
+
+**Testado de verdade**: `npm run test:liming` (8/8), `npm run test:handoff` completo (agora inclui
+`test:liming` na cadeia), `npm run typecheck` e `npm run build` (produção) — todos limpos.
+
+**O que isso NÃO resolve ainda, sendo honesto sobre o estado real**:
+- Tabela 5.2 (método SMP direto) — pendente, ver decisão de escopo acima.
+- Nenhuma UI, endpoint de API ou persistência usa este motor ainda — é só o núcleo de cálculo puro,
+  testado e isolado, no mesmo padrão de "construir a peça certa primeiro" usado pro motor agronômico
+  principal. Falta decidir onde a recomendação de calagem aparece pro usuário (dentro da tela de análise?
+  como item separado do relatório?) — decisão de produto, não técnica, prefiro trazer pro diretor.
+- Ajuste de dose por forma de aplicação (incorporado vs. superficial, fracionamento) e por classe de
+  cultura (grãos vs. perenes vs. hortaliças, cada um com sua própria tabela no manual) não foi
+  implementado — o manual tem fatores de ajuste específicos por capítulo (5.2.2 a 5.2.8) que não foram
+  cobertos nesta rodada.
+- Fósforo por P-rem continua com a mesma pendência já registrada (precisa de decisão do diretor sobre
+  prioridade entre duas dimensões de condição concorrentes).
