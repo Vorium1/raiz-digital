@@ -2445,3 +2445,32 @@ pendentes.
 
 **Testado de verdade**: `npm run typecheck` e `npm run test:handoff` completo, limpos, depois de cada
 rodada de carga.
+
+## Primeiro teste real de ponta a ponta da prescrição por IA — achado real, corrigido (2026-09-04)
+
+`gemini-prescription-provider.ts` e `claude-prescription-provider.ts` tinham sido escritos sem nunca rodar
+contra API real. Testei o caminho real (fora da suíte automática, script manual em scratchpad, sem tocar
+em nenhum dado de tenant real) com um pacote de evidência sintético de soja, chamando a API do Gemini de
+verdade e validando a resposta contra o schema real de produção.
+
+**Achado real**: em 4 chamadas, 1 falhou na validação do formato (a IA tentou produzir uma recomendação de
+dose mesmo sem ter tabela de dose disponível, violando a regra de "nunca inventar"), 1 bateu num erro
+temporário do próprio Gemini (503, sobrecarga, nada a ver com nosso código), e 2 passaram limpas — nas duas
+que passaram, o comportamento foi exatamente o esperado: como só recebeu a faixa de classificação (sem
+tabela de dose), a IA devolveu `recommendations` vazio e declarou a lacuna em `missingInformation`, em vez
+de inventar um número.
+
+**Correção aplicada**: reforcei o texto enviado à IA (nos dois provedores, Gemini e Anthropic, pra manter
+consistência) com uma instrução explícita — só incluir um item em `recommendations` se `technicalSources`
+tiver uma tabela de dose real e citável; sem isso, omitir o insumo do array inteiramente, nunca estimar ou
+zerar a quantidade. Versão do prompt de ambos os provedores incrementada (rastreabilidade). Testado de novo
+depois da correção: passou, e o resumo da própria IA já citou explicitamente a regra nova ("recomendações
+mantido vazio para evitar estimativas sem respaldo documental exato").
+
+**Isso é exatamente o tipo de coisa que a validação da semana que vem iria pegar — prefiro que já esteja
+corrigido antes disso.** O comportamento de segurança do sistema (quando a validação falha, nada é salvo,
+erro claro é lançado) já funcionava certo mesmo antes da correção — a correção reduz a taxa de falha, não
+substitui a trava de segurança que já existia.
+
+**Testado de verdade**: chamada real à API do Gemini (4x, scratchpad, fora da suíte automática já que
+consome rede/quota), `npm run typecheck` limpo depois do ajuste no texto dos dois provedores.

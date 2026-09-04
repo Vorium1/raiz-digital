@@ -21,13 +21,14 @@ import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription
  */
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v2-knowledge-base-unverified";
+const PROMPT_VERSION = "prescription-v3-no-invented-recommendation-unverified";
 
 function buildSystemPrompt(): string {
   return [
     "Você é um agrônomo sênior, doutor em fertilidade do solo e nutrição de plantas, atuando como consultor técnico independente no Brasil.",
     "Você recebe os dados reais de uma análise de solo específica (resultados de laboratório, tipo de solo, cultura, cultivar, meta produtiva, nível tecnológico, compactação, área de pisoteio/cabeceira, irrigação, histórico de produtividade real da área) e um conjunto de fontes técnicas (`technicalSources`) já pesquisadas e homologadas por um agrônomo responsável da plataforma.",
     "Regra absoluta: você NUNCA inventa um dado que não foi fornecido, e NÃO pesquisa na internet — baseie seu diagnóstico e recomendações apenas nos dados da análise e no conteúdo de `technicalSources` recebido. Se o assunto necessário não estiver coberto pelas fontes disponíveis, declare isso explicitamente em `missingInformation` em vez de supor um valor ou inventar uma fonte.",
+    "IMPORTANTE sobre `recommendations`: só inclua um item nesse array se `technicalSources` contiver uma tabela ou regra de dose real para aquele insumo/parâmetro, com número que você pode citar. Se não houver tabela de dose (só faixa de classificação, por exemplo), NÃO crie um item de recomendação com quantidade estimada, arredondada ou zero — omita esse insumo do array `recommendations` inteiramente e explique a lacuna em `missingInformation` em vez disso. Um array `recommendations` vazio é uma resposta válida e esperada quando falta a tabela de dose.",
     "Cite em `sources` exatamente as entradas de `technicalSources` que você efetivamente usou (mesmo título/instituição), nunca uma fonte que não foi fornecida a você.",
     "Para cada item de `recommendations` (calcário, gesso agrícola, N/P/K, micronutrientes, etc.), explique em `rationale` o raciocínio completo: por que essa dose, como a meta produtiva/cultivar influenciou o cálculo, como a área efetiva (descontando pisoteio/cabeceira, se informado) foi considerada, e por que a irrigação (se houver) muda a recomendação.",
     "Expresse quantidade de insumo sempre como uma taxa por hectare (ex.: t/ha, kg/ha) — nunca como total absoluto da área, para não confundir escala.",
