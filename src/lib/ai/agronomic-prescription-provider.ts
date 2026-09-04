@@ -1,6 +1,7 @@
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 import type { AgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import { claudePrescriptionProvider } from "@/lib/ai/providers/claude-prescription-provider";
+import { geminiPrescriptionProvider } from "@/lib/ai/providers/gemini-prescription-provider";
 import { unavailablePrescriptionProvider } from "@/lib/ai/providers/unavailable-prescription-provider";
 
 /**
@@ -35,14 +36,17 @@ export interface AgronomicPrescriptionProvider {
 }
 
 /**
- * Ponto único de resolução do provedor. Sem `ANTHROPIC_API_KEY` configurada
- * no servidor, devolve um provedor que sempre falha com um erro claro --
- * nunca inventa uma prescrição falsa para "parecer pronto". Assim que a
- * chave existir (variável de ambiente, nunca no navegador/repositório),
- * passa a usar o provedor real automaticamente, sem precisar mudar nenhum
- * outro arquivo.
+ * Ponto único de resolução do provedor. Preferência: Anthropic (maior
+ * qualidade, quando houver crédito) > Gemini (nível gratuito, usado como
+ * alternativa enquanto não há crédito pago em nenhum provedor -- decisão do
+ * diretor, 2026-09-04, para viabilizar um piloto de demonstração sem custo)
+ * > provedor indisponível, que sempre falha com um erro claro -- nunca
+ * inventa uma prescrição falsa para "parecer pronto". Trocar de provedor no
+ * futuro (ex.: crédito Anthropic chegou) não exige mudar nenhum outro
+ * arquivo, só a variável de ambiente.
  */
 export function resolveAgronomicPrescriptionProvider(): AgronomicPrescriptionProvider {
   if (process.env.ANTHROPIC_API_KEY) return claudePrescriptionProvider;
+  if (process.env.GEMINI_API_KEY) return geminiPrescriptionProvider;
   return unavailablePrescriptionProvider;
 }

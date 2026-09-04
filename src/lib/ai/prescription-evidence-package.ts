@@ -71,12 +71,18 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       [tenantId, base.fieldId],
     );
 
+    // `crop_profile_id IS NULL` = conhecimento geral, não específico de uma cultura
+    // (ex.: fertilizante organomineral, fosfato natural, bioinsumos) -- vale pra
+    // qualquer cultura, por isso entra na evidência de todas, não só quando bate
+    // o crop_profile_id exato.
     const sourcesResult = base.cropProfileId
       ? await client.query(
-          `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
+          `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE (crop_profile_id = $1::uuid OR crop_profile_id IS NULL) AND status = 'ACTIVE' ORDER BY title`,
           [base.cropProfileId],
         )
-      : { rows: [] };
+      : await client.query(
+          `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id IS NULL AND status = 'ACTIVE' ORDER BY title`,
+        );
 
     return {
       tenant: { id: tenant.id, name: tenant.name },

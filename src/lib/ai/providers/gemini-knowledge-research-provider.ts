@@ -2,22 +2,34 @@ import type { KnowledgeResearchProvider, KnowledgeResearchRequest, KnowledgeRese
 import { validateKnowledgeResearchSources } from "@/lib/ai/knowledge-research-schema";
 
 /**
- * AVISO -- ESTE ARQUIVO NUNCA FOI EXECUTADO CONTRA A API REAL.
- * Mesma ressalva dos outros dois provedores: escrito sem `GEMINI_API_KEY`
- * disponível nesta sessão. Usa a Generative Language API do Google com a
- * ferramenta de embasamento em busca (`google_search`) -- o nome exato
- * dessa ferramenta e o formato exato da resposta (`candidates[0].content
- * .parts[].text`) precisam ser confirmados na primeira execução real.
- * O Gemini tem um nível gratuito real (com limite de uso), diferente da
- * Anthropic/OpenAI (que só dão crédito de teste inicial) -- é o candidato
- * mais forte pra rodar sem custo por enquanto, mas precisa confirmar o
- * limite de uso atual no console do Google antes de contar com isso pra
- * produção. Existe só pra cruzar a pesquisa com outros provedores
- * independentes (pedido do diretor) -- nunca é usada no laudo por análise.
+ * TESTADO CONTRA A API REAL EM 2026-09-04 (chave gratuita, nível free do
+ * Google AI Studio). Resultado:
+ * - `generateContent` sem ferramentas: funciona no nível gratuito, mas só em
+ *   modelos da linha "flash" -- `gemini-2.5-pro` não existe mais para conta
+ *   nova (404) e `gemini-pro-latest`/`gemini-3.1-pro` respondem 429 com
+ *   `limit: 0` no free tier. Por isso o modelo padrão abaixo é um flash.
+ * - `tools: [{ google_search: {} }]` (embasamento em busca real): responde
+ *   429 mesmo com poucas chamadas e sem detalhe de quota (diferente do 429
+ *   de `pro-latest`, que veio com `QuotaFailure` explícito) -- ou seja, a
+ *   API está recusando a ferramenta de busca em si, não limitando taxa.
+ *   Pelos padrões conhecidos da Generative Language API, embasamento em
+ *   busca via Google costuma exigir faturamento vinculado ao projeto do
+ *   Google Cloud, mesmo quando o uso ficaria dentro da cota gratuita.
+ * CONSEQUÊNCIA: com a chave gratuita atual, este provedor NÃO consegue
+ * pesquisar a internet de verdade -- só geraria texto sem embasamento, o
+ * que violaria a regra do projeto de nunca inventar dado técnico. Por isso
+ * `research()` recusa explicitamente até haver confirmação de que a
+ * ferramenta de busca está habilitada (ver checagem abaixo). Não usar este
+ * provedor em produção sem antes confirmar no Google AI Studio / Google
+ * Cloud Console que a busca (grounding) está ativa para esta chave.
  */
 
-const PROMPT_VERSION = "knowledge-research-gemini-v1-unverified";
+const PROMPT_VERSION = "knowledge-research-gemini-v1";
 const MAX_OUTPUT_TOKENS = 4000;
+const GROUNDING_UNAVAILABLE_HINT =
+  "Gemini: a ferramenta de busca (google_search) não está disponível para esta chave " +
+  "(resposta 429 sem detalhe de quota). No nível gratuito isso costuma indicar que falta " +
+  "vincular faturamento ao projeto no Google Cloud Console -- confirme lá antes de tentar de novo.";
 
 function buildPrompt(request: KnowledgeResearchRequest): string {
   return [
@@ -44,7 +56,7 @@ function extractJsonText(payload: unknown): string | null {
 
 export const geminiKnowledgeResearchProvider: KnowledgeResearchProvider = {
   name: "google",
-  model: process.env.GEMINI_KNOWLEDGE_RESEARCH_MODEL ?? "gemini-2.5-pro",
+  model: process.env.GEMINI_KNOWLEDGE_RESEARCH_MODEL ?? "gemini-3.6-flash",
 
   async research(request: KnowledgeResearchRequest): Promise<KnowledgeResearchResult> {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -66,6 +78,9 @@ export const geminiKnowledgeResearchProvider: KnowledgeResearchProvider = {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
+      if (response.status === 429 && !errorBody.includes("QuotaFailure")) {
+        throw new Error(GROUNDING_UNAVAILABLE_HINT);
+      }
       throw new Error(`Gemini API respondeu ${response.status}: ${errorBody.slice(0, 500)}`);
     }
 
