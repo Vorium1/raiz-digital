@@ -2597,7 +2597,18 @@ verificados à mão contra a fórmula):
 `test:liming` na cadeia), `npm run typecheck` e `npm run build` (produção) — todos limpos.
 
 **O que isso NÃO resolve ainda, sendo honesto sobre o estado real**:
-- Tabela 5.2 (método SMP direto) — pendente, ver decisão de escopo acima.
+- Tabela 5.2 (método SMP direto) — pendente, ver decisão de escopo acima. **Atualização no mesmo dia: essa
+  pendência foi resolvida.** Reextraindo as mesmas páginas do PDF oficial com `pdftotext -table` (em vez de
+  `-layout`) a tabela saiu perfeitamente alinhada e legível — confirmando, ao comparar número por número,
+  que a extração original com `-layout` realmente tinha os rótulos de índice SMP deslocados ~3 linhas em
+  relação aos valores de dose (por exemplo: a versão `-layout` mostrava "SMP=6,0 → 8,3 t/ha pra pH 6,0",
+  mas o valor certo, confirmado na versão `-table`, é "SMP=5,2 → 8,3 t/ha"). Isso valida que a decisão de
+  não confiar na extração degradada tinha sido a certa. `computeLimingDoseBySmpIndex` foi implementada com
+  a tabela completa (28 pontos, SMP 4,4 a 7,1, três colunas de pH-alvo) e interpolação linear entre pontos
+  tabelados (decisão de implementação nossa, documentada como tal — o manual só tabela de 0,1 em 0,1). 3
+  testes novos (agora 11 no total) pegaram inclusive um bug real: o primeiro código tratava um SMP exato no
+  limite superior de um intervalo (ex.: 5,2, que é ao mesmo tempo o topo do intervalo 5,1-5,2 e o próprio
+  ponto tabelado) como interpolado em vez de valor direto da tabela — corrigido antes de qualquer uso real.
 - Nenhuma UI, endpoint de API ou persistência usa este motor ainda — é só o núcleo de cálculo puro,
   testado e isolado, no mesmo padrão de "construir a peça certa primeiro" usado pro motor agronômico
   principal. Falta decidir onde a recomendação de calagem aparece pro usuário (dentro da tela de análise?
@@ -2608,3 +2619,35 @@ verificados à mão contra a fórmula):
   cobertos nesta rodada.
 - Fósforo por P-rem continua com a mesma pendência já registrada (precisa de decisão do diretor sobre
   prioridade entre duas dimensões de condição concorrentes).
+
+## Primeira cultura frutífera/perene: videira (2026-09-04)
+
+Atendendo ao interesse do diretor por uva/hortifruti, carreguei a primeira cultura frutífera da base:
+VIDEIRA (Vitis spp.), capítulo 6.5.18 do Manual CQFS-RS/SC 2016 (`scripts/seed-videira-cqfs-2016.mjs`).
+
+**O que ficou automatizado de verdade, sem risco novo**: a classificação de SOLO (P, K, Ca, Mg, MO, B, Cu,
+Zn, Mn, S) — o manual confirma explicitamente (Tabelas 6.2 e 6.7) que frutíferas usam o MESMO "Grupo 2" de
+exigência de P e K que grãos, e o grupo "geral" de enxofre (não o mais exigente, que é só arroz irrigado/
+leguminosas/brássicas/liliáceas) — por isso reaproveitei direto `P_GRUPO2`/`K_GRUPO2`/`SOLO_GERAL`/
+`S_GERAL`, já testados e verificados nesta base. Zero risco novo, motor já interpreta essas faixas hoje.
+
+**O que ficou só como texto (`technical_sources`, 3 entradas: pré-plantio, doses de N/P/K, diagnose
+foliar)**: a videira usa DIAGNOSE FOLIAR (análise de folha/pecíolo, Tabelas 6.5.18/6.5.19) como método
+PRINCIPAL de avaliação nutricional — diferente de todo grão já carregado, que usa só solo. O schema atual
+de `crop_profile_parameters` foi desenhado só pra amostra de solo (campos como profundidade não fazem
+sentido pra folha) — não tem uma dimensão "tipo de amostra". Automatizar diagnose foliar de verdade exige
+essa decisão de schema, que vale pra toda cultura perene/frutífera futura (mais uva não muda isso, mas
+morango, citros, macieira etc. também vão precisar) — trago pro diretor antes de decidir sozinho, é
+mudança estrutural, não só mais uma cultura.
+
+**Achado técnico que vale registrar**: as tabelas de diagnose foliar (6.5.18/6.5.19) na extração original
+`-layout` saíram com colunas visivelmente embaralhadas (rótulo de nutriente não alinhado com o valor). Ao
+reextrair com `pdftotext -table` (mesma técnica que resolveu a Tabela 5.2 de calagem acima) as tabelas
+saíram perfeitamente legíveis e bateram exatamente com a reconstrução manual que eu já tinha tentado por
+inferência de padrão (valores em ordem crescente Insuficiente/Normal/Excessivo por nutriente) — confirma
+que `-table` é a opção certa pra qualquer extração de tabela deste manual daqui pra frente, não `-layout`.
+
+**Testado**: `npm run test:handoff` completo (typecheck + build + todos os testes automatizados) — limpo.
+Não há teste automatizado específico pro conteúdo de videira em si (é dado carregado no banco, não lógica
+de código) — a verificação foi conferência manual linha a linha contra o PDF reextraído, mesmo padrão já
+usado pras outras culturas desta sessão.

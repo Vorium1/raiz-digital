@@ -5,6 +5,7 @@ import {
   computeCtcPh7,
   computeBaseSaturationPercent,
   computeLimingDoseByBaseSaturation,
+  computeLimingDoseBySmpIndex,
 } from "../src/domain/liming-engine.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
@@ -60,4 +61,31 @@ if (doseReal.needed) {
   assert.ok(doseReal.doseTonPerHaPrnt100 > 0);
 }
 
-console.log("liming-engine: 8 cenários aprovados");
+// 9. Tabela 5.2 (índice SMP) -- valores tabelados exatos, direto da Tabela 5.2
+// conferida contra o PDF oficial reextraído com `pdftotext -table`.
+const smp52 = computeLimingDoseBySmpIndex(5.2, "6.0");
+assert.equal(smp52.doseTonPerHaPrnt100, 8.3);
+assert.equal(smp52.interpolated, false);
+
+const smp44 = computeLimingDoseBySmpIndex(4.4, "6.5");
+assert.equal(smp44.doseTonPerHaPrnt100, 29.0);
+
+const smp60 = computeLimingDoseBySmpIndex(6.0, "5.5");
+assert.equal(smp60.doseTonPerHaPrnt100, 1.6);
+
+// 10. Extremos abertos: SMP menor que 4,4 usa a linha de 4,4 (faixa aberta,
+// como o próprio manual indica); SMP maior que 7,1 usa a linha de 7,1 (zero).
+const smpBaixo = computeLimingDoseBySmpIndex(3.5, "6.0");
+assert.equal(smpBaixo.doseTonPerHaPrnt100, 21.0);
+assert.equal(smpBaixo.interpolated, false);
+
+const smpAlto = computeLimingDoseBySmpIndex(7.5, "6.5");
+assert.equal(smpAlto.doseTonPerHaPrnt100, 0);
+
+// 11. Interpolação entre pontos tabelados (SMP=5,25, entre 5,2 e 5,3, pH 6,0):
+// tabela tem 8,3 em 5,2 e 7,5 em 5,3 -- na metade do intervalo, dose ~ 7,9.
+const smpInterp = computeLimingDoseBySmpIndex(5.25, "6.0");
+assert.equal(smpInterp.interpolated, true);
+assert.ok(Math.abs(smpInterp.doseTonPerHaPrnt100 - 7.9) < 0.01, `esperado ~7,9, obtido ${smpInterp.doseTonPerHaPrnt100}`);
+
+console.log("liming-engine: 11 cenários aprovados");

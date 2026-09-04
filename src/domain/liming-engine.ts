@@ -10,18 +10,20 @@
  * ("Diagnóstico da acidez e recomendação da calagem"), conferido diretamente
  * no PDF oficial.
  *
- * DECISÃO DE ESCOPO: o manual descreve DOIS métodos pra estimar a dose de
- * calcário -- (a) tabela de lookup por índice SMP (Tabela 5.2) e (b) fórmula
- * por saturação de bases (item 5.2.1, equação NC = [(V1-V2)/100] × CTCpH7,0).
- * Só o método (b) está implementado aqui. Motivo: a Tabela 5.2 tem ~25 linhas
- * de valores numéricos e o texto extraído do PDF pra conferência (pdftotext)
- * saiu com a formatação de colunas degradada o suficiente pra tornar a
- * transcrição de célula-por-célula arriscada -- e o próprio manual autoriza
- * o método (b) como alternativa equivalente ("as doses ... são semelhantes"),
- * então prefiro implementar a fórmula limpa e citável a arriscar digitar
- * errado uma tabela de 75 números a partir de um texto degradado. Tabela 5.2
- * fica pendente até eu conseguir conferir célula-por-célula direto contra o
- * PDF (não contra o .txt extraído).
+ * O manual descreve DOIS métodos pra estimar a dose de calcário -- (a)
+ * tabela de lookup por índice SMP (Tabela 5.2) e (b) fórmula por saturação
+ * de bases (item 5.2.1, equação NC = [(V1-V2)/100] × CTCpH7,0). Os dois
+ * estão implementados aqui.
+ *
+ * HISTÓRICO REAL, vale registrar: a primeira extração do PDF oficial pra
+ * conferência (`pdftotext -layout`) saiu com a Tabela 5.2 DESALINHADA --
+ * os rótulos de índice SMP ficaram deslocados ~3 linhas em relação aos
+ * valores de dose (confirmado comparando número por número com uma
+ * segunda extração). Rodar `pdftotext -table` (otimizado pra tabela, em
+ * vez de `-layout`) nas mesmas páginas produziu uma extração limpa e
+ * consistente. Por isso o método (a) só foi implementado depois de
+ * reextrair com `-table` -- a versão `-layout` não era confiável o
+ * suficiente pra virar dado agronômico.
  */
 
 export type LimingTargetPh = "5.5" | "6.0" | "6.5";
@@ -120,7 +122,82 @@ export function computeLimingDoseByBaseSaturation(input: LimingDoseInput): Limin
   };
 }
 
+/**
+ * Tabela 5.2 do manual -- dose de calcário (t/ha, PRNT 100%) por índice SMP,
+ * pra cada pH-alvo (5,5/6,0/6,5). Reextraída e conferida número-a-número
+ * contra o PDF oficial (ver nota de topo do arquivo). O índice SMP=4,4 é o
+ * próprio manual que trata como faixa aberta pra baixo ("=4,4", ou seja,
+ * "≤4,4") -- todo SMP menor ou igual a 4,4 usa essa linha. O extremo
+ * superior (SMP=7,1) já mostra dose zero nas três colunas.
+ */
+const SMP_LIMING_TABLE: ReadonlyArray<{ smp: number; dose55: number; dose60: number; dose65: number }> = [
+  { smp: 4.4, dose55: 15.0, dose60: 21.0, dose65: 29.0 },
+  { smp: 4.5, dose55: 12.5, dose60: 17.3, dose65: 24.0 },
+  { smp: 4.6, dose55: 10.9, dose60: 15.1, dose65: 20.0 },
+  { smp: 4.7, dose55: 9.6, dose60: 13.3, dose65: 17.5 },
+  { smp: 4.8, dose55: 8.5, dose60: 11.9, dose65: 15.7 },
+  { smp: 4.9, dose55: 7.7, dose60: 10.7, dose65: 14.2 },
+  { smp: 5.0, dose55: 6.6, dose60: 9.9, dose65: 13.3 },
+  { smp: 5.1, dose55: 6.0, dose60: 9.1, dose65: 12.3 },
+  { smp: 5.2, dose55: 5.3, dose60: 8.3, dose65: 11.3 },
+  { smp: 5.3, dose55: 4.8, dose60: 7.5, dose65: 10.4 },
+  { smp: 5.4, dose55: 4.2, dose60: 6.8, dose65: 9.5 },
+  { smp: 5.5, dose55: 3.7, dose60: 6.1, dose65: 8.6 },
+  { smp: 5.6, dose55: 3.2, dose60: 5.4, dose65: 7.8 },
+  { smp: 5.7, dose55: 2.8, dose60: 4.8, dose65: 7.0 },
+  { smp: 5.8, dose55: 2.3, dose60: 4.2, dose65: 6.3 },
+  { smp: 5.9, dose55: 2.0, dose60: 3.7, dose65: 5.6 },
+  { smp: 6.0, dose55: 1.6, dose60: 3.2, dose65: 4.9 },
+  { smp: 6.1, dose55: 1.3, dose60: 2.7, dose65: 4.3 },
+  { smp: 6.2, dose55: 1.0, dose60: 2.2, dose65: 3.7 },
+  { smp: 6.3, dose55: 0.8, dose60: 1.8, dose65: 3.1 },
+  { smp: 6.4, dose55: 0.6, dose60: 1.4, dose65: 2.6 },
+  { smp: 6.5, dose55: 0.4, dose60: 1.1, dose65: 2.1 },
+  { smp: 6.6, dose55: 0.2, dose60: 0.8, dose65: 1.6 },
+  { smp: 6.7, dose55: 0, dose60: 0.5, dose65: 1.2 },
+  { smp: 6.8, dose55: 0, dose60: 0.3, dose65: 0.8 },
+  { smp: 6.9, dose55: 0, dose60: 0.2, dose65: 0.5 },
+  { smp: 7.0, dose55: 0, dose60: 0, dose65: 0.2 },
+  { smp: 7.1, dose55: 0, dose60: 0, dose65: 0 },
+];
+
+const SMP_TABLE_SOURCE =
+  "Manual de Calagem e Adubação CQFS-RS/SC, 11ª ed. (2016), item 5.2.1, Tabela 5.2 (Murdock et al., 1969; Kaminski, 1974; Scherer, 1976; Ernani & Almeida, 1986; Anjos et al., 1987; Ciprandi et al., 1994). Calcário com PRNT 100%, correção da camada 0-20cm.";
+
+/**
+ * Dose de calcário (t/ha, PRNT 100%) pelo método do índice SMP (Tabela 5.2).
+ * SMP <= 4,4 usa a linha de 4,4 (o próprio manual trata como faixa aberta);
+ * SMP >= 7,1 usa a linha de 7,1 (dose zero). Entre pontos tabelados,
+ * INTERPOLA linearmente -- isso é decisão de implementação nossa (o manual
+ * só tabela de 0,1 em 0,1), não um valor literal da fonte; documentado aqui
+ * pra deixar claro que não é a mesma coisa que "valor tabelado direto".
+ */
+export function computeLimingDoseBySmpIndex(smpIndex: number, targetPh: LimingTargetPh): { doseTonPerHaPrnt100: number; interpolated: boolean; source: string } {
+  const key = targetPh === "5.5" ? "dose55" : targetPh === "6.0" ? "dose60" : "dose65";
+  const table = SMP_LIMING_TABLE;
+  if (smpIndex <= table[0].smp) {
+    return { doseTonPerHaPrnt100: table[0][key], interpolated: false, source: SMP_TABLE_SOURCE };
+  }
+  const last = table[table.length - 1];
+  if (smpIndex >= last.smp) {
+    return { doseTonPerHaPrnt100: last[key], interpolated: false, source: SMP_TABLE_SOURCE };
+  }
+  for (let i = 0; i < table.length - 1; i++) {
+    const a = table[i];
+    const b = table[i + 1];
+    if (smpIndex >= a.smp && smpIndex <= b.smp) {
+      if (smpIndex === a.smp) return { doseTonPerHaPrnt100: a[key], interpolated: false, source: SMP_TABLE_SOURCE };
+      if (smpIndex === b.smp) return { doseTonPerHaPrnt100: b[key], interpolated: false, source: SMP_TABLE_SOURCE };
+      const fraction = (smpIndex - a.smp) / (b.smp - a.smp);
+      const dose = a[key] + fraction * (b[key] - a[key]);
+      return { doseTonPerHaPrnt100: Math.round(dose * 100) / 100, interpolated: true, source: SMP_TABLE_SOURCE };
+    }
+  }
+  throw new Error(`índice SMP ${smpIndex} fora do intervalo esperado da Tabela 5.2 -- revisão necessária.`);
+}
+
 export const LIMING_FORMULA_SOURCES = {
   hAlFromSmp: H_AL_FORMULA_SOURCE,
   necessidadeDeCalcario: NC_FORMULA_SOURCE,
+  smpTable: SMP_TABLE_SOURCE,
 };
