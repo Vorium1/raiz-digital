@@ -1704,3 +1704,34 @@ refletiu certo o sucesso e a falha simultâneos — tudo excluído depois.
 
 Publicado em `develop`. Continua faltando só uma coisa pra virar realidade: a primeira chave de verdade,
 que chega à tarde.
+
+## Laudo final passa a incluir a prescrição por IA e a comparação de insumo (2026-09-04)
+
+Lacuna real encontrada revisando o que falta pra fechar o ciclo: `relatorios/talhao/[analysisId]` é o
+documento final — o que o agrônomo da empresa cliente revisa, assina e entrega ao produtor (`PrintButton`,
+exportação em PDF). Ele já mostrava a síntese de IA (texto explicativo), mas **não mostrava a prescrição**
+(diagnóstico + dose recomendada, construída ontem) nem a comparação recomendado × usado (construída
+anteontem) — ou seja, o trabalho mais importante da sessão ainda não chegava ao documento que sai pra fora
+da plataforma. Corrigido: o relatório agora busca `getLatestAgronomicPrescription` e
+`getInputComparisonForAnalysis` (repositórios já existentes, só precisavam ser chamados aqui) e renderiza
+duas seções novas, no mesmo padrão visual e de aviso de status já usado pela síntese ("aguardando revisão
+profissional" quando ainda não aprovada; nunca aparenta ser oficial antes de um humano aprovar).
+
+**Bug real encontrado e corrigido durante o teste, não visível em `typecheck`/`build`**: testando o
+relatório em tela de celular, a tabela de pontos de amostragem (81 pontos, com coordenadas longas)
+estourava a largura da tela em 9px — `.report-table` nunca teve um contêiner com rolagem horizontal
+própria, só a coincidência de caber nas telas testadas até agora escondia isso. Corrigido com uma classe
+nova, `.report-table-wrap { overflow-x: auto }`, e — como já é hábito nesta sessão: achar um problema
+provoca varredura, não só o conserto pontual — apliquei em **todas as 14 ocorrências de `report-table`
+em 8 arquivos** (biblioteca técnica, configurações, inteligência agronômica, e os 4 relatórios), não só a
+que estava visivelmente quebrada.
+
+**Testado de verdade**: `npm run typecheck`, `npm run build` e `npm run test:handoff` limpos. Aprovei uma
+prescrição sintética de teste pelo endpoint real de revisão (confirmando a promoção pra
+`input_recommendations` de novo) e registrei uma aplicação abaixo do recomendado, depois abri o relatório
+de verdade no navegador via CDP: as duas seções novas aparecem corretas, com a tabela de comparação
+mostrando "Abaixo do recomendado" no insumo testado. Confirmado, antes e depois da correção, que o
+`scrollWidth` da página bateu exatamente com o `clientWidth` em mobile (390px) — sem overflow, tabelas
+largas rolam dentro da própria caixa em vez de estourar a tela. Dado de teste removido depois.
+
+Publicado em `develop`.

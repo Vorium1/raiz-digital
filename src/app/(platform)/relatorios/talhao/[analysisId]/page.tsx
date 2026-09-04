@@ -9,7 +9,8 @@ import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { StatusBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
-import { getLatestAgronomicNarrative } from "@/lib/repositories/ai-generations";
+import { getLatestAgronomicNarrative, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
+import { getInputComparisonForAnalysis } from "@/lib/repositories/catalog";
 import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 import { analysisStatusMeta } from "@/domain/analysis-ui";
 
@@ -20,9 +21,11 @@ export const metadata = { title: "Relatório de análise por talhão" };
 export default async function FieldAnalysisReportPage({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
   const session = await requirePlatformSession();
-  const [data, narrative, branding] = await Promise.all([
+  const [data, narrative, prescription, comparison, branding] = await Promise.all([
     getFieldAnalysisReportData(session.tenantId, analysisId, session.userId),
     getLatestAgronomicNarrative(session.tenantId, analysisId, session.userId),
+    getLatestAgronomicPrescription(session.tenantId, analysisId, session.userId),
+    getInputComparisonForAnalysis(session.tenantId, analysisId, session.userId),
     getTenantBranding(session.tenantId),
   ]);
   if (!data) notFound();
@@ -75,12 +78,12 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
           <section className="report-section">
             <h2>Pontos de amostragem ({points.length} — {collectedCount} coletados)</h2>
             {points.length ? (
-              <table className="report-table">
+              <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Código</th><th>Coordenadas</th><th>Profundidade</th><th>Status</th></tr></thead>
                 <tbody>{points.map((point: any) => (
                   <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.depthFromCm}–{point.depthToCm} cm</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             ) : <p className="report-empty-note">Nenhum ponto vinculado a esta análise.</p>}
           </section>
 
@@ -94,24 +97,24 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
           <section className="report-section">
             <h2>Parâmetros laboratoriais</h2>
             {results.length ? (
-              <table className="report-table">
+              <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Método</th></tr></thead>
                 <tbody>{results.map((result: any, index: number) => (
                   <tr key={index}><td>{result.sampleCode}</td><td>{result.parameterCode}</td><td>{result.value}</td><td>{result.unit}</td><td>{result.method}</td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             ) : <p className="report-empty-note">Nenhum resultado laboratorial persistido ainda para esta análise.</p>}
           </section>
 
           <section className="report-section">
             <h2>Classificações homologadas</h2>
             {structured?.interpretation?.length ? (
-              <table className="report-table">
+              <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Classificação</th></tr></thead>
                 <tbody>{structured.interpretation.map((item, index) => (
                   <tr key={index}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable ? item.classification : <em>Não interpretável</em>}</td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             ) : <p className="report-empty-note">Nenhuma interpretação calculada ainda — sem recomendação ou classificação inventada.</p>}
           </section>
 
@@ -124,6 +127,56 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
               </p>
               <p style={{ fontSize: 12, fontWeight: 600 }}>{narrative.responsePayload.narrative.summary}</p>
               {narrative.responsePayload.narrative.observations.length > 0 && <ul style={{ fontSize: 11, paddingLeft: 18 }}>{narrative.responsePayload.narrative.observations.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>}
+            </section>
+          )}
+
+          {prescription && (
+            <section className="report-section narrative-report-section">
+              <h2>Prescrição assistida por IA</h2>
+              <p className="report-empty-note" style={{ marginBottom: 10 }}>
+                Gerado por {prescription.provider} ({prescription.model}).{" "}
+                {prescription.status === "APPROVED" ? "Aprovada por revisão profissional — recomendação oficial." : "Aguardando ou pendente de revisão profissional — sugestão de IA, não é recomendação oficial ainda."}
+              </p>
+              <p style={{ fontSize: 12, fontWeight: 600 }}>{prescription.responsePayload.prescription.summary}</p>
+              {prescription.responsePayload.prescription.diagnosis.length > 0 && (
+                <div className="report-table-wrap"><table className="report-table">
+                  <thead><tr><th>Parâmetro</th><th>Resultado</th><th>Interpretação</th><th>Justificativa</th></tr></thead>
+                  <tbody>{prescription.responsePayload.prescription.diagnosis.map((item: any, index: number) => (
+                    <tr key={index}><td>{item.parameterCode}</td><td>{item.value} {item.unit}</td><td>{item.interpretation}</td><td style={{ fontSize: 10 }}>{item.rationale}</td></tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+              {prescription.responsePayload.prescription.recommendations.length > 0 && (
+                <div className="report-table-wrap" style={{ marginTop: 12 }}><table className="report-table">
+                  <thead><tr><th>Insumo</th><th>Dose</th><th>Justificativa</th></tr></thead>
+                  <tbody>{prescription.responsePayload.prescription.recommendations.map((item: any, index: number) => (
+                    <tr key={index}><td>{item.inputType}</td><td>{item.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {item.unit}</td><td style={{ fontSize: 10 }}>{item.rationale}</td></tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+              {prescription.responsePayload.prescription.managementPractices.length > 0 && (
+                <ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 10 }}>{prescription.responsePayload.prescription.managementPractices.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>
+              )}
+              {prescription.responsePayload.prescription.sources.length > 0 && (
+                <p className="report-empty-note" style={{ marginTop: 10 }}>Fontes: {prescription.responsePayload.prescription.sources.map((source: any) => source.title).join("; ")}</p>
+              )}
+            </section>
+          )}
+
+          {comparison.length > 0 && (
+            <section className="report-section">
+              <h2>Insumo: recomendado × usado</h2>
+              <div className="report-table-wrap"><table className="report-table">
+                <thead><tr><th>Insumo</th><th>Recomendado</th><th>Aplicado</th><th>Situação</th></tr></thead>
+                <tbody>{comparison.map((row: any) => (
+                  <tr key={row.inputType}>
+                    <td>{row.inputType}</td>
+                    <td>{row.recommendedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.recommendedUnit}</td>
+                    <td>{row.appliedQuantity != null ? `${row.appliedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${row.appliedUnit}` : row.hasAnyApplication ? "Em outra unidade" : "—"}</td>
+                    <td>{{ OK: "Conforme recomendado", UNDER: "Abaixo do recomendado", OVER: "Acima do recomendado", UNIT_MISMATCH: "Unidade diferente", NOT_APPLIED: "Ainda não aplicado" }[row.status as string]}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
             </section>
           )}
 

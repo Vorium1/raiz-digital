@@ -59,9 +59,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
                 <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
                   {seasons.map((season: any) => `${season.currentCrop || "cultura não informada"} ${season.seasonLabel}`).join("  →  ")}
                 </p>
-                <table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
+                <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
                   <tbody>{seasons.map((season: any, index: number) => <tr key={season.id}><td>{index + 1}</td><td>{season.seasonLabel}</td><td>{season.currentCrop || "não informada"}</td></tr>)}</tbody>
-                </table>
+                </table></div>
                 <p className="report-empty-note" style={{ marginTop: 8 }}>Sequência real por ordem de cadastro — nenhuma safra é sobrescrita, cada sucessão fica rastreável para comparar evolução química, física e microbiológica entre ciclos.</p>
               </>
             ) : <p className="report-empty-note">Nenhuma safra cadastrada para este talhão.</p>}
@@ -70,9 +70,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
           {parameterHistory.size > 0 ? Array.from(parameterHistory.entries()).map(([parameter, history]) => (
             <section className="report-section" key={parameter}>
               <h2>{parameter}</h2>
-              <table className="report-table"><thead><tr><th>Data</th><th>Safra</th><th>Classificação</th></tr></thead>
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Data</th><th>Safra</th><th>Classificação</th></tr></thead>
                 <tbody>{history.map((entry, index) => <tr key={index}><td>{new Date(entry.date).toLocaleDateString("pt-BR")}</td><td>{entry.season}</td><td>{entry.classification}</td></tr>)}</tbody>
-              </table>
+              </table></div>
             </section>
           )) : (
             <section className="report-section"><h2>Classificações homologadas</h2><p className="report-empty-note">Ainda não há interpretações homologadas suficientes para montar histórico comparável por parâmetro. A RAIZ não estima tendência sem dado real compatível.</p></section>

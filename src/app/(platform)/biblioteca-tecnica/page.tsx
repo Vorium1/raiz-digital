@@ -16,7 +16,7 @@ export default async function TechnicalLibraryPage() {
     return <><Topbar eyebrow="Administração · demonstração" title="Biblioteca Técnica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplo ilustrativo.</span></div><PageIntro title="Culturas, parâmetros e regras homologadas" description="Toda regra usada pelo motor determinístico é rastreável até aqui. Faixas de suficiência ficam em DRAFT até um agrônomo responsável homologar — nunca entram em uma interpretação real antes disso."/>
       <section className="card">
         <div className="field-ops-section-head compact"><div><span className="eyebrow">CATÁLOGO · EXEMPLO</span><h2>Culturas cadastradas ({demoLibraryProfiles.length})</h2></div></div>
-        <table className="report-table">
+        <div className="report-table-wrap"><table className="report-table">
           <thead><tr><th>Cultura</th><th>Grupo</th><th>Parâmetros</th><th>Status</th></tr></thead>
           <tbody>{demoLibraryProfiles.map((profile) => (
             <tr key={profile.crop}>
@@ -26,7 +26,7 @@ export default async function TechnicalLibraryPage() {
               <td><StatusBadge tone={profile.status === "ACTIVE" ? "success" : "waiting"}>{profile.status === "ACTIVE" ? "Homologada" : "Rascunho"}</StatusBadge></td>
             </tr>
           ))}</tbody>
-        </table>
+        </table></div>
       </section>
     </div></>;
   }

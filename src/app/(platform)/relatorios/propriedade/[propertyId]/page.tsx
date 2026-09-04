@@ -51,12 +51,12 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
           <section className="report-section">
             <h2>Talhões</h2>
             {fields.length ? (
-              <table className="report-table">
+              <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Talhão</th><th>Área</th><th>Safras</th><th>Cobertura de coleta</th></tr></thead>
                 <tbody>{fields.map((field: any) => (
                   <tr key={field.id}><td>{field.name}</td><td>{Number(field.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</td><td>{field.seasonCount}</td><td>{field.totalPoints ? `${field.collectedPoints}/${field.totalPoints} (${Math.round((field.collectedPoints / field.totalPoints) * 100)}%)` : "sem ordem de coleta"}</td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             ) : <p className="report-empty-note">Nenhum talhão cadastrado nesta propriedade.</p>}
           </section>
           <ReportSignature branding={branding} />

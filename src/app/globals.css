@@ -634,6 +634,7 @@ button { color: inherit; }
 .report-meta-grid strong{display:block;font-family:var(--font-heading);font-size:13px;margin-top:3px}
 .report-section{margin-bottom:24px}
 .report-section h2{border-bottom:1px solid var(--line);font-family:var(--font-heading);font-size:14px;margin:0 0 12px;padding-bottom:8px}
+.report-table-wrap{overflow-x:auto}
 .report-table{border-collapse:collapse;font-size:11px;width:100%}
 .report-table th{background:#f7faf8;color:var(--muted);font-size:9px;letter-spacing:.03em;padding:7px 10px;text-align:left;text-transform:uppercase}
 .report-table td{border-top:1px solid var(--line);padding:7px 10px}
