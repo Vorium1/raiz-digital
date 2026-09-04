@@ -1839,3 +1839,576 @@ novo com essa peça a mais, no ambiente de hoje (sem nenhuma chave ainda, então
 completo, não pulou).
 
 Publicado em `develop`.
+
+## Primeira chave de IA real conectada (Gemini, nível gratuito) — limitação real encontrada (2026-09-04)
+
+O diretor gerou uma chave gratuita do Google AI Studio (`GEMINI_API_KEY`, guardada só em `.env`, nunca no
+repositório) e pediu pra testar antes de confiar nela. Testei contra a API real do Gemini e encontrei duas
+coisas que o provedor (`gemini-knowledge-research-provider.ts`) tinha errado por nunca ter sido executado
+de verdade:
+
+1. **Modelo padrão desatualizado**: `gemini-2.5-pro` não existe mais para conta nova (404). Trocado o
+   padrão pra `gemini-3.6-flash`, que respondeu certo em teste direto.
+2. **Limitação real, não é bug de código**: `generateContent` simples funciona de graça na linha flash,
+   mas a ferramenta de embasamento em busca (`google_search`, que é o que faz a IA pesquisar a internet de
+   verdade em vez de inventar) responde 429 sem detalhe de quota — diferente do 429 de quota esgotada, que
+   vem com `QuotaFailure` explícito. Isso indica que a busca (grounding) não está disponível nessa chave
+   gratuita, provavelmente porque a Generative Language API do Google exige faturamento vinculado ao
+   projeto do Google Cloud pra habilitar busca, mesmo quando o uso ficaria dentro da cota grátis.
+
+**Consequência prática**: com a chave gratuita atual, o provedor Gemini consegue gerar texto, mas não
+consegue pesquisar a internet de verdade — usá-lo assim violaria a regra do projeto de nunca inventar dado
+técnico. O código agora detecta esse caso (429 sem `QuotaFailure`) e devolve um erro explícito explicando
+o motivo provável, em vez de deixar passar uma pesquisa sem embasamento real. Isso foi reportado ao
+diretor; decisão de como seguir (vincular faturamento no Google mantendo dentro do limite grátis, usar
+crédito pago na Anthropic, ou tentar OpenAI) ainda em aberto.
+
+**Testado de verdade**: chamada direta à API real do Gemini (fora do código da aplicação, via curl) —
+`generateContent` simples confirmado funcionando (200) na linha flash; `google_search` confirmado
+bloqueado (429 sem `QuotaFailure`) em múltiplas tentativas, inclusive logo depois de uma chamada simples
+bem-sucedida (descartando limite de taxa genérico como causa). `npm run typecheck` limpo depois do ajuste
+no provedor. Ainda não testado dentro da aplicação (rota `/api/knowledge-research`) nem publicado em
+commit — mudança feita, mas não commitada ainda nesta sessão.
+
+## Gemini como alternativa gratuita para prescrição + primeira base técnica real (soja) (2026-09-04)
+
+Como nenhum dos três provedores de IA dá pesquisa real na internet de graça (Anthropic e OpenAI exigem
+crédito pago; o Gemini permite geração de texto grátis mas bloqueia a ferramenta de busca sem faturamento
+vinculado — ver bloco anterior), o diretor decidiu, pra viabilizar um piloto de demonstração sem custo,
+uma estratégia diferente: usar o Gemini gratuito só pra **gerar o parecer** (não pesquisar), alimentado
+por dado técnico real que o diretor trouxe de duas fontes:
+
+1. **Material que o Rafael Cabeda (agrônomo consultor) enviou** — 20 imagens + 1 docx. A maior parte é
+   conteúdo de divulgação dele mesmo (Instagram), sobre filosofia de método (defende classificação por
+   "suficiência real" em vez de proporção rígida tipo BCSR — validou que a plataforma já segue essa linha).
+   Duas imagens tinham dado técnico real e citável: fósforo por Mehlich-1 por classe de argila (fonte
+   "Embrapa, 2013") e um método mais refinado por "P-rem" com fórmula contínua (fonte Alvarez V. et al.,
+   2000) — esse segundo fica registrado mas não implementado ainda, porque exigiria o motor saber calcular
+   um nível crítico a partir de uma fórmula quadrática, não só olhar uma faixa fixa (mesma categoria de
+   problema do item de condição abaixo, mas com fórmula em vez de faixa — fica pra depois).
+
+2. **Pesquisa ampla feita pelo próprio diretor**, direto no Claude.ai (conta paga, Sonnet/Opus com busca
+   real), usando um prompt que eu escrevi. Resultado: um levantamento sério, com fonte e página citada,
+   cobrindo pH, CTC, MO, P, K, Ca, Mg, S, B, Cu, Zn e Mn pra soja no RS/SC — priorizando o Manual de
+   Calagem e Adubação CQFS-RS/SC (11ª ed., 2016). O próprio relatório avisou uma limitação real: os
+   números vieram de um documento intermediário (resumo da UFRGS que cita a CQFS), porque a extração de
+   texto direto do PDF oficial da CQFS travava. Recomendou conferência manual antes de homologar.
+
+**Verificação que eu fiz, direto na fonte primária, em vez de pedir pro diretor gastar 20 minutos nisso**:
+baixei o PDF oficial (sbcs-nrs.org.br), extraí o texto com `pdftotext` e conferi célula por célula contra
+o que a pesquisa tinha trazido. Achei dois erros reais:
+- **Fósforo, classe de argila 1 (>60%)**: a pesquisa disse faixa "Alto" = 9,1-12,0 mg/dm³; o manual oficial
+  (Tabela 6.4, p.93) diz 9,1-18,0. Corrigido.
+- **CTC**: a pesquisa não achou a tabela na edição 2016 e usou a edição 2004 (3 classes, cortes 5,0/15,0);
+  a tabela existe em 2016 (Tabela 6.1, p.91, 4 classes: Baixa/Média/Alta/Muito alta, cortes 7,5/15,0/30,0
+  — os mesmos usados na tabela de potássio, confirmando consistência interna). Troquei pra usar 2016.
+Todo o resto (K, Ca, Mg, S, B, Cu, Zn, Mn, MO) bateu exatamente com o manual oficial.
+
+**Divergência real encontrada, ainda sem resolver**: o valor de P que o Rafael mandou (fonte "Embrapa,
+2013") não bate com o da CQFS-RS/SC 2016 pras mesmas classes de argila. São fontes e classes diferentes,
+não comparáveis célula a célula direto — pra lavoura em RS/SC, a CQFS é a referência regional oficial, mas
+isso fica registrado como pendência pro Rafael confirmar antes de homologar (`status = 'DRAFT'`, nada
+disso é usado pelo motor real até alguém promover pra `ACTIVE`).
+
+**Bug real de esquema, encontrado tentando carregar esse dado (não é hipotético — travou na prática)**: a
+tabela `crop_profile_parameters` tinha uma constraint única (cultura, parâmetro, profundidade) que não
+sabia representar "P tem uma faixa diferente por classe de argila" nem "K tem uma faixa diferente por
+classe de CTC" — ao inserir a segunda faixa de P, ela silenciosamente SOBRESCREVIA a primeira (mesmo
+parâmetro/profundidade, `ON CONFLICT` fazia UPDATE). Descobri isso porque as 4 faixas de P e as 4 de K
+viraram 1 só depois de rodar o script a primeira vez. Corrigido com uma migration nova (`020`) que adiciona
+`condition_parameter_code`/`condition_min`/`condition_max` (ex.: "esta faixa só vale quando CLAY estiver
+entre 21 e 40") e entra na constraint única. O motor determinístico (`agronomic-engine.ts`) também foi
+atualizado: antes, se houvesse mais de uma faixa candidata, ele pegava a primeira arbitrariamente (mesma
+classe de bug, só que na hora de interpretar em vez de na hora de salvar); agora ele exige uma condição
+declarada pra desambiguar, olha o valor de outro parâmetro da MESMA amostra (ex.: teor de argila) pra
+escolher a faixa certa, e nunca decide sozinho quando falta essa informação — 4 códigos de erro novos e
+explícitos em vez de silêncio (`NO_CONDITION_MATCH`, `CONDITION_PARAMETER_MISSING`).
+
+**O que foi carregado, como rascunho (`DRAFT`, motor ignora até alguém homologar)**: 17 linhas de
+`crop_profile_parameters` pra SOJA (MO, CTC, P×4 classes de argila, K×4 classes de CTC, Ca, Mg, S — soja
+como leguminosa tem teor crítico de enxofre mais alto, 10mg/dm³ não 5 —, B, Cu, Zn, Mn) e 1 linha de
+`technical_sources` citando a CQFS-RS/SC 2016, via `scripts/seed-soja-cqfs-2016.mjs` (script novo,
+reexecutável sem duplicar). pH, V% e saturação por alumínio (m%) ficaram de fora de propósito: a edição
+2016 não publica mais essas três como faixa fixa, usa índice SMP + pH de referência por cultura (soja =
+6,0) pra calcular dose de calcário direto — isso também vai exigir o motor saber calcular, não só
+classificar, mesma pendência do P-rem.
+
+**Testado de verdade**: escrevi 4 cenários novos pro motor determinístico (faixas ambíguas sem condição,
+condição ausente na amostra, condição fora de toda classe cadastrada, e o caminho feliz escolhendo a
+faixa certa entre várias usando outro resultado da mesma amostra) — `npm run test:engine` (15/15 cenários,
+os 11 antigos continuam passando). `npm run test:handoff` completo (domínio + segurança + schemas de IA +
+migrations, 001-020) e `npm run build` (produção) também passaram limpos depois de toda a mudança.
+
+**Pendências reais, não maquiadas**: (1) nada disso está homologado — é tudo `DRAFT`, precisa do Rafael
+revisar e promover pra `ACTIVE` antes de aparecer numa análise real; (2) a divergência do P
+(Embrapa 2013 do Rafael vs. CQFS 2016) não foi resolvida, só documentada; (3) pH/V%/m% e o método P-rem
+ficaram de fora, pendentes de o motor ganhar suporte a parâmetro calculado por fórmula (não só faixa
+estática); (4) a UI de curadoria (Biblioteca Técnica) ainda não tem campo pra editar
+`condition_parameter_code`/`min`/`max` — hoje só dá pra popular via script; (5) ainda falta rodar uma
+prescrição real de ponta a ponta com o Gemini pra confirmar que o provedor novo (`gemini-prescription-
+provider.ts`, também nunca executado contra API real com prescrição de verdade) funciona no formato
+esperado. Nada disso foi commitado ainda nesta sessão.
+
+## Cross-validação com um segundo provedor de IA (GPT) achou um bug real de fronteira (2026-09-04)
+
+O diretor rodou o mesmo tipo de pesquisa (faixas de suficiência de solo pra soja, RS/SC) numa segunda IA
+independente (ChatGPT), exatamente como planejado desde o início — cruzar provedores em vez de confiar
+num só. Resultado: forte validação cruzada (K, Ca, Mg, MO, CTC, B, Zn, Cu, Mn bateram exatamente com o que
+eu já tinha conferido direto no PDF oficial da CQFS 2016; o GPT também decidiu, de forma independente,
+deixar Al/H+Al/V como "não encontrado" pelo mesmo motivo que eu — a edição 2016 não publica mais isso como
+faixa fixa).
+
+Mas o cruzamento revelou um problema real que nenhuma das duas pesquisas tinha notado sozinha: as tabelas
+da CQFS escrevem faixa como "9,1-18,0" seguida de ">18,0" — ou seja, o valor exato do corte (18,0) pertence
+à faixa de baixo, só valores estritamente maiores entram na de cima. O motor determinístico
+(`classifyValue` em `agronomic-engine.ts`) fazia o oposto: tratava o mínimo de cada faixa como inclusive e
+o máximo como exclusive pra TODAS as faixas, inclusive a mais alta (que não tem `max`) — na prática, um
+valor exatamente no corte (ex.: K = 18,0 mg/dm³) caía silenciosamente na faixa de cima errada. Corrigido:
+faixa mais baixa (sem `min`) e faixas do meio agora são inclusive no `max`; só a faixa mais alta (sem
+`max`) exige valor estritamente maior que o `min`, batendo com a notação ">" da fonte.
+
+**Achado extra do GPT, registrado mas não implementado ainda**: ele localizou uma publicação mais recente
+e mais específica de soja — "Indicações técnicas para a cultura da soja no Rio Grande do Sul e em Santa
+Catarina, safras 2025/2026 e 2026/2027" (44ª Reunião de Pesquisa de Soja da Região Sul; Embrapa
+Trigo/Universidade de Passo Fundo, 2025) — mais nova que o manual geral CQFS 2016. Ela atualizou o
+critério de calagem em plantio direto consolidado com restrição em subsuperfície: saturação por alumínio
+crítica caiu de ≥30% pra ≥10%, e a dose passou de ¼ pra ½ do índice SMP. Isso só importa quando o motor
+ganhar suporte a cálculo de calagem via fórmula (mesma pendência de pH/V%/m% já registrada) — fica
+anotado pra não perder essa atualização quando chegar a hora.
+
+**Testado de verdade**: 3 cenários novos pro motor (valor exatamente no corte de uma faixa do meio, valor
+logo acima do corte, valor exatamente no corte da faixa mais baixa) — `npm run test:engine` (18/18,
+todos os 15 anteriores continuam passando). `npm run typecheck` e `npm run test:handoff` completo (todos
+os domínios + migrations 001-020) limpos depois da correção. Ainda não commitado nesta sessão.
+
+## Segunda cultura (milho) carregada reaproveitando dado já verificado, sem pesquisa nova (2026-09-04)
+
+O diretor pediu pra avançar pras próximas culturas. Antes de pedir pesquisa nova, chequei o próprio manual
+CQFS-RS/SC: fósforo (por classe de argila) e potássio (por CTC) já são tabelados como "Grupo 2 -- culturas
+de grãos", sem distinção entre soja e milho -- mesma fonte, mesma tabela, mesma página, já verificada
+contra o PDF oficial. Cálcio, magnésio, matéria orgânica, CTC e micronutrientes (B, Cu, Zn, Mn) também são
+tabelas gerais do manual, não específicas de cultura. Só o enxofre muda de verdade: soja é leguminosa
+(grupo mais exigente, crítico >10 mg/dm³); milho fica no grupo geral (crítico >5 mg/dm³).
+
+Refatorado o dado comum pra `scripts/lib/cqfs-2016-grupo2-graos.mjs` (P×4 classes de argila, K×4 classes
+de CTC, tabelas gerais de solo, e as duas versões de enxofre por grupo de exigência) — uma fonte única
+reaproveitável pras próximas culturas de grãos (trigo, cevada, aveia, triticale também são "culturas de
+grãos" no mesmo Grupo 2; canola é brássica, cai no grupo mais exigente de enxofre como a soja; arroz
+irrigado é caso à parte, não reaproveitar sem checar antes). `scripts/seed-milho-cqfs-2016.mjs` carregou
+17 linhas de `crop_profile_parameters` pra MILHO (`DRAFT`, mesma trava de sempre) + 1 `technical_sources`,
+sem inventar nem pesquisar nada novo — só aplicando onde a própria fonte já diz que se aplica.
+
+**Prompt novo enviado pro diretor rodar no Claude e no GPT** (pra manter o cruzamento de provedores que já
+funcionou bem com a soja): focado só no que realmente muda pro milho (pH de referência, confirmação do
+grupo de enxofre, dose de N em cobertura — que soja não tem, por ser fixadora biológica — e publicação
+regional de milho mais recente) mais um bloco separado sobre práticas/insumos modernos que ficou pendente
+desde o início (fertilizante organomineral sólido/líquido, fosfato natural, controle biológico/inoculantes,
+e a tabela clássica de disponibilidade de nutriente por pH). Ainda não voltou resultado.
+
+**Testado de verdade**: `npm run typecheck` limpo e `npm run test:handoff` completo (18/18 do motor +
+todos os outros domínios + migrations 001-020) depois de carregar milho. Nada commitado ainda nesta
+sessão.
+
+## Resultado da pesquisa de milho (Claude) veio muito precisa — conferida e carregada (2026-09-04)
+
+O Claude do diretor devolveu o prompt do bloco anterior. Conferi os dois pontos numéricos mais importantes
+direto no PDF oficial da CQFS 2016 (que já tinha baixado): achei um capítulo dedicado a milho que eu nem
+sabia que existia (6.1.14, p.125-127), com tabela de nitrogênio (semeadura+cobertura, por MO e cultura
+antecedente) e tabela de fósforo/potássio (por classe de interpretação e nº do cultivo) — **bateram
+palavra por palavra** com o que a pesquisa trouxe, incluindo todos os ajustes (densidade de plantas,
+rendimento >10t/ha, redução por rotação com soja). Também confirmei a correspondência pH×saturação por
+bases (pH 6,0 = V 75%) e que milho está no mesmo grupo de pH de referência (6,0) que soja, trigo, cevada,
+aveia, triticale e canola (Tabela 5.1) — todos os nossos `crop_profiles` atuais, exceto arroz irrigado.
+
+Carreguei duas fontes técnicas novas via `scripts/seed-milho-technical-sources.mjs` (não são faixa de
+suficiência — são conteúdo de referência que a IA de prescrição lê pra justificar dose real, formato
+`technical_sources.content`, tudo `DRAFT`):
+1. **Tabela de N e de P2O5/K2O do milho** (confiança alta — conferida direto na fonte primária).
+2. **Fonte geral "boas práticas modernas"** (organomineral, fosfato natural reativo, bioinsumos com
+   respaldo — Azospirillum Ab-V5/Ab-V6 e BiomaPhos — versus sem respaldo — remineralizadores/"pó de
+   rocha" —, e a tabela clássica de disponibilidade por pH). Confiança **média**, registrada
+   explicitamente no próprio conteúdo: vem de pesquisa por IA com citação, mas eu não conferi essas
+   citações direto no documento original (não estavam baixados localmente, diferente do resto).
+
+**Bug pequeno encontrado e corrigido no caminho**: essa fonte "geral" (sem `crop_profile_id`, porque vale
+pra qualquer cultura) nunca seria lida pela IA de prescrição — a consulta em
+`prescription-evidence-package.ts` filtrava só pelo `crop_profile_id` exato da cultura da análise. Corrigido
+pra incluir também fonte sem cultura vinculada, pra qualquer cultura.
+
+**Achado extra pra registrar pro futuro (calagem, ainda não implementado)**: a pesquisa trouxe o critério
+completo de calagem em plantio direto consolidado com restrição em subsuperfície — saturação por Al ≥30%
+(não ≥10%, que é só pra dose reduzida sem restrição) — refinando o que já tínhamos anotado. Fica junto da
+pendência já registrada de o motor aprender a calcular calagem por fórmula (índice SMP), não só classificar
+faixa fixa.
+
+**Testado de verdade**: `npm run typecheck` e `npm run test:handoff` completo, limpos, depois da mudança
+no evidence-package. Ainda falta a resposta do GPT pro mesmo prompt, pra cruzar como fizemos com a soja —
+pedida, não voltou ainda. Nada commitado nesta sessão.
+
+## GPT cruzado com Claude pro bloco de milho + boas práticas — confiança alta nos dois blocos (2026-09-04)
+
+A resposta do GPT bateu firme com a do Claude nos pontos mais importantes: pH de referência do milho
+(6,0), grupo de enxofre (crítico 5, não 10), e a tabela de nitrogênio inteira — números idênticos,
+incluindo todos os ajustes (densidade, rendimento, palhada, rotação com soja). Como a tabela de N já tinha
+sido conferida por mim direto no PDF oficial, isso é uma boa confirmação de que o cruzamento está
+funcionando como o diretor pediu desde o início.
+
+O GPT também trouxe conteúdo novo e mais específico que o Claude não tinha, e que valeu a pena incorporar:
+
+- **Organomineral**: achou um estudo feito no próprio RS (De Bona & Silva Júnior, Embrapa Trigo, Boletim
+  118, set/2024 — 4 solos + campo real em Passo Fundo, 6 ciclos com soja/trigo/milho/aveia) mostrando
+  desempenho **similar**, não superior, ao mineral. Mais forte e mais específico que a fonte que o Claude
+  tinha citado (Sfredo 2008, mais genérica).
+- **Bioinsumos**: propôs uma classificação por nível de evidência (A = consolidado, tipo Bradyrhizobium na
+  soja; B = validado só pra cepa/produto específico, tipo Azospirillum Ab-V5/Ab-V6 e BiomaPhos; C =
+  promissor mas depende de genótipo/ambiente — citou um estudo de 2025 com 42 híbridos de milho onde a
+  mesma bactéria deu resposta positiva, negativa E neutra dependendo do híbrido; D = alegação comercial sem
+  validação). Adotei esse framework porque é mais seguro que um "comprovado/não comprovado" binário —
+  registrado como regra prática: só nível A/B pode ajustar dose, nível C vira observação no laudo (nunca
+  ajusta número), nível D não entra.
+- **Fosfato natural**: refinou a orientação — é pra adubação CORRETIVA de P, desaconselhado como manutenção
+  em cultura anual (exceto solo já Médio/Alto de P). Não é corretivo de acidez, não confundir com calcário.
+
+**Divergência real encontrada e registrada, não resolvida escolhendo uma arbitrariamente**: os dois citaram
+fonte diferente pro gráfico clássico de disponibilidade por pH (Claude: Embrapa Algodão, Circular Técnica
+145/2025, citando Malavolta 1979; GPT: Embrapa Gado de Leite, Comunicado Técnico 47/2005, citando Malavolta
+1981). Ano do Malavolta batendo quase, mas não exatamente — fica registrado como divergência aberta no
+próprio conteúdo, em vez de eu decidir qual está certo sem conferir. O GPT também alertou algo importante:
+esse gráfico é conceitual, nunca deve virar cálculo de percentual de disponibilidade.
+
+Atualizei `scripts/seed-milho-technical-sources.mjs` com a versão cruzada/fundida das duas pesquisas e
+recarreguei (mesmo `DRAFT`, script idempotente). `npm run typecheck` limpo depois.
+
+## Terceiro provedor (Gemini) testado no prompt original de soja — errou a maioria dos números, nada carregado (2026-09-04)
+
+O diretor rodou o prompt original de soja (o primeiro desta série) também no Gemini, e trouxe a resposta
+pra revisão antes de eu carregar qualquer coisa — exatamente o processo que deveria acontecer sempre.
+Comparei número por número contra o que já tinha verificado direto no PDF oficial da CQFS-RS/SC 2016:
+
+**Bateu certo**: potássio (as 4 faixas por CTC), cálcio, magnésio, matéria orgânica.
+
+**Errou, em mais da metade dos parâmetros, mesmo citando a fonte certa**:
+- pH: inventou uma tabela de faixas (≤4,5 / 4,6-5,4 / 5,5-6,0 / 6,1-7,0 / >7,0) que não corresponde a
+  nenhuma das duas edições do manual (nem 2004 nem 2016).
+- Enxofre: disse Alto >15,0 mg/dm³ — o real é >5,0 (geral) ou >10,0 (grupo mais exigente, que inclui
+  soja) — quase 3x maior que o certo.
+- Boro: disse Alto >0,5 — real é >0,3.
+- Zinco: disse Alto >1,0 — real é >0,5 (quase o dobro).
+- Cobre: disse Alto >0,8 — real é >0,4 (exatamente o dobro).
+- Manganês: disse Alto >10,0 — real é >5,0 (exatamente o dobro).
+- V% (saturação por bases): disse que o alvo pra soja é 60% — o valor real (conferido na fonte oficial,
+  fórmula NC do capítulo de calagem) é 75% pra pH de referência 6,0.
+
+**Nada disso foi carregado no banco.** Fica só registrado aqui como lição: uma resposta bem formatada, com
+citação de fonte e links reais (o Gemini claramente pesquisou de verdade — os links eram de repositórios
+universitários e Embrapa reais), ainda assim pode ter o número errado, sem nenhum aviso de incerteza. Isso
+reforça por que a verificação contra a fonte primária (não só a citação) é obrigatória antes de homologar
+qualquer coisa — e por que vale desconfiar um pouco mais do Gemini especificamente até ver mais uma amostra
+de respostas dele.
+
+## Gemini errou de novo no prompt de milho — agora um padrão, não acaso (2026-09-04)
+
+Segunda resposta do Gemini revisada, dessa vez pro prompt de milho + boas práticas. Errou de novo, e no
+ponto mais importante da rodada inteira:
+
+- **Tabela de nitrogênio do milho**: o Gemini inventou uma tabela inteira diferente (estrutura por 4
+  faixas de "expectativa de rendimento" até >12t/ha, valores tipo 90/140/180 kg N/ha) que não existe no
+  manual oficial. Essa é justamente a tabela que eu já tinha conferido palavra por palavra direto no PDF
+  (capítulo 6.1.14) e que Claude e GPT bateram exatamente iguais entre si e com a fonte. O Gemini
+  fabricou uma tabela nova do zero, com números plausíveis de teto produtivo mais alto (parece mais
+  calibrada pra Cerrado/alta tecnologia do que pra realidade de rendimento do RS/SC).
+- **Repetiu o mesmo erro da resposta anterior**: disse que o alvo de saturação por bases (V%) pra pH 6,0
+  é 60% — o valor real, confirmado na fonte, é 75%. Mesma cifra errada nas duas respostas — sugere que não
+  é um erro aleatório, é algo que o modelo "aprendeu" errado e repete com confiança.
+- Confundiu o grupo de enxofre do milho (disse Alto >10,0, contradizendo a própria frase anterior de que
+  o milho não é do grupo mais exigente — o certo pro milho é Alto >5,0).
+- Trocou o nome da cepa do BiomaPhos ("BRM 119"/"BRM 2084" em vez de "CNPMS B119"/"CNPMS B2084",
+  confirmado por Claude e GPT).
+
+Nada disso foi carregado — o que já está no banco (Claude+GPT, conferido na fonte) continua sendo a
+referência. Com duas respostas seguidas erradas em pontos centrais, isso deixou de ser "pode acontecer" e
+virou um padrão observado: usar o Gemini como terceira opinião é válido, mas os números dele precisam de
+verificação extra antes de qualquer coisa entrar na base — mais do que Claude ou GPT, que bateram entre si
+e com a fonte primária nas duas rodadas até agora.
+
+## Terceira cultura (trigo) carregada direto da fonte primária, sem esperar pesquisa de IA (2026-09-04)
+
+O manual oficial CQFS-RS/SC tem capítulo próprio de trigo (6.1.21, p.132-133), do mesmo jeito que tinha
+pro milho — então carreguei direto, sem precisar de pesquisa externa pros números principais. Reaproveitado
+o mesmo módulo `lib/cqfs-2016-grupo2-graos.mjs` (P, K, Ca, Mg, MO, CTC, micronutrientes, enxofre geral —
+trigo é poácea, mesmo grupo do milho, não entra no grupo mais exigente) e carregada a tabela própria de N
+(60/80, 40/60, ≤20/≤20 kg N/ha por MO×antecessora, meta ~3t/ha) e de P2O5/K2O do capítulo de trigo via
+`scripts/seed-trigo-cqfs-2016.mjs` — 17 faixas + 2 fontes técnicas, tudo `DRAFT`.
+
+Achado interessante registrado no conteúdo da fonte: o manual tem uma restrição regional específica —
+em regiões mais quentes/baixa altitude (ex.: Missões, RS), quando trigo é semeado após soja, o N total
+deve ficar limitado a 40 kg/ha pra evitar acamamento, independente da MO do solo; em regiões mais frias
+com MO alta (Campos de Cima da Serra), pode aumentar. Isso é o tipo de regra regional fina que só aparece
+lendo o capítulo específico, não a tabela geral.
+
+**Testado de verdade**: `npm run typecheck` e `npm run test:handoff` completo, limpos, depois de carregar
+trigo. Nada commitado nesta sessão.
+
+## Diretor levantou um ponto técnico real: poder acidificante do fertilizante × disponibilidade por pH (2026-09-04)
+
+O diretor (que também fabrica fertilizante) trouxe um ponto agronômico legítimo, não só comercial: adubo à
+base de amônio (ureia, sulfato de amônio, MAP) acidifica o solo aos poucos através da nitrificação, e como
+a disponibilidade de nutriente cai em solo ácido (a tabela de disponibilidade por pH que já estamos
+documentando), um fertilizante que preserva melhor o pH do solo pode entregar mais nutriente aproveitável
+ao longo do tempo mesmo com garantia de NPK menor no rótulo do que um concentrado ácido. Confirmei que esse
+princípio é real e está até mencionado de passagem no manual oficial (nota sobre sulfato de amônio "reduzir
+sensivelmente o pH do solo" em safras consecutivas, no capítulo de amoreira-preta) — mas não achei uma
+tabela quantificada de "poder acidificante" por tipo de fertilizante dentro do manual CQFS. Isso vai pro
+próximo prompt de pesquisa como tema geral (vale pra qualquer fertilizante, não só o do diretor -- assim
+fica mais forte e mais defensável tecnicamente se algum dia for usado numa conversa com cliente ou com o
+Rafael), junto com o que ainda falta de trigo (publicação regional mais recente, se existir alguma
+equivalente ao MISOSUL do milho).
+
+## Terceira resposta do Gemini — de novo real + errado; achei e baixei a fonte real pra conferir (2026-09-04)
+
+O Gemini respondeu o prompt de trigo + poder acidificante citando uma publicação real: "Informações
+Técnicas para Trigo e Triticale — Safra 2026" (Embrapa Trigo, 17ª Reunião da Comissão Brasileira de
+Pesquisa de Trigo e Triticale, ago/2025). Confirmei a existência real via WebFetch, achei o link do PDF na
+página, baixei (9,3MB) e extraí o texto com `pdftotext` — mesmo processo que uso pro manual CQFS.
+
+**O documento existe, mas o Gemini errou de novo nos detalhes extraídos**:
+- Disse que a tabela de N do trigo foi recalibrada pra rendimentos acima de 5-6t/ha — **falso**: é
+  idêntica à de 2016 (60/80, 40/60, ≤20/≤20), inclusive a nota de ajuste (+20/+30kg por tonelada acima de
+  3t/ha) — confirma que o que já está carregado continua certo, sem mudança nenhuma.
+- Disse que o uso de redutor de crescimento virou "obrigatório" — **falso**: o texto real diz que é
+  "restrito a cultivares com tendência ao acamamento, solo de fertilidade elevada, trigo irrigado" —
+  condicional, não obrigatório. E o produto certo é só trinexapaque-etílico, 0,4 L/ha, fase de elongação
+  — o Gemini tinha citado também "chlormequat" como alternativa, que não aparece nessa fonte.
+- Inventou uma dose específica de "20-30 kg/ha" pra aplicação tardia de N (proteína) — a fonte real não dá
+  número nenhum, é bem mais cautelosa: diz que depende da cultivar, que é responsabilidade do obtentor
+  (quem desenvolveu a semente) informar se aquela cultivar responde, e que só compensa financeiramente se
+  o comprador pagar mais por proteína/força de glúten.
+
+**Carreguei a versão real (conferida), não a do Gemini**, via `scripts/seed-trigo-safra-2026.mjs`
+(technical_source novo, `DRAFT`): o manejo de N pra proteína/glúten (sem inventar dose), o redutor de
+crescimento correto, e um dado novo e real que achei de bônus — equivalência de fertilizante orgânico em
+trigo: ~50% do valor do mineral em N, 80% em P, 100% em K, no primeiro cultivo.
+
+Isso responde diretamente o pedido do diretor sobre como manejar trigo pra maximizar proteína (uso em
+glúten vital) versus rendimento/amido (uso em etanol) — a resposta real da Embrapa é mais honesta que a do
+Gemini: não existe fórmula pronta de dose, depende da cultivar e do retorno financeiro esperado.
+
+**Padrão que já é claro depois de 3 rodadas**: o Gemini consistentemente acha fontes reais (os links não
+são inventados), mas erra ou embeleza os números/detalhes específicos extraídos delas, com confiança total,
+sem sinalizar incerteza. Segue valendo como pista de onde procurar, nunca como fonte de número direto.
+
+O bloco de "poder acidificante do fertilizante" que o Gemini também respondeu nesta rodada ainda não foi
+carregado — os valores (kg de CaCO3 por 100kg de produto) parecem plausíveis por conhecimento geral de
+química de fertilizantes, mas não tenho fonte primária local pra conferir como fiz com o trigo — fica
+esperando o cruzamento com Claude e GPT antes de qualquer coisa entrar na base.
+
+## Resposta do Claude fechou o bloco de trigo + poder acidificante, com verificação extra na fonte primária (2026-09-04)
+
+O Claude achou uma divergência real entre a sua própria pesquisa anterior de soja e a nova publicação de
+trigo (Safra 2026) na faixa "Alto"/"Muito alto" de P na classe de argila 1 (9,1-12,0 vs 9,1-18,0), pedindo
+confirmação. Boa notícia: já tinha corrigido isso na primeira verificação da soja (o valor certo, 9,1-18,0,
+já estava carregado desde o início) — confirmei de novo direto no PDF do trigo 2026 (que também baixei) e
+bate. Nada a corrigir, só confirmar.
+
+**Segunda divergência, essa sim real e resolvida agora**: a publicação de trigo 2026 diz "1 SMP" pra
+calagem em plantio direto consolidado sem restrição; o MISOSUL do milho tinha dito "¼ SMP" pra mesma
+situação, ambos citando o manual 2016 como fonte. Fui direto no Anexo 1 do manual original de 2016, que tem
+um EXEMPLO NUMÉRICO COMPLETO: as doses do convencional (3,7/4,2/6,8 t/ha) viram exatamente 0,9/1,0/1,7 t/ha
+no plantio direto consolidado — ou seja, exatamente 1/4. A conta bate perfeito. Conclusão: **¼ SMP está
+certo** (confirma o milho), e a publicação nova de trigo 2026 tem um erro de transcrição nesse ponto
+específico, mesmo citando a fonte certa — reforça que "mais novo" não é sinônimo de "mais certo", e que
+vale sempre conferir contra o texto original quando dá.
+
+Também confirmei que o Manual CQFS 2016 **realmente não tem** uma tabela de poder acidificante de
+fertilizante (fui direto no capítulo 8.2.1, que só tem garantia mínima de nutriente, não índice de acidez)
+— então a fonte que o Claude achou (Borges & Silva, Embrapa, capítulo de fertirrigação) é de fato a melhor
+disponível pra esse tema, não CQFS mas legítima e com definição metodológica clara.
+
+**Carreguei** (via `scripts/seed-trigo-safra-2026.mjs` atualizado e `scripts/seed-poder-acidificante-
+fertilizante.mjs` novo, ambos `DRAFT`):
+- Resposta completa e honesta pra pergunta original do diretor (proteína/glúten pra glúten vital vs.
+  amido/rendimento pra etanol): a pesquisa brasileira (3 estudos independentes — Embrapa Trigo/Passo
+  Fundo, UFRGS/Eldorado do Sul, Paraná) mostra que N tardio não aumenta força de glúten de forma confiável
+  — a alavanca real pra glúten vital é ESCOLHA DE CULTIVAR (classe Melhorador), não manejo de fertilizante;
+  pra etanol, existem cultivares específicas já registradas (BS Etanol, TBIO Energia I/II, classe "Outros
+  Usos"). Também carreguei a classificação oficial (IN 38/2010, W/estabilidade/número de queda por classe)
+  e a tabela que conecta proteína a uso industrial (panificação exige proteína mín. 12%, biscoito quer
+  proteína BAIXA 8-9%) — essa é a fonte que realmente serve pro caso de uso do diretor.
+- Enxofre (dose explícita 20-30kg/ha quando <5mg/dm³), incerteza sobre gesso agrícola em trigo, posição
+  negativa sobre fertilizante foliar, situação de micronutrientes, inoculação com Azospirillum, regra de
+  reanálise a cada 3 anos.
+- Índice de acidez/basicidade real (Sulfato de amônio 110, DAP 88, Ureia 71, Nitrato de amônio 60, MAP 60,
+  por 100kg de produto — nunca por kg de nutriente, ressalva registrada explicitamente), fertilizantes de
+  reação neutra/básica reais (nitrato de cálcio/potássio/magnésio, termofosfato), e a lacuna honesta: não
+  existe estudo brasileiro publicado que quantifique perda de produtividade por acidificação autoinduzida
+  ao longo de safras — recomendação de não inventar esse número, usar balanço de acidez + reanálise
+  periódica em vez disso.
+- **Rejeitei explicitamente e documentei o motivo**: o número que o Gemini deu (eficiência de NPK cai pra
+  30% em pH 4,5, sobe pra 81% em pH 6,0, citando ABRACAL) não tem sustentação em nenhum estudo que o Claude
+  achou — ABRACAL é associação de produtores de calcário, tem interesse comercial na resposta, e o número
+  tem cara de material de divulgação, não de pesquisa controlada. Fica marcado pra nunca usar.
+
+**Testado de verdade**: `npm run typecheck` limpo depois de tudo carregado.
+
+## GPT fechou o cruzamento de trigo + poder acidificante com achados fortes (2026-09-04)
+
+O GPT trouxe duas coisas que nem o Claude nem a minha leitura direta do PDF tinham achado:
+
+1. **Estudo mais decisivo sobre proteína/glúten**: Guarienti et al., Embrapa Trigo, Boletim de Pesquisa e
+   Desenvolvimento 120 (2025) — 12 ambientes, 3 cultivares, MESMA dose total de N (90kg/ha) só redistribuída
+   entre 6 estratégias de época/parcelamento. Resultado: nenhuma estratégia de parcelamento foi consistente
+   o bastante pra virar recomendação geral de mais proteína/glúten. Esse é o achado mais forte da rodada
+   inteira sobre esse tema — mesmo REDISTRIBUINDO (não aumentando) N pra fases tardias, não existe receita
+   validada. Reforça, com mais força ainda, que a via real pra glúten vital é escolha de cultivar.
+2. **Quantificação real da acidificação por N** (onde antes eu tinha registrado só "não encontrado"): Caires
+   & Milla (Bragantia, 2016) mediram que cada 100kg N/ha como ureia reduz ~0,07 unidade de pH, ~4,4mmolc/dm³
+   de Ca+Mg e ~2,8 pontos de V% na camada 0-20cm, precisando de ~440kg/ha de calcário pra neutralizar — mas
+   a produtividade de milho aumentou fortemente mesmo assim (a acidificação é um passivo de longo prazo, não
+   necessariamente uma perda na safra corrente). Yagi (PAB, 2018) documentou um caso real de queda de
+   rendimento de trigo de até 14,5% ligada à acidificação em SPD de longa duração — mas não generalizável
+   como coeficiente, só um caso real registrado. Isso é uma resposta bem melhor e mais honesta do que um
+   "não encontrado" — atualizei a fonte geral de poder acidificante com esses dois estudos.
+
+**Divergência nova encontrada**: as duas fontes acadêmicas de índice de acidez (Claude: Borges&Silva/Embrapa;
+GPT: Batista et al./EDUEM-UEM, que cita Tisdale/Nelson/Beaton) discordam sobre DAP vs MAP — uma diz DAP=88/
+MAP=60, a outra o oposto. Registrei um raciocínio químico (DAP tem mais N que MAP, e a acidificação vem do
+N amoniacal, então DAP deveria acidificar mais) que favorece a primeira versão, mas deixei marcado como
+inferência não confirmada, não como fato — nenhuma das duas fontes primárias foi conferida diretamente.
+
+Atualizei `scripts/seed-trigo-safra-2026.mjs` e `scripts/seed-poder-acidificante-fertilizante.mjs` com tudo
+isso e recarreguei (idempotente, `DRAFT`). `npm run typecheck` limpo. Com isso, soja, milho e trigo estão
+com base técnica sólida e cruzada por três provedores de IA + verificação direta em 4 documentos primários
+(CQFS 2016, Trigo Safra 2026, e os dois PDFs baixados nesta sessão) — pronto pra próxima cultura ou pra
+testar uma prescrição real de ponta a ponta.
+
+## Canola, pastagem de inverno e carinata (2026-09-04)
+
+Diretor pediu pra avançar em canola, carinata e "pastagem/pisoteio no inverno". Achei capítulo próprio de
+canola (6.1.6) e de "Gramíneas de estação fria" (6.2.2 -- é onde entram aveia/azevém usados como pastagem
+de inverno em sistema de integração lavoura-pecuária, antes da soja/milho de verão) direto no manual
+oficial -- carreguei os dois sem precisar de pesquisa externa.
+
+**CANOLA**: reaproveitou as faixas do módulo Grupo 2 (P/K/Ca/Mg/MO/CTC/micronutrientes -- confirmado no
+próprio manual que "culturas de grãos" cobre canola pra fins de P), mas com enxofre do grupo MAIS exigente
+(>10mg/dm³), porque canola é brássica -- mesma regra que colocou a soja nesse grupo. Tabela própria de N
+(60/40/≤30 kg/ha por MO) e de doses de P2O5/K2O carregada como fonte técnica.
+
+**PASTAGEM_INVERNO** (crop_profile novo -- "Gramíneas de estação fria", cobre aveia branca/preta, azevém,
+centeio, triticale, cevada/trigo forrageiro e as perenes festuca/dáctilo/aveia perene): o próprio manual
+confirma "pastagens, exceto pastagem natural" no mesmo Grupo 2 de P dos grãos -- reaproveitou as mesmas
+faixas de classificação. N é uma tabela diferente das culturas de grão (direto por MO, sem distinção de
+antecessora, doses bem mais altas -- 80 a 180kg N/ha, porque é pra produzir massa forrageira o ano todo,
+não só um ciclo de grão) e P/K por "1º/2º cultivo ou ano" em vez de "1º/2º cultivo" -- carregado como fonte
+técnica. Achado interessante registrado: em sistema de integração lavoura-pecuária, a calagem eleva a
+disponibilidade de molibdênio na pastagem, o que pode causar deficiência de cobre em ruminantes que
+pastejam ali (molibdenose) -- um caso real onde decisão de manejo de solo afeta saúde animal diretamente,
+o manual recomenda suspender Mo quando o teor na planta passar de 5mg/kg.
+
+**CARINATA**: criado só o perfil vazio (`crop_profiles`, `DRAFT`, sem faixa nenhuma ainda) -- é oleaginosa
+recente demais no Brasil (biocombustível/SAF) pra estar no manual CQFS 2016, precisa de pesquisa externa
+de verdade, sem atalho.
+
+**Pendência real registrada, não maquiada**: o manual CQFS trata só de fertilidade química, não tem nada
+sobre o efeito físico do pisoteio animal (compactação por pastejo) no solo -- carga animal segura, altura
+de saída, pastejo rotacionado vs contínuo. Isso fica pro próximo prompt de pesquisa externa, junto com
+carinata inteira.
+
+**Testado de verdade**: `npm run typecheck` e `npm run test:handoff` completo, limpos, depois de carregar
+as três culturas.
+
+## Cruzamento carinata + pisoteio: Claude e GPT convergem fortemente, derrubam um erro do Gemini (2026-09-04)
+
+Claude e GPT responderam o mesmo prompt (carinata + pisoteio) e concordaram muito entre si — sinal forte de
+que o conteúdo é confiável. Um destaque: os dois, independentemente, **não acharam nenhum ZARC pra
+carinata** — contradizendo o que o Gemini tinha afirmado antes (que já existia ZARC aprovado). Ambos
+notaram a diferença fina que o Gemini errou: carinata está cadastrada como ESPÉCIE no sistema do MAPA, mas
+isso não é a mesma coisa que ter um ZONEAMENTO aprovado — sem ZARC, fica fora do Proagro/seguro rural
+subvencionado.
+
+**CARINATA**: os dois confirmam que não existe, hoje, nenhuma faixa de suficiência brasileira própria pra
+essa cultura — é recente demais (primeiros ensaios Nuseed+Embrapa Agroenergia só a partir de dez/2021).
+**Decisão importante, e correta pro projeto**: NÃO carreguei nenhuma faixa de suficiência pra carinata,
+nem emprestada da canola — isso é exatamente o que os dois pesquisadores recomendaram (usar canola como
+"referência provisória" só é aceitável com aviso explícito e visível no laudo, nunca como se fosse tabela
+oficial da cultura). Carreguei só o CONTEXTO real (technical_source, sem crop_profile_parameters): a
+demanda de N de um estudo uruguaio (~90-100kg/ha de fertilizante no ponto de máxima produtividade, tratado
+como evidência, não recomendação), o panorama comercial (Nuseed/Nufarm lidera, parceria com Celena no RS,
+piloto da Cooperalfa em SC só a partir de 2026, parceria internacional Nuseed+bp pra SAF), e um achado
+interessante: nem entre cultivares de carinata a adaptação é garantida (um ensaio da Embrapa Agroenergia
+registrou produtividade baixíssima de uma cultivar por falta de adaptação regional).
+
+**PISOTEIO/COMPACTAÇÃO EM ILP**: aqui a convergência foi forte o bastante pra carregar com confiança, como
+technical_source anexada a PASTAGEM_INVERNO. Achado mais importante pro produto: pisoteio bem manejado
+**não necessariamente reduz a produtividade da cultura de verão seguinte** — um estudo de 2024 (Rauber et
+al., UFSM/UFFS, RS) mediu aumento de 24% na densidade do solo por pastejo de vacas leiteiras, mas ZERO
+redução de produtividade de soja/milho depois; até escarificar o solo compactado não aumentou a
+produtividade. Ou seja: "compactação mensurável" e "perda de produtividade" precisam ser dois campos
+separados no sistema, nunca assumir que um implica o outro. Também carregado: o princípio de que o manejo
+é feito por ALTURA da pastagem (20-30cm entrada, 7-10cm saída), não por lotação fixa (não existe teto de
+UA/ha "seguro" publicado); que pisoteio tem assinatura rasa (0-5cm) diferente de máquina (10-30cm); que
+resistência à penetração e macroporosidade são mais sensíveis que densidade isolada; e limites regionais
+reais (Collares et al. 2011, Noroeste do RS: Ds>1,4 Mg/m³, macroporosidade<0,10 m³/m³, RP>2MPa) -- com
+aviso de que esses valores têm que vir sempre acompanhados de classe textural e umidade da medição, nunca
+como limiar universal isolado.
+
+**Nota curiosa**: os limiares físicos que o Gemini tinha citado antes (macroporosidade<10%, densidade
+1,35-1,40, RP>2-2,5MPa) bateram muito perto do que Claude e GPT confirmaram de forma independente com fonte
+regional real (Collares et al. 2011) — dessa vez o Gemini acertou nos números, mesmo sem eu ter carregado
+na hora por cautela. Reforça que vale sempre cruzar antes de decidir, em vez de descartar ou aceitar por
+padrão.
+
+**Testado de verdade**: `npm run typecheck` limpo depois de carregar tudo.
+
+## Varredura global de tendências (regenerativo, precisão/"3.0-4.0", carbono) — o melhor cruzamento da sessão (2026-09-04)
+
+Última rodada de pesquisa do dia: o diretor pediu uma varredura mundial (não só RS/SC) sobre agricultura
+regenerativa, agricultura de precisão/digital ("Agricultura 3.0/4.0") e carbono/net-zero. Claude e GPT
+responderam com um nível de rigor muito acima da média da sessão — meta-análises reais, revisões
+sistemáticas, e pelo menos uma citação **idêntica** extraída de forma independente pelos dois (mesmo
+estudo, mesmo número de artigos/países, mesmos percentuais) — sinal de confiança muito alto. O Gemini
+também respondeu esse mesmo prompt com qualidade bem melhor que nas rodadas anteriores (esse tipo de tema
+é mais síntese/raciocínio que extração exata de tabela de PDF, que era onde ele historicamente errava);
+os números dele bateram dentro da ordem de grandeza confirmada pelos outros dois, mas carreguei só o que
+Claude+GPT confirmaram de forma cruzada, sem citar Gemini diretamente na base.
+
+Carregado como `technical_source` geral (não específico de cultura, `crop_profile_id NULL`) via
+`scripts/seed-tendencias-globais.mjs` — é conteúdo sobre arquitetura/posicionamento da plataforma, não
+faixa de solo. Os achados mais importantes, resumidos:
+
+- **"Agricultura regenerativa" não tem definição técnica aceita** (confirmado por revisão de 229 artigos:
+  só 22 tinham definição formal). Regra pro RAIZ: nunca rotular talhão como "regenerativo" — rastrear cada
+  prática com sua própria evidência.
+- **Plantio direto isolado reduz rendimento em média 5,1%** (maior meta-análise disponível, 678 estudos) —
+  a justificativa real é erosão/água/estrutura/carbono, nunca produtividade. Contraria bastante discurso
+  comercial comum.
+- **O achado mais importante pro modelo de negócio, confirmado de forma idêntica pelas duas pesquisas**:
+  recomendação de nutriente específica por talhão pra pequeno produtor (SSNM) gera +12% de rendimento e
+  +15% de lucro usando 10% menos nitrogênio — e o ganho vem da recomendação melhor (software), não de
+  máquina de taxa variável cara. Valida diretamente o modelo da RAIZ Digital: pro público real da
+  plataforma, o valor está na recomendação certa, não em equipamento.
+- **A arquitetura que a plataforma já usa (motor determinístico + IA só pra narrativa, nunca decidindo
+  dose sozinha) bate com os sistemas mais rigorosos e validados que existem no mundo** (Nutrient Expert,
+  calibrado com 735+368 experimentos reais na África; FRST, EUA) — e é mais rigorosa que a maioria do que
+  está sendo publicado em periódicos de IA hoje, que validam contra rótulo de dataset, não contra ensaio
+  de campo real.
+- **"Agricultura 3.0/4.0/5.0" não é categoria técnica** — 4 escolas de pensamento incompatíveis
+  documentadas (a mesma Revolução Verde é 2.0 numa e 3.0 noutra). Nunca usar como selo de marketing.
+- **Sensor não substitui laboratório pra P/K** — é ótimo pra textura/carbono/umidade, mas quando "acerta"
+  K/Ca/Mg é por correlação estatística com argila/MO, não medição direta — quebra silenciosamente em
+  talhão com histórico de adubação fora do padrão.
+- **Carbono no solo, ordem de grandeza real pro Sul do Brasil, confirmada por citação idêntica nas duas
+  pesquisas**: 0,12 a 0,59 Mg C/ha/ano em plantio direto (Amado et al. 2006, RS/SC, 7-19 anos de
+  experimento) — décimos de tonelada por ano, não as "5-10 t CO2/ha/ano" que promessa comercial costuma
+  vender.
+- **Existe mercado de carbono agrícola real e auditado (Verra/VM0042, desde jan/2025)**, mas pequeno
+  produtor só acessa via agregação (cooperativa/projeto coletivo) — e mais de 80% dos produtores
+  brasileiros já fazem plantio direto, então essa prática não é "adicional" e não gera crédito legítimo.
+  Recomendação: não prometer crédito de carbono hoje; construir a plataforma "MRV-ready" (histórico
+  georreferenciado de manejo/carbono/cobertura auditável), e reportar carbono como indicador de qualidade
+  de solo, não como receita.
+- **Visão de médio prazo mais bem fundamentada pro roadmap**: On-Farm Experimentation (OFE) — usar as
+  operações reais de cada propriedade na plataforma pra gerar curvas de resposta LOCAIS daquele talhão ao
+  longo dos anos, em vez de depender só da média regional da tabela CQFS. É a direção de pesquisa mais
+  citada como "próximo passo real" internacionalmente.
+
+**Testado de verdade**: `npm run typecheck` limpo depois de carregar.
