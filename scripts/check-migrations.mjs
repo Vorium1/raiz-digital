@@ -21,6 +21,7 @@ const agronomicPrescription = await readFile(new URL("../db/migrations/017_agron
 const knowledgeResearch = await readFile(new URL("../db/migrations/018_knowledge_research.sql", import.meta.url), "utf8");
 const prescriptionLimit = await readFile(new URL("../db/migrations/019_tenant_prescription_limit.sql", import.meta.url), "utf8");
 const conditionalRanges = await readFile(new URL("../db/migrations/020_conditional_sufficiency_ranges.sql", import.meta.url), "utf8");
+const derivedParameters = await readFile(new URL("../db/migrations/021_derived_parameters.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -74,4 +75,5 @@ assert.match(knowledgeResearch, /ALTER TYPE ai_generation_kind ADD VALUE IF NOT 
 assert.match(prescriptionLimit, /ADD COLUMN IF NOT EXISTS monthly_prescription_limit/i);
 assert.match(conditionalRanges, /ADD COLUMN condition_parameter_code/i);
 assert.match(conditionalRanges, /crop_profile_parameters_unique_range/i);
-console.log("migrations: contratos estruturais 001-020 aprovados");
+assert.match(derivedParameters, /ADD COLUMN derived_parameter_code/i);
+console.log("migrations: contratos estruturais 001-021 aprovados");

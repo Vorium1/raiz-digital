@@ -38,7 +38,16 @@ const P_ARROZ_IRRIGADO = {
   technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.6, p.94 -- Grupo 4, EXCLUSIVO pra arroz irrigado por alagamento. Sem estratificação por classe de argila (diferenciação desnecessária em solo alagado, por causa da redução de óxidos de Fe/Al). Verificado contra o PDF oficial em 2026-09-04.`,
 };
 
-const PARAMETERS = [P_ARROZ_IRRIGADO, ...K_GRUPO2, ...SOLO_GERAL, S_GRUPO_EXIGENTE];
+const FE_TOXICITY = {
+  parameterCode: "FE_TOXICITY_PSFE", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+  analyticalMethodAllowed: ["Oxalato de amônio pH 6,0"], unitExpected: "%",
+  derivedParameterCode: "FE_TOXICITY_PSFE",
+  sufficiencyRanges: [{ label: "Baixo", max: 20 }, { label: "Médio", min: 20, max: 40 }, { label: "Alto", min: 40 }],
+  criticality: "ALTA",
+  technicalNotes: `Fonte: ${SOURCE_2016}, item "Toxidez por ferro em arroz irrigado", p.115 -- verificado contra o PDF oficial em 2026-09-04. NÃO é faixa de suficiência (mais é melhor), é RISCO -- "Alto" aqui significa problema, não algo bom. Calculado a partir de FE (g/dm³, oxalato de amônio pH 6,0) e CTC (cmolc/dm³) da mesma amostra: Fe2+trocável = 1,66 + 2,46×FE; PSFe2+ (%) = 100×Fe2+trocável/CTC. Fórmula implementada em código (DERIVED_PARAMETER_FUNCTIONS.FE_TOXICITY_PSFE, src/domain/agronomic-engine.ts), nunca como texto solto -- coberta por teste automatizado com os números exatos da fonte.`,
+};
+
+const PARAMETERS = [P_ARROZ_IRRIGADO, FE_TOXICITY, ...K_GRUPO2, ...SOLO_GERAL, S_GRUPO_EXIGENTE];
 
 const NPK_CONTENT = `NITROGÊNIO -- estrutura DIFERENTE dos outros grãos: indexado por "expectativa de resposta à adubação" (não por cultura antecedente). MO≤2,5%: 90kg N/ha (resposta média) / 120 (alta). MO 2,6-5,0%: 80/110. MO>5,0%: ≤70/≤100. Ajuste de até ±30kg N/ha pra expectativa muito alta ou baixa. Expectativa de resposta alta = clima favorável (radiação solar alta no período reprodutivo), cultivar de alto potencial, época/densidade de semeadura adequadas, manejo correto de irrigação/plantas daninhas/doenças/pragas -- baixa = quando esses fatores não são adequados.
 
@@ -64,10 +73,10 @@ async function main() {
   for (const p of PARAMETERS) {
     const result = await pool.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], $7, $8::jsonb, $9::parameter_criticality, $10, $11, $12, $13)
+       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max, derived_parameter_code)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], $7, $8::jsonb, $9::parameter_criticality, $10, $11, $12, $13, $14)
        RETURNING id::text, parameter_code, status`,
-      [cropProfileId, p.parameterCode, p.parameterCategory, p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null],
+      [cropProfileId, p.parameterCode, p.parameterCategory, p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null, p.derivedParameterCode ?? null],
     );
     console.log(`  ${result.rows[0].parameter_code} -> ${result.rows[0].status} (${result.rows[0].id})`);
   }

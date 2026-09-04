@@ -2501,3 +2501,39 @@ aplicação (via API HTTP real, não só a chamada direta ao provedor que já fi
 calculado por fórmula no motor (pH/V%/calagem/P-rem/toxidez de ferro — mesma pendência registrada várias
 vezes ao longo do dia); UI de curadoria ainda sem campo pra editar a condição de faixa (`condition_min`/
 `condition_max`) — hoje só dá pra popular via script.
+
+## Motor ganha suporte a "parâmetro derivado por fórmula" — primeiro caso real: toxidez de ferro no arroz (2026-09-04)
+
+Item que aparecia como pendência desde o início do dia (pH/V%/calagem, P-rem, toxidez de ferro — todos
+precisavam de fórmula, não só faixa fixa) começou a ser resolvido. Implementado no motor
+(`src/domain/agronomic-engine.ts`) um mecanismo novo: um parâmetro pode ser "derivado" — em vez de
+classificar um resultado de laboratório direto, ele calcula um valor a partir de outros parâmetros da
+MESMA amostra (usando uma fórmula real, citada, implementada em código — nunca como texto solto editável,
+pra não abrir brecha de "regra agronômica não versionada nem revisada por código") e classifica esse valor
+calculado.
+
+**Decisão de design importante**: a fórmula fica em código (`DERIVED_PARAMETER_FUNCTIONS`, dentro do
+próprio arquivo do motor — não em módulo separado, porque um import relativo entre dois `.ts` quebra o
+jeito que o motor é testado hoje, com `node` puro sem bundler; documentei o motivo direto no código), não
+em texto no banco. O banco só guarda o NOME da função (`derived_parameter_code`, migration 021). Isso
+mantém a mesma disciplina do resto do motor: cálculo agronômico é código versionado e revisado, não dado
+editável por qualquer um.
+
+**Primeiro caso real, testado com os números exatos da fonte**: risco de toxidez de ferro em arroz
+irrigado (Fe2+trocável = 1,66 + 2,46×Fe; PSFe2+ = 100×Fe2+trocável/CTC; risco Baixo≤20%/Médio 21-40%/
+Alto>40% — Manual CQFS-RS/SC 2016, já tinha sido documentado só como texto no perfil de arroz, agora está
+implementado de verdade). 5 cenários de teste novos, incluindo o caminho feliz com números reais da fonte
+(Fe=1,0 g/dm³ + CTC=10 → PSFe2+=41,2% → Alto, conferido até a segunda casa decimal), entrada faltando
+(nunca inventa), e função de derivação desconhecida no cadastro (nunca decide sozinho quando o cadastro
+está errado).
+
+**Testado de verdade**: `npm run test:engine` (23/23 cenários, os 18 anteriores continuam passando),
+`npm run typecheck`, `npm run test:handoff` completo, e `npm run build` (produção) — todos limpos.
+
+**O que isso NÃO resolve ainda**: pH/V%/calagem por índice SMP continua pendente — é uma DOSE calculada
+(não uma classificação Baixo/Médio/Alto), categoria diferente do que esse mecanismo resolve; e P-rem
+(fósforo, sugestão do Rafael) fica pendente por um motivo de design, não de capacidade técnica: ele usaria
+uma condição diferente (P-rem) da que já está em uso pro fósforo (classe de argila) no mesmo parâmetro/
+cultura, e o motor hoje só sabe lidar com UMA dimensão de condição por vez -- rodar os dois juntos exigiria
+resolver qual delas tem prioridade quando a amostra tiver as duas informações, decisão que prefiro trazer
+pro diretor antes de implementar, não decidir sozinho.

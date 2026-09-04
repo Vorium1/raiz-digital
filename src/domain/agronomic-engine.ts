@@ -18,6 +18,58 @@
 
 export type SufficiencyBand = { label: string; min?: number; max?: number };
 
+/**
+ * Registro de "parâmetros derivados": um valor a ser classificado que não
+ * vem direto de um resultado de laboratório, mas de uma fórmula real e
+ * citável aplicada sobre um ou mais resultados da MESMA amostra. Fica
+ * neste arquivo (não num módulo separado) de propósito: este motor precisa
+ * continuar rodando com `node --experimental-strip-types` puro, sem
+ * bundler/Next.js e sem alias "@/" -- é assim que
+ * scripts/test-agronomic-engine.mjs testa o motor sem subir a aplicação
+ * inteira, e um import relativo entre dois arquivos `.ts` quebra esse
+ * caminho (Node exige extensão explícita, o `tsc`/Next.js em modo
+ * "bundler" não aceita import com extensão -- sem solução limpa nos dois
+ * mundos ao mesmo tempo, então o motor inteiro fica num arquivo só).
+ *
+ * Por que código, e não fórmula guardada como texto no banco: uma fórmula
+ * em texto exigiria interpretar/avaliar uma expressão em tempo de
+ * execução -- risco de injeção e, principalmente, quebra a regra do
+ * projeto de que cálculo agronômico é "determinístico, versionado e
+ * homologado" por revisão de código, não por texto solto editável por
+ * qualquer curador. Cada função aqui implementa direto uma fórmula
+ * publicada, com a fonte citada no comentário, coberta por teste que
+ * reproduz um exemplo verificável da própria fonte.
+ */
+export type DerivedParameterFunction = {
+  /** Códigos de parâmetro (da mesma amostra) que a fórmula precisa como entrada, na ordem que `compute` espera. */
+  requiredParameterCodes: string[];
+  /** Fonte da fórmula, pra rastreabilidade. */
+  source: string;
+  compute: (inputs: number[]) => number;
+};
+
+export const DERIVED_PARAMETER_FUNCTIONS: Record<string, DerivedParameterFunction> = {
+  /**
+   * Risco de toxidez por ferro em arroz irrigado por alagamento.
+   * Fonte: Manual de Calagem e Adubação CQFS-RS/SC, 11ª ed. (2016), item
+   * "Toxidez por ferro em arroz irrigado" (verificado direto no PDF oficial
+   * em 2026-09-04):
+   *   Fe2+ trocável (cmolc/dm³) = 1,66 + 2,46 × Fe-oxalato-pH6 (g/dm³)
+   *   PSFe2+ (%) = 100 × Fe2+trocável / CTCpH7,0
+   * Entradas: [FE (g/dm³, oxalato de amônio pH 6,0), CTC (cmolc/dm³)].
+   * Saída: PSFe2+ (%), classificado como risco Baixo (≤20%) / Médio
+   * (21-40%) / Alto (>40%).
+   */
+  FE_TOXICITY_PSFE: {
+    requiredParameterCodes: ["FE", "CTC"],
+    source: "Manual de Calagem e Adubação CQFS-RS/SC, 11ª ed. (2016), item Toxidez por ferro em arroz irrigado",
+    compute: ([fe, ctc]) => {
+      const feTrocavel = 1.66 + 2.46 * fe;
+      return (100 * feTrocavel) / ctc;
+    },
+  },
+};
+
 export type CropProfileParameterDef = {
   id: string;
   parameterCode: string;
@@ -42,6 +94,18 @@ export type CropProfileParameterDef = {
   conditionParameterCode: string | null;
   conditionMin: number | null;
   conditionMax: number | null;
+  /**
+   * Nome de uma função registrada em `DERIVED_PARAMETER_FUNCTIONS` (ex.:
+   * "FE_TOXICITY_PSFE"). Quando definido, este parâmetro NÃO classifica um
+   * resultado de laboratório existente -- ele é calculado a partir de
+   * outros parâmetros da mesma amostra (`requiredParameterCodes` da
+   * função) e o valor calculado é classificado por `sufficiencyRanges`.
+   * `parameterCode` neste caso é o nome do parâmetro VIRTUAL de saída
+   * (ex.: "FE_TOXICITY_PSFE"), não corresponde a nenhum resultado
+   * importado diretamente. null = parâmetro normal (classifica um
+   * resultado real, comportamento de sempre).
+   */
+  derivedParameterCode: string | null;
 };
 
 export type CropProfileDef = {
@@ -84,6 +148,8 @@ export type ParameterInterpretation =
       interpretable: true;
       classification: string;
       matchedParameter: { id: string; criticality: "BAIXA" | "MEDIA" | "ALTA" | null };
+      /** Só presente quando este parâmetro é derivado (ver `derivedParameterCode`): o valor calculado que foi classificado, e as entradas reais usadas -- rastreabilidade do cálculo. */
+      derivation?: { value: number; source: string; inputs: Array<{ parameterCode: string; value: number }> };
     }
   | {
       sampleCode: string;
@@ -98,6 +164,8 @@ export type ParameterInterpretation =
         | "DEPTH_UNKNOWN"
         | "DEPTH_NOT_COVERED"
         | "NO_MATCHING_BAND"
+        | "DERIVED_INPUT_MISSING"
+        | "UNKNOWN_DERIVATION_FUNCTION"
         | "CONDITION_PARAMETER_MISSING"
         | "NO_CONDITION_MATCH";
     };
@@ -222,9 +290,63 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
   return { ...base, interpretable: true, classification, matchedParameter: { id: matched.id, criticality: matched.criticality } };
 }
 
+/**
+ * Interpreta um parâmetro DERIVADO (ver `derivedParameterCode`): busca as
+ * entradas exigidas na mesma amostra (respeitando profundidade, mas não
+ * método analítico por entrada -- limitação conhecida, cada entrada pode
+ * ter método diferente e o motor hoje não valida isso separadamente),
+ * calcula o valor com a função registrada e classifica o resultado. Nunca
+ * inventa uma entrada ausente -- se faltar qualquer uma, não interpreta.
+ */
+function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: string, sampleResults: LabResultInput[]): ParameterInterpretation {
+  const base = { sampleCode, parameterCode: param.parameterCode };
+  const fn = DERIVED_PARAMETER_FUNCTIONS[param.derivedParameterCode!];
+  if (!fn) {
+    return { ...base, interpretable: false, reason: `${param.parameterCode} está configurado com a função de cálculo "${param.derivedParameterCode}", que não existe no motor -- revisão de cadastro necessária.`, code: "UNKNOWN_DERIVATION_FUNCTION" };
+  }
+
+  const resolvedInputs: Array<{ parameterCode: string; value: number }> = [];
+  for (const requiredCode of fn.requiredParameterCodes) {
+    const match = sampleResults.find((r) => r.parameterCode === requiredCode && depthCompatible(r.depthFromCm, r.depthToCm, param.depthFromCm, param.depthToCm));
+    if (!match) {
+      return { ...base, interpretable: false, reason: `${param.parameterCode} é calculado a partir de ${fn.requiredParameterCodes.join(" e ")}, mas ${requiredCode} não foi informado (ou não tem profundidade compatível) na mesma amostra.`, code: "DERIVED_INPUT_MISSING" };
+    }
+    resolvedInputs.push({ parameterCode: requiredCode, value: match.value });
+  }
+
+  if (!param.sufficiencyRanges || param.sufficiencyRanges.length === 0) {
+    return { ...base, interpretable: false, reason: `${param.parameterCode} está cadastrado no perfil, mas as faixas de classificação ainda aguardam homologação técnica.`, code: "AWAITING_HOMOLOGATION" };
+  }
+
+  const derivedValue = fn.compute(resolvedInputs.map((i) => i.value));
+  const classification = classifyValue(derivedValue, param.sufficiencyRanges);
+  if (!classification) {
+    return { ...base, interpretable: false, reason: `O valor calculado ${derivedValue.toFixed(2)} para ${param.parameterCode} não se encaixa em nenhuma faixa homologada.`, code: "NO_MATCHING_BAND" };
+  }
+
+  return {
+    ...base,
+    interpretable: true,
+    classification,
+    matchedParameter: { id: param.id, criticality: param.criticality },
+    derivation: { value: derivedValue, source: fn.source, inputs: resolvedInputs },
+  };
+}
+
 export function runAgronomicEngine(input: EngineInput): EngineResult {
   const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method }));
   const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));
+
+  const derivedParameters = (input.cropProfile?.parameters ?? []).filter((param) => param.status === "ACTIVE" && param.derivedParameterCode);
+  if (derivedParameters.length > 0) {
+    const sampleCodes = Array.from(new Set(input.labResults.map((r) => r.sampleCode)));
+    for (const sampleCode of sampleCodes) {
+      const sampleResults = input.labResults.filter((r) => r.sampleCode === sampleCode);
+      for (const param of derivedParameters) {
+        interpretation.push(interpretDerivedParameter(param, sampleCode, sampleResults));
+      }
+    }
+  }
 
   const interpretableCount = interpretation.filter((item) => item.interpretable).length;
   const total = interpretation.length;

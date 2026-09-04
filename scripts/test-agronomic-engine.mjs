@@ -222,4 +222,66 @@ function makeParam(overrides = {}) {
   }
 }
 
-console.log("agronomic-engine: 18 cenários aprovados");
+// 19-23. Parâmetro DERIVADO: valor calculado por fórmula (não vem de um
+// resultado de laboratório importado direto), depois classificado. Caso
+// real: risco de toxidez de ferro em arroz irrigado (Fe2+trocável = 1,66 +
+// 2,46×Fe; PSFe2+ = 100×Fe2+trocável/CTC; risco Baixo ≤20%, Médio 21-40%,
+// Alto >40% -- Manual CQFS-RS/SC 2016, conferido direto no PDF oficial).
+{
+  const feProfile = makeProfile({
+    parameters: [
+      makeParam({
+        id: "fe-toxicidade", parameterCode: "FE_TOXICITY_PSFE", derivedParameterCode: "FE_TOXICITY_PSFE",
+        analyticalMethodAllowed: [], unitExpected: "%",
+        sufficiencyRanges: [{ label: "Baixo", max: 20 }, { label: "Médio", min: 20, max: 40 }, { label: "Alto", min: 40 }],
+      }),
+    ],
+  });
+
+  // 19. Caminho feliz: Fe=1,0 g/dm³, CTC=10 -> Fe2+troc=4,12, PSFe2+=41,2% -> Alto.
+  {
+    const result = runAgronomicEngine({
+      cropProfile: feProfile,
+      labResults: [makeResult({ parameterCode: "FE", value: 1.0, method: "" }), makeResult({ parameterCode: "CTC", value: 10, method: "" })],
+    });
+    const derived = result.interpretation.find((i) => i.parameterCode === "FE_TOXICITY_PSFE");
+    assert.equal(derived.interpretable, true);
+    assert.equal(derived.classification, "Alto");
+    assert.ok(Math.abs(derived.derivation.value - 41.2) < 0.01, `esperava ~41.2, veio ${derived.derivation.value}`);
+  }
+  // 20. Fe=0,5, CTC=15 -> Fe2+troc=2,89, PSFe2+≈19,27% -> Baixo.
+  {
+    const result = runAgronomicEngine({
+      cropProfile: feProfile,
+      labResults: [makeResult({ parameterCode: "FE", value: 0.5, method: "" }), makeResult({ parameterCode: "CTC", value: 15, method: "" })],
+    });
+    const derived = result.interpretation.find((i) => i.parameterCode === "FE_TOXICITY_PSFE");
+    assert.equal(derived.classification, "Baixo");
+  }
+  // 21. Falta uma das entradas exigidas (CTC não informado) -> nunca inventa, não interpreta.
+  {
+    const result = runAgronomicEngine({
+      cropProfile: feProfile,
+      labResults: [makeResult({ parameterCode: "FE", value: 1.0, method: "" })],
+    });
+    const derived = result.interpretation.find((i) => i.parameterCode === "FE_TOXICITY_PSFE");
+    assert.equal(derived.interpretable, false);
+    assert.equal(derived.code, "DERIVED_INPUT_MISSING");
+  }
+  // 22. Função de derivação desconhecida no cadastro -> erro explícito, nunca decide sozinho.
+  {
+    const badProfile = makeProfile({
+      parameters: [makeParam({ id: "x", parameterCode: "ALGO_INVENTADO", derivedParameterCode: "FUNCAO_QUE_NAO_EXISTE", sufficiencyRanges: [{ label: "Baixo", max: 1 }] })],
+    });
+    const result = runAgronomicEngine({ cropProfile: badProfile, labResults: [makeResult({ parameterCode: "FE", value: 1, method: "" })] });
+    const derived = result.interpretation.find((i) => i.parameterCode === "ALGO_INVENTADO");
+    assert.equal(derived.code, "UNKNOWN_DERIVATION_FUNCTION");
+  }
+  // 23. Sem nenhuma amostra na análise -> nenhuma tentativa de derivar nada (não quebra com lista vazia).
+  {
+    const result = runAgronomicEngine({ cropProfile: feProfile, labResults: [] });
+    assert.equal(result.interpretation.length, 0);
+  }
+}
+
+console.log("agronomic-engine: 23 cenários aprovados");

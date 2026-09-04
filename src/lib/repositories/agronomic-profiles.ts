@@ -49,6 +49,7 @@ export async function getCropProfile(tenantId: string, cropProfileId: string, us
               technical_notes AS "technicalNotes", recommendation_rules AS "recommendationRules", status,
               condition_parameter_code AS "conditionParameterCode",
               condition_min::float8 AS "conditionMin", condition_max::float8 AS "conditionMax",
+              derived_parameter_code AS "derivedParameterCode",
               created_at::text AS "createdAt", updated_at::text AS "updatedAt"
        FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid ORDER BY parameter_code, depth_from_cm NULLS FIRST`,
       [cropProfileId],
@@ -112,16 +113,19 @@ export async function upsertCropProfileParameter(input: {
   conditionParameterCode?: string | null;
   conditionMin?: number | null;
   conditionMax?: number | null;
+  /** Ver `agronomic-engine.ts` -- nome de uma função registrada em DERIVED_PARAMETER_FUNCTIONS (ex.: "FE_TOXICITY_PSFE"). Quando definido, `parameterCode` é um parâmetro virtual calculado, não um resultado de laboratório real. */
+  derivedParameterCode?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], nullif($7,''), $8::jsonb, $9::parameter_criticality, nullif($10,''), nullif($11,''), $12, $13)
+       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max, derived_parameter_code)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], nullif($7,''), $8::jsonb, $9::parameter_criticality, nullif($10,''), nullif($11,''), $12, $13, nullif($14,''))
        ON CONFLICT (crop_profile_id, parameter_code, depth_from_cm, depth_to_cm, condition_parameter_code, condition_min, condition_max)
        DO UPDATE SET parameter_category = EXCLUDED.parameter_category, analytical_method_allowed = EXCLUDED.analytical_method_allowed,
                      unit_expected = EXCLUDED.unit_expected, sufficiency_ranges = EXCLUDED.sufficiency_ranges,
-                     criticality = EXCLUDED.criticality, technical_notes = EXCLUDED.technical_notes, updated_at = now()
+                     criticality = EXCLUDED.criticality, technical_notes = EXCLUDED.technical_notes,
+                     derived_parameter_code = EXCLUDED.derived_parameter_code, updated_at = now()
        RETURNING id::text, parameter_code AS "parameterCode", status`,
       [
         input.cropProfileId,
@@ -137,6 +141,7 @@ export async function upsertCropProfileParameter(input: {
         input.conditionParameterCode ?? "",
         input.conditionMin ?? null,
         input.conditionMax ?? null,
+        input.derivedParameterCode ?? "",
       ],
     );
     const saved = result.rows[0];
