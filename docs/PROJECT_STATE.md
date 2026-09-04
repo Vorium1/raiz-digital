@@ -2537,3 +2537,30 @@ uma condição diferente (P-rem) da que já está em uso pro fósforo (classe de
 cultura, e o motor hoje só sabe lidar com UMA dimensão de condição por vez -- rodar os dois juntos exigiria
 resolver qual delas tem prioridade quando a amostra tiver as duas informações, decisão que prefiro trazer
 pro diretor antes de implementar, não decidir sozinho.
+
+## Divergência DAP × MAP (poder acidificante) resolvida — atualização do conhecimento geral de fertilizante (2026-09-04)
+
+A discordância que tinha ficado registrada como "encontrada e não resolvida" em
+`scripts/seed-poder-acidificante-fertilizante.mjs` (uma fonte dizia DAP=88/MAP=60, outra dizia o
+invertido) foi investigada pelo próprio diretor em duas pesquisas independentes (Claude e GPT, mesma
+rodada) e fechada com segurança: **a fonte que tinha os valores invertidos estava errada**; DAP acidifica
+mais que MAP por 100kg de produto, confirmado por três fontes independentes (Embrapa: 88/60; FAO: 74/65;
+Cassim et al., Revista Brasileira de Ciência do Solo 2024: 70/65) — os números absolutos variam por teor
+de N do produto-referência de cada fonte, mas a ordem nunca inverte.
+
+**Achado mais importante pro motor do que o número em si**: existem duas outras dimensões, reais e
+citáveis, que não podem ser confundidas com essa:
+- **Base de cálculo** (por 100kg de produto vs. por kg de N entregue) — invertem a ordem entre si (por
+  kg de N, é o MAP que acidifica mais, porque tem menos N por kg de produto). As duas ordens estão
+  corretas ao mesmo tempo; é o denominador que muda. Qualquer campo de "índice de acidez" no banco
+  precisa declarar a unidade E a base explicitamente (`kg CaCO3/100kg produto` vs `kg CaCO3/kg N`), nunca
+  só o número.
+- **pH de dissolução do grânulo** (efeito local/temporário no entorno do grânulo, MAP ácido/DAP alcalino
+  — direção OPOSTA da acidificação residual) — relevante só pra risco de toxidez amoniacal em contato com
+  semente (por isso MAP é o "starter" preferido), não pra acidificação residual do solo. Fontes (IPNI,
+  Incitec Pivot) e uma consultoria (SoilMate) alertam que esse efeito raramente vira ganho de rendimento
+  consistente em campo — não virar regra agronômica de produtividade.
+
+Conteúdo atualizado e regravado no banco (`technical_sources`, tema geral, `crop_profile_id IS NULL`,
+status `DRAFT`, ainda pendente de homologação profissional como todo o resto). Script:
+`scripts/seed-poder-acidificante-fertilizante.mjs`.
