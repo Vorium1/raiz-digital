@@ -100,7 +100,7 @@ CLASSES DE PECÍOLO (Tabela 6.5.18) -- ATUALIZAÇÃO 2026-09-04: esta classifica
 Macronutrientes (%) -- N: Insuf<0,40 / Normal 0,66-0,95 / Excess>1,25. P: Insuf<0,10 / Normal 0,16-0,25 / Excess>0,40. K: Insuf<0,80 / Normal 1,50-2,50 / Excess>3,50. Ca: Insuf<0,50 / Normal 1,00-2,00 / Excess>3,0. Mg: Insuf<0,15 / Normal 0,25-0,50 / Excess>0,70.
 Micronutrientes (mg/kg) -- Fe: Insuf<15 / Normal 30-150 / Excess>300. Zn: Insuf<15 / Normal 30-50 / Excess>100. Mn: Insuf<20 / Normal 30-300 / Excess>300. B: Insuf<15 / Normal 30-50 / Excess>100. Cu: sem faixa definida no manual pra pecíolo de videira (não automatizado, sem faixa pra classificar).
 
-CLASSES DE FOLHA COMPLETA (Tabela 6.5.19) -- ainda só como texto, não automatizada nesta rodada (mesmo mecanismo do pecíolo poderia ser aplicado numa próxima passada, sampleType="FOLIAR"). Amostra de ~100 folhas completas, 20-30 plantas, folha oposta ao 1º cacho:
+CLASSES DE FOLHA COMPLETA (Tabela 6.5.19) -- ATUALIZAÇÃO 2026-09-04: também automatizada no motor (sampleType="FOLIAR"). Amostra de ~100 folhas completas, 20-30 plantas, folha oposta ao 1º cacho:
 Macronutrientes (%) -- N: Insuf<1,60 / Normal 1,60-2,40 / Excess>2,40. P: Insuf<0,12 / Normal 0,12-0,40 / Excess>0,40. K: Insuf<0,80 / Normal 0,80-1,60 / Excess>1,60. Ca: Insuf<1,60 / Normal 1,60-2,40 / Excess>2,40. Mg: Insuf<0,20 / Normal 0,20-0,60 / Excess>0,60.
 Micronutrientes (mg/kg) -- Fe: Insuf<60 / Normal 60-150 / Excess>180. Zn: Insuf<25 / Normal 25-60 / Excess>60. Mn: Insuf<20 / Normal 30-300 / Excess>300. B: Insuf<30 / Normal 30-65 / Excess>65. Cu: sem faixa definida no manual pra folha completa de videira.
 
@@ -123,17 +123,32 @@ const PECIOLO_VIDEIRA = [
   { parameterCode: "B", parameterCategory: "QUIMICO", sampleType: "PECIOLO", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 15 }, { label: "Normal", min: 30, max: 50 }, { label: "Excessivo", min: 100 }], criticality: "BAIXA", technicalNotes: PECIOLO_SOURCE },
 ];
 
+const FOLIAR_SOURCE = `Fonte: ${SOURCE_2016}, Tabela 6.5.19, p.232 -- classes de valores pra folha completa de videira (~100 folhas completas, 20-30 plantas, folha oposta ao 1º cacho). Verificado contra o PDF oficial reextraído com \`pdftotext -table\` em 2026-09-04.`;
+
+/** Tabela 6.5.19 -- folha completa (limbo+pecíolo) de videira. Cu não tem faixa definida no manual. */
+const FOLIAR_VIDEIRA = [
+  { parameterCode: "N", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 1.6 }, { label: "Normal", min: 1.6, max: 2.4 }, { label: "Excessivo", min: 2.4 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "P", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.12 }, { label: "Normal", min: 0.12, max: 0.4 }, { label: "Excessivo", min: 0.4 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "K", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.8 }, { label: "Normal", min: 0.8, max: 1.6 }, { label: "Excessivo", min: 1.6 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "CA", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 1.6 }, { label: "Normal", min: 1.6, max: 2.4 }, { label: "Excessivo", min: 2.4 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MG", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.2 }, { label: "Normal", min: 0.2, max: 0.6 }, { label: "Excessivo", min: 0.6 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "FE", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 60 }, { label: "Normal", min: 60, max: 150 }, { label: "Excessivo", min: 180 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "ZN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 25 }, { label: "Normal", min: 25, max: 60 }, { label: "Excessivo", min: 60 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 20 }, { label: "Normal", min: 30, max: 300 }, { label: "Excessivo", min: 300 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "B", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 30 }, { label: "Normal", min: 30, max: 65 }, { label: "Excessivo", min: 65 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+];
+
 async function main() {
   const cropProfileId = await ensureCropProfile("VIDEIRA", "Videira", "FRUTIFERA");
   console.log(`VIDEIRA: ${cropProfileId}`);
 
-  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL, ...PECIOLO_VIDEIRA]);
+  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL, ...PECIOLO_VIDEIRA, ...FOLIAR_VIDEIRA]);
 
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — adubação de pré-plantio`, PRE_PLANTIO_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — doses de N/P/K de crescimento e manutenção`, NPK_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — diagnose foliar (pecíolo e folha completa)`, DIAGNOSE_FOLIAR_CONTENT);
 
-  console.log("NOTA: classificação de SOLO e de PECÍOLO (Tabela 6.5.18) automatizadas no motor -- FOLHA COMPLETA (Tabela 6.5.19) e as tabelas de dose continuam só como texto, pendente próxima rodada.");
+  console.log("NOTA: classificação de SOLO, PECÍOLO (Tabela 6.5.18) e FOLHA COMPLETA (Tabela 6.5.19) automatizadas no motor -- só as tabelas de DOSE continuam como texto (dose por classe foliar x produtividade ainda não é 'classificação', é lookup 2D, categoria de trabalho diferente).");
 }
 
 main().finally(() => pool.end());

@@ -41,16 +41,17 @@ async function ensureCropProfile(code, name, cropGroup) {
 
 async function seedParameters(cropProfileId, parameters) {
   const codes = [...new Set(parameters.map((p) => p.parameterCode))];
-  await pool.query(`DELETE FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid AND parameter_code = ANY($2::text[])`, [cropProfileId, codes]);
+  const sampleTypes = [...new Set(parameters.map((p) => p.sampleType ?? "SOLO"))];
+  await pool.query(`DELETE FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid AND parameter_code = ANY($2::text[]) AND sample_type = ANY($3::text[])`, [cropProfileId, codes, sampleTypes]);
   for (const p of parameters) {
     const result = await pool.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], $7, $8::jsonb, $9::parameter_criticality, $10, $11, $12, $13)
-       RETURNING id::text, parameter_code, status`,
-      [cropProfileId, p.parameterCode, p.parameterCategory, p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null],
+       (crop_profile_id, parameter_code, parameter_category, sample_type, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6, $7::text[], $8, $9::jsonb, $10::parameter_criticality, $11, $12, $13, $14)
+       RETURNING id::text, parameter_code, sample_type, status`,
+      [cropProfileId, p.parameterCode, p.parameterCategory, p.sampleType ?? "SOLO", p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null],
     );
-    console.log(`  ${result.rows[0].parameter_code} -> ${result.rows[0].status} (${result.rows[0].id})`);
+    console.log(`  ${result.rows[0].parameter_code} (${result.rows[0].sample_type}) -> ${result.rows[0].status} (${result.rows[0].id})`);
   }
 }
 
@@ -77,10 +78,27 @@ Alto: P=60; K=60/180/300.
 Muito alto: P=60; K=60/180/300 (mesmo valor de "Alto" -- o próprio manual não reduz mais a dose depois da classe "Alto", conferido contra o PDF oficial, não é erro de transcrição).
 Evitar excesso de potássio -- pode causar má formação de frutos. Fertilizantes de P e K aplicados ao longo da fila de plantio, faixa de ~1,0m de cada lado.`;
 
-const DIAGNOSE_FOLIAR_CONTENT = `DIAGNOSE FOLIAR DO MORANGUEIRO (Tabela 6.5.12) -- coletar a 3ª e a 4ª folhas maduras (sem pecíolo), no início do florescimento; 80 a 100 folhas de 30 a 40 plantas. Estrutura DIFERENTE das outras 5 frutíferas já carregadas: não tem três classes Insuficiente/Normal/Excessivo, é uma única FAIXA considerada adequada por nutriente -- e é a primeira tabela foliar desta base que lista enxofre (S) diretamente. Ainda não automatizada no motor da RAIZ (mesma pendência de schema já registrada pras outras frutíferas).
+const DIAGNOSE_FOLIAR_CONTENT = `DIAGNOSE FOLIAR DO MORANGUEIRO (Tabela 6.5.12) -- coletar a 3ª e a 4ª folhas maduras (sem pecíolo), no início do florescimento; 80 a 100 folhas de 30 a 40 plantas. Estrutura DIFERENTE das outras 5 frutíferas já carregadas: não tem três classes Insuficiente/Normal/Excessivo, é uma única FAIXA considerada adequada por nutriente -- e é a primeira tabela foliar desta base que lista enxofre (S) diretamente. ATUALIZAÇÃO 2026-09-04: automatizada no motor mesmo com essa estrutura de faixa única (o mecanismo de sufficiency_ranges já suporta isso -- valor fora da única faixa definida simplesmente não se classifica, o que é o comportamento correto aqui, o manual não define "baixo" nem "alto", só "adequado").
 
 Macronutrientes -- N: 1,5-2,5%. P: 0,2-0,4%. K: 2,0-4,0%. Ca: 1,0-2,5%. Mg: 0,6-1,0%. S: 0,1-0,5%.
 Micronutrientes (mg/kg) -- B: 35-100. Cu: 5-20. Fe: 50-300. Mn: 30-300. Zn: 20-50.`;
+
+const FOLIAR_SOURCE = `Fonte: ${SOURCE_2016}, Tabela 6.5.12, p.215 -- faixa considerada adequada por nutriente na folha de morangueiro (3ª e 4ª folhas maduras sem pecíolo, início do florescimento, 80-100 folhas de 30-40 plantas). Verificado contra o PDF oficial reextraído com \`pdftotext -table\` em 2026-09-04. Estrutura de faixa única (sem Insuficiente/Excessivo definidos pelo manual) -- valor fora da faixa fica sem classificação, não vira "Baixo"/"Alto" inventado.`;
+
+/** Tabela 6.5.12 -- folha de morangueiro, faixa única "Adequado" por nutriente. Sem profundidade (tecido). */
+const FOLIAR_MORANGUEIRO = [
+  { parameterCode: "N", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 1.5, max: 2.5 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "P", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 0.2, max: 0.4 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "K", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 2.0, max: 4.0 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "CA", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 1.0, max: 2.5 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MG", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 0.6, max: 1.0 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "S", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Adequado", min: 0.1, max: 0.5 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "B", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Adequado", min: 35, max: 100 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "CU", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Adequado", min: 5, max: 20 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "FE", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Adequado", min: 50, max: 300 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Adequado", min: 30, max: 300 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "ZN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Adequado", min: 20, max: 50 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+];
 
 const SOURCE_TITLE_PREFIX = `${SOURCE_2016} — capítulo Frutíferas, MORANGUEIRO (6.5.11)`;
 
@@ -88,13 +106,13 @@ async function main() {
   const cropProfileId = await ensureCropProfile("MORANGUEIRO", "Morangueiro", "FRUTIFERA");
   console.log(`MORANGUEIRO: ${cropProfileId}`);
 
-  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL]);
+  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL, ...FOLIAR_MORANGUEIRO]);
 
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — adubação de pré-plantio`, PRE_PLANTIO_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — doses de N/P/K de crescimento e manutenção`, NPK_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — diagnose foliar`, DIAGNOSE_FOLIAR_CONTENT);
 
-  console.log("NOTA: só a classificação de SOLO está automatizada no motor -- diagnose foliar fica só como texto até decisão de schema.");
+  console.log("NOTA: classificação de SOLO e de FOLHA (Tabela 6.5.12, faixa única) automatizadas no motor -- dose de manutenção continua só como texto.");
 }
 
 main().finally(() => pool.end());

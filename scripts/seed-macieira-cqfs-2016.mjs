@@ -45,16 +45,17 @@ async function ensureCropProfile(code, name, cropGroup) {
 
 async function seedParameters(cropProfileId, parameters) {
   const codes = [...new Set(parameters.map((p) => p.parameterCode))];
-  await pool.query(`DELETE FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid AND parameter_code = ANY($2::text[])`, [cropProfileId, codes]);
+  const sampleTypes = [...new Set(parameters.map((p) => p.sampleType ?? "SOLO"))];
+  await pool.query(`DELETE FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid AND parameter_code = ANY($2::text[]) AND sample_type = ANY($3::text[])`, [cropProfileId, codes, sampleTypes]);
   for (const p of parameters) {
     const result = await pool.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], $7, $8::jsonb, $9::parameter_criticality, $10, $11, $12, $13)
-       RETURNING id::text, parameter_code, status`,
-      [cropProfileId, p.parameterCode, p.parameterCategory, p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null],
+       (crop_profile_id, parameter_code, parameter_category, sample_type, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6, $7::text[], $8, $9::jsonb, $10::parameter_criticality, $11, $12, $13, $14)
+       RETURNING id::text, parameter_code, sample_type, status`,
+      [cropProfileId, p.parameterCode, p.parameterCategory, p.sampleType ?? "SOLO", p.depthFromCm, p.depthToCm, p.analyticalMethodAllowed, p.unitExpected, JSON.stringify(p.sufficiencyRanges), p.criticality, p.technicalNotes, p.conditionParameterCode ?? null, p.conditionMin ?? null, p.conditionMax ?? null],
     );
-    console.log(`  ${result.rows[0].parameter_code} -> ${result.rows[0].status} (${result.rows[0].id})`);
+    console.log(`  ${result.rows[0].parameter_code} (${result.rows[0].sample_type}) -> ${result.rows[0].status} (${result.rows[0].id})`);
   }
 }
 
@@ -90,10 +91,26 @@ P e K podem ser aplicados de uma única vez, no inverno ou junto com a primeira 
 
 PULVERIZAÇÕES FOLIARES COM CÁLCIO -- recomendadas mesmo com boa disponibilidade de Ca no solo, pra prevenir/minimizar distúrbios fisiológicos do fruto relacionados a deficiência de cálcio (ex.: bitter pit) e melhorar capacidade de armazenamento. Número de pulverizações varia com cultivar, histórico de distúrbio na área, situação nutricional, produção e crescimento das plantas e clima da safra. Geral: 5 a 10 pulverizações quinzenais de CaCl2 0,4 a 0,5%, a partir do final de outubro (outras fontes líquidas de cálcio servem, desde que a quantidade de nutriente seja equivalente e o preço seja compatível).`;
 
-const DIAGNOSE_FOLIAR_CONTENT = `DIAGNOSE FOLIAR DA MACIEIRA (Tabela 6.5.9, adaptada de Suzuki & Basso et al., 2002) -- amostra de ~100 folhas completas da parte mediana das brotações emitidas na estação de crescimento, coletadas de 20 a 30 plantas representativas, no período de 15 de janeiro a 15 de fevereiro. Igual à videira, este é o método PRINCIPAL de avaliação nutricional da cultura e alimenta diretamente as tabelas de dose de manutenção acima -- ainda não automatizado no motor da RAIZ (mesma pendência de schema já registrada pra videira: falta uma dimensão de "tipo de amostra", solo vs. tecido foliar).
+const DIAGNOSE_FOLIAR_CONTENT = `DIAGNOSE FOLIAR DA MACIEIRA (Tabela 6.5.9, adaptada de Suzuki & Basso et al., 2002) -- amostra de ~100 folhas completas da parte mediana das brotações emitidas na estação de crescimento, coletadas de 20 a 30 plantas representativas, no período de 15 de janeiro a 15 de fevereiro. Igual à videira, este é o método PRINCIPAL de avaliação nutricional da cultura e alimenta diretamente as tabelas de dose de manutenção acima. ATUALIZAÇÃO 2026-09-04: a classificação em si (não a dose 3D de manutenção, que continua só texto) agora está automatizada no motor (sampleType="FOLIAR").
 
 Macronutrientes (%) -- N: Insuficiente<1,70 / Normal 2,0-2,5 / Excessivo>3,0. P: Insuficiente<0,10 / Normal 0,15-0,30 / sem faixa de excesso definida no manual. K: Insuficiente<0,80 / Normal 1,2-1,5 / Excessivo>2,0. Ca: Insuficiente<0,80 / Normal 1,1-1,7 / sem faixa de excesso definida. Mg: Insuficiente<0,20 / Normal 0,25-0,45 / sem faixa de excesso definida.
 Micronutrientes (mg/kg) -- Fe: Insuficiente<20 / Normal 50-250 / sem faixa de excesso definida. Cu: Insuficiente<3 / Normal 5-30 / Excessivo>50. Zn: Insuficiente<15 / Normal 20-100 / sem faixa de excesso definida. Mn: Insuficiente<20 / Normal 30-130 / Excessivo>300. B: Insuficiente<20 / Normal 30-50 / Excessivo>140.`;
+
+const FOLIAR_SOURCE = `Fonte: ${SOURCE_2016}, Tabela 6.5.9, p.209 -- adaptada de Suzuki & Basso et al. (2002), classes de valores pra folha completa de macieira (~100 folhas, parte mediana das brotações, 20-30 plantas, 15/jan a 15/fev). Verificado contra o PDF oficial reextraído com \`pdftotext -table\` em 2026-09-04. Alguns nutrientes não têm faixa "Excessivo" definida no manual (P, Ca, Mg, Fe, Zn) -- não inventada aqui, valor acima do "Normal" fica simplesmente sem faixa homologada, não "Excessivo" adivinhado.`;
+
+/** Tabela 6.5.9 -- folha completa de macieira. Sem profundidade (tecido, não solo). */
+const FOLIAR_MACIEIRA = [
+  { parameterCode: "N", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 1.7 }, { label: "Normal", min: 2.0, max: 2.5 }, { label: "Excessivo", min: 3.0 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "P", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.1 }, { label: "Normal", min: 0.15, max: 0.3 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "K", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.8 }, { label: "Normal", min: 1.2, max: 1.5 }, { label: "Excessivo", min: 2.0 }], criticality: "ALTA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "CA", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.8 }, { label: "Normal", min: 1.1, max: 1.7 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MG", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "%", sufficiencyRanges: [{ label: "Insuficiente", max: 0.2 }, { label: "Normal", min: 0.25, max: 0.45 }], criticality: "MEDIA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "FE", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 20 }, { label: "Normal", min: 50, max: 250 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "CU", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 3 }, { label: "Normal", min: 5, max: 30 }, { label: "Excessivo", min: 50 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "ZN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 15 }, { label: "Normal", min: 20, max: 100 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "MN", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 20 }, { label: "Normal", min: 30, max: 130 }, { label: "Excessivo", min: 300 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+  { parameterCode: "B", parameterCategory: "QUIMICO", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, analyticalMethodAllowed: [], unitExpected: "mg/kg", sufficiencyRanges: [{ label: "Insuficiente", max: 20 }, { label: "Normal", min: 30, max: 50 }, { label: "Excessivo", min: 140 }], criticality: "BAIXA", technicalNotes: FOLIAR_SOURCE },
+];
 
 const SOURCE_TITLE_PREFIX = `${SOURCE_2016} — capítulo Frutíferas, MACIEIRA (6.5.8)`;
 
@@ -101,13 +118,13 @@ async function main() {
   const cropProfileId = await ensureCropProfile("MACIEIRA", "Macieira", "FRUTIFERA");
   console.log(`MACIEIRA: ${cropProfileId}`);
 
-  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL]);
+  await seedParameters(cropProfileId, [...P_GRUPO2, ...K_GRUPO2, ...SOLO_GERAL, S_GERAL, ...FOLIAR_MACIEIRA]);
 
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — adubação de pré-plantio`, PRE_PLANTIO_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — doses de N/P/K de crescimento e manutenção`, NPK_CONTENT);
   await seedSource(cropProfileId, `${SOURCE_TITLE_PREFIX} — diagnose foliar`, DIAGNOSE_FOLIAR_CONTENT);
 
-  console.log("NOTA: só a classificação de SOLO está automatizada no motor -- diagnose foliar (método principal da cultura) fica só como texto até decisão de schema.");
+  console.log("NOTA: classificação de SOLO e de FOLHA COMPLETA (Tabela 6.5.9) automatizadas no motor -- dose de manutenção (cruza folha x solo x produtividade) continua só como texto.");
 }
 
 main().finally(() => pool.end());

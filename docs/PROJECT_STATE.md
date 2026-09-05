@@ -2880,3 +2880,39 @@ não quer essa complexidade agora na RAIZ.
 as 5 consultas SQL novas direto contra o banco real (dev) pra confirmar que não têm erro de sintaxe/join —
 todas rodaram sem erro (sem dado de produtividade/insumo carregado ainda nesse ambiente pra testar o
 resultado populado, mas a consulta em si está correta).
+
+## Todas as 5 frutíferas com tecido foliar automatizadas (2026-09-04, trabalho autônomo noturno)
+
+O diretor foi dormir e autorizou explicitamente trabalho autônomo por 6-7 horas. Completei a conversão da
+diagnose foliar de TODAS as 5 frutíferas já carregadas (antes só videira tinha PECIOLO automatizado, como
+prova de conceito) — agora todas têm a classificação de tecido automatizada no motor, além do solo:
+
+- **Videira**: FOLHA COMPLETA (Tabela 6.5.19) adicionada, complementando o PECIOLO já feito. Agora tem
+  17 SOLO + 9 PECIOLO + 9 FOLIAR.
+- **Macieira**: FOLHA (Tabela 6.5.9, adaptada de Suzuki & Basso et al., 2002) -- 5 dos 10 nutrientes não
+  têm faixa "Excessivo" definida no manual (P, Ca, Mg, Fe, Zn) -- respeitado como está, não inventei
+  teto pra eles.
+- **Citros**: FOLHA (Tabela 6.5.7) -- únicos labels "Baixo/Adequado/Excessivo" (não "Insuficiente/Normal"),
+  preservados exatamente como o manual escreve, sem normalizar.
+- **Pessegueiro/nectarineira**: FOLHA (Tabela 6.5.17, Freire & Magnani 2014) -- Cu sem faixa de
+  insuficiência definida, só Normal/Excessivo.
+- **Morangueiro**: FOLHA (Tabela 6.5.12) -- caso mais atípico: uma única faixa "Adequado" por nutriente
+  (não três classes). Confirmei que o mecanismo `sufficiencyRanges`/`classifyValue` já lida com isso
+  corretamente sem mudança nenhuma no motor: valor fora da faixa única simplesmente não se classifica
+  (`NO_MATCHING_BAND`), que é o comportamento HONESTO aqui -- o manual não define "baixo" nem "alto" pra
+  essa cultura, só "adequado", então inventar um teto/piso seria dado fictício.
+
+**O que continua como texto, de propósito** (não é lacuna, é categoria de trabalho diferente): todas as
+tabelas de DOSE (N/P/K de manutenção indexadas por classe foliar × produtividade, às vezes × solo também)
+continuam só em `technical_source`. Classificar teor de tecido é "faixa → rótulo", já resolvido; achar a
+dose certa é "duas ou três variáveis → número contínuo", categoria de trabalho equivalente ao motor de
+calagem (dose, não classificação) -- ainda não abordada pra frutíferas.
+
+**Todos os scripts de seed** (`seed-videira-cqfs-2016.mjs`, `seed-macieira-cqfs-2016.mjs`,
+`seed-citros-cqfs-2016.mjs`, `seed-pessegueiro-cqfs-2016.mjs`, `seed-morangueiro-cqfs-2016.mjs`) tiveram a
+função `seedParameters()` local atualizada pra gravar/limpar por `sample_type` também (mesmo ajuste já
+feito na videira, replicado nos outros 4 -- sem isso, reexecutar o seed apagaria por engano linhas de um
+tipo de amostra ao atualizar só o outro).
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpos, depois de rodar os 5 seeds
+atualizados contra o banco real.
