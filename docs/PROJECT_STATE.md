@@ -2767,11 +2767,31 @@ sistema, não como caso especial de frutífera. Implementado nesta rodada:
 e `npm run build` — todos limpos. Rodei uma consulta direta contra o banco real pra confirmar que a
 migration não alterou nenhuma classificação já carregada (253 linhas, todas `SOLO`).
 
-**O que isso NÃO resolve ainda, sendo honesto**: nenhuma tabela de diagnose foliar já carregada (videira,
-macieira, citros, pessegueiro, morangueiro) foi convertida de `technical_source` (texto) pra
-`crop_profile_parameters` estruturado ainda — o mecanismo agora SUPORTA isso, mas a conversão em si é
-trabalho à parte, cultura por cultura. Também não há UI de curador pra `sample_type` (só script/API), e o
-fluxo de importação de laudo/CSV e a tela de coleta continuam assumindo amostra de solo — declarar
-`sample_type` numa amostra real ainda depende de código, não de um formulário. E os outros tipos citados
-pelo diretor (fertilizante, biológico, massa seca, peso de grão, peso de semente) ainda não têm nenhum
-dado real carregado — só o enum já reserva o nome pra quando esse dado existir.
+**O que isso NÃO resolve ainda, sendo honesto**: das 5 tabelas de diagnose foliar já carregadas (videira,
+macieira, citros, pessegueiro, morangueiro), só a de PECÍOLO da videira foi convertida de texto pra
+classificação estruturada de verdade (ver próxima seção — prova de conceito, feita na sequência). As
+outras 4 continuam só como `technical_source` (texto) — mecanismo suporta, conversão é trabalho à parte,
+cultura por cultura. Também não há UI de curador pra `sample_type` (só script/API), e o fluxo de
+importação de laudo/CSV e a tela de coleta continuam assumindo amostra de solo — declarar `sample_type`
+numa amostra real ainda depende de código, não de um formulário. E os outros tipos citados pelo diretor
+(fertilizante, biológico, massa seca, peso de grão, peso de semente) ainda não têm nenhum dado real
+carregado — só o enum já reserva o nome pra quando esse dado existir.
+
+## Prova de conceito real: pecíolo de videira automatizado (mesmo dia, 2026-09-04)
+
+Pra não deixar o mecanismo de `sample_type` só como infraestrutura teórica, converti a primeira tabela de
+diagnose foliar de verdade: Tabela 6.5.18 (classes de pecíolo da videira) — antes só texto em
+`technical_source`, agora 9 linhas reais em `crop_profile_parameters` com `sample_type = 'PECIOLO'` (N, P,
+K, Ca, Mg, Fe, Zn, Mn, B — Cu ficou de fora porque o manual não define faixa pra ele nesta tabela).
+`scripts/seed-videira-cqfs-2016.mjs` atualizado e reexecutado contra o banco real; `seedParameters()`
+(função compartilhada do script) também precisou de ajuste pra gravar/limpar por `sample_type`, não só por
+`parameter_code` — senão a re-execução apagaria por engano linhas de SOLO e PECIOLO juntas quando só uma
+das duas deveria mudar.
+
+Isso é a primeira classificação por TECIDO (não solo) automatizada nesta base — prova de que o mecanismo
+funciona ponta a ponta, não só nos testes sintéticos do motor. Videira agora tem 17 parâmetros de SOLO +
+9 de PECIOLO, sem colisão (conferido direto no banco depois de rodar o script). A tabela de FOLHA COMPLETA
+(6.5.19) da própria videira continua só como texto — fica pra uma próxima rodada, junto com as outras 4
+culturas frutíferas já carregadas.
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpo, depois de rodar o seed atualizado.
