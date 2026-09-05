@@ -2916,3 +2916,37 @@ tipo de amostra ao atualizar só o outro).
 
 **Testado**: `npm run test:handoff` completo + `npm run build` — limpos, depois de rodar os 5 seeds
 atualizados contra o banco real.
+
+## Autonomia noturna: mais 5 frutíferas (abacateiro, ameixeira, amoreira-preta, bananeira, caquizeiro) — 2026-09-04/05
+
+O diretor autorizou explicitamente trabalho autônomo de 6-7 horas antes de dormir, pedindo continuidade
+máxima e reforçando um padrão de UX: a plataforma precisa ser tão simples de usar quanto Facebook/Instagram
+(ver memória `responsividade-sempre`, atualizada com esse padrão). Continuei o catálogo de frutíferas,
+agora com diagnose foliar automatizada DESDE O INÍCIO em cada nova cultura (não mais como pendência
+separada — já aprendemos o padrão com as 5 primeiras).
+
+**Correção real de nomenclatura**: ao reextrair as páginas com `pdftotext -table`, descobri que a lista de
+frutíferas restantes que eu tinha registrado estava incompleta — faltava **AMEIXEIRA** (capítulo 6.5.2,
+entre abacateiro e amoreira-preta). A lista completa do capítulo 6.5 tem 18 culturas, não 17.
+
+- **Abacateiro** (6.5.1): primeira cultura desta base com faixa de **molibdênio** na diagnose foliar --
+  gravado como `parameter_code = "MOLIBDENIO"` (não "MO", que já é o código usado pra matéria orgânica do
+  solo nesta base — evitei colisão de leitura mesmo com `sample_type` diferente).
+- **Ameixeira** (6.5.2): tabelas de dose de N/P/K NUMERICAMENTE IDÊNTICAS às do pessegueiro/nectarineira
+  (mesma família Prunus) — conferido número a número contra o PDF, documentado como achado real, não
+  suposição. Só a diagnose foliar (Tabela 6.5.3) é específica.
+- **Amoreira-preta** (6.5.3): dose de N mais complexa vista até agora — cruza matéria orgânica × ano após
+  plantio × produtividade esperada × MAIS uma dose fixa pós-colheita (4 variáveis). O manual recomenda
+  sulfato de amônio como fonte de N preferencial ("cultura exigente em enxofre") — mas isso é recomendação
+  de FONTE de fertilizante, não muda a classificação de S no solo: a lista oficial do grupo mais exigente
+  de enxofre (Tabela 6.11) continua só arroz irrigado/leguminosas/brássicas/liliáceas, amoreira-preta NÃO
+  está nessa lista — usa S_GERAL, conferido explicitamente antes de decidir (não assumi por causa do texto).
+- **Bananeira** (6.5.4): diagnose foliar com faixa única "Adequado" (igual morangueiro), dose de
+  manutenção direta por tonelada de fruto.
+- **Caquizeiro** (6.5.5): única cultura desta base cuja tabela foliar só classifica MACRONUTRIENTES — o
+  manual não traz tabela de micronutrientes pra essa cultura (conferido, não é omissão nossa).
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpos após cada uma das 5 culturas.
+
+**Frutíferas restantes, atualizado**: figueira, maracujazeiro, mirtileiro, nogueira-pecã, oliveira,
+palmeira juçara, pereira, quivizeiro (8 restantes de 18 no total do capítulo 6.5).
