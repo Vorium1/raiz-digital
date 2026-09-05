@@ -91,6 +91,89 @@ export const K_GRUPO2 = [
   },
 ];
 
+/**
+ * Grupo 1 de P (Tabela 6.3, p.92-93) -- culturas MUITO exigentes: alho,
+ * beterraba, cenoura, batata e roseira de corte (lista oficial do manual,
+ * capítulo 6, Tabela 6.2). Teor crítico 1,7x o de grãos. Adicionado
+ * 2026-09-05 pra começar o capítulo de Hortaliças/Tubérculos -- verificado
+ * direto contra o PDF oficial reextraído com `pdftotext -table`.
+ */
+export const P_GRUPO1 = [
+  {
+    parameterCode: "P", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CLAY", conditionMin: 60.0001, conditionMax: null,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 5.0 }, { label: "Baixo", min: 5.1, max: 10.0 }, { label: "Médio", min: 10.1, max: 15.0 }, { label: "Alto", min: 15.1, max: 30.0 }, { label: "Muito Alto", min: 30.0 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.3, p.92 -- Grupo 1 (alho, beterraba, cenoura, batata, roseira de corte), classe de argila 1 (>60%)"),
+  },
+  {
+    parameterCode: "P", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CLAY", conditionMin: 41, conditionMax: 60,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 7.0 }, { label: "Baixo", min: 7.1, max: 14.0 }, { label: "Médio", min: 14.1, max: 21.0 }, { label: "Alto", min: 21.1, max: 42.0 }, { label: "Muito Alto", min: 42.0 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.3, p.92 -- Grupo 1, classe de argila 2 (60-41%)"),
+  },
+  {
+    parameterCode: "P", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CLAY", conditionMin: 21, conditionMax: 40,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 10.0 }, { label: "Baixo", min: 10.1, max: 20.0 }, { label: "Médio", min: 20.1, max: 30.0 }, { label: "Alto", min: 30.1, max: 60.0 }, { label: "Muito Alto", min: 60.0 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.3, p.92 -- Grupo 1, classe de argila 3 (40-21%)"),
+  },
+  {
+    parameterCode: "P", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CLAY", conditionMin: 0, conditionMax: 20,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 17.0 }, { label: "Baixo", min: 17.1, max: 34.0 }, { label: "Médio", min: 34.1, max: 51.0 }, { label: "Alto", min: 51.1, max: 102.0 }, { label: "Muito Alto", min: 102.0 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.3, p.92 -- Grupo 1, classe de argila 4 (<=20%)"),
+  },
+];
+
+/**
+ * Grupo 1 de K (Tabela 6.8, p.95) -- culturas MUITO exigentes: alho,
+ * beterraba, cenoura, mandioquinha-salsa, tomateiro, batata, batata-doce e
+ * roseira de corte (lista oficial, Tabela 6.7). Teor crítico 1,5x o de
+ * grãos. Adicionado 2026-09-05, verificado contra o PDF oficial.
+ */
+export const K_GRUPO1 = [
+  {
+    parameterCode: "K", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CTC", conditionMin: 0, conditionMax: 7.5,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 30 }, { label: "Baixo", min: 31, max: 60 }, { label: "Médio", min: 61, max: 90 }, { label: "Alto", min: 91, max: 180 }, { label: "Muito Alto", min: 180 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.8, p.95 -- Grupo 1 (alho, beterraba, cenoura, mandioquinha-salsa, tomateiro, batata, batata-doce, roseira de corte), CTCpH7,0 <= 7,5 cmolc/dm³"),
+  },
+  {
+    parameterCode: "K", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CTC", conditionMin: 7.6, conditionMax: 15.0,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 45 }, { label: "Baixo", min: 46, max: 90 }, { label: "Médio", min: 91, max: 135 }, { label: "Alto", min: 136, max: 270 }, { label: "Muito Alto", min: 270 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.8, p.95 -- Grupo 1, CTCpH7,0 7,6 a 15,0 cmolc/dm³"),
+  },
+  {
+    parameterCode: "K", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CTC", conditionMin: 15.1, conditionMax: 30.0,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 60 }, { label: "Baixo", min: 61, max: 120 }, { label: "Médio", min: 121, max: 180 }, { label: "Alto", min: 181, max: 360 }, { label: "Muito Alto", min: 360 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.8, p.95 -- Grupo 1, CTCpH7,0 15,1 a 30,0 cmolc/dm³"),
+  },
+  {
+    parameterCode: "K", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
+    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    conditionParameterCode: "CTC", conditionMin: 30.0001, conditionMax: null,
+    sufficiencyRanges: [{ label: "Muito Baixo", max: 70 }, { label: "Baixo", min: 71, max: 140 }, { label: "Médio", min: 141, max: 210 }, { label: "Alto", min: 211, max: 420 }, { label: "Muito Alto", min: 420 }],
+    criticality: "ALTA",
+    technicalNotes: note("Tabela 6.8, p.95 -- Grupo 1, CTCpH7,0 > 30,0 cmolc/dm³"),
+  },
+];
+
 /** Ca, Mg, MO, CTC, B, Cu, Zn, Mn -- tabelas gerais do manual, não específicas de cultura. S NÃO entra aqui porque o grupo de exigência (5 ou 10 mg/dm³) muda por cultura -- ver S_GERAL/S_GRUPO_EXIGENTE. */
 export const SOLO_GERAL = [
   {
