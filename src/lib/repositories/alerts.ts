@@ -201,6 +201,76 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
+    /**
+     * Reanálise vencida: regra já carregada na base de conhecimento (fonte: Trigo Safra 2026) --
+     * análise de solo deve ser refeita a cada 3 anos no máximo. Pedido real do diretor (2026-09-04):
+     * manter o produtor "na vida da plataforma", incentivando recoleta periódica em vez de deixar a
+     * análise antiga silenciosamente desatualizada.
+     */
+    const reanalysisDue = await client.query(
+      `SELECT f.id::text, f.name, c.name AS "clientName", max(a.created_at)::text AS "lastAnalysisAt"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       WHERE a.tenant_id = $1::uuid
+       GROUP BY f.id, f.name, c.name
+       HAVING max(a.created_at) < now() - interval '3 years'`,
+      [tenantId],
+    );
+    for (const row of reanalysisDue.rows) {
+      const years = ((Date.now() - new Date(row.lastAnalysisAt).getTime()) / (1000 * 60 * 60 * 24 * 365.25)).toFixed(1);
+      alerts.push({
+        id: `reanalysis-due-${row.id}`, category: "Reanálise de solo vencida", criticality: "MEDIA",
+        title: `${row.name} sem análise há mais de 3 anos`, description: `${row.clientName} — última análise há ${years} anos (regra: reanalisar no máximo a cada 3 anos).`,
+        href: `/relatorios/evolucao/${row.id}`, context: row.name,
+      });
+    }
+
+    /**
+     * Desvio de aplicação de insumo: recomendado (`input_recommendations`) x aplicado
+     * (`input_applications`) -- pedido real do diretor (2026-09-04, ideia trazida por Rafael/Cabeda):
+     * sinalizar quando o produtor aplicou quantidade muito diferente da recomendada, servindo tanto de
+     * alerta de manejo quanto de respaldo técnico do agrônomo quando a produtividade não bate com o
+     * esperado. Mesmo limiar de `getInputComparisonForAnalysis` (catalog.ts): <95% ou >110% do
+     * recomendado. Só aplica quando HOUVE aplicação registrada -- "não aplicou ainda" não é alertado
+     * aqui (pode ser só falta de tempo, não é necessariamente desvio).
+     */
+    const inputDeviation = await client.query(
+      `WITH latest_recommendations AS (
+         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
+         FROM input_recommendations WHERE tenant_id = $1::uuid
+         ORDER BY analysis_id, input_type, calculated_at DESC
+       ),
+       applied_totals AS (
+         SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
+         FROM input_applications WHERE tenant_id = $1::uuid
+         GROUP BY analysis_id, input_type, unit
+       )
+       SELECT r.analysis_id::text AS "analysisId", r.input_type AS "inputType", r.quantity::float8 AS "recommendedQuantity", r.unit,
+              a.total_quantity::float8 AS "appliedQuantity", an.code, f.name AS "fieldName", c.name AS "clientName"
+       FROM latest_recommendations r
+       JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
+       JOIN analyses an ON an.tenant_id = $1::uuid AND an.id = r.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id = an.tenant_id AND cs.id = an.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id`,
+      [tenantId],
+    );
+    for (const row of inputDeviation.rows) {
+      const ratio = row.appliedQuantity / row.recommendedQuantity;
+      if (ratio >= 0.95 && ratio <= 1.1) continue;
+      const over = ratio > 1.1;
+      alerts.push({
+        id: `input-deviation-${row.analysisId}-${row.inputType}`, category: "Desvio de aplicação de insumo", criticality: over ? "ALTA" : "MEDIA",
+        title: `${row.fieldName} — ${row.inputType} ${over ? "acima" : "abaixo"} do recomendado`,
+        description: `${row.clientName} · ${row.code} — recomendado ${row.recommendedQuantity}${row.unit}, aplicado ${row.appliedQuantity.toFixed(2)}${row.unit} (${Math.round(ratio * 100)}% do recomendado).`,
+        href: `/analises/${row.analysisId}`, context: row.fieldName,
+      });
+    }
+
     const order = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
     return alerts.sort((a, b) => order[a.criticality] - order[b.criticality]);
   });

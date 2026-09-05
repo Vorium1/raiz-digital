@@ -2826,3 +2826,57 @@ Qualquer um desses, ao ser puxado pra implementação real, precisa seguir as me
 do projeto: `DATA_MODE=database` nunca mostra número fictício, IA não decide agronomia, sem serviço pago
 por conveniência quando existe alternativa gratuita/self-hosted, e nenhuma integração externa nova sem
 documentar o motivo primeiro (regra do CLAUDE.md).
+
+## Correção de rumo do diretor + duas funcionalidades reais (mesmo dia, 2026-09-04)
+
+O diretor corrigiu uma suposição errada minha: o produtor rural NÃO é o usuário direto da RAIZ Digital — a
+plataforma é usada por quem atende/monitora o produtor (empresa de insumo, consultoria, agrônomo), não
+pelo produtor em si. Isso descarta ideias pensadas pra "o produtor logar e mexer" (financeiro por hectare
+preenchido pelo produtor, portal de rastreabilidade pro produtor) e reposiciona outras (WhatsApp faz
+sentido como CANAL de envio de informação pro produtor, não como portal). Ver memória
+`cliente-nao-e-o-produtor` (pinned) pra detalhe completo — vale mais que qualquer nota aqui, porque essa
+correção deve valer pra toda sessão futura, não só pra hoje.
+
+Duas ideias validadas viraram funcionalidade real nesta rodada:
+
+**1. Alerta de reanálise vencida** (`src/lib/repositories/alerts.ts`) — pedido do diretor: manter o
+produtor "na vida da plataforma", incentivando recoleta periódica. Nova consulta na central de alertas já
+existente (`/alertas`): sinaliza quando um talhão está há mais de 3 anos sem análise nova, citando a regra
+técnica já carregada (fonte: Trigo Safra 2026, "reanálise a cada 3 anos no máximo").
+
+**2. Alerta de desvio de aplicação de insumo** (mesmo arquivo) — a ideia trazida por Rafael/Cabeda e
+validada pelo diretor: comparar o que foi recomendado (`input_recommendations`) com o que foi de fato
+aplicado (`input_applications`) e sinalizar quando o produtor aplicou muito acima ou abaixo do recomendado
+(mesmo limiar de <95%/>110% já usado em `getInputComparisonForAnalysis`, catalog.ts). Serve como alerta de
+manejo E como respaldo técnico do agrônomo quando a produtividade não bate com o esperado. **Achado
+importante**: essa comparação JÁ EXISTIA no schema (tabelas desenhadas de propósito na migration 015 pra
+isso, com uma função de comparação já pronta) — só não estava exposta na central de alertas nem numa visão
+histórica por talhão. Não foi preciso nenhuma migration nova.
+
+**Relatório de evolução histórica** (`src/lib/repositories/reports.ts`, `/relatorios/evolucao/[fieldId]`)
+ganhou 3 seções novas: produtividade registrada (`field_yield_history`), aderência à recomendação por
+análise (mesma lógica do alerta 2, mas detalhada por talhão em vez de só sinalizada), e um aviso visual
+quando a reanálise está vencida (mesma regra do alerta 1).
+
+**Ressalva honesta sobre a ideia do Cabeda, levantada pelo próprio diretor**: dificilmente o produtor
+compra todo insumo de uma única empresa — então vincular com o sistema de UMA empresa só dá visão
+parcial. Decisão do diretor: manter preenchimento manual por enquanto (não mudar isso agora), mas pensar
+numa estratégia de importação futura. Ideia dele pra isso, registrada mas NÃO implementada ainda: quando a
+empresa envia o pedido pro cliente, cadastrar cópia automática pra uma central da RAIZ, com uma API
+puxando esse dado pra dentro do sistema. Nota técnica minha pra quando isso for retomado: no Brasil, toda
+nota fiscal eletrônica (NF-e) tem XML estruturado oficial por trás do PDF/DANFE — mais confiável que ler
+PDF/foto com IA (OCR erra fácil em nota mal escaneada) — vale considerar isso como alternativa mais robusta
+à leitura de PDF quando o assunto for retomado. Fica como ideia parametrizada, sem trabalho de código
+ainda.
+
+**Satélite/NDVI**: aprovado pelo diretor ("não é exatamente preciso, mas já dá uma ajuda grande a entender
+as faixas de produtividade... podemos implementar"). Ainda não iniciado nesta rodada — próximo item real
+do backlog técnico, não mais brainstorm.
+
+**WhatsApp**: descartado por enquanto — o diretor está fazendo outro projeto com WhatsApp separadamente e
+não quer essa complexidade agora na RAIZ.
+
+**Testado**: `npm run test:handoff` completo, `npm run typecheck`, `npm run build` — todos limpos. Rodei
+as 5 consultas SQL novas direto contra o banco real (dev) pra confirmar que não têm erro de sintaxe/join —
+todas rodaram sem erro (sem dado de produtividade/insumo carregado ainda nesse ambiente pra testar o
+resultado populado, mas a consulta em si está correta).

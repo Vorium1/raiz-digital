@@ -17,7 +17,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
     getTenantBranding(session.tenantId),
   ]);
   if (!data) notFound();
-  const { field, seasons, analyses } = data;
+  const { field, seasons, analyses, yieldHistory, adherence, reanalysis } = data;
+
+  const adherenceStatusLabel: Record<string, string> = { OK: "Seguiu a recomendação", UNDER: "Aplicou abaixo do recomendado", OVER: "Aplicou acima do recomendado", NOT_APPLIED: "Não aplicou" };
 
   const parameterHistory = new Map<string, Array<{ date: string; season: string; classification: string }>>();
   for (const analysis of analyses) {
@@ -51,6 +53,42 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
             <div><span>Análises no período</span><strong>{analyses.length}</strong></div>
             <div><span>Parâmetros com histórico</span><strong>{parameterHistory.size}</strong></div>
           </div>
+
+          {reanalysis.due ? (
+            <p className="report-empty-note" style={{ background: "#fff4e5", padding: "10px 12px", borderRadius: 8, fontWeight: 600 }}>
+              Reanálise recomendada: já se passaram {reanalysis.monthsSinceLastAnalysis} meses desde a última análise deste talhão — a regra técnica carregada (fonte: Trigo Safra 2026) recomenda reanalisar o solo no máximo a cada 3 anos.
+            </p>
+          ) : null}
+
+          <section className="report-section">
+            <h2>Produtividade registrada</h2>
+            {yieldHistory.length ? (
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Safra</th><th>Cultura</th><th>Cultivar</th><th>Produtividade</th><th>Origem</th></tr></thead>
+                <tbody>{yieldHistory.map((row: any) => <tr key={row.id}><td>{row.seasonLabel}</td><td>{row.crop}</td><td>{row.cultivar || "—"}</td><td>{row.yieldValue.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.yieldUnit}</td><td>{row.source || "—"}</td></tr>)}</tbody>
+              </table></div>
+            ) : <p className="report-empty-note">Nenhuma produtividade registrada para este talhão ainda.</p>}
+          </section>
+
+          <section className="report-section">
+            <h2>Aderência à recomendação de insumos</h2>
+            {adherence.length ? (
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Análise</th><th>Insumo</th><th>Recomendado</th><th>Aplicado</th><th>Situação</th></tr></thead>
+                <tbody>{adherence.map((row: any, index: number) => {
+                  const analysis = analyses.find((a: any) => a.id === row.analysisId);
+                  return (
+                    <tr key={index}>
+                      <td>{analysis?.code ?? row.analysisId} {analysis ? `(${new Date(analysis.createdAt).toLocaleDateString("pt-BR")})` : ""}</td>
+                      <td>{row.inputType}</td>
+                      <td>{row.recommendedQuantity}{row.unit}</td>
+                      <td>{row.appliedQuantity != null ? `${row.appliedQuantity.toFixed(2)}${row.unit}` : "—"}</td>
+                      <td>{adherenceStatusLabel[row.status]}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table></div>
+            ) : <p className="report-empty-note">Nenhuma recomendação de insumo registrada para este talhão ainda.</p>}
+            <p className="report-empty-note" style={{ marginTop: 8 }}>Compara a última recomendação técnica de cada análise com o total realmente aplicado — serve como respaldo técnico quando a produtividade não corresponde ao esperado por falta de adesão ao manejo recomendado.</p>
+          </section>
 
           <section className="report-section">
             <h2>Rotação de culturas</h2>
