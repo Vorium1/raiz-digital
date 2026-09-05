@@ -2950,3 +2950,57 @@ entre abacateiro e amoreira-preta). A lista completa do capítulo 6.5 tem 18 cul
 
 **Frutíferas restantes, atualizado**: figueira, maracujazeiro, mirtileiro, nogueira-pecã, oliveira,
 palmeira juçara, pereira, quivizeiro (8 restantes de 18 no total do capítulo 6.5).
+
+## MARCO: capítulo 6.5 (Frutíferas) do Manual CQFS-RS/SC 2016 completo — 19 crop_profiles (2026-09-05)
+
+Continuando o bloco autônomo de 6-7 horas autorizado pelo diretor, completei o carregamento de TODAS as
+espécies restantes: figueira, maracujazeiro, mirtileiro, nogueira-pecã, oliveira, palmeira juçara, pereira
+e quivizeiro. Com isso, o capítulo inteiro de frutíferas do manual está nesta base — 18 espécies + pereira
+dividida em 2 perfis (ver abaixo) = **19 `crop_profiles` de frutífera**, todas com classificação de SOLO
+(Grupo 2) E de FOLHA (quando o manual define — ver exceção da palmeira juçara) automatizadas no motor
+desde o cadastro, não mais como pendência.
+
+**Achados reais desta leva final**:
+- **Figueira, maracujazeiro**: diagnose foliar com faixa única "Adequado" (padrão já visto em bananeira/
+  morangueiro).
+- **Mirtileiro**: restrição agronômica mais forte que qualquer cultura já carregada — é muito sensível a
+  cloreto (KCl), o manual instrui usar SULFATO DE POTÁSSIO como fonte de K (pré-plantio E manutenção),
+  nunca cloreto de potássio. Registrado em texto (motor não modela "fonte de fertilizante proibida").
+- **Nogueira-pecã**: doses de N calibradas pra espaçamento 10m×10m específico; tem regra de adubação
+  foliar CONDICIONAL disparada por limiar (Zn foliar <50mg/kg aciona pulverização de sulfato de zinco; B
+  foliar <50mg/kg aciona ácido bórico) — categoria de regra nova, "ação disparada por limiar", diferente
+  de classificação e de dose simples.
+- **Oliveira**: a tabela foliar mais incompleta desta base (muitas faixas sem definição no próprio
+  manual — não omissão nossa) e com uma notação ambígua real em duas células (K e Mg, aparecem como
+  "> [faixa]" no PDF reextraído) — carregada com a leitura mais razoável, mas MARCADA explicitamente como
+  pendente de conferência contra a fonte original (Freeman et al., 2005) antes de qualquer homologação.
+- **Palmeira juçara**: ÚNICA frutífera desta base sem tabela de diagnose foliar no manual (espécie nativa,
+  dose só por idade da planta) — carregada só com classificação de solo, sem forçar dado foliar
+  inexistente.
+- **Pereira**: decisão de modelagem real — o manual traz DUAS tabelas foliares (asiática/Pyrus pyrifolia
+  e europeia/Pyrus communis) com faixas DIFERENTES pro mesmo nutriente. Isso não cabe no mecanismo de
+  condição existente (`condition_parameter_code` é pra condição NUMÉRICA tipo classe de argila/CTC, não
+  "tipo de cultivar" categórico) — resolvido criando DOIS `crop_profiles` (`PEREIRA_ASIATICA` e
+  `PEREIRA_EUROPEIA`), cada um com sua própria diagnose foliar, compartilhando a mesma classificação de
+  solo e as mesmas doses de N/P/K (o manual não diferencia isso por tipo).
+- **Quivizeiro**: fecha o capítulo, sem particularidade estrutural nova.
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpos após cada uma das 8 culturas desta
+leva. Confirmei direto no banco real: 19 `crop_profiles` com `crop_group = 'FRUTIFERA'`.
+
+**O que fica pendente pra próxima rodada, sendo honesto sobre o estado real**:
+- Nenhuma tabela de DOSE (N/P/K de manutenção indexada por classe foliar × produtividade × às vezes solo)
+  foi automatizada — só a classificação de teor. Automatizar dose de frutífera é a mesma categoria de
+  trabalho do motor de calagem (dose contínua, não classificação em faixa) — ainda não abordada aqui.
+- A regra de dispensa condicional do citros (pular P de manutenção se folha >0,12%) e as regras de
+  adubação foliar condicional da nogueira-pecã (disparo por limiar) não têm mecanismo no motor ainda --
+  registradas em texto, mecanismo de "ação condicionada a limiar de outro parâmetro" é trabalho futuro.
+  Restrição de fonte de fertilizante (mirtileiro, sem KCl) também não tem mecanismo -- mesma situação.
+  Notação ambígua da oliveira (K/Mg) precisa conferência contra a fonte original antes de homologar.
+- Nenhuma dessas 19 culturas tem nenhum parâmetro `ACTIVE` — todas em `DRAFT`, aguardando homologação
+  profissional real (fora da minha autoridade, cabe a um agrônomo responsável, conforme CLAUDE.md).
+- UI de curador ainda não expõe `sample_type` nem as tabelas de dose condicionais — só script/API.
+
+Próximo passo natural (não iniciado ainda): outras categorias do manual fora do capítulo 6.5 (florestais,
+hortaliças, etc.) ou avançar os mecanismos de motor pendentes (dose de frutífera, ação por limiar,
+restrição de fonte de fertilizante) em vez de mais dado de catálogo.
