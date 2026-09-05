@@ -2651,3 +2651,36 @@ que `-table` é a opção certa pra qualquer extração de tabela deste manual d
 Não há teste automatizado específico pro conteúdo de videira em si (é dado carregado no banco, não lógica
 de código) — a verificação foi conferência manual linha a linha contra o PDF reextraído, mesmo padrão já
 usado pras outras culturas desta sessão.
+
+## Mais duas frutíferas: macieira e citros (2026-09-04, continuação autônoma)
+
+Seguindo o mesmo padrão de baixo risco da videira (solo automatizado via Grupo 2 já testado; doses e
+diagnose foliar como `technical_source` em texto, pendente a mesma decisão de schema), carreguei mais duas
+culturas economicamente relevantes: `scripts/seed-macieira-cqfs-2016.mjs` (capítulo 6.5.8 — RS é o maior
+produtor de maçã do Brasil) e `scripts/seed-citros-cqfs-2016.mjs` (capítulo 6.5.6).
+
+**Achado que reforça por que a decisão de schema (sample_type solo × tecido) importa de verdade**: a dose
+de manutenção da macieira é mais complexa que a de qualquer cultura já carregada — cruza TRÊS variáveis
+pro nitrogênio (teor foliar × produtividade × crescimento de ramos em cm), e pro fósforo e potássio cruza
+um dado de FOLHA com um dado de SOLO na MESMA regra (ex.: dose de K depende do teor foliar de K E do teor
+de K no solo em mg/dm³, ao mesmo tempo). Isso não é só "mais uma tabela de faixa" — automatizar isso de
+verdade exigiria o motor combinar leitura de amostra de solo e de tecido na mesma regra de decisão, o que
+reforça que a pendência de schema registrada pra videira é estrutural, não um detalhe cosmético.
+
+**Achado específico do citros, vale registrar pra não esquecer**: citros é a única frutífera carregada até
+agora com uma regra explícita de DISPENSA de adubação por critério foliar — se o pomar foi adubado com P
+em pré-plantio e a folha mostrar mais que 0,12% de P, não se aplica P de manutenção. Isso é um tipo de
+regra condicional diferente das já implementadas no motor (não é "classifica numa faixa", é "se a folha
+está acima de X, pule esta etapa da recomendação inteira") — mais um motivo pra tratar diagnose foliar
+como decisão de arquitetura própria, não como extensão trivial do mecanismo de `sufficiency_ranges` atual.
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpo, depois de carregar as duas
+culturas. Mesma ressalva de sempre: verificação foi conferência manual linha a linha contra o PDF
+reextraído com `-table`, sem teste automatizado específico de conteúdo (dado de banco, não lógica).
+
+**Frutíferas ainda no manual, não carregadas nesta rodada** (capítulo 6.5, pra referência futura): abacateiro
+(6.5.1), amoreira-preta (6.5.3), bananeira (6.5.4), caquizeiro (6.5.5), figueira (6.5.7), maracujazeiro
+(6.5.9), mirtileiro (6.5.10), morangueiro (6.5.11), nogueira-pecã (6.5.12), oliveira (6.5.13), palmeira
+juçara (6.5.14), pereira (6.5.15), pessegueiro e nectarineira (6.5.16), quivizeiro (6.5.17). Todas devem
+seguir o mesmo padrão (Grupo 2 de solo + technical_source em texto) — nenhuma das que já conferi por alto
+parece ter estrutura de dose mais estranha que a da macieira.
