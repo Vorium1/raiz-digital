@@ -2795,3 +2795,34 @@ funciona ponta a ponta, não só nos testes sintéticos do motor. Videira agora 
 culturas frutíferas já carregadas.
 
 **Testado**: `npm run test:handoff` completo + `npm run build` — limpo, depois de rodar o seed atualizado.
+
+## Backlog de expansão de produto — brainstorm pedido pelo diretor (2026-09-04)
+
+O diretor pediu explicitamente pra pensar "fora da caixa" sobre tudo que a RAIZ Digital poderia atender no
+ramo do agro, no contexto de um preço-alvo de R$2.500-3.000/mês (ver memória `modelo-precificacao-raiz-digital`).
+Registrando aqui pra não perder o brainstorm, mesmo sem compromisso de prazo — são IDEIAS, não
+compromissos, e nenhuma tem prioridade definida ainda:
+
+- **Clima e risco**: alertas de geada/granizo/seca e janela de aplicação (vento/chuva), usando fonte
+  pública gratuita (INMET/CPTEC) em vez de serviço pago — compatível com a preferência do projeto por
+  self-hosted/gratuito.
+- **Imagem de satélite (NDVI)**: variabilidade dentro do talhão via Sentinel-2 (tem tier gratuito) —
+  complementa o que já existe em mapas/PostGIS.
+- **Rastreabilidade e compliance**: rastreabilidade de insumo/aplicação (importante pro mercado
+  exportador), CAR (Cadastro Ambiental Rural), pegada de carbono/ESG — categoria com potencial real de
+  justificar o preço-alvo, é exigência crescente de trading/cooperativa grande.
+- **Financeiro por hectare**: custo/ha, ponto de equilíbrio por cultura, simulador "e se eu tivesse usado
+  outra dose/cultivar/data" — usa o motor determinístico já existente como base de cálculo.
+- **Comparação entre propriedades/safras**: já existe "Comparativos"; expandir pra benchmark anônimo
+  regional (mesma cultura/região).
+- **Comunicação**: alerta via WhatsApp (muito usado no meio rural brasileiro), app com modo offline
+  (conectividade rural é ruim de verdade).
+- **Regulatório**: receituário agronômico digital, controle de uso de agrotóxico por categoria toxicológica
+  e prazo de carência.
+- **Diferencial de IA nativa** (não só "mais um SaaS agro"): alerta preditivo combinando clima+solo+
+  histórico (ex.: "condição favorável pra doença X nos próximos dias"), simulador "e se" interativo.
+
+Qualquer um desses, ao ser puxado pra implementação real, precisa seguir as mesmas regras já estabelecidas
+do projeto: `DATA_MODE=database` nunca mostra número fictício, IA não decide agronomia, sem serviço pago
+por conveniência quando existe alternativa gratuita/self-hosted, e nenhuma integração externa nova sem
+documentar o motivo primeiro (regra do CLAUDE.md).
