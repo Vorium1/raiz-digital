@@ -2702,3 +2702,30 @@ neste capítulo, não dá pra assumir um padrão único.
 
 **Frutíferas restantes, atualizado**: abacateiro, amoreira-preta, bananeira, caquizeiro, figueira,
 maracujazeiro, mirtileiro, morangueiro, nogueira-pecã, oliveira, palmeira juçara, pereira, quivizeiro.
+
+## Sexta frutífera: morangueiro (2026-09-04, mesma continuação autônoma)
+
+`scripts/seed-morangueiro-cqfs-2016.mjs`, capítulo 6.5.11 — cultura popular em pequena propriedade, base
+econômica real de agricultura familiar na região Sul. Mesmo padrão: solo automatizado via Grupo 2, doses e
+diagnose foliar como `technical_source` em texto.
+
+**Duas diferenças estruturais reais, vale registrar** (nenhuma frutífera até agora tinha as duas juntas):
+1. O manual desconsidera EXPLICITAMENTE o teor de matéria orgânica do solo pro N do morangueiro — a dose é
+   indexada só por produtividade esperada. Justificativa dada pelo próprio texto: o sistema de produção
+   usa muito resíduo orgânico como substrato (casca de arroz carbonizada, maravalha, serragem), formando
+   um substrato que contribui pouco pro fornecimento real de N, tornando MO do solo um critério pouco
+   confiável nesse caso específico.
+2. A tabela de diagnose foliar (6.5.12) não tem três classes Insuficiente/Normal/Excessivo como as outras
+   5 frutíferas já carregadas — é uma única faixa "adequada" por nutriente, e é a primeira desta base a
+   listar enxofre (S) direto na tabela foliar.
+
+**Achado que exigiu decisão explícita, não é bug**: a tabela de dose por classe de solo (P e K) mostra
+valores IDÊNTICOS pras classes "Alto" e "Muito alto" (P=60/K conforme produtividade nas duas). Conferido
+duas vezes contra o PDF reextraído com `-table` — não é erro de transcrição, é o próprio manual não
+reduzindo mais a dose depois que o solo já está na classe "Alto". Registrado explicitamente no texto
+carregado pra não parecer erro de digitação numa auditoria futura.
+
+**Testado**: `npm run test:handoff` completo + `npm run build` — limpo.
+
+**Frutíferas restantes, atualizado**: abacateiro, amoreira-preta, bananeira, caquizeiro, figueira,
+maracujazeiro, mirtileiro, nogueira-pecã, oliveira, palmeira juçara, pereira, quivizeiro.
