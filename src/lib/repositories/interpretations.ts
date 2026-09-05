@@ -39,6 +39,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
       if (profileRow) {
         const paramsResult = await client.query(
           `SELECT id::text, parameter_code AS "parameterCode", parameter_category AS "parameterCategory",
+                  sample_type AS "sampleType",
                   depth_from_cm::float8 AS "depthFromCm", depth_to_cm::float8 AS "depthToCm",
                   analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
                   sufficiency_ranges AS "sufficiencyRanges", criticality, status,
@@ -54,7 +55,8 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     const resultsResult = await client.query<LabResultInput>(
       `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS "value",
-              lr.unit, lr.analytical_method AS "method", sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
+              lr.unit, lr.analytical_method AS "method", ls.sample_type AS "sampleType",
+              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
        FROM lab_samples ls
        JOIN lab_results lr ON lr.lab_sample_id = ls.id
        LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id

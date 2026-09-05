@@ -2729,3 +2729,49 @@ carregado pra não parecer erro de digitação numa auditoria futura.
 
 **Frutíferas restantes, atualizado**: abacateiro, amoreira-preta, bananeira, caquizeiro, figueira,
 maracujazeiro, mirtileiro, nogueira-pecã, oliveira, palmeira juçara, pereira, quivizeiro.
+
+## Motor ganha "tipo de amostra" (sample_type) — decisão explícita do diretor (2026-09-04)
+
+A pendência de schema registrada em toda entrada de frutífera acima ("falta uma dimensão de tipo de
+amostra, solo vs. tecido") foi levada pro diretor, que respondeu de forma explícita e foi além do que eu
+tinha perguntado: a RAIZ deve separar por tipo de amostra de forma ampla — solo (química/física),
+fertilizante, biológico, foliar, massa seca, peso de grão, peso de semente — como dimensão estrutural do
+sistema, não como caso especial de frutífera. Implementado nesta rodada:
+
+- **Migration 022** (`db/migrations/022_sample_type.sql`): coluna `sample_type` (`SOLO` default) em
+  `crop_profile_parameters` E em `lab_samples`, com `CHECK` restringindo aos 8 valores acima. `DEFAULT
+  'SOLO'` preserva 100% do comportamento existente — as 253 linhas já carregadas em `crop_profile_parameters`
+  continuam todas `SOLO` depois da migration (conferido direto no banco). A constraint de unicidade
+  (`crop_profile_parameters_unique_range`, da migration 020) foi estendida pra incluir `sample_type` —
+  sem isso, uma faixa FOLIAR e uma PECIOLO do mesmo parâmetro/cultura (ambas sem profundidade) colidiriam
+  silenciosamente, o mesmo bug já corrigido uma vez (migration 020) reaparecendo numa dimensão nova.
+- **Motor** (`src/domain/agronomic-engine.ts`): novo tipo `SampleType`; `CropProfileParameterDef` e
+  `LabResultInput` ganham `sampleType`; `interpretOne` agora filtra candidatos por tipo de amostra ANTES
+  de olhar profundidade/método — uma faixa de solo e uma de folha pro mesmo código de parâmetro nunca são
+  confundidas, mesmo que o valor numérico coincidentemente caia na faixa errada (testado com um caso
+  didático onde N=2,0 seria "Alto" se fosse solo mas é "Normal" se for folha, no mesmo perfil). Novo
+  código de falha `SAMPLE_TYPE_NOT_COVERED` (distinto de `PARAMETER_NOT_IN_PROFILE` — diagnóstico mais
+  claro quando o parâmetro existe no perfil mas não pro tipo de amostra enviado). `interpretDerivedParameter`
+  também exige que as entradas de uma fórmula tenham o mesmo tipo de amostra do parâmetro derivado (nunca
+  mistura um resultado de solo com um de folha no mesmo cálculo).
+- **Repositórios** (`interpretations.ts`, `agronomic-profiles.ts`) e a API do curador
+  (`/api/crop-profiles/[id]/parameters`) atualizados pra ler/gravar `sample_type`, default `'SOLO'` quando
+  omitido (curador ainda não tem campo de UI pra isso — mesma pendência já registrada pra
+  `condition_min`/`condition_max`/`derived_parameter_code`, só script/API por enquanto).
+- **4 novos cenários de teste** (24-27, agora 27 no total): dois tipos de amostra com faixas diferentes
+  pro mesmo parâmetro (solo bate em solo, folha bate em folha, nunca cruza); tipo de amostra sem nenhuma
+  faixa cadastrada (`SAMPLE_TYPE_NOT_COVERED`); parâmetro derivado rejeita entrada de tipo de amostra
+  errado.
+
+**Testado de verdade**: `npm run test:engine` (27/27), `npm run test:handoff` completo, `npm run typecheck`
+e `npm run build` — todos limpos. Rodei uma consulta direta contra o banco real pra confirmar que a
+migration não alterou nenhuma classificação já carregada (253 linhas, todas `SOLO`).
+
+**O que isso NÃO resolve ainda, sendo honesto**: nenhuma tabela de diagnose foliar já carregada (videira,
+macieira, citros, pessegueiro, morangueiro) foi convertida de `technical_source` (texto) pra
+`crop_profile_parameters` estruturado ainda — o mecanismo agora SUPORTA isso, mas a conversão em si é
+trabalho à parte, cultura por cultura. Também não há UI de curador pra `sample_type` (só script/API), e o
+fluxo de importação de laudo/CSV e a tela de coleta continuam assumindo amostra de solo — declarar
+`sample_type` numa amostra real ainda depende de código, não de um formulário. E os outros tipos citados
+pelo diretor (fertilizante, biológico, massa seca, peso de grão, peso de semente) ainda não têm nenhum
+dado real carregado — só o enum já reserva o nome pra quando esse dado existir.

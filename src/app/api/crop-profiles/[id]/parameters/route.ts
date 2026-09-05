@@ -3,6 +3,7 @@ import { AgronomicProfileError, upsertCropProfileParameter } from "@/lib/reposit
 
 const validCategories = new Set(["QUIMICO", "FISICO", "MICROBIOLOGICO"]);
 const validCriticality = new Set(["BAIXA", "MEDIA", "ALTA"]);
+const validSampleTypes = new Set(["SOLO", "FOLIAR", "PECIOLO", "MASSA_SECA", "GRAO", "SEMENTE", "FERTILIZANTE", "BIOLOGICO"]);
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -16,6 +17,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const parameterCategory = typeof body.parameterCategory === "string" && validCategories.has(body.parameterCategory) ? (body.parameterCategory as "QUIMICO" | "FISICO" | "MICROBIOLOGICO") : "QUIMICO";
     if (!parameterCode) return Response.json({ error: "Código do parâmetro é obrigatório." }, { status: 400 });
     const criticality = typeof body.criticality === "string" && validCriticality.has(body.criticality) ? (body.criticality as "BAIXA" | "MEDIA" | "ALTA") : null;
+    const sampleType =
+      typeof body.sampleType === "string" && validSampleTypes.has(body.sampleType)
+        ? (body.sampleType as "SOLO" | "FOLIAR" | "PECIOLO" | "MASSA_SECA" | "GRAO" | "SEMENTE" | "FERTILIZANTE" | "BIOLOGICO")
+        : "SOLO";
 
     const parameter = await upsertCropProfileParameter({
       tenantId: session.tenantId,
@@ -23,6 +28,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       cropProfileId: id,
       parameterCode,
       parameterCategory,
+      sampleType,
       depthFromCm: typeof body.depthFromCm === "number" ? body.depthFromCm : null,
       depthToCm: typeof body.depthToCm === "number" ? body.depthToCm : null,
       analyticalMethodAllowed: Array.isArray(body.analyticalMethodAllowed) ? (body.analyticalMethodAllowed as string[]) : [],

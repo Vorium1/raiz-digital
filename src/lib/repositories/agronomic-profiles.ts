@@ -43,6 +43,7 @@ export async function getCropProfile(tenantId: string, cropProfileId: string, us
     if (!profile) return null;
     const parametersResult = await client.query(
       `SELECT id::text, parameter_code AS "parameterCode", parameter_category AS "parameterCategory",
+              sample_type AS "sampleType",
               depth_from_cm::float8 AS "depthFromCm", depth_to_cm::float8 AS "depthToCm",
               analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
               sufficiency_ranges AS "sufficiencyRanges", criticality, yield_goal_bracket AS "yieldGoalBracket",
@@ -102,6 +103,8 @@ export async function upsertCropProfileParameter(input: {
   cropProfileId: string;
   parameterCode: string;
   parameterCategory: "QUIMICO" | "FISICO" | "MICROBIOLOGICO";
+  /** Ver `agronomic-engine.ts` -- tipo de amostra (solo, foliar, pecíolo...). Default 'SOLO' preserva comportamento existente. */
+  sampleType?: "SOLO" | "FOLIAR" | "PECIOLO" | "MASSA_SECA" | "GRAO" | "SEMENTE" | "FERTILIZANTE" | "BIOLOGICO";
   depthFromCm?: number | null;
   depthToCm?: number | null;
   analyticalMethodAllowed?: string[];
@@ -119,9 +122,9 @@ export async function upsertCropProfileParameter(input: {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max, derived_parameter_code)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], nullif($7,''), $8::jsonb, $9::parameter_criticality, nullif($10,''), nullif($11,''), $12, $13, nullif($14,''))
-       ON CONFLICT (crop_profile_id, parameter_code, depth_from_cm, depth_to_cm, condition_parameter_code, condition_min, condition_max)
+       (crop_profile_id, parameter_code, parameter_category, sample_type, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max, derived_parameter_code)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6, $7::text[], nullif($8,''), $9::jsonb, $10::parameter_criticality, nullif($11,''), nullif($12,''), $13, $14, nullif($15,''))
+       ON CONFLICT (crop_profile_id, parameter_code, sample_type, depth_from_cm, depth_to_cm, condition_parameter_code, condition_min, condition_max)
        DO UPDATE SET parameter_category = EXCLUDED.parameter_category, analytical_method_allowed = EXCLUDED.analytical_method_allowed,
                      unit_expected = EXCLUDED.unit_expected, sufficiency_ranges = EXCLUDED.sufficiency_ranges,
                      criticality = EXCLUDED.criticality, technical_notes = EXCLUDED.technical_notes,
@@ -131,6 +134,7 @@ export async function upsertCropProfileParameter(input: {
         input.cropProfileId,
         input.parameterCode.trim().toUpperCase(),
         input.parameterCategory,
+        input.sampleType ?? "SOLO",
         input.depthFromCm ?? null,
         input.depthToCm ?? null,
         input.analyticalMethodAllowed ?? [],

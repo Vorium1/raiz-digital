@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 
 function makeResult(overrides = {}) {
-  return { sampleCode: "P001", parameterCode: "PH", value: 5.8, unit: "", method: "CaCl2", depthFromCm: 0, depthToCm: 20, ...overrides };
+  return { sampleCode: "P001", parameterCode: "PH", value: 5.8, unit: "", method: "CaCl2", sampleType: "SOLO", depthFromCm: 0, depthToCm: 20, ...overrides };
 }
 
 function makeProfile(overrides = {}) {
@@ -23,6 +23,7 @@ function makeParam(overrides = {}) {
     id: "param-1",
     parameterCode: "PH",
     parameterCategory: "QUIMICO",
+    sampleType: "SOLO",
     depthFromCm: 0,
     depthToCm: 20,
     analyticalMethodAllowed: ["CaCl2"],
@@ -282,6 +283,63 @@ function makeParam(overrides = {}) {
     const result = runAgronomicEngine({ cropProfile: feProfile, labResults: [] });
     assert.equal(result.interpretation.length, 0);
   }
+  // 27. Parâmetro derivado exige que as entradas tenham o MESMO tipo de amostra
+  // do parâmetro derivado -- um resultado com o parameterCode certo (FE) mas
+  // tipo de amostra errado (FOLIAR em vez de SOLO) não deve ser aceito como
+  // entrada válida (nunca mistura amostra de solo com amostra de folha no
+  // mesmo cálculo).
+  {
+    const result = runAgronomicEngine({
+      cropProfile: feProfile,
+      labResults: [makeResult({ parameterCode: "FE", value: 1.0, sampleType: "FOLIAR", method: "" }), makeResult({ parameterCode: "CTC", value: 10, method: "" })],
+    });
+    const derived = result.interpretation.find((i) => i.parameterCode === "FE_TOXICITY_PSFE");
+    assert.equal(derived.interpretable, false);
+    assert.equal(derived.code, "DERIVED_INPUT_MISSING");
+  }
 }
 
-console.log("agronomic-engine: 23 cenários aprovados");
+// 24-26. Tipo de amostra (sample_type) -- decisão do diretor (2026-09-04): uma
+// faixa de solo e uma faixa de folha pro MESMO código de parâmetro nunca
+// podem ser confundidas pelo motor (ex.: videira tem N insuficiente<0,40%
+// no pecíolo mas <1,60% na folha completa -- e nenhuma das duas tem
+// qualquer relação com N no solo).
+{
+  const dualProfile = makeProfile({
+    parameters: [
+      makeParam({ id: "n-solo", parameterCode: "N", sampleType: "SOLO", sufficiencyRanges: [{ label: "Baixo-solo", max: 50 }, { label: "Alto-solo", min: 50 }] }),
+      makeParam({ id: "n-foliar", parameterCode: "N", sampleType: "FOLIAR", depthFromCm: null, depthToCm: null, sufficiencyRanges: [{ label: "Insuficiente-folha", max: 1.6 }, { label: "Normal-folha", min: 1.6, max: 2.4 }, { label: "Excessivo-folha", min: 2.4 }] }),
+    ],
+  });
+
+  // 24. Resultado de SOLO bate na faixa de solo, não na de folha.
+  {
+    const result = runAgronomicEngine({ cropProfile: dualProfile, labResults: [makeResult({ parameterCode: "N", value: 60, sampleType: "SOLO" })] });
+    const item = result.interpretation[0];
+    assert.equal(item.interpretable, true);
+    assert.equal(item.classification, "Alto-solo");
+    assert.equal(item.matchedParameter.id, "n-solo");
+  }
+
+  // 25. Resultado FOLIAR bate na faixa de folha, não na de solo -- mesmo valor
+  // numérico (2,0) que seria "Alto-solo" se fosse tratado como solo.
+  {
+    const result = runAgronomicEngine({ cropProfile: dualProfile, labResults: [makeResult({ parameterCode: "N", value: 2.0, sampleType: "FOLIAR", depthFromCm: null, depthToCm: null })] });
+    const item = result.interpretation[0];
+    assert.equal(item.interpretable, true);
+    assert.equal(item.classification, "Normal-folha");
+    assert.equal(item.matchedParameter.id, "n-foliar");
+  }
+
+  // 26. Tipo de amostra sem nenhuma faixa cadastrada (PECIOLO, só existe SOLO e
+  // FOLIAR neste perfil) -> não interpretável, motivo explícito, nunca
+  // confunde com outro tipo por engano.
+  {
+    const result = runAgronomicEngine({ cropProfile: dualProfile, labResults: [makeResult({ parameterCode: "N", value: 1.0, sampleType: "PECIOLO", depthFromCm: null, depthToCm: null })] });
+    const item = result.interpretation[0];
+    assert.equal(item.interpretable, false);
+    assert.equal(item.code, "SAMPLE_TYPE_NOT_COVERED");
+  }
+}
+
+console.log("agronomic-engine: 27 cenários aprovados");

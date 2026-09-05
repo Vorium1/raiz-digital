@@ -22,6 +22,7 @@ const knowledgeResearch = await readFile(new URL("../db/migrations/018_knowledge
 const prescriptionLimit = await readFile(new URL("../db/migrations/019_tenant_prescription_limit.sql", import.meta.url), "utf8");
 const conditionalRanges = await readFile(new URL("../db/migrations/020_conditional_sufficiency_ranges.sql", import.meta.url), "utf8");
 const derivedParameters = await readFile(new URL("../db/migrations/021_derived_parameters.sql", import.meta.url), "utf8");
+const sampleType = await readFile(new URL("../db/migrations/022_sample_type.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -76,4 +77,8 @@ assert.match(prescriptionLimit, /ADD COLUMN IF NOT EXISTS monthly_prescription_l
 assert.match(conditionalRanges, /ADD COLUMN condition_parameter_code/i);
 assert.match(conditionalRanges, /crop_profile_parameters_unique_range/i);
 assert.match(derivedParameters, /ADD COLUMN derived_parameter_code/i);
-console.log("migrations: contratos estruturais 001-021 aprovados");
+assert.match(sampleType, /ADD COLUMN sample_type text NOT NULL DEFAULT 'SOLO'/i);
+assert.match(sampleType, /ALTER TABLE lab_samples/i);
+assert.match(sampleType, /DROP CONSTRAINT crop_profile_parameters_unique_range/i);
+assert.match(sampleType, /UNIQUE \(crop_profile_id, parameter_code, sample_type,/i);
+console.log("migrations: contratos estruturais 001-022 aprovados");

@@ -19,6 +19,21 @@
 export type SufficiencyBand = { label: string; min?: number; max?: number };
 
 /**
+ * Tipo de amostra -- dimensão explícita do dado, não assumida implicitamente
+ * como solo. Decisão do diretor (2026-09-04): a RAIZ precisa separar
+ * classificação/cálculo por tipo de amostra (solo, foliar, pecíolo, massa
+ * seca, grão, semente, fertilizante, biológico), porque culturas perenes/
+ * frutíferas (videira, macieira, citros...) usam diagnose foliar como
+ * método PRINCIPAL de avaliação nutricional -- uma faixa de suficiência de
+ * folha e uma de solo pro mesmo código de parâmetro (ex.: "N", "P") não são
+ * intercambiáveis e nunca podem ser confundidas pelo motor. FOLIAR = folha
+ * completa (limbo+pecíolo); PECIOLO = só o pecíolo -- tratados como tipos
+ * diferentes porque o próprio manual CQFS-RS/SC 2016 tem tabelas de
+ * classificação DIFERENTES pra cada um, pra várias frutíferas.
+ */
+export type SampleType = "SOLO" | "FOLIAR" | "PECIOLO" | "MASSA_SECA" | "GRAO" | "SEMENTE" | "FERTILIZANTE" | "BIOLOGICO";
+
+/**
  * Registro de "parâmetros derivados": um valor a ser classificado que não
  * vem direto de um resultado de laboratório, mas de uma fórmula real e
  * citável aplicada sobre um ou mais resultados da MESMA amostra. Fica
@@ -74,6 +89,7 @@ export type CropProfileParameterDef = {
   id: string;
   parameterCode: string;
   parameterCategory: "QUIMICO" | "FISICO" | "MICROBIOLOGICO";
+  sampleType: SampleType;
   depthFromCm: number | null;
   depthToCm: number | null;
   analyticalMethodAllowed: string[];
@@ -124,6 +140,7 @@ export type LabResultInput = {
   value: number;
   unit: string;
   method: string;
+  sampleType: SampleType;
   depthFromCm: number | null;
   depthToCm: number | null;
 };
@@ -159,6 +176,7 @@ export type ParameterInterpretation =
       code:
         | "NO_CROP_PROFILE"
         | "PARAMETER_NOT_IN_PROFILE"
+        | "SAMPLE_TYPE_NOT_COVERED"
         | "AWAITING_HOMOLOGATION"
         | "METHOD_NOT_SUPPORTED"
         | "DEPTH_UNKNOWN"
@@ -231,9 +249,14 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
     return { ...base, interpretable: false, reason: "A safra não tem uma cultura vinculada a um perfil cadastrado.", code: "NO_CROP_PROFILE" };
   }
 
-  const candidates = cropProfile.parameters.filter((param) => param.parameterCode === result.parameterCode && param.status === "ACTIVE");
-  if (candidates.length === 0) {
+  const codeMatches = cropProfile.parameters.filter((param) => param.parameterCode === result.parameterCode && param.status === "ACTIVE");
+  if (codeMatches.length === 0) {
     return { ...base, interpretable: false, reason: `O perfil "${cropProfile.name}" não tem um parâmetro homologado para ${result.parameterCode}.`, code: "PARAMETER_NOT_IN_PROFILE" };
+  }
+
+  const candidates = codeMatches.filter((param) => param.sampleType === result.sampleType);
+  if (candidates.length === 0) {
+    return { ...base, interpretable: false, reason: `O perfil "${cropProfile.name}" tem faixa homologada para ${result.parameterCode}, mas não para amostra do tipo "${result.sampleType}" -- as faixas cadastradas são de outro tipo de amostra.`, code: "SAMPLE_TYPE_NOT_COVERED" };
   }
 
   const depthMatches = candidates.filter((param) => depthCompatible(result.depthFromCm, result.depthToCm, param.depthFromCm, param.depthToCm));
@@ -307,7 +330,7 @@ function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: s
 
   const resolvedInputs: Array<{ parameterCode: string; value: number }> = [];
   for (const requiredCode of fn.requiredParameterCodes) {
-    const match = sampleResults.find((r) => r.parameterCode === requiredCode && depthCompatible(r.depthFromCm, r.depthToCm, param.depthFromCm, param.depthToCm));
+    const match = sampleResults.find((r) => r.parameterCode === requiredCode && r.sampleType === param.sampleType && depthCompatible(r.depthFromCm, r.depthToCm, param.depthFromCm, param.depthToCm));
     if (!match) {
       return { ...base, interpretable: false, reason: `${param.parameterCode} é calculado a partir de ${fn.requiredParameterCodes.join(" e ")}, mas ${requiredCode} não foi informado (ou não tem profundidade compatível) na mesma amostra.`, code: "DERIVED_INPUT_MISSING" };
     }
