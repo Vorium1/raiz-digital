@@ -3047,8 +3047,39 @@ Turbopack) — não era erro de código real, era o servidor de dev pego no meio
 arquivo truncado. Resolvido apagando esse arquivo específico (seguro, está no `.gitignore`, se regenera
 sozinho) e rodando de novo. Se acontecer de novo com o servidor de dev ativo, mesma solução.
 
-**Frutíferas restantes ainda não carregadas** (chapter 6.5 já tinha as 18+pereira completas, isso é só
-lembrete): nenhuma, capítulo fechado. **Hortaliças restantes**: abóbora/abobrinha/moranga, alcachofra,
-aspargo, berinjela, chuchu, mandioquinha salsa, melancia/melão, nabo/rabanete, palmeira real australiana,
-pepino salada, pimentão, pupunheira, repolho (13 de 19). Próximo passo natural: continuar essas, depois
-avaliar florestais/medicinais/ornamentais/outras culturas ou voltar pros mecanismos de motor pendentes.
+## MARCO: capítulo 6.3 (Hortaliças) completo — 54 crop_profiles no catálogo total (2026-09-06)
+
+Fechei o restante do capítulo de Hortaliças na mesma sessão autônoma: abóbora/abobrinha/moranga,
+alcachofra, aspargo, berinjela, chuchu, ervilha, mandioquinha-salsa, melancia+melão, nabo+rabanete,
+palmeira real australiana, pepino salada, pimentão, pupunheira, repolho — 14 culturas nesta leva, somando
+às 6 já carregadas antes (tomateiro, alface-group, alho, beterraba+cenoura, brócolis+couve-flor, cebola) =
+**20 de 20 espécies do capítulo 6.3 completas**. Junto com Tubérculos e Raízes (3/3) e Frutíferas (19/19,
+já fechado antes), o catálogo total da RAIZ agora tem **54 `crop_profiles`** reais, todos em `DRAFT`.
+
+**Achados reais desta leva, vale registrar**:
+- **Ervilha** é leguminosa -- confirmei antes de decidir e usei `S_GRUPO_EXIGENTE` (>10mg/dm³), não
+  `S_GERAL`, mesma lógica já usada pra soja/canola nesta base (a lista oficial do grupo mais exigente de S
+  inclui leguminosas). Também NÃO recomenda adubação nitrogenada — mesma lógica de soja (rizóbio +
+  inoculação adequada substitui N mineral).
+- **Mandioquinha-salsa** tem a mesma assimetria já vista em tomateiro/batata-doce: Grupo 2 de P, Grupo 1
+  de K (confirmado na lista oficial antes de decidir, não assumido por semelhança).
+- **Palmeira real australiana** tem a estrutura de dose MAIS COMPLEXA desta base inteira até agora: cruza
+  três densidades de plantio (10.000/15.000/20.000 plantas/ha) × três fases (cobertura/formação/produção)
+  × classe de disponibilidade no solo — 3 dimensões ao mesmo tempo, mais que qualquer cultura já vista
+  (frutífera ou grão). Mantida só como texto, mesmo padrão de sempre pra dose multidimensional.
+- **Nenhuma das 14 culturas desta leva tem diagnose foliar** — confirma o padrão já visto no capítulo:
+  hortaliças anuais raramente têm tabela foliar no manual (só cebola teve, entre as 20 espécies do
+  capítulo) — não é omissão nossa, é como a fonte é estruturada.
+
+**Catálogo total por grupo** (conferido direto no banco): 19 Frutíferas, 20 Hortaliças, 7 grãos de
+Inverno, 3 Tubérculos/Raízes, 4 grãos de Verão = 54 `crop_profiles`. Nenhum parâmetro `ACTIVE` em nenhuma
+cultura — tudo `DRAFT`, aguardando homologação profissional real.
+
+**Testado**: `npm run test:handoff` + `npm run typecheck` limpos após toda a leva. Build de produção segue
+pendente (mesmo motivo de antes: servidor de dev ativo pro diretor navegar ao vivo).
+
+Próximo passo natural (não iniciado): capítulos restantes do manual (6.2 Forrageiras, 6.6 Florestais, 6.7
+Medicinais/Aromáticas/Condimentares, 6.8 Ornamentais, 6.9 Outras Culturas) ou voltar pros mecanismos de
+motor pendentes (dose de frutífera/hortaliça, ação por limiar, restrição de fonte de fertilizante,
+dispensa condicional por critério foliar) — que hoje afetam bem mais culturas do que quando foram
+registrados pela primeira vez.
