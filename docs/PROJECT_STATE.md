@@ -3184,3 +3184,37 @@ da Elsevier) antes de decidir se e como implementar o método de calagem por Ca 
 usar as estatísticas do Cerrado, decidir explicitamente entre solo nativo (~70%/86%, Cochrane & Azevedo
 1988) e solo cultivado sob manejo (~80% sem Al detectável, Embrapa 2007-2008) antes de publicar qualquer
 uma das duas.
+
+## Implementadas as duas ideias de UX do concorrente gestordefertilidade.com.br (2026-09-06)
+
+**1) Semáforo real de classificação.** Achado real ao investigar: a tabela de resultados na tela de análise
+(`agronomic-intelligence-panel.tsx`) mostrava TODO resultado interpretável com o mesmo badge verde
+("success"), não importa se a classificação era "Muito Baixo" ou "Adequado" — só a ausência de
+interpretação mudava a cor. Isso é enganoso (parece tudo bem quando pode não estar). Corrigido criando
+`ClassificationBadge` (`src/components/ui.tsx`), que reaproveita a paleta que já existia em
+`src/lib/classification-colors.ts` (até então usada só no mapa) pra colorir de verdade: deficiente/baixo em
+tons de alerta, adequado em verde, alto/excesso em cores distintas — sem inventar lógica nova de
+severidade, só espalhando a que já existia e já era usada em outro lugar da base. Aplicado nos 5 pontos onde
+um resultado de laboratório aparece: painel de análise real, exemplo de demonstração, relatório por talhão,
+relatório de evolução histórica, explorador de comparação.
+
+**2) Leitura de laudo (PDF/foto) por IA.** Novo endpoint `src/app/api/import/extract/route.ts` +
+`src/lib/ai/providers/gemini-lab-extraction-provider.ts`, reaproveitando a MESMA chave `GEMINI_API_KEY` e o
+mesmo padrão de chamada REST já usado em `gemini-prescription-provider.ts` (decisão por ser a alternativa
+mais simples/barata já paga, não um novo fornecedor). A IA só TRANSCREVE número por número (prompt explícito
+proíbe classificar, calcular ou inventar — se um valor estiver ilegível, a instrução é omitir a linha, nunca
+chutar); a saída é um CSV que passa pelo MESMO validador determinístico que já processa upload manual de
+CSV/XLSX (`buildLabImportPreview`), então toda a normalização de parâmetro/unidade/método e a detecção de
+bloqueio continuam sendo o código já testado — a IA não pula a validação, só substitui a digitação manual.
+`src/components/lab-importer.tsx` ganhou suporte a PDF/JPG/PNG/WEBP (antes só CSV/XLSX, com aviso explícito
+"PDF ainda não suportado" no próprio código) e um banner de alerta específico ("Transcrito por IA... confira
+CADA valor") sempre que a origem for IA, adicional à conferência humana obrigatória que já existia. A etapa
+de confirmação (`/api/import/commit`) recebe o CSV já transcrito e validado, exatamente como receberia um
+CSV digitado à mão — nenhum atalho novo no caminho de persistência.
+
+**Não testado de ponta a ponta**: a chamada real ao Gemini com um PDF/foto de laudo verdadeiro — não havia
+um arquivo de exemplo nesta sessão pra rodar contra a API paga sem gastar crédito às cegas. O que FOI
+testado: toda a metade determinística (typecheck limpo, `test:handoff` completo passando, reaproveitamento
+do `buildLabImportPreview` já coberto por `test-lab-import.mjs`). Antes de considerar esta funcionalidade
+"pronta" de verdade, falta: o diretor (ou alguém da equipe) testar ao vivo no servidor de dev com um laudo
+real (PDF ou foto) e conferir se a transcrição sai utilizável.

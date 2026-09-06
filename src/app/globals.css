@@ -449,6 +449,7 @@ button { color: inherit; }
 .import-message { align-items:flex-start; background:#f4f7f4; border-radius:10px; color:#52615b; display:flex; gap:10px; padding:12px 14px; }
 .import-message.danger { background:#fff1ef; color:#a9473e; }
 .import-message.success { background:#eaf7f1; color:#23775c; }
+.import-message.review { background:#f8ebdf; color:#9c5c31; }
 .import-message code { background:rgba(0,0,0,.08); border-radius:5px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; padding:1px 6px; }
 .import-message strong,.import-message small { display:block; }.import-message strong { font-size:10px; }.import-message small { font-size:8px; line-height:1.5; margin-top:3px; }
 .import-preview { background:#fbfdfb; border:1px solid var(--line); border-radius:13px; overflow:hidden; }
