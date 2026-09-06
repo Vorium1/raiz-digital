@@ -196,6 +196,31 @@ export function computeLimingDoseBySmpIndex(smpIndex: number, targetPh: LimingTa
   throw new Error(`índice SMP ${smpIndex} fora do intervalo esperado da Tabela 5.2 -- revisão necessária.`);
 }
 
+/**
+ * NOTA (2026-09-06): um terceiro método de calagem por "saturação específica
+ * de Ca a 60%" (Moreira et al., artigo real em Soil & Tillage Research v.255,
+ * DOI 10.1016/j.still.2025.106816, UFLA) foi pesquisado e chegou a ser
+ * implementado nesta versão do arquivo, depois REMOVIDO. Duas validações
+ * externas independentes discordaram sobre a fórmula: uma confirmou a
+ * fórmula completa (incluindo a constante 5600 e o denominador %CaO×%PRNT);
+ * a segunda achou apenas a FORMA do método no resumo do artigo (não a
+ * fórmula literal) e levantou uma suspeita técnica real de dupla contagem
+ * ao usar %CaO e %PRNT juntos no denominador (o PRNT já deriva do poder de
+ * neutralização, que por sua vez já considera o equivalente CaO+MgO -- a
+ * versão sem dupla contagem seria %CaO × %RE, reatividade, não %PRNT). Além
+ * disso ficou sem resposta clara qual meta usar na camada 20-40cm (0,6 como
+ * a camada superior, ou algo mais perto de 0,39 -- os dois materiais
+ * discordam, e reproduzir os números de exemplo do material de marketing só
+ * bateu com ~0,39, não com 0,6). Some-se a isso que o próprio manual
+ * CQFS-RS/SC (2016), já em uso nesta base, afirma que a relação Ca/Mg de
+ * 0,5 a mais de 10 não afeta o rendimento da maioria das culturas -- ou
+ * seja, este método entra em tensão direta com a fonte regional que já
+ * usamos. Dado tudo isso, e a regra do projeto de nunca publicar
+ * recomendação agronômica sem fonte confiável, decisão: NÃO implementar
+ * este método até ler o texto completo do artigo (hoje atrás de paywall da
+ * Elsevier). Ver `docs/PROJECT_STATE.md` pra histórico completo da pesquisa.
+ */
+
 export const LIMING_FORMULA_SOURCES = {
   hAlFromSmp: H_AL_FORMULA_SOURCE,
   necessidadeDeCalcario: NC_FORMULA_SOURCE,

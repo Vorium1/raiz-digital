@@ -3087,55 +3087,78 @@ registrados pela primeira vez.
 ## Pesquisa: material técnico do Cabeda + análise de concorrente (2026-09-06)
 
 A pedido do diretor, li integralmente o conteúdo novo da pasta `cabeda raiz digital` (2 documentos Word +
-~40 imagens dos dias 05 e 06/09) e acessei o concorrente `gestordefertilidade.com.br`. Não mudei nenhum
-código de produção nesta rodada — é pesquisa/validação, registrando aqui pra não se perder.
+~40 imagens dos dias 05 e 06/09), acessei o concorrente `gestordefertilidade.com.br`, e depois pedi DUAS
+rodadas independentes de validação externa (uma via Gemini, outra via Claude com busca na web) sobre 4
+perguntas em aberto. As duas rodadas DISCORDARAM entre si em pontos importantes — o registro abaixo é a
+versão final depois de cruzar as duas e testar numericamente contra dados reais, não a primeira resposta
+que chegou.
 
-**Origem do material**: é conteúdo de um curso/mentoria ("Do laudo ao perfil produtivo") assinado por
-Alfredo Richart (consultor em fertilidade/nutrição/fisiologia), repassado pelo Cabeda. Duas ideias técnicas
-novas, com o status real de validação de cada uma:
+**Origem do material**: conteúdo de um curso/mentoria ("Do laudo ao perfil produtivo") assinado por Alfredo
+Richart (consultor em fertilidade/nutrição/fisiologia), repassado pelo Cabeda.
 
-**1) Fósforo Relativo (PR) via P-remanescente — NÃO seguro pra implementar ainda.**
-A ideia (interpretar P do solo relativo à capacidade de retenção do solo, não só o teor bruto) é sólida e
-tem uma tabela real com números conferíveis numa das imagens (`WhatsApp Image 2026-09-05 at 10.51.49.jpeg`):
-P-Mehlich, P-remanescente, NCPR (nível crítico do P relativo) e PR (%) em 4 profundidades, com
-PR = 100 × P / NC batendo exatamente nas 4 linhas. Pedi validação externa (GPT/Gemini) da fórmula
-NC = f(P-rem), e a resposta trouxe `NC = 5,0 + 40,0 × e^(−0,042 × P-rem)` como sendo da 5ª Aproximação de
-Minas Gerais — **mas essa fórmula NÃO reproduz a tabela real**: pra P-rem=24,31 ela dá NC≈19,41, e a tabela
-real mostra NC=13,46. Além do erro numérico, o sinal da relação está invertido: na tabela real, NC **sobe**
-conforme o P-rem sobe; na fórmula exponencial recebida, NC **desce**. Ou seja, a validação externa trouxe
-uma fórmula de fonte/convenção diferente da que gerou a tabela do Cabeda, não a mesma coisa. **Não
-implementar essa fórmula no motor até achar a fonte primária real** (a citação certa provavelmente não é a
-5ª Aproximação de Minas Gerais genérica, e sim algum software comercial ou publicação regional específica —
-o próprio texto da validação já avisou essa possibilidade).
+**1) Fósforo Relativo (PR) via P-remanescente — IMPLEMENTADO em `src/domain/phosphorus-engine.ts`.**
+A fonte primária certa é: ALVAREZ V., V.H. et al. (1999), "Interpretação dos resultados das análises de
+solos", in *Recomendações para o uso de corretivos e fertilizantes em Minas Gerais — 5ª Aproximação*,
+CFSEMG — uma TABELA (não uma equação), reproduzida com atribuição explícita por Freire et al. (Embrapa
+Milho e Sorgo, Sistema de Produção 1). Essa tabela é a fonte primária confirmada e virou a classificação
+oficial do módulo (`classifyPhosphorusCFSEMG1999`). A "equação contínua" que também circulava
+(NC = 4,62 + 0,324731×P-rem + 0,00160568×P-rem²) NÃO teve publicação primária localizada em nenhuma das
+duas rodadas de validação — mas foi verificada numericamente duas vezes: reproduz os 6 pontos de fronteira
+da tabela oficial (desvio máx. 0,27 mg/dm³) E reproduz EXATAMENTE (2 casas decimais) os 4 pontos reais de
+uma tabela de laudo do próprio material do Cabeda (`WhatsApp Image 2026-09-05 at 10.51.49.jpeg` — os 4
+pontos estão hardcoded no teste `scripts/test-phosphorus-engine.mjs`). Por isso ficou implementada como
+cálculo contínuo auxiliar, sempre rotulada como não-oficial, com a tabela como fonte primária preferencial
+quando as duas divergirem (o teste documenta um caso real de divergência perto de fronteira de faixa —
+não é bug, é característica documentada dos dois métodos). Bandas de classificação do PR(%) (Muito
+baixo ≤50% / Baixo 50-72% / Médio 72-100% / Bom 100-150% / Muito bom >150%) também não são tabela
+publicada — são derivação própria, verificada nas duas rodadas de validação, e documentadas como tal no
+código.
 
-**2) Calagem por saturação específica de Ca a 60% (0-20cm) / 39% (20-40cm) — parcialmente confirmado, mas
-fórmula exata ainda não verificada.** O artigo citado é real: Moreira, S.G. et al., *"A practical method
-for estimating liming requirements based on soil chemical attributes and limestone composition"*,
-Soil & Tillage Research, v.255 (2026), artigo 106816, UFLA — confirmado por notícia institucional da UFLA
-e por matérias de imprensa (Canal Rural, Canal da Cana). Calibrado ao longo de 10 anos, 7 experimentos de
-campo em Minas Gerais (Latossolos/Argissolos), validado sobretudo em milho (ganhos de até 50% de
-produtividade) e depois café — **não deve ser generalizado pra solos de clima temperado ou mineralogia
-2:1**. As metas (60% Ca na CTC pH 7,0 em 0-20cm; equivalente a ~39% em 20-40cm) foram confirmadas. A
-fórmula que eu tinha registrado a partir das infográficos do Cabeda
-(`NC (Mg/ha) = (0,6×CTC − Ca_solo)×5600 / (%CaO×%PRNT)`) tem a premissa física certa (560kg/ha de CaO
-elevam 1,0 cmolc/dm³ de Ca em 20cm), mas a validação avisa que a fórmula final do artigo trata CaO e MgO
-em conjunto quando o calcário é dolomítico/misto, em vez de isolar só o CaO como multiplicador direto —
-ou seja, a fórmula do infográfico é uma simplificação de marketing, não a fórmula exata do paper. Tentei
-acessar o artigo direto (notícia da UFLA) mas está por trás de paywall da Elsevier — só a notícia
-institucional, sem a fórmula. **Não implementar no motor até ler o artigo completo ou uma fonte que cite a
-fórmula linha a linha.**
+**2) Calagem por saturação específica de Ca a 60% (Moreira et al., 2026) — PESQUISADO, NÃO IMPLEMENTADO.**
+O artigo é real (DOI 10.1016/j.still.2025.106816, Soil & Tillage Research v.255, UFLA/Silvino Guimarães
+Moreira), e as metas de 60%/29% (Ca/Mg, 0-20cm) e 39%/20% (Ca/Mg, 20-40cm, resultado experimental pra 95%
+de produtividade relativa) foram confirmadas nas duas rodadas. Mas cheguei a implementar a fórmula
+completa (`NC = (0,6×CTC − Ca_solo)×5600 / (%CaO×%PRNT)`) e REVERTI depois da segunda validação, por três
+motivos reais: (a) a segunda rodada não achou a fórmula literal no resumo do artigo — só achou a "forma"
+do método, diferente da primeira rodada que tinha "confirmado" a fórmula completa; (b) a segunda rodada
+levantou uma suspeita técnica concreta de dupla contagem: `%PRNT` já deriva do poder de neutralização, que
+por sua vez já embute o equivalente CaO+MgO do calcário — usar `%CaO` e `%PRNT` juntos no denominador pode
+estar aplicando o mesmo efeito duas vezes (a versão sem duplicidade seria `%CaO × %RE`, reatividade, não
+PRNT); (c) reproduzindo os números dos próprios infográficos do Cabeda pra camada 20-40cm, a conta só bate
+usando ~0,39 como fração-alvo daquela camada, não 0,6 (testei os dois casos, calcítico e dolomítico, e os
+dois batem com 0,39, não com 0,6) — o que contradiz a explicação em prosa das duas validações de que a
+fórmula usaria sempre 0,6. Ou seja: aritmética do material de marketing, explicação da validação 1 e
+explicação da validação 2 não concordam entre si sobre um detalhe que muda a dose calculada. Além disso, o
+domínio de calibração (7 experimentos em MG, ~4 safras, Latossolos, culturas anuais — não se sabe
+exatamente quais) é regional, e o próprio CQFS-RS/SC (2016) já em uso nesta base afirma que a relação Ca/Mg
+de 0,5 a mais de 10 não afeta o rendimento da maioria das culturas — ou seja, este método tensiona com a
+fonte regional que já é oficial aqui. **Decisão: não implementar até ler o artigo completo** (paywall
+Elsevier bloqueou o acesso automatizado). Ver comentário mantido em `src/domain/liming-engine.ts` com todo
+o histórico.
 
-**3) Duas coisas que ficaram resolvidas e JÁ podem ser usadas com segurança:**
-- **Estatísticas do Cerrado** (~70% das áreas agricultáveis com saturação por Al >10% em subsuperfície
-  20-40cm; ~86% com Ca trocável <0,4 cmolc/dm³ em subsuperfície) são reais, com fonte citável: SOUSA, D.M.G.;
-  LOBATO, E.; REIN, T.A. *"Uso de gesso agrícola nos solos da região do Cerrado"*, Embrapa Cerrados, 2005.
-  Podem ser citadas como contexto/referência técnica em conteúdo educativo da RAIZ.
-- **Método de Albrecht/BCSR (proporção fixa Ca:Mg:K) confirmado como cientificamente refutado** —
-  Kopittke & Menzies (2007), *Soil Science Society of America Journal*, mostra que não existe uma
-  "proporção ideal" única de cátions comprovada experimentalmente; plantas se desenvolvem bem numa faixa
-  ampla de relações, desde que os nutrientes estejam em quantidade absoluta suficiente. **Decisão: não
-  implementar BCSR como método de calagem na RAIZ** — já temos V% e SMP, que são os métodos com base
-  científica sólida; o BCSR ficaria de fora por escolha técnica, não por lacuna.
+**3) Estatísticas do Cerrado (70% Al alto / 86% Ca baixo) — CONTESTADO, NÃO USAR.** A primeira rodada de
+validação "confirmou" essas estatísticas citando Sousa & Lobato (Embrapa Cerrados, 2004/2005) e a fonte
+primária real por trás delas, Cochrane & Azevedo (1988) — números de um levantamento histórico da década
+de 1980. A segunda rodada NÃO localizou nenhuma fonte pra essas duas cifras específicas, e foi além:
+encontrou um estudo real da Embrapa (repositório Alice, doc. 938282) que levantou 143 talhões cultivados
+(20-40cm) em MG/GO, 2007-2008, e achou o CONTRÁRIO — em média pH, V%, Ca e Mg adequados em subsuperfície, e
+~80% das amostras SEM alumínio trocável detectável (atribuído ao uso corrente de gesso agrícola). A
+diferença provável: solo NATIVO de Cerrado (onde os 70%/86% históricos fazem sentido) vs. solo cultivado
+sob manejo moderno (onde ~80% está livre de Al) são coisas diferentes, e o material do Cabeda não qualifica
+qual dos dois está citando. **Não usar nenhuma das duas estatísticas em conteúdo da RAIZ sem antes decidir
+explicitamente qual população (nativo vs. cultivado) está sendo descrita** — usar uma pela outra seria
+publicar dado enganoso.
+
+**4) Método de Albrecht/BCSR (proporção fixa Ca:Mg:K) — CONFIRMADO como refutado nas duas rodadas.**
+Kopittke & Menzies (2007), *Soil Science Society of America Journal*, DOI 10.2136/sssaj2006.0186: dentro
+das faixas normalmente encontradas em solo, não há sustentação experimental pra uma "proporção ideal"
+única de cátions: plantas respondem bem numa faixa ampla, desde que cada nutriente esteja em quantidade
+absoluta suficiente (a proporção 65/10/5 de Bear et al., anos 1940, foi criada pra um problema específico
+de alfafa/potássio, não como ótimo agronômico geral, e experimentos de Albrecht tinham falha de
+delineamento — não controlavam a mudança de pH ao adicionar Ca). **Bônus real**: o próprio CQFS-RS/SC
+(2016), fonte primária já em uso nesta base, chega à mesma conclusão de forma independente e regional — não
+precisamos nem citar um paper estrangeiro pra justificar não implementar BCSR. **Decisão confirmada: não
+implementar BCSR como método de calagem na RAIZ.**
 
 **Análise do concorrente `gestordefertilidade.com.br`**: SaaS que vende direto ao produtor rural (>50ha),
 não ao intermediário — público diferente do nosso. Faz leitura de laudo por IA/OCR, calcula dose de
@@ -3147,9 +3170,17 @@ OCR+IA (sempre alimentando o motor determinístico já existente, nunca substitu
 agronomia, conforme regra do projeto) e um indicador visual tipo "semáforo" por parâmetro, mais fácil de
 entender que uma tabela crua.
 
-**Pendências reais que ficam em aberto**: (a) achar a fonte primária certa da fórmula NC=f(P-rem) — a
-tabela real do Cabeda tem 4 pontos de dado que servem pra conferir qualquer fórmula candidata antes de
-confiar nela; (b) ler o artigo completo do Moreira et al. 2026 (ou achar uma fonte secundária que cite a
-fórmula linha a linha) antes de implementar o método de calagem por Ca 60%. Nenhum dos dois vai pro motor
-agronômico enquanto não tiver fonte primária verificada — consistente com a regra do projeto de nunca
-publicar recomendação oficial sem revisão/fonte confiável.
+**Lição do processo, vale registrar**: pedir validação externa duas vezes com fontes diferentes (Gemini
+numa rodada, Claude+busca web na outra) e cruzar as respostas contra dados numéricos reais foi o que
+evitou publicar pelo menos dois erros reais (a fórmula exponencial errada de fósforo na primeira rodada; a
+suspeita de dupla contagem na fórmula de calagem que só apareceu na segunda). Uma validação externa sozinha
+não é fonte de verdade — é candidata a ser conferida contra dado real antes de virar código.
+
+**Testado**: `npm run test:phosphorus` (novo, 4 pontos reais de laudo + tabela CFSEMG 1999) e
+`npm run test:handoff` completo, incluindo `typecheck`, aprovados após esta rodada.
+
+**Pendência real que fica em aberto**: ler o artigo completo do Moreira et al. 2026 (hoje atrás de paywall
+da Elsevier) antes de decidir se e como implementar o método de calagem por Ca 60% — e, se algum dia formos
+usar as estatísticas do Cerrado, decidir explicitamente entre solo nativo (~70%/86%, Cochrane & Azevedo
+1988) e solo cultivado sob manejo (~80% sem Al detectável, Embrapa 2007-2008) antes de publicar qualquer
+uma das duas.
