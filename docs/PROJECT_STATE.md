@@ -3004,3 +3004,51 @@ leva. Confirmei direto no banco real: 19 `crop_profiles` com `crop_group = 'FRUT
 Próximo passo natural (não iniciado ainda): outras categorias do manual fora do capítulo 6.5 (florestais,
 hortaliças, etc.) ou avançar os mecanismos de motor pendentes (dose de frutífera, ação por limiar,
 restrição de fonte de fertilizante) em vez de mais dado de catálogo.
+
+## Novo capítulo: Hortaliças e Tubérculos/Raízes (2026-09-05/06, continuação autônoma)
+
+Abri os dois capítulos seguintes do manual (6.3 Hortaliças e 6.4 Tubérculos e Raízes), seguindo o mesmo
+padrão de baixo risco das frutíferas. Antes de carregar qualquer cultura nova, adicionei ao módulo
+compartilhado (`scripts/lib/cqfs-2016-grupo2-graos.mjs`) as tabelas de classificação de solo do **Grupo 1**
+(mais exigente) de P (Tabela 6.3) e K (Tabela 6.8) — necessárias porque várias hortaliças/tubérculos são
+Grupo 1, diferente de grãos/frutíferas que são todos Grupo 2. Verifiquei as DUAS listas oficiais do manual
+(P: alho/beterraba/cenoura/batata/roseira de corte; K: alho/beterraba/cenoura/mandioquinha-salsa/tomateiro/
+batata/batata-doce/roseira de corte) pra cada cultura antes de decidir o grupo — não assumi.
+
+**Tubérculos e Raízes (capítulo completo, 3/3 culturas do manual)**: batata (Grupo 1 nos dois), batata-doce
+(Grupo 2 de P, Grupo 1 de K — combinação assimétrica real), mandioca (Grupo 2 nos dois). Nenhuma tem
+diagnose foliar — o próprio capítulo afirma que resposta a micronutriente é rara no Sul do Brasil pra esse
+grupo de culturas, recomendação é preventiva via adubo orgânico.
+
+**Hortaliças (9 de 19 espécies do capítulo carregadas até agora)**: tomateiro (Grupo 2 de P, Grupo 1 de K
+— mesma assimetria da batata-doce; estrutura de dose nova, cronograma semanal de 17 semanas), alface/
+almeirão/chicória/rúcula/salsa (bundle, mesma tabela no manual pras 5 espécies), alho (Grupo 1 nos dois;
+primeira tabela de dose de micronutriente — Zn/B — condicionada à classificação geral de solo já
+automatizada), beterraba+cenoura (bundle, Grupo 1 nos dois; regra de S com limiar de AÇÃO próprio, <10mg/
+dm³, diferente do limiar de CLASSIFICAÇÃO geral de 5mg/dm³ — os dois documentados sem confundir), brócolis
++couve-flor (bundle, Grupo 2 nos dois), cebola (Grupo 2 nos dois; **primeira hortaliça com diagnose foliar
+automatizada** — faixa "adequada" única por nutriente, incluindo um achado citado na própria fonte, Kurtz &
+Ernani 2010: a cultura responde a Zn mesmo com solo >2mg/dm³ de teor).
+
+**Decisão de conversão de unidade, registrar**: a tabela foliar da cebola vem no manual em g/kg pros
+macronutrientes — convertida pra % (÷10) nesta base pra manter consistência com todas as outras
+classificações foliares já carregadas, documentado explicitamente na fonte de cada parâmetro (não é
+mudança de valor, só de unidade de representação).
+
+**Testado**: `npm run test:handoff` + `npm run typecheck` limpos após cada bloco. **Build de produção NÃO
+rodado nesta leva** — o servidor de desenvolvimento está ativo (o diretor está navegando na plataforma pra
+ver o resultado ao vivo) e `next build`/`next dev` competem pelo mesmo diretório `.next/`, rodar os dois
+juntos arrisca corromper a sessão que ele está usando. Vou rodar build completo assim que for seguro
+(servidor de dev parado ou fim do bloco de trabalho).
+
+**Achado técnico, vale registrar pra não confundir no futuro**: durante este bloco, `npm run typecheck`
+falhou uma vez com um erro em `.next/dev/types/validator.ts` (arquivo gerado automaticamente pelo Next.js/
+Turbopack) — não era erro de código real, era o servidor de dev pego no meio de uma escrita, deixando o
+arquivo truncado. Resolvido apagando esse arquivo específico (seguro, está no `.gitignore`, se regenera
+sozinho) e rodando de novo. Se acontecer de novo com o servidor de dev ativo, mesma solução.
+
+**Frutíferas restantes ainda não carregadas** (chapter 6.5 já tinha as 18+pereira completas, isso é só
+lembrete): nenhuma, capítulo fechado. **Hortaliças restantes**: abóbora/abobrinha/moranga, alcachofra,
+aspargo, berinjela, chuchu, mandioquinha salsa, melancia/melão, nabo/rabanete, palmeira real australiana,
+pepino salada, pimentão, pupunheira, repolho (13 de 19). Próximo passo natural: continuar essas, depois
+avaliar florestais/medicinais/ornamentais/outras culturas ou voltar pros mecanismos de motor pendentes.
