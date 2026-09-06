@@ -3083,3 +3083,73 @@ Medicinais/Aromáticas/Condimentares, 6.8 Ornamentais, 6.9 Outras Culturas) ou v
 motor pendentes (dose de frutífera/hortaliça, ação por limiar, restrição de fonte de fertilizante,
 dispensa condicional por critério foliar) — que hoje afetam bem mais culturas do que quando foram
 registrados pela primeira vez.
+
+## Pesquisa: material técnico do Cabeda + análise de concorrente (2026-09-06)
+
+A pedido do diretor, li integralmente o conteúdo novo da pasta `cabeda raiz digital` (2 documentos Word +
+~40 imagens dos dias 05 e 06/09) e acessei o concorrente `gestordefertilidade.com.br`. Não mudei nenhum
+código de produção nesta rodada — é pesquisa/validação, registrando aqui pra não se perder.
+
+**Origem do material**: é conteúdo de um curso/mentoria ("Do laudo ao perfil produtivo") assinado por
+Alfredo Richart (consultor em fertilidade/nutrição/fisiologia), repassado pelo Cabeda. Duas ideias técnicas
+novas, com o status real de validação de cada uma:
+
+**1) Fósforo Relativo (PR) via P-remanescente — NÃO seguro pra implementar ainda.**
+A ideia (interpretar P do solo relativo à capacidade de retenção do solo, não só o teor bruto) é sólida e
+tem uma tabela real com números conferíveis numa das imagens (`WhatsApp Image 2026-09-05 at 10.51.49.jpeg`):
+P-Mehlich, P-remanescente, NCPR (nível crítico do P relativo) e PR (%) em 4 profundidades, com
+PR = 100 × P / NC batendo exatamente nas 4 linhas. Pedi validação externa (GPT/Gemini) da fórmula
+NC = f(P-rem), e a resposta trouxe `NC = 5,0 + 40,0 × e^(−0,042 × P-rem)` como sendo da 5ª Aproximação de
+Minas Gerais — **mas essa fórmula NÃO reproduz a tabela real**: pra P-rem=24,31 ela dá NC≈19,41, e a tabela
+real mostra NC=13,46. Além do erro numérico, o sinal da relação está invertido: na tabela real, NC **sobe**
+conforme o P-rem sobe; na fórmula exponencial recebida, NC **desce**. Ou seja, a validação externa trouxe
+uma fórmula de fonte/convenção diferente da que gerou a tabela do Cabeda, não a mesma coisa. **Não
+implementar essa fórmula no motor até achar a fonte primária real** (a citação certa provavelmente não é a
+5ª Aproximação de Minas Gerais genérica, e sim algum software comercial ou publicação regional específica —
+o próprio texto da validação já avisou essa possibilidade).
+
+**2) Calagem por saturação específica de Ca a 60% (0-20cm) / 39% (20-40cm) — parcialmente confirmado, mas
+fórmula exata ainda não verificada.** O artigo citado é real: Moreira, S.G. et al., *"A practical method
+for estimating liming requirements based on soil chemical attributes and limestone composition"*,
+Soil & Tillage Research, v.255 (2026), artigo 106816, UFLA — confirmado por notícia institucional da UFLA
+e por matérias de imprensa (Canal Rural, Canal da Cana). Calibrado ao longo de 10 anos, 7 experimentos de
+campo em Minas Gerais (Latossolos/Argissolos), validado sobretudo em milho (ganhos de até 50% de
+produtividade) e depois café — **não deve ser generalizado pra solos de clima temperado ou mineralogia
+2:1**. As metas (60% Ca na CTC pH 7,0 em 0-20cm; equivalente a ~39% em 20-40cm) foram confirmadas. A
+fórmula que eu tinha registrado a partir das infográficos do Cabeda
+(`NC (Mg/ha) = (0,6×CTC − Ca_solo)×5600 / (%CaO×%PRNT)`) tem a premissa física certa (560kg/ha de CaO
+elevam 1,0 cmolc/dm³ de Ca em 20cm), mas a validação avisa que a fórmula final do artigo trata CaO e MgO
+em conjunto quando o calcário é dolomítico/misto, em vez de isolar só o CaO como multiplicador direto —
+ou seja, a fórmula do infográfico é uma simplificação de marketing, não a fórmula exata do paper. Tentei
+acessar o artigo direto (notícia da UFLA) mas está por trás de paywall da Elsevier — só a notícia
+institucional, sem a fórmula. **Não implementar no motor até ler o artigo completo ou uma fonte que cite a
+fórmula linha a linha.**
+
+**3) Duas coisas que ficaram resolvidas e JÁ podem ser usadas com segurança:**
+- **Estatísticas do Cerrado** (~70% das áreas agricultáveis com saturação por Al >10% em subsuperfície
+  20-40cm; ~86% com Ca trocável <0,4 cmolc/dm³ em subsuperfície) são reais, com fonte citável: SOUSA, D.M.G.;
+  LOBATO, E.; REIN, T.A. *"Uso de gesso agrícola nos solos da região do Cerrado"*, Embrapa Cerrados, 2005.
+  Podem ser citadas como contexto/referência técnica em conteúdo educativo da RAIZ.
+- **Método de Albrecht/BCSR (proporção fixa Ca:Mg:K) confirmado como cientificamente refutado** —
+  Kopittke & Menzies (2007), *Soil Science Society of America Journal*, mostra que não existe uma
+  "proporção ideal" única de cátions comprovada experimentalmente; plantas se desenvolvem bem numa faixa
+  ampla de relações, desde que os nutrientes estejam em quantidade absoluta suficiente. **Decisão: não
+  implementar BCSR como método de calagem na RAIZ** — já temos V% e SMP, que são os métodos com base
+  científica sólida; o BCSR ficaria de fora por escolha técnica, não por lacuna.
+
+**Análise do concorrente `gestordefertilidade.com.br`**: SaaS que vende direto ao produtor rural (>50ha),
+não ao intermediário — público diferente do nosso. Faz leitura de laudo por IA/OCR, calcula dose de
+N/P/K/Ca/Mg/S, gera PDF de recomendação, tem "semáforo nutricional" visual e radar de preço de fertilizante.
+Preço R$97 a R$899/mês (bem abaixo da nossa meta de R$2.500-3.000), alegam +1.500 clientes e +37.000ha
+monitorados. Não é ameaça direta ao nosso modelo de negócio (empresa/consultoria como cliente, não o
+produtor), mas duas ideias de UX valem estudar pra RAIZ mais à frente: leitura automática de laudo por
+OCR+IA (sempre alimentando o motor determinístico já existente, nunca substituindo-o — IA não decide
+agronomia, conforme regra do projeto) e um indicador visual tipo "semáforo" por parâmetro, mais fácil de
+entender que uma tabela crua.
+
+**Pendências reais que ficam em aberto**: (a) achar a fonte primária certa da fórmula NC=f(P-rem) — a
+tabela real do Cabeda tem 4 pontos de dado que servem pra conferir qualquer fórmula candidata antes de
+confiar nela; (b) ler o artigo completo do Moreira et al. 2026 (ou achar uma fonte secundária que cite a
+fórmula linha a linha) antes de implementar o método de calagem por Ca 60%. Nenhum dos dois vai pro motor
+agronômico enquanto não tiver fonte primária verificada — consistente com a regra do projeto de nunca
+publicar recomendação oficial sem revisão/fonte confiável.
