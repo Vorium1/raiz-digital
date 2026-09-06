@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
-import { StatusBadge } from "@/components/ui";
+import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { AgronomicNarrativePanel } from "@/components/agronomic-narrative-panel";
 import { AgronomicPrescriptionPanel } from "@/components/agronomic-prescription-panel";
 
@@ -117,7 +117,7 @@ export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { 
                       <td>{item.sampleCode}</td>
                       <td>{item.parameterCode}</td>
                       <td>{fact ? `${fact.value} ${fact.unit}` : "—"}</td>
-                      <td>{item.interpretable ? <StatusBadge tone="success">{item.classification}</StatusBadge> : <StatusBadge tone="waiting"><span title={item.reason}>Não interpretável</span></StatusBadge>}</td>
+                      <td>{item.interpretable ? <ClassificationBadge label={item.classification}/> : <StatusBadge tone="waiting"><span title={item.reason}>Não interpretável</span></StatusBadge>}</td>
                     </tr>
                   );
                 })}

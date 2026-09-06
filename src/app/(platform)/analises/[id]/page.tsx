@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
-import { StatusBadge } from "@/components/ui";
+import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { AgronomicIntelligencePanel } from "@/components/agronomic-intelligence-panel";
 import { InputApplicationsManager } from "@/components/input-applications-manager";
 import { InputComparisonPanel } from "@/components/input-comparison-panel";
@@ -14,13 +14,6 @@ import { analysisStatusMeta, formatRelativeOrDate } from "@/domain/analysis-ui";
 
 const RUN_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
-
-function demoClassificationTone(classification: string): "success" | "danger" | "review" {
-  const normalized = classification.toLowerCase();
-  if (normalized === "adequado") return "success";
-  if (normalized.includes("baixo") || normalized.includes("alto")) return "danger";
-  return "review";
-}
 
 export default async function AnalysisDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -70,7 +63,7 @@ function DemoAnalysisDetail({ analysis }: { analysis: (typeof analyses)[number] 
               <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Resultado</th><th>Classificação</th></tr></thead>
               <tbody>{demoInterpretation.rows.map((row, index) => (
                 <tr key={index}><td>{row.sampleCode}</td><td>{row.parameterCode}</td><td>{row.value} {row.unit}</td>
-                  <td><StatusBadge tone={demoClassificationTone(row.classification)}>{row.classification}</StatusBadge></td>
+                  <td><ClassificationBadge label={row.classification}/></td>
                 </tr>
               ))}</tbody>
             </table></div>

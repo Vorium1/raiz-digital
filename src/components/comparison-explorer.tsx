@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
+import { ClassificationBadge } from "@/components/ui";
 
 type Mode = "fields" | "seasons" | "points" | "properties";
 
@@ -86,7 +87,7 @@ export function ComparisonExplorer() {
               <div className="field-ops-section-head compact"><div><span className="eyebrow">{index === 0 ? "A" : "B"}</span><h2>{side.label}</h2></div></div>
               {side.data?.interpretation?.length ? (
                 <table className="report-table"><thead><tr><th>Ponto</th><th>Parâmetro</th><th>Classificação</th></tr></thead>
-                  <tbody>{side.data.interpretation.map((item: any, i: number) => <tr key={i}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable ? item.classification : "—"}</td></tr>)}</tbody>
+                  <tbody>{side.data.interpretation.map((item: any, i: number) => <tr key={i}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable && item.classification ? <ClassificationBadge label={item.classification}/> : "—"}</td></tr>)}</tbody>
                 </table>
               ) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhuma interpretação homologada ainda para este item.</p>}
             </div>
@@ -101,7 +102,7 @@ export function ComparisonExplorer() {
               <div className="field-ops-section-head compact"><div><span className="eyebrow">{index === 0 ? "A" : "B"}</span><h2>{point?.code ?? "—"}</h2></div></div>
               {point?.results?.length ? (
                 <table className="report-table"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Classificação</th></tr></thead>
-                  <tbody>{point.results.map((r: any, i: number) => <tr key={i}><td>{r.parameterCode}</td><td>{r.value} {r.unit}</td><td>{r.classification ?? "—"}</td></tr>)}</tbody>
+                  <tbody>{point.results.map((r: any, i: number) => <tr key={i}><td>{r.parameterCode}</td><td>{r.value} {r.unit}</td><td>{r.classification ? <ClassificationBadge label={r.classification}/> : "—"}</td></tr>)}</tbody>
                 </table>
               ) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhum resultado laboratorial ainda para este ponto.</p>}
             </div>

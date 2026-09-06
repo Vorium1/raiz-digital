@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
+import { ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getHistoricalEvolutionReportData } from "@/lib/repositories/reports";
 import { getTenantBranding } from "@/lib/repositories/tenant-branding";
@@ -109,7 +110,7 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
             <section className="report-section" key={parameter}>
               <h2>{parameter}</h2>
               <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Data</th><th>Safra</th><th>Classificação</th></tr></thead>
-                <tbody>{history.map((entry, index) => <tr key={index}><td>{new Date(entry.date).toLocaleDateString("pt-BR")}</td><td>{entry.season}</td><td>{entry.classification}</td></tr>)}</tbody>
+                <tbody>{history.map((entry, index) => <tr key={index}><td>{new Date(entry.date).toLocaleDateString("pt-BR")}</td><td>{entry.season}</td><td>{entry.classification ? <ClassificationBadge label={entry.classification}/> : "—"}</td></tr>)}</tbody>
               </table></div>
             </section>
           )) : (

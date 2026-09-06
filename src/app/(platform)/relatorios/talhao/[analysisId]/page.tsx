@@ -6,7 +6,7 @@ import { PrintButton } from "@/components/print-button";
 import { PublishReportButton } from "@/components/publish-report-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
-import { StatusBadge } from "@/components/ui";
+import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
 import { getLatestAgronomicNarrative, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
@@ -112,7 +112,7 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
               <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Classificação</th></tr></thead>
                 <tbody>{structured.interpretation.map((item, index) => (
-                  <tr key={index}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable ? item.classification : <em>Não interpretável</em>}</td></tr>
+                  <tr key={index}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable && item.classification ? <ClassificationBadge label={item.classification}/> : <em>Não interpretável</em>}</td></tr>
                 ))}</tbody>
               </table></div>
             ) : <p className="report-empty-note">Nenhuma interpretação calculada ainda — sem recomendação ou classificação inventada.</p>}
