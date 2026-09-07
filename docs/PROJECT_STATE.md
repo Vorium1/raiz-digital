@@ -3611,3 +3611,27 @@ talhões, mas fica como verificação visual pendente pro diretor na primeira ve
 programação completa** -- resta o item 6 (testar com usuário real não-técnico, que só o diretor pode
 fazer de verdade) e as decisões que continuam sendo dele por regra do projeto: homologar a Soja
 (DRAFT→ACTIVE) e, mais pra frente, decidir quando entrar a "Fase F" de cobrança.
+
+## Verificação visual real do item 3 (2026-09-08) -- pendência fechada
+
+A entrada anterior tinha deixado registrado que o painel visual (tema escuro, dashboard de gráficos,
+navegador de propriedades/talhões, painel de NDVI) nunca tinha sido aberto de verdade num navegador nesta
+sessão. Fechei essa pendência: subi o servidor de desenvolvimento, criei uma sessão real autenticada e usei
+Playwright (headless Chromium, já instalado no projeto via `@playwright/test`) pra tirar screenshot real
+de `/coletas` e `/analises` em largura de desktop (1440px) e celular (390px, mesma largura de um iPhone
+comum).
+
+**Resultado: sem bug real.** Tema escuro, mapa real (Leaflet+PostGIS), gráficos do painel de análises
+(donut de status, barras de faixa de referência, evolução de pH, ranking de confiabilidade) e o novo
+painel de vigor por satélite renderizaram corretamente nas duas larguras, com dado real da Fazenda Cabeda
+(nenhum gráfico com dado de exemplo), sem erro no console do navegador. Nav inferior fixo no mobile
+(Painel/Clientes/Criar/Análises/Mais) funciona como um app de rede social -- conferido rolando a página de
+verdade (não só no screenshot de página inteira), o conteúdo desliza por baixo dele sem ficar preso.
+
+**Um susto que não era bug**: o primeiro screenshot (modo "página inteira") mostrou um círculo preto com a
+letra "N" flutuando estranhamente sobre o mapa/sidebar. Investigado e descartado -- é o indicador do
+`next dev` (aparece só em desenvolvimento, nunca em `next build`/`next start` de produção), não faz parte
+da interface real da RAIZ. Confirmado tirando um screenshot recortado só da tela visível (sem o modo
+"página inteira" do Playwright, que empilha elementos de posição fixa de forma estranha) -- lição pra
+próxima verificação visual: preferir screenshot de viewport normal a "full page" quando o layout usa
+elementos fixos (barra lateral, botão flutuante do assistente, nav inferior mobile).
