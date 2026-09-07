@@ -3218,3 +3218,70 @@ testado: toda a metade determinística (typecheck limpo, `test:handoff` completo
 do `buildLabImportPreview` já coberto por `test-lab-import.mjs`). Antes de considerar esta funcionalidade
 "pronta" de verdade, falta: o diretor (ou alguém da equipe) testar ao vivo no servidor de dev com um laudo
 real (PDF ou foto) e conferir se a transcrição sai utilizável.
+
+## Conceito visual novo aprovado + conversão pra tema escuro em toda a plataforma (2026-09-07)
+
+O diretor mandou um segundo concorrente pra analisar (InCeres — `materiais.inceres.com.br`, escala grande,
+13M ha processados, atende consultor/revenda/cooperativa/usina, ou seja o mesmo tipo de cliente que a RAIZ,
+diferente do gestordefertilidade que vende direto pro produtor). Depois disso, o diretor aprovou um conceito
+visual (3 imagens de mockup: "Propriedades & Talhões" com lista+mapa, "Painel de análises" com cartões de
+estatística e gráficos reais, "Laboratório & importação" com stepper de validação) num tema escuro
+grafite/turquesa, e pediu pra RAIZ virar exatamente essa direção visual: fundo escuro, cartões, gráficos,
+navegação simples — "as pesquisas e filtros devem ser muito fácil de entender... totalmente intuitivas,
+fáceis, visual, simple user" (reforça a exigência já registrada de simplicidade nível Facebook/Instagram).
+
+**O que foi feito nesta rodada — conversão completa pra tema escuro:**
+Até esta rodada, só a barra lateral (`--forest`) usava a paleta escura oficial da marca; o conteúdo
+principal (cartões, tabelas, formulários, topbar) era tema claro (`--paper`/`--surface` brancos). Convertido
+em três camadas, documentado em detalhe no commit:
+1. Tokens de `:root` redefinidos pra escuro (`--paper`, `--surface`, novo `--surface-2`, `--ink`, `--muted`,
+   `--line`) — `--forest`/`--teal`/`--cyan`/`--copper` continuam os mesmos, já eram a base do menu.
+   `color-scheme: dark` adicionado pra controles nativos de formulário acompanharem.
+2. ~90 declarações de fundo branco/quase-branco em elementos estruturais (cartões, tabelas, campos de
+   formulário) convertidas pra `var(--surface)`.
+3. ~200 cores hexadecimais restantes (fundos de painel recuado + textos escuros usados fora dos tokens)
+   convertidas com dois scripts Node próprios (preservam matiz, só invertem a faixa de luminosidade —
+   fundo muito claro vira escuro na mesma família de cor, texto escuro vira claro) — scripts descartados
+   depois de usados (só serviram pra essa conversão pontual, não fazem parte do código do produto).
+   Corrigidos à mão os casos onde o script teria clareado texto que precisa ficar ESCURO de propósito
+   (ícone/texto sobre botão turquesa vivo — `.button.primary`, `.sidebar-create`, `.assistant-fab`, ícone
+   do formulário do assistente): esses ficam escuros nos dois temas, não seguem a inversão geral.
+4. `.report-doc` (documento de relatório pra impressão/PDF) redefine os mesmos tokens localmente pra CLARO
+   — relatórios continuam em fundo branco (correto pra impressão), independente do tema escuro do resto do
+   app; qualquer conteúdo dentro de `.report-doc` que já usava `var(--ink)`/`var(--muted)`/`var(--line)`/
+   `var(--surface)` resolve certo automaticamente por herança de CSS custom property, sem precisar editar
+   cada regra `.report-*` uma por uma.
+5. Varredura separada pegou 4 cores claras hardcoded em `style` inline de JSX (fora do alcance da varredura
+   de CSS): `forgot-password-form.tsx`, `reset-password-form.tsx`, `comparativos/page.tsx`,
+   `settings-tabs.tsx` — convertidas à mão pros mesmos tons escuros.
+
+**Verificado**: `npm run typecheck` limpo depois de cada rodada de edição; servidor de dev (já rodando)
+respondeu sem erro 500 em `/`, `/login`, `/dashboard` depois da conversão. **Não verificado visualmente** —
+esta sessão não tem ferramenta de screenshot/browser, então não há confirmação visual real de que o
+resultado bate com o conceito aprovado. Isso precisa ser conferido ao vivo no navegador antes de considerar
+a tarefa 100% concluída — é o próximo passo real, não uma formalidade.
+
+**O que NÃO foi feito ainda, e é o núcleo do que falta pro conceito completo:**
+- A página "Painel de análises" do conceito (cartões de estatística + gráfico de barras comparando médias
+  com faixa de referência + gráfico de rosca de status de coleta + gráfico de linha de evolução de pH +
+  ranking de talhões por confiabilidade) é uma tela NOVA, não existe hoje — a `/analises` atual é uma lista/
+  tabela simples. Construir essa tela de verdade exige: (a) novas consultas de agregação no repositório
+  (médias de parâmetro por tenant/talhão, distribuição de status de pontos de coleta, histórico de pH por
+  safra, ranking de confiabilidade) — trabalho de backend real, não só de CSS; (b) gráficos desenhados à mão
+  (SVG/CSS, sem biblioteca, mesmo padrão já usado no resto do app) seguindo os princípios do skill de
+  dataviz (cor por função, não decoração; nunca dado fictício em `DATA_MODE=database`). Não comecei essa
+  parte nesta rodada — o volume de trabalho de CSS already consumiu o essencial do tempo disponível, e
+  começar os gráficos com dado inventado só pra "parecer pronto" violaria a regra do projeto contra
+  diagnóstico/número fictício.
+- A tela "Propriedades & Talhões" (lista+mapa) do conceito parece próxima do que já existe em
+  `real-field-map.tsx`/`agronomic-map-explorer.tsx`, mas não foi comparada lado a lado com o mockup nesta
+  rodada — pendente conferência.
+- Simplificação da navegação lateral (hoje 4 seções/15 itens; o conceito mostra 3 seções/~7 itens) foi
+  cogitada mas NÃO executada — decidi que o pedido explícito de "pesquisas e filtros simples" mirava mais os
+  controles de busca/filtro (que já são bem simples: uma busca + um select) do que a estrutura do menu, mas
+  vale confirmar com o diretor antes de mexer nisso, já que reduzir o menu por conta própria arriscaria
+  esconder páginas reais (Financeiro, Biblioteca Técnica etc.) sem necessidade comprovada.
+
+**Importante**: por pedido explícito do diretor, o link do servidor de dev NÃO deve ser reenviado até o
+conceito visual estar realmente mais completo (ele já tem o link de uma rodada anterior da sessão, então
+não é urgente enviar de novo — é sobre não sinalizar "pronto" antes da hora).
