@@ -3285,3 +3285,73 @@ a tarefa 100% concluída — é o próximo passo real, não uma formalidade.
 **Importante**: por pedido explícito do diretor, o link do servidor de dev NÃO deve ser reenviado até o
 conceito visual estar realmente mais completo (ele já tem o link de uma rodada anterior da sessão, então
 não é urgente enviar de novo — é sobre não sinalizar "pronto" antes da hora).
+
+## Dados reais da Fazenda Rafael Cabeda importados + painel de análises construído (2026-09-07)
+
+Nesta mesma sessão, o diretor pediu pra construir a parte de gráficos do "Painel de análises" (item pendente
+do bloco anterior) e, em seguida, mandou os laudos reais de análise de solo da propriedade de Rafael Cabeda
+(pasta "análises de solos" na Área de Trabalho) pedindo interpretação, gráficos, mapas, relatórios e
+recomendações — com soja plantada em outubro.
+
+**1) Painel de análises (gráficos) construído.** Novo bloco no topo de `/analises`: 5 cartões de estatística
++ 4 gráficos reais (barra de médias vs. faixa de referência, rosca de status, linha de evolução de pH,
+ranking de talhões por confiabilidade), desenhados à mão em SVG/CSS sem biblioteca — `src/components/
+analytics-charts.tsx` + `src/lib/repositories/analytics-dashboard.ts`. Toda consulta é agregação real
+escopada por tenant; nunca inventa número quando falta dado (estado vazio explícito).
+
+**2) Achado real e sério: a base estava com um problema de dado, não só sem dado.** Ao investigar por que as
+consultas de diagnóstico retornavam tudo vazio, descobri que a tabela `tenant_members` estava vazia — ou
+seja, o usuário `admin@raiz.local` (as credenciais que passei numa rodada anterior desta mesma sessão) não
+tinha vínculo ativo com NENHUM tenant, o que quebra a resolução de sessão (`app.user_memberships()`, usada
+por `getPlatformSession()`) e teria impedido esse login de funcionar de verdade. Corrigido: recriado o
+vínculo `admin@raiz.local` → tenant "Raiz Digital Demo" como `SUPER_ADMIN`. **Não sei explicar com certeza a
+causa raiz** (não apaguei essa tabela eu mesmo nesta sessão, e não há registro do que aconteceu) — pode ter
+sido um reset de ambiente, uma migration/seed rodada de novo, ou uma limpeza de teste E2E que não deveria ter
+afetado dado real. Vale o diretor saber que isso aconteceu, mesmo já corrigido, porque pode voltar a acontecer
+se a causa não for identificada.
+
+**3) Dados reais da Fazenda Rafael Cabeda importados.** `scripts/import-cabeda-solo-2026.mjs` (script único,
+mantido no repo por rastreabilidade) — cliente Rafael Cabeda, propriedade em Água Santa-RS, 3 talhões
+(Área 01 = 4,32ha/8 pontos, Área 02 = 2,13ha/4 pontos, Área 03 = 2,0ha/4 pontos = 16 pontos, 8,45ha total),
+safra 2026/27 (soja, plantio previsto out/2026), laboratório Mondial (CNPJ 32.383.245.0001/31, Relatórios de
+Ensaio 1414-1429/2026). Cada valor foi transcrito diretamente do PDF oficial (conferido contra o texto e a
+tabela renderizada de cada página — bateram). ~240 `lab_results` reais (pH, P, K, Ca, Mg, Al, H+Al, CTC,
+MO, S, B, Zn, Cu, Mn, argila%, índice SMP por ponto). Duas ressalvas de proveniência, documentadas nos
+próprios registros: (a) `analyses.source_human_verified = false` — nenhum humano confirmou contra o PDF
+original ainda, só eu; (b) posição dos 16 pontos é APROXIMADA (`sample_points.gps_source =
+'ESTIMADO_SEM_CAPTURA_REAL'`) — os documentos de origem só tinham um esboço relativo de layout dentro do
+polígono da área, sem coordenada GPS real capturada em campo, então construí um retângulo do tamanho real em
+hectares perto do centro aproximado do município — não é posição de campo real, só serve pra visualização.
+
+**4) Rodei o motor determinístico — e ele bloqueou a classificação de nutrientes, corretamente.** Os 16
+pontos ficaram `PARAMETER_NOT_IN_PROFILE` para todos os parâmetros porque as 17 faixas de suficiência da
+cultura SOJA (`scripts/seed-soja-cqfs-2016.mjs`, já conferidas contra o Manual CQFS-RS/SC 2016 oficial)
+ainda estão em `DRAFT` — nunca foram promovidas a `ACTIVE` por um revisor humano. **Isso é o motor funcionando
+como projetado, não um bug**: a regra do projeto é nunca classificar parâmetro não homologado. Existe um
+fluxo real pra promover DRAFT→ACTIVE (`src/app/api/crop-profile-parameters/[id]/status/route.ts`, acessível
+pela Biblioteca Técnica) — eu NÃO usei esse fluxo sozinho, porque decidir que essas faixas estão prontas pra
+virar oficiais é exatamente o tipo de revisão profissional que a regra do projeto reserva pra um humano, não
+pra mim. Fica como decisão explícita do diretor (ou de quem ele designar).
+
+**5) O que EU consegui entregar como recomendação real, sem depender dessa homologação**: dose de calagem
+calculada pelos dois métodos já homologados no motor (`liming-engine.ts`, V% e índice SMP, ambos
+independentes do perfil de cultura — usam CTC/V%/SMP direto do laudo), alvo pH 6,0 (referência CQFS-RS/SC
+pra soja). Médias por área:
+
+| Área | Método V% (t/ha) | Método SMP (t/ha) |
+|---|---|---|
+| Área 01 | 2,40 | 4,74 |
+| Área 02 | 0,36 | 3,20 |
+| Área 03 | 1,97 | 4,65 |
+
+Os dois métodos divergem bastante (SMP consistentemente mais alto que V%, principalmente na Área 02, que já
+está com V% alto ~72-75% e quase não precisaria de calagem por esse critério, mas o SMP ainda indica ~3,2
+t/ha). Essa divergência é real e vem dos dados, não é erro de cálculo — é exatamente o tipo de decisão que
+precisa de julgamento profissional (qual método usar, ou se popular calcário calcítico/dolomítico conforme
+teor de Mg de cada área) antes de virar recomendação oficial pro produtor.
+
+**Não fiz ainda nesta rodada**: conferir o painel de análises e as telas de mapa/relatório renderizando esses
+dados reais ao vivo no navegador (sem ferramenta de screenshot nesta sessão); a etapa de importação por CSV/
+IA que já existe no produto não foi usada aqui (dado entrou direto via script, mais confiável pra 240 valores
+reais do que reprocessar por OCR de novo); recomendação de P/K/micronutriente (depende da homologação do
+item 4).
