@@ -121,7 +121,7 @@ export async function getAnalysisStatusDistribution(tenantId: string, filters: A
        FROM scoped_analyses
        GROUP BY status
        ORDER BY count DESC`,
-      [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null, ADEQUATE_LABEL_PATTERN],
+      [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );
     return result.rows;
   });
@@ -142,7 +142,7 @@ export async function getFieldConfidenceRanking(tenantId: string, filters: Analy
        GROUP BY sf.id, sf.field_name
        ORDER BY "avgConfidence" DESC
        LIMIT 8`,
-      [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null, ADEQUATE_LABEL_PATTERN],
+      [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );
     return result.rows;
   });
