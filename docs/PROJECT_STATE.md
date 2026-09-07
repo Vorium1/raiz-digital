@@ -3436,8 +3436,61 @@ página removida ou escondida, só o menu ficou mais enxuto refletindo páginas 
 verificação ao vivo com sessão autenticada real (curl) confirmou o alerta aparecendo certo pros 3 talhões
 reais da Fazenda Cabeda e a nova estrutura de menu renderizando.
 
-**Ainda em aberto**: teste de ponta a ponta da leitura de laudo por IA (3 tentativas com um PDF real do
-Cabeda deram 503 "alta demanda" no Gemini — indisponibilidade temporária do serviço externo, não bug nosso;
-vale tentar de novo depois); groundwork de satélite/NDVI (não iniciado, aguardando credencial Copernicus do
+**Ainda em aberto**: groundwork de satélite/NDVI (não iniciado, aguardando credencial Copernicus do
 diretor); recomendação de P/K/micronutriente pra Cabeda (aguardando a decisão de homologação da Soja, que
 fica com o diretor).
+
+## Checklist do diretor (2026-09-08): item 1 (motor de dose) + item 2 (dados reais/operação de campo)
+
+O diretor pediu um checklist honesto do que falta pra concluir a plataforma, e depois pediu pra eu mesmo
+executar na ordem: 1 (motor agronômico) → 2 (dados reais/campo) → 5 (infra/produção) → 3 (visual, já quase
+todo feito) → 4 (satélite, por último, "me passe o que precisa"). Item 6 (negócio) fica pra depois do 3;
+importação de nota fiscal continua adiada como já combinado antes.
+
+**Item 1 -- motor de dose de fertilizante (kg/ha), primeira cultura real.** Achei a tabela de dose real da
+soja no manual oficial (item 6.1.18, p.130 -- extraída de `scratchpad/cqfs/manual.txt`, já baixado numa
+sessão anterior) e cruzei contra a Tabela 6.1.2 (p.106, rendimento referência): bateram exatamente (45 kg
+P2O5/ha e 75 kg K2O/ha de manutenção = "Alto" 1º/2º cultivo da tabela específica -- consistência interna da
+fonte confirmada). Novo módulo `src/domain/fertilizer-dose-engine.ts` (mesma disciplina zero-import dos
+outros motores), com a lógica real da fonte: dose depende do nível do solo, se é 1º ou 2º cultivo após a
+análise (correção parcelada em duas safras), e da expectativa de rendimento vs. referência (soma dose
+extra por tonelada adicional, nunca desconta pra rendimento menor). Em "Muito Alto" a fonte deixa a dose "a
+critério do técnico" entre 0 e a manutenção -- o motor nunca inventa um valor único aí, retorna a faixa
+marcada como `isDiscretionaryRange`. 25 cenários de teste conferidos número a número contra o PDF oficial.
+Enxofre (limiar fixo) incluído; molibdênio ficou como nota em texto (a fonte condiciona a sintoma visual em
+campo, não só laboratório -- não force um gatilho que a fonte não define como puramente laboratorial).
+**Não aprovei a Soja (DRAFT→ACTIVE) sozinho**, mesmo pedido de novo -- mantenho a posição já registrada
+antes (é a regra "inegociável" do projeto, existe pra não depender só de autorização). Estender esse motor
+pras outras culturas de grãos é mecânico (mesma seção 6.1 do manual, mesma estrutura de tabela por
+cultura) -- fica como próximo passo natural, não fiz ainda por escopo de tempo desta rodada.
+
+**Item 2 -- dados reais / operação de campo.**
+- **RLS com dois tenants reais, validado de verdade**: criei duas sessões autenticadas reais (uma por
+  tenant -- "Raiz Digital Demo", que tem os dados reais do Cabeda, e "RAIZ E2E Isolamento", um tenant de
+  teste vazio) e bati nas mesmas rotas reais da aplicação com cada uma. Tenant B não viu nenhum cliente do
+  tenant A (0 nomes em comum), e uma tentativa de acessar direto pela URL uma análise real do tenant A
+  usando a sessão do tenant B voltou vazia (`{"latest":null,"history":[]}`), não um erro nem um vazamento
+  de dado. RLS está funcionando como projetado. Esse era o item 8 da "Primeira tarefa obrigatória" do
+  `CLAUDE.md` -- confirmado nesta sessão, não só presumido.
+- **Leitura de laudo por IA, teste de ponta a ponta com PDF real, funcionou**: as 3 tentativas anteriores
+  bateram em 503 "alta demanda" do Gemini três vezes seguidas (não em sessões diferentes -- na mesma
+  sessão, minutos de intervalo). Em vez de aceitar isso como "só azar", adicionei retry com backoff curto
+  (2s, 5s) especificamente pra 503/429 em `gemini-lab-extraction-provider.ts` -- com isso, o teste com o
+  PDF real da Área 03 (4 pontos) funcionou: os 26 parâmetros por ponto que a IA leu batem com a transcrição
+  manual já conferida contra o PDF original.
+- **Achado real, não específico da IA**: o teste também mostrou 120 bloqueios -- mas a causa dominante não
+  é qualidade de transcrição, é que `inferMethod` (`src/domain/lab-import.ts`) só aplica o método de
+  fallback (escolhido no formulário de importação) pros parâmetros P e K; todo o resto (pH, CTC, Ca, Mg,
+  Al, MO etc.) exige método explícito por linha, e o laudo real da Mondial (como a maioria dos laudos
+  brasileiros) só declara o método uma vez, num rodapé geral ("Tedesco et al..."), não por parâmetro. Isso
+  bloquearia da MESMA forma um CSV digitado à mão a partir do mesmo laudo -- não é bug da leitura por IA,
+  é uma lacuna de usabilidade do sistema de importação inteiro. Não mudei essa lógica agora (ela existe de
+  propósito, pra rastreabilidade -- `CLAUDE.md`: "método analítico... deve ser rastreável") porque merece
+  uma decisão cuidadosa (talvez um campo de "método padrão do laudo" mais amplo, sempre com marca `*` de
+  inferido, igual já existe pra unidade) em vez de um ajuste apressado. Registrado como próximo passo real.
+- Coleta com GPS real em campo (celular) continua sem validação ao vivo nesta sessão -- não tenho como
+  testar isso sem um dispositivo real em campo.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` (agora com `test:fertilizer-dose`, 25 cenários a
+mais) aprovados. RLS e leitura de laudo verificados ao vivo com sessão autenticada real, não só por
+inspeção de código.
