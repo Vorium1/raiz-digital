@@ -276,11 +276,28 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      * produtividade numérica ligada ao clima (isso seria número inventado, sem modelo calibrado real por
      * trás), mas alertar com recomendação QUALITATIVA de manejo de risco, sourced numa fonte técnica real.
      *
-     * Fonte: NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-out/2026, persistindo até
+     * Fonte 1: NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-out/2026, persistindo até
      * 1º trim. 2027) via INMET/CPTEC; recomendações técnicas de Jossana Ceolin Cera (Meteorologista,
      * CREA-RS 244228, IRGA), publicadas em "El Niño 2026/27: foi dada a largada!" (Mais Soja/IRGA/Planeta
-     * Arroz, 2026). Conferido em 2026-09-07 via busca na web -- não é conteúdo gerado, é transcrição de
-     * publicação técnica real com autor identificado.
+     * Arroz, 2026).
+     *
+     * Fonte 2 (pedido do diretor, 2026-09-07: verificar se existe cálculo/modelo real ligando clima e
+     * produtividade antes de inventar qualquer coisa): pesquisei artigos revisados por pares.
+     * O mais rigoroso que achei -- Springer, Theoretical and Applied Climatology, abr/2026, "Weak and
+     * heterogeneous ENSO teleconnections to Brazilian soybean yields" -- analisou 2000-2020 em nível
+     * municipal/estadual/nacional com correção de teste múltiplo (Benjamini-Hochberg) e concluiu que a
+     * correlação ENOS-produtividade em nível estadual é "consistentemente fraca e não robusta" (correlação
+     * absoluta mediana ~0,17 nos 10 principais estados produtores) -- ou seja, a ciência confirma que NÃO
+     * existe hoje um modelo confiável o bastante pra estimar produtividade numérica a partir da fase do
+     * ENOS. Por isso este alerta nunca estima produtividade, só orienta manejo de risco.
+     * A única cifra real e quantificada que encontrei, e que por isso ENTRA no texto abaixo, vem de
+     * SOARES, S. et al. "Assessing environmental and management factors that drive soybean yield gaps in
+     * Brazil", Journal of Environmental Quality, v.54, p.1383-1396, 2025 (PMC12593302, acesso aberto):
+     * na macrorregião Sul (RS/SC/PR), atraso de plantio a partir de 30/10 custa até 42 kg/ha por dia de
+     * atraso; o mesmo artigo liga La Niña (não El Niño) a queda de produtividade no Sul por seca -- este
+     * ano sendo El Niño, o risco dominante é o inverso (chuva em excesso/atraso de plantio), não seca.
+     * Conferido em 2026-09-07 via busca na web -- nenhum dos dois é conteúdo gerado, são transcrições de
+     * publicações técnicas/científicas reais com autor identificado.
      *
      * Escopo: só dispara pra safra 2026/27, culturas de verão (soja/milho/arroz) em propriedades no RS --
      * é exatamente o recorte da fonte. Isso é conteúdo datado por natureza (uma previsão climática de uma
@@ -305,7 +322,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         category: "Aviso climático da safra",
         criticality: "MEDIA",
         title: `${row.crop} 2026/27 sob El Niño confirmado (≥90% NOAA/CPC) — atenção à janela de plantio`,
-        description: `${row.clientName} · ${row.fieldName} — primavera 2026 deve vir mais chuvosa que a média (El Niño). Janela de semeadura tende a ficar menor, com risco de atraso; evitar semeadura tardia. Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo com El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também. Fonte: NOAA/CPC via INMET/CPTEC; recomendações técnicas de Jossana Ceolin Cera (IRGA, CREA-RS 244228). Não é estimativa de produtividade — é orientação de manejo de risco.`,
+        description: `${row.clientName} · ${row.fieldName} — primavera 2026 deve vir mais chuvosa que a média (El Niño). Janela de semeadura tende a ficar menor, com risco de atraso; evitar semeadura tardia — na região Sul, atraso a partir de 30/10 custa até 42 kg/ha por dia de atraso (Soares et al., 2025, Journal of Environmental Quality). Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo com El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também (o risco de seca em si é mais associado à La Niña, não a este ano). Fontes: NOAA/CPC via INMET/CPTEC; Jossana Ceolin Cera (IRGA, CREA-RS 244228); Soares et al. (2025). Não é estimativa de produtividade — é orientação de manejo de risco.`,
         href: `/coletas`, context: row.fieldName,
       });
     }
