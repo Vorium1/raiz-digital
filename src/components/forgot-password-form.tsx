@@ -31,7 +31,7 @@ export function ForgotPasswordForm() {
 
   if (sent) {
     return (
-      <div className="login-error" style={{ background: "#eaf7f1", color: "#23775c" }}>
+      <div className="login-error" style={{ background: "#13271e", color: "#bae5d7" }}>
         <Icon name="check" size={16} />
         <span>Se esse e-mail estiver cadastrado, enviamos as instruções para redefinir a senha. Volte para o <Link href="/login">login</Link> quando terminar.</span>
       </div>

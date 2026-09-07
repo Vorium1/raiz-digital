@@ -43,7 +43,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
   if (success) {
     return (
-      <div className="login-error" style={{ background: "#eaf7f1", color: "#23775c" }}>
+      <div className="login-error" style={{ background: "#13271e", color: "#bae5d7" }}>
         <Icon name="check" size={16} />
         <span>Senha redefinida com sucesso. Levando você para o login…</span>
       </div>
