@@ -275,29 +275,41 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      * Aviso climático da safra (El Niño 2026/27) -- pedido real do diretor (2026-09-07): não estimar
      * produtividade numérica ligada ao clima (isso seria número inventado, sem modelo calibrado real por
      * trás), mas alertar com recomendação QUALITATIVA de manejo de risco, sourced numa fonte técnica real.
+     * Validado depois em DUAS rodadas independentes de pesquisa externa (GPT e Claude com busca na web,
+     * 2026-09-07/08) -- as duas confirmaram as fontes, mas trouxeram 3 correções importantes que mudaram
+     * o texto abaixo; documentadas aqui pra não se perder.
      *
-     * Fonte 1: NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-out/2026, persistindo até
-     * 1º trim. 2027) via INMET/CPTEC; recomendações técnicas de Jossana Ceolin Cera (Meteorologista,
-     * CREA-RS 244228, IRGA), publicadas em "El Niño 2026/27: foi dada a largada!" (Mais Soja/IRGA/Planeta
-     * Arroz, 2026).
+     * Fonte 1 (prognóstico da safra): NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-
+     * out/2026, persistindo até 1º trim. 2027) via INMET/CPTEC; recomendações técnicas de Jossana Ceolin
+     * Cera (Meteorologista, CREA-RS 244228, IRGA), publicadas em "El Niño 2026/27: foi dada a largada!"
+     * (Mais Soja/IRGA/Planeta Arroz, 2026).
      *
-     * Fonte 2 (pedido do diretor, 2026-09-07: verificar se existe cálculo/modelo real ligando clima e
-     * produtividade antes de inventar qualquer coisa): pesquisei artigos revisados por pares.
-     * O mais rigoroso que achei -- Springer, Theoretical and Applied Climatology, abr/2026, "Weak and
-     * heterogeneous ENSO teleconnections to Brazilian soybean yields" -- analisou 2000-2020 em nível
-     * municipal/estadual/nacional com correção de teste múltiplo (Benjamini-Hochberg) e concluiu que a
-     * correlação ENOS-produtividade em nível estadual é "consistentemente fraca e não robusta" (correlação
-     * absoluta mediana ~0,17 nos 10 principais estados produtores) -- ou seja, a ciência confirma que NÃO
-     * existe hoje um modelo confiável o bastante pra estimar produtividade numérica a partir da fase do
-     * ENOS. Por isso este alerta nunca estima produtividade, só orienta manejo de risco.
-     * A única cifra real e quantificada que encontrei, e que por isso ENTRA no texto abaixo, vem de
-     * SOARES, S. et al. "Assessing environmental and management factors that drive soybean yield gaps in
-     * Brazil", Journal of Environmental Quality, v.54, p.1383-1396, 2025 (PMC12593302, acesso aberto):
-     * na macrorregião Sul (RS/SC/PR), atraso de plantio a partir de 30/10 custa até 42 kg/ha por dia de
-     * atraso; o mesmo artigo liga La Niña (não El Niño) a queda de produtividade no Sul por seca -- este
-     * ano sendo El Niño, o risco dominante é o inverso (chuva em excesso/atraso de plantio), não seca.
-     * Conferido em 2026-09-07 via busca na web -- nenhum dos dois é conteúdo gerado, são transcrições de
-     * publicações técnicas/científicas reais com autor identificado.
+     * Fonte 2 (existe modelo real ligando clima e produtividade?): DA CUNHA MELLO, F.D.; KUMAR, P.;
+     * NASCIMENTO, E.G.S. "Weak and heterogeneous ENSO teleconnections to Brazilian soybean yields: a
+     * municipal-to-national assessment", Theoretical and Applied Climatology, v.157, art.322, 2026 (DOI
+     * 10.1007/s00704-026-06266-z, acesso aberto) -- 21 safras (2000-2021), 1.733 municípios, 10 estados.
+     * Depois de correção de teste múltiplo (Benjamini-Hochberg, q=0,10), NENHUM estado ficou
+     * estatisticamente significativo; correlação mediana |r|≈0,17 (R² mediano ≈0,03). CORREÇÃO 1
+     * (importante): o RS especificamente aparece como um dos estados de efeito DESPREZÍVEL na comparação
+     * El Niño×La Niña (|δ de Cliff|≤0,12) e é o estado de MAIOR variabilidade interanual do país (σ_RS
+     * 575,5 kg/ha vs. σ_MT 150,8 kg/ha) sem que o ENOS explique essa variação. Conclusão dos próprios
+     * autores: o RÓTULO de fase do ENOS sozinho não é preditor robusto -- o mecanismo real é a CHUVA
+     * dentro da estação, da qual o índice oceânico é só um proxy fraco. Por isso o texto abaixo nunca usa
+     * "é ano de El Niño" como razão determinística, só como contexto oficial de prognóstico.
+     *
+     * Fonte 3 (a única cifra numérica real e quantificada, por isso é a única que entra no texto): SOARES,
+     * M.F. et al. "Assessing environmental and management factors that drive soybean yield gaps in
+     * Brazil", Journal of Environmental Quality, v.54, n.6, p.1383-1396, 2025 (DOI 10.1002/jeq2.70076,
+     * PMC12593302, acesso aberto). CORREÇÃO 2 (geografia): a cifra de "até 42 kg/ha/dia de queda de Yp
+     * após 30/10" é da MR1 (macrorregião edafoclimática MAPA/ZARC que inclui o RS -- não é "RS+SC+PR"
+     * tratados como bloco único; a MR2, que cobre parte de PR/SP/MS, tem a MESMA perda máxima mas a queda
+     * só começa na 2ª quinzena de novembro). Nunca generalizar essa data pra outro estado sem checar a
+     * macrorregião do IN SPA/MAPA nº 1/2021. CORREÇÃO 3 (natureza do número): "até 42 kg/ha/dia" é
+     * DECAIMENTO DE PRODUTIVIDADE POTENCIAL (Yp) SIMULADO (sem limitação hídrica/nutricional), não perda
+     * observada em lavoura real -- é um TETO teórico pra ordenar prioridade ("atrasar custa mais no Sul"),
+     * nunca uma penalidade a se subtrair do laudo como se fosse precisão de campo. O mesmo artigo confirma
+     * que quem sofre queda de produtividade real no Sul é ano de LA NIÑA (por déficit hídrico) -- este ano
+     * sendo El Niño, o risco dominante tende a ser o oposto (chuva em excesso/atraso de plantio).
      *
      * Escopo: só dispara pra safra 2026/27, culturas de verão (soja/milho/arroz) em propriedades no RS --
      * é exatamente o recorte da fonte. Isso é conteúdo datado por natureza (uma previsão climática de uma
@@ -322,7 +334,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         category: "Aviso climático da safra",
         criticality: "MEDIA",
         title: `${row.crop} 2026/27 sob El Niño confirmado (≥90% NOAA/CPC) — atenção à janela de plantio`,
-        description: `${row.clientName} · ${row.fieldName} — primavera 2026 deve vir mais chuvosa que a média (El Niño). Janela de semeadura tende a ficar menor, com risco de atraso; evitar semeadura tardia — na região Sul, atraso a partir de 30/10 custa até 42 kg/ha por dia de atraso (Soares et al., 2025, Journal of Environmental Quality). Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo com El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também (o risco de seca em si é mais associado à La Niña, não a este ano). Fontes: NOAA/CPC via INMET/CPTEC; Jossana Ceolin Cera (IRGA, CREA-RS 244228); Soares et al. (2025). Não é estimativa de produtividade — é orientação de manejo de risco.`,
+        description: `${row.clientName} · ${row.fieldName} — prognóstico oficial (NOAA/CPC via INMET/CPTEC) indica El Niño confirmado para a safra 2026/27, o que historicamente tende a trazer primavera mais chuvosa no RS — mas um estudo científico recente (da Cunha Mello et al., 2026) mostra que, isoladamente, a fase do El Niño/La Niña é um sinal fraco pro RS especificamente; o que importa de verdade é acompanhar a previsão de chuva local, não só o rótulo do fenômeno. Ainda assim, valem os cuidados já recomendados pela meteorologista do IRGA: janela de semeadura tende a ficar menor, com risco de atraso — evitar semeadura tardia (na macrorregião do RS, cada dia de atraso além de ~30/10 pode custar até 42 kg/ha de teto de produtividade potencial simulada, Soares et al. 2025 — é um teto teórico, não uma perda medida em lavoura). Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo em ano de El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também (queda de produtividade por seca no RS está mais associada a anos de La Niña, não a este). Fontes: NOAA/CPC/INMET/CPTEC; Jossana Ceolin Cera (IRGA, CREA-RS 244228); da Cunha Mello et al. (2026, Theoretical and Applied Climatology); Soares et al. (2025, Journal of Environmental Quality). Não é estimativa de produtividade — é orientação de manejo de risco.`,
         href: `/coletas`, context: row.fieldName,
       });
     }
