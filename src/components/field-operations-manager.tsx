@@ -507,7 +507,7 @@ export function FieldOperationsManager() {
       </div>
     </section>
 
-    <section className="field-ops-planner card">
+    <section className="field-ops-planner card" id="nova-ordem-coleta">
       <div className="field-ops-section-head"><div><span className="eyebrow">PLANEJAMENTO</span><h2>Nova ordem de coleta</h2><p>Gere grid no próprio PostGIS ou abra a ordem para receber coordenadas de GPS.</p></div><Icon name="location" size={28}/></div>
       <div className="field-order-form">
         <label><span>Safra / talhão</span><select value={orderSeasonId} onChange={(e)=>setOrderSeasonId(e.target.value)}><option value="">Selecione</option>{context.seasons.map((season)=>{const field=context.fields.find((item)=>item.id===season.fieldId);return <option key={season.id} value={season.id}>{field?.name ?? "Talhão"} · {season.seasonLabel}</option>})}</select></label>

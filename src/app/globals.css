@@ -832,3 +832,41 @@ button { color: inherit; }
   .range-bar-row { grid-template-columns:1fr; }
   .donut-wrap { flex-direction:column; }
 }
+
+/* ========================================================= */
+/* Propriedades & Talhões -- lista + mapa                     */
+/* ========================================================= */
+.fields-browser { display:grid; gap:16px; grid-template-columns:320px minmax(0,1fr); margin-bottom:26px; }
+.fields-browser-list { display:flex; flex-direction:column; max-height:620px; overflow:hidden; padding:16px; }
+.fields-browser-search { align-items:center; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; display:flex; gap:8px; height:40px; padding:0 12px; }
+.fields-browser-search svg { color:var(--muted); flex-shrink:0; }
+.fields-browser-search input { background:transparent; border:0; color:var(--ink); flex:1; font-size:12px; outline:0; }
+.fields-browser-tabs { display:flex; gap:4px; margin:12px 0 8px; }
+.fields-browser-tabs button { background:transparent; border:0; border-radius:8px; color:var(--muted); cursor:pointer; flex:1; font-size:10px; font-weight:700; padding:8px 6px; }
+.fields-browser-tabs button.active { background:var(--surface-2); color:var(--teal); }
+.fields-browser-items { display:flex; flex-direction:column; gap:4px; overflow-y:auto; }
+.fields-browser-item { align-items:center; background:transparent; border:0; border-radius:9px; cursor:pointer; display:flex; gap:10px; padding:10px; text-align:left; width:100%; }
+.fields-browser-item:hover { background:var(--surface-2); }
+.fields-browser-item.selected { background:rgba(0,191,166,.13); }
+.fields-browser-item svg { color:var(--muted); flex-shrink:0; }
+.fields-browser-item.selected svg { color:var(--teal); }
+.fields-browser-item div { flex:1; min-width:0; }
+.fields-browser-item strong { display:block; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fields-browser-item small { color:var(--muted); display:block; font-size:9px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fields-browser-pct { background:var(--surface-2); border-radius:8px; color:var(--teal); flex-shrink:0; font-size:9px; font-weight:700; padding:3px 7px; }
+.fields-browser-map { display:flex; flex-direction:column; gap:14px; }
+.fields-browser-detail { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+.fields-browser-detail h3 { font-family:var(--font-heading); font-size:16px; margin:5px 0 16px; }
+.fields-browser-stats { display:grid; gap:12px; grid-template-columns:repeat(4,1fr); margin-bottom:16px; }
+.fields-browser-stats div { background:var(--surface-2); border-radius:10px; padding:10px 12px; }
+.fields-browser-stats span { color:var(--muted); display:block; font-size:8px; text-transform:uppercase; letter-spacing:.04em; }
+.fields-browser-stats strong { display:block; font-size:12px; margin-top:4px; }
+.fields-browser-actions { display:flex; gap:8px; }
+@media (max-width: 1180px) {
+  .fields-browser { grid-template-columns:1fr; }
+  .fields-browser-stats { grid-template-columns:repeat(2,1fr); }
+}
+@media (max-width: 520px) {
+  .fields-browser-actions { flex-direction:column; }
+  .fields-browser-actions .button { width:100%; }
+}
