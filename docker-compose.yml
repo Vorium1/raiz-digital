@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: raiz-digital-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raiz
+      POSTGRES_PASSWORD: raiz
+      POSTGRES_DB: raiz_digital
+    ports:
+      - "5432:5432"
+    volumes:
+      - raiz_digital_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raiz -d raiz_digital"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  raiz_digital_pgdata:

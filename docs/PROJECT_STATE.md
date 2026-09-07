@@ -3494,3 +3494,58 @@ cultura) -- fica como próximo passo natural, não fiz ainda por escopo de tempo
 **Testado**: `npm run typecheck` e `npm run test:handoff` (agora com `test:fertilizer-dose`, 25 cenários a
 mais) aprovados. RLS e leitura de laudo verificados ao vivo com sessão autenticada real, não só por
 inspeção de código.
+
+## Checklist do diretor (2026-09-08): item 5 (infraestrutura e produção)
+
+**`docker-compose.yml` criado -- lacuna real confirmada e corrigida.** O `CLAUDE.md` (passo 5 da "Primeira
+tarefa obrigatória") e o `MASTER_HANDOFF_CLAUDE.md` (passo 6) pedem `docker compose` pra subir o
+PostgreSQL/PostGIS local, mas o arquivo simplesmente não existia no repositório -- só o `Dockerfile`
+(build multi-stage só do Next.js, sem banco nenhum). Criado `docker-compose.yml` na raiz com a imagem
+`postgis/postgis:16-3.4-alpine`, usuário/senha/banco batendo exatamente com o que o `.env.example` já
+documentava (`DATABASE_URL=postgresql://raiz:raiz@localhost:5432/raiz_digital`), porta 5432 exposta,
+volume nomeado pra persistir dado entre reinícios, e healthcheck via `pg_isready`. O papel restrito
+`raiz_app` (usado em produção/`APP_DATABASE_URL`) continua sendo criado pela migration `006_app_runtime_role.sql`
+depois que o `npm run db:migrate` roda -- não faz parte do compose, de propósito, porque é assim que a
+migration já foi desenhada (senha setada depois via `npm run db:set-app-password`). **Limitação honesta**:
+o ambiente Bash desta sessão não tem o Docker CLI disponível (`docker: command not found`), então não
+consegui rodar `docker compose up` de verdade pra confirmar -- o arquivo segue a convenção oficial da
+imagem `postgis/postgis` e os valores já documentados no `.env.example`, mas o diretor (ou quem subir o
+ambiente local) deve rodar `docker compose up -d` e depois `npm run db:migrate && npm run seed:dev` como
+primeira verificação real.
+
+**`PaymentProvider` (cobrança/Mercado Pago): decisão de NÃO construir agora, com motivo documentado --
+não é lacuna esquecida, é adiamento intencional já registrado no próprio handoff.** Achei que
+`src/domain/billing.ts` só tem a interface (`PaymentProvider`, `AccessDecision`) sem nenhuma implementação
+(`grep "implements PaymentProvider"` não retornou nada), mas o schema real já existe desde a baseline 0.4
+(`subscriptions`, `invoices`, `payment_events` na migration `001_initial.sql`, com RLS ligado) -- inclusive
+a coluna `invoices.provider` já vem com `DEFAULT 'MERCADO_PAGO'`, ou seja, o provedor já tinha sido
+escolhido antes desta sessão, não é uma decisão em aberto. O que resolveu a dúvida de "construir agora ou
+não" foi reler o `MASTER_HANDOFF_CLAUDE.md`, que classifica isso explicitamente na "Fase F --
+endurecimento comercial": *"cobrança e webhooks apenas quando o núcleo técnico estiver estável"* -- ou
+seja, o próprio handoff pede pra NÃO priorizar isso agora. Respeitando a fonte de verdade do projeto (regra
+do `CLAUDE.md`: não redesenhar, não recomeçar), não construí a integração com o Mercado Pago nesta rodada.
+Quando o diretor decidir que o núcleo está estável o suficiente pra essa fase, o trabalho real que falta é:
+repositório de assinatura/fatura (hoje não existe nenhum arquivo em `src/lib/repositories/` pra essas 3
+tabelas), a implementação de `PaymentProvider` chamando a API real do Mercado Pago (Checkout Pro ou Pix),
+rota de webhook validando assinatura, e a lógica de bloqueio de acesso (`AccessDecision`) ligada nas
+páginas -- nada disso tem hoje um único import de sobra, é construção do zero quando chegar a hora.
+
+**Cobertura real dos testes E2E (Playwright), inventariada.** 6 arquivos em `e2e/`, 19 testes reais no
+total: `field-operations-isolation` (6, isolamento de operação de campo por tenant), `field-operations-rbac`
+(2), `platform-curator` (2, papel de curador de conteúdo da plataforma), `tenant-isolation` (3, o teste
+mais próximo do requisito "RLS com dois tenants" do `CLAUDE.md`, mas via UI/Playwright em vez da checagem
+ao vivo por API feita no item 2), `tenant-prescription-limit` (1) e `two-factor` (5, fluxo de 2FA
+completo). **Lacunas reais que ficaram claras no inventário**: não existe nenhum teste E2E cobrindo o
+fluxo básico de login (o caminho mais usado da plataforma inteira), nem a importação de laudo (manual ou
+por IA), nem o novo painel de analytics/gráficos construído nesta mesma sessão, nem a navegação
+Propriedades/Talhões com o mapa real. Nenhum teste de cobrança existe -- consistente com o `PaymentProvider`
+não estar implementado ainda, não é uma omissão à parte. Não escrevi testes novos agora (escopo do item 5
+era avaliar, não expandir suíte de teste) -- registrado aqui pra não se perder quando alguém for expandir
+a suíte.
+
+**Testado**: `npm run typecheck` aprovado depois da criação do `docker-compose.yml` (arquivo YAML, não
+afeta TypeScript, mas rodado por hábito). Não foi possível testar `docker compose up` de verdade nesta
+sessão (Docker CLI indisponível neste ambiente) -- limitação registrada acima, não maquiada como testado.
+
+**Ainda em aberto**: groundwork de satélite/NDVI (item 4, próximo da ordem do diretor); cobrança/Mercado
+Pago fica formalmente adiada pra "Fase F" por decisão já existente no handoff, não por esquecimento.
