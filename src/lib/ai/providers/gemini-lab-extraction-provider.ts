@@ -43,6 +43,18 @@ function extractText(payload: unknown): string | null {
   return (fenced ? fenced[1] : text).trim();
 }
 
+const RETRYABLE_STATUS = new Set([503, 429]);
+/** Espera curta entre tentativas -- 503 "alta demanda" do Gemini é explicitamente descrito como pico
+ * temporário pelo próprio Google; observado nesta base (2026-09-08) em duas tentativas manuais separadas
+ * por minutos, então uma única tentativa sem retry tem chance real de falhar por instabilidade externa,
+ * não por erro nosso. Backoff curto porque isso roda dentro de uma requisição HTTP síncrona (usuário
+ * esperando na tela de importação), não vale a pena esperar minutos. */
+const RETRY_DELAYS_MS = [2000, 5000];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export const geminiLabExtractionProvider = {
   name: "google" as const,
   model: process.env.GEMINI_LAB_EXTRACTION_MODEL ?? "gemini-3.6-flash",
@@ -52,29 +64,37 @@ export const geminiLabExtractionProvider = {
     if (!apiKey) throw new Error("GEMINI_API_KEY não configurada -- leitura por IA indisponível nesta instância. Use upload manual de CSV/XLSX.");
     const model = this.model;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ inline_data: { mime_type: input.mimeType, data: input.fileBase64 } }, { text: PROMPT }],
-            },
-          ],
-          generationConfig: { maxOutputTokens: 8000, temperature: 0 },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
-      throw new Error(`Gemini API respondeu ${response.status}: ${errorBody.slice(0, 500)}`);
+    let response: Response | undefined;
+    let lastErrorBody = "";
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [{ inline_data: { mime_type: input.mimeType, data: input.fileBase64 } }, { text: PROMPT }],
+              },
+            ],
+            generationConfig: { maxOutputTokens: 8000, temperature: 0 },
+          }),
+        },
+      );
+      if (response.ok) break;
+      lastErrorBody = await response.text().catch(() => "");
+      const shouldRetry = RETRYABLE_STATUS.has(response.status) && attempt < RETRY_DELAYS_MS.length;
+      if (!shouldRetry) break;
+      await sleep(RETRY_DELAYS_MS[attempt]);
     }
 
-    const payload = await response.json();
+    if (!response!.ok) {
+      throw new Error(`Gemini API respondeu ${response!.status} (após ${RETRY_DELAYS_MS.length + 1} tentativa(s)): ${lastErrorBody.slice(0, 500)}`);
+    }
+
+    const payload = await response!.json();
     const csvContent = extractText(payload);
     if (!csvContent) throw new Error("A IA não retornou nenhum texto legível a partir deste arquivo -- tente uma foto mais nítida ou o upload manual de CSV/XLSX.");
 
