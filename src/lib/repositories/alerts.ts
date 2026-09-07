@@ -271,6 +271,45 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
+    /**
+     * Aviso climático da safra (El Niño 2026/27) -- pedido real do diretor (2026-09-07): não estimar
+     * produtividade numérica ligada ao clima (isso seria número inventado, sem modelo calibrado real por
+     * trás), mas alertar com recomendação QUALITATIVA de manejo de risco, sourced numa fonte técnica real.
+     *
+     * Fonte: NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-out/2026, persistindo até
+     * 1º trim. 2027) via INMET/CPTEC; recomendações técnicas de Jossana Ceolin Cera (Meteorologista,
+     * CREA-RS 244228, IRGA), publicadas em "El Niño 2026/27: foi dada a largada!" (Mais Soja/IRGA/Planeta
+     * Arroz, 2026). Conferido em 2026-09-07 via busca na web -- não é conteúdo gerado, é transcrição de
+     * publicação técnica real com autor identificado.
+     *
+     * Escopo: só dispara pra safra 2026/27, culturas de verão (soja/milho/arroz) em propriedades no RS --
+     * é exatamente o recorte da fonte. Isso é conteúdo datado por natureza (uma previsão climática de uma
+     * safra específica) -- precisa ser atualizado ou removido quando a safra 2026/27 passar; não
+     * generaliza pra safras futuras sozinho.
+     */
+    const CLIMATE_ADVISORY_CROPS = ["soja", "milho", "arroz"];
+    const climateSeasons = await client.query(
+      `SELECT cs.id::text, cs.field_id::text AS "fieldId", cs.season_label AS "seasonLabel",
+              coalesce(cs.next_crop, cs.current_crop) AS crop, f.name AS "fieldName", c.name AS "clientName"
+       FROM crop_seasons cs
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       WHERE cs.tenant_id = $1::uuid AND cs.season_label = '2026/27' AND p.state = 'RS'
+         AND lower(coalesce(cs.next_crop, cs.current_crop, '')) = ANY($2::text[])`,
+      [tenantId, CLIMATE_ADVISORY_CROPS],
+    );
+    for (const row of climateSeasons.rows) {
+      alerts.push({
+        id: `climate-el-nino-2026-27-${row.id}`,
+        category: "Aviso climático da safra",
+        criticality: "MEDIA",
+        title: `${row.crop} 2026/27 sob El Niño confirmado (≥90% NOAA/CPC) — atenção à janela de plantio`,
+        description: `${row.clientName} · ${row.fieldName} — primavera 2026 deve vir mais chuvosa que a média (El Niño). Janela de semeadura tende a ficar menor, com risco de atraso; evitar semeadura tardia. Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo com El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também. Fonte: NOAA/CPC via INMET/CPTEC; recomendações técnicas de Jossana Ceolin Cera (IRGA, CREA-RS 244228). Não é estimativa de produtividade — é orientação de manejo de risco.`,
+        href: `/coletas`, context: row.fieldName,
+      });
+    }
+
     const order = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
     return alerts.sort((a, b) => order[a.criticality] - order[b.criticality]);
   });
