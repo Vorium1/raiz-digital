@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
+import { FieldNdviPanel } from "@/components/field-ndvi-panel";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 type FieldRow = { id: string; propertyId: string; name: string; areaHa: number; boundary: Geometry };
@@ -168,6 +169,8 @@ export function PropertiesFieldsBrowser() {
             </div>
           </div>
         )}
+
+        {selectedField && <FieldNdviPanel fieldId={selectedField.id} />}
       </div>
     </section>
   );

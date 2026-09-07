@@ -23,6 +23,7 @@ const prescriptionLimit = await readFile(new URL("../db/migrations/019_tenant_pr
 const conditionalRanges = await readFile(new URL("../db/migrations/020_conditional_sufficiency_ranges.sql", import.meta.url), "utf8");
 const derivedParameters = await readFile(new URL("../db/migrations/021_derived_parameters.sql", import.meta.url), "utf8");
 const sampleType = await readFile(new URL("../db/migrations/022_sample_type.sql", import.meta.url), "utf8");
+const satelliteNdvi = await readFile(new URL("../db/migrations/023_satellite_ndvi.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -81,4 +82,8 @@ assert.match(sampleType, /ADD COLUMN sample_type text NOT NULL DEFAULT 'SOLO'/i)
 assert.match(sampleType, /ALTER TABLE lab_samples/i);
 assert.match(sampleType, /DROP CONSTRAINT crop_profile_parameters_unique_range/i);
 assert.match(sampleType, /UNIQUE \(crop_profile_id, parameter_code, sample_type,/i);
-console.log("migrations: contratos estruturais 001-022 aprovados");
+assert.match(satelliteNdvi, /CREATE TABLE field_ndvi_snapshots/i);
+assert.match(satelliteNdvi, /FORCE ROW LEVEL SECURITY/i);
+assert.match(satelliteNdvi, /mean_ndvi numeric\(6,4\) NOT NULL CHECK \(mean_ndvi BETWEEN -1 AND 1\)/i);
+assert.match(satelliteNdvi, /UNIQUE \(tenant_id,field_id,captured_at,source\)/i);
+console.log("migrations: contratos estruturais 001-023 aprovados");

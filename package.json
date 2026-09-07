@@ -20,10 +20,11 @@
     "test:liming": "node --experimental-strip-types scripts/test-liming-engine.mjs",
     "test:phosphorus": "node --experimental-strip-types scripts/test-phosphorus-engine.mjs",
     "test:fertilizer-dose": "node --experimental-strip-types scripts/test-fertilizer-dose-engine.mjs",
+    "test:ndvi": "node --experimental-strip-types scripts/test-ndvi-engine.mjs",
     "test:ai-schema": "node --experimental-strip-types scripts/test-agronomic-narrative-schema.mjs",
     "test:prescription-schema": "node --experimental-strip-types scripts/test-agronomic-prescription-schema.mjs",
     "test:research-schema": "node --experimental-strip-types scripts/test-knowledge-research-schema.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run check:migrations",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run check:migrations",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -870,3 +870,20 @@ button { color: inherit; }
   .fields-browser-actions { flex-direction:column; }
   .fields-browser-actions .button { width:100%; }
 }
+
+.button.small { min-height:30px; padding:0 12px; font-size:10px; }
+
+/* ========================================================= */
+/* Vigor vegetativo por satélite (NDVI)                        */
+/* ========================================================= */
+.ndvi-panel { margin-top:16px; padding:18px 20px; }
+.ndvi-panel-head { align-items:center; display:flex; gap:10px; justify-content:space-between; margin-bottom:10px; }
+.ndvi-panel-meta { align-items:center; color:var(--muted); display:flex; font-size:10px; gap:6px; margin:0 0 10px; }
+.ndvi-panel-error { align-items:center; color:var(--danger); display:flex; font-size:10px; gap:6px; margin:0; }
+.ndvi-panel-variability { align-items:flex-start; background:var(--surface-2); border-radius:9px; color:var(--ink); display:flex; font-size:10px; gap:7px; line-height:1.5; margin:10px 0 0; padding:10px 12px; }
+.ndvi-panel-variability svg { color:var(--warning); flex-shrink:0; margin-top:1px; }
+.ndvi-zone-bar { border-radius:6px; display:flex; height:14px; overflow:hidden; width:100%; }
+.ndvi-zone-legend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:9px; list-style:none; margin:8px 0 0; padding:0; }
+.ndvi-zone-legend li { align-items:center; color:var(--muted); display:flex; gap:5px; }
+.ndvi-zone-legend i { border-radius:3px; display:block; height:8px; width:8px; }
+@media (max-width:520px) { .ndvi-panel-head { flex-direction:column; align-items:flex-start; } }

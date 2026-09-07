@@ -3549,3 +3549,65 @@ sessão (Docker CLI indisponível neste ambiente) -- limitação registrada acim
 
 **Ainda em aberto**: groundwork de satélite/NDVI (item 4, próximo da ordem do diretor); cobrança/Mercado
 Pago fica formalmente adiada pra "Fase F" por decisão já existente no handoff, não por esquecimento.
+
+## Checklist do diretor (2026-09-08): item 4 (satélite/NDVI) -- programação completa, falta só a credencial
+
+O diretor pediu pra eu programar tudo do item 4 "como se já estivesse pronto" e só devolver no final o
+que preciso dele pra funcionar de verdade. Feito -- só falta uma conta gratuita.
+
+**O que foi construído (código completo, testado onde dava pra testar sem a credencial real):**
+- **Migration `023_satellite_ndvi.sql`**: tabela `field_ndvi_snapshots` (uma leitura de satélite por
+  talhão/data/fonte), RLS com `FORCE ROW LEVEL SECURITY` + policy de isolamento por tenant, mesmo padrão
+  de todas as tabelas novas desde a migration 015. Aplicada de verdade no banco de desenvolvimento
+  (`npm run db:migrate` rodado nesta sessão, não só escrita).
+- **`src/domain/ndvi-engine.ts`** (zero-import, mesma disciplina dos outros motores): classifica NDVI em
+  5 faixas de vigor (sem vegetação / baixo / moderado / alto / muito alto) usando a escala geral mais
+  citada em sensoriamento remoto agrícola -- nunca converte NDVI em número de produtividade (o diretor foi
+  claro: "não é exatamente preciso, mas já dá uma ajuda", então o motor só classifica, nunca estima
+  colheita). Também detecta variabilidade interna real do talhão (zona de baixo vigor E zona de alto vigor
+  na mesma imagem) e devolve isso como aviso qualitativo, nunca como recomendação de dose diferenciada --
+  essa decisão fica com o agrônomo responsável. 12 cenários testados (`npm run test:ndvi`).
+- **`src/lib/satellite/copernicus-ndvi-provider.ts`**: implementação real da Statistical API do Sentinel
+  Hub, hospedada hoje pela Copernicus Data Space Ecosystem (sucessora do antigo Copernicus Open Access
+  Hub) -- a mesma fonte gratuita que já tinha sido aprovada pelo diretor antes desta sessão (ver entrada
+  de brainstorm mais acima). Segue a documentação pública real: autenticação OAuth2 client-credentials,
+  evalscript de NDVI = (B08-B04)/(B08+B04) com máscara de nuvem/sombra, histograma agregado por polígono.
+  **Não testada com credencial real** (não tenho conta Copernicus nesta sessão) -- registrado no próprio
+  código como aviso, não maquiado como testado.
+- **Repositório `src/lib/repositories/ndvi.ts`** + **rota `src/app/api/fields/[id]/ndvi/route.ts`** (GET
+  lê o que já foi salvo -- nunca chama o satélite sozinho; POST, restrito a
+  SUPER_ADMIN/TENANT_ADMIN/AGRONOMIST/FIELD_TECH, busca uma cena nova e grava). **Achado real durante o
+  teste ao vivo**: a rota nova quebrou com 500 porque eu criei a pasta como
+  `src/app/api/fields/[fieldId]/ndvi/` só pra descobrir que já existia `src/app/api/fields/[id]/route.ts`
+  -- o Next.js não aceita dois nomes de segmento dinâmico diferentes (`[id]` e `[fieldId]`) no mesmo nível
+  de rota, e isso quebra a build da árvore inteira, não só da rota nova. Corrigido renomeando pra
+  `[id]`, igual ao resto do projeto. Bug pego e corrigido só porque testei de verdade com sessão real
+  (curl), não por inspeção de código -- reforça, de novo, por que "testado" no `CLAUDE.md` significa
+  testado ao vivo.
+- **Painel `src/components/field-ndvi-panel.tsx`**, embutido no painel de talhão selecionado em
+  `PropertiesFieldsBrowser`: mostra a barra de faixas de vigor, o aviso de variabilidade quando existe, e
+  os 3 estados obrigatórios (carregando / vazio / erro) -- sem credencial configurada, o botão "Buscar
+  leitura" mostra o erro real da API ("COPERNICUS_CLIENT_ID / CLIENT_SECRET não configurados"), nunca um
+  gráfico de exemplo. Testado ao vivo com sessão real: GET devolveu `{"latest":null,...}` (nenhuma leitura
+  ainda, como esperado) e POST devolveu o erro 502 esperado por falta de credencial -- os dois casos
+  batendo exatamente com o design.
+
+**O que o diretor precisa fazer pra isso funcionar de verdade** (a única parte que não dava pra construir
+sozinho): criar uma conta gratuita em https://dataspace.copernicus.eu/, gerar um "OAuth Client"
+(client credentials) no painel da conta, e colar os dois valores em `COPERNICUS_CLIENT_ID` e
+`COPERNICUS_CLIENT_SECRET` no `.env` (variáveis já documentadas no `.env.example` desta sessão). Não
+precisa de cartão de crédito nem de aprovação manual -- é criação de conta self-serve, e o tier gratuito
+do Copernicus Data Space Ecosystem cobre o uso normal de uma plataforma como a RAIZ (poucas consultas por
+talhão por mês, não por usuário).
+
+**Testado**: `npm run typecheck`, `npm run test:handoff` (com `test:ndvi` novo) e `npm run check:migrations`
+aprovados. Migration 023 aplicada de verdade no Postgres de desenvolvimento. Rota GET/POST testada ao vivo
+com sessão autenticada real (curl) -- bug de conflito de rota pego e corrigido nesse teste, não em revisão
+de código. Painel visual não foi aberto num navegador real nesta sessão (sem ferramenta de screenshot
+disponível) -- CSS responsivo escrito seguindo o mesmo padrão de breakpoint já usado no resto do painel de
+talhões, mas fica como verificação visual pendente pro diretor na primeira vez que abrir a tela.
+
+**Com isso, os 4 primeiros itens do checklist do diretor (1, 2, 5, 3) mais o item 4 estão com a
+programação completa** -- resta o item 6 (testar com usuário real não-técnico, que só o diretor pode
+fazer de verdade) e as decisões que continuam sendo dele por regra do projeto: homologar a Soja
+(DRAFT→ACTIVE) e, mais pra frente, decidir quando entrar a "Fase F" de cobrança.
