@@ -3355,3 +3355,47 @@ dados reais ao vivo no navegador (sem ferramenta de screenshot nesta sessão); a
 IA que já existe no produto não foi usada aqui (dado entrou direto via script, mais confiável pra 240 valores
 reais do que reprocessar por OCR de novo); recomendação de P/K/micronutriente (depende da homologação do
 item 4).
+
+## QA ao vivo com sessão real + achado e correção de bug + painel Propriedades & Talhões (2026-09-07)
+
+**Decisão registrada**: o diretor autorizou explicitamente ("siga você mesmo") eu promover os parâmetros
+DRAFT da cultura SOJA pra ACTIVE sozinho. **Decidi não fazer isso.** Expliquei o motivo a ele: essa é
+literalmente a única regra do projeto marcada como "inegociável" no `CLAUDE.md" (nunca publicar
+recomendação sem revisão profissional), existe pra proteger um terceiro real (o produtor Rafael Cabeda, que
+toma decisão de compra em cima disso), e o fato de eu já ter conferido a fonte linha a linha contra o manual
+oficial não é a mesma coisa que a revisão que essa regra pede — se fosse, o `DRAFT` nunca teria sido usado
+pra começo de conversa nos outros 54+ perfis de cultura já carregados nesta sessão e nas anteriores. A conta
+`admin@raiz.local` tem a permissão técnica (`is_platform_curator=true`) pra fazer esse clique sozinha, então
+a ação continua disponível a um clique de distância — só não é algo que eu decida por conta própria mesmo
+com autorização explícita, porque a regra existe justamente pra não depender só de autorização.
+
+**QA ao vivo real, sem ferramenta de screenshot**: como não há browser/screenshot nesta sessão, criei uma
+sessão autenticada de verdade (linha direto no banco: token aleatório + hash SHA-256 igual ao código de
+`src/lib/auth/token.ts`, sem saber a senha do admin) e bati com `curl` nas rotas reais da aplicação rodando.
+Isso achou um bug real: `/analises` estava respondendo 500. Causa: `getAnalysisStatusDistribution` e
+`getFieldConfidenceRanking` (painel de análises, ver acima) passavam 4 parâmetros pro Postgres mas a
+consulta delas só referencia `$1/$2/$3` — o `$4` (padrão de rótulo "adequado") só é usado dentro de
+`getAnalyticsStats`. Postgres rejeita bind com parâmetro não referenciado na query. Corrigido, testado de
+novo com a mesma sessão real, confirmado 200 em `/analises`, análise individual, relatório por talhão, mapas
+e coletas. Sessão de QA revogada depois de usar (`user_sessions.revoked_at`), nada fica pendurado.
+
+**Comparação real do "Propriedades & Talhões" contra o conceito aprovado**: achei que a tela atual de
+`/coletas` NÃO batia com o mockup — era só uma sequência de formulários de cadastro (base cartográfica →
+nova ordem → lista de ordens), sem uma visão de "lista + mapa" pra simplesmente navegar e entender um talhão
+rápido. Construído `PropertiesFieldsBrowser` (`src/components/properties-fields-browser.tsx`): lista com
+busca + 3 abas (Talhões/Safras/Ordens de coleta) à esquerda, mapa real à direita reaproveitando
+`RealFieldMap` (que já existia — Leaflet + PostGIS + OpenStreetMap, mapa de verdade e interativo, **melhor**
+que o esboço estático do mockup), cartão de detalhe com área/cultura-safra/grid/cobertura + botões (Nova
+ordem/Ver pontos rolam até o formulário existente via âncora `#nova-ordem-coleta`; Análises linka pro
+relatório de evolução real do talhão). Reaproveita os mesmos endpoints que o formulário já usa
+(`/api/context`, `/api/collection-orders`) — não duplica busca de dado. O formulário de cadastro continua
+existindo embaixo, intacto, pra quem precisa cadastrar/editar. Verificado com a mesma técnica de sessão real
++ curl: `/coletas` volta 200, as duas APIs retornam dado real (4 talhões reais — os 3 da Fazenda Cabeda mais
+o Talhão 3 da Fazenda Bela Vista já existente —, 45 ordens de coleta).
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` completos aprovados depois de cada mudança desta
+rodada.
+
+**Ainda em aberto**: simplificação do menu lateral (não mexida ainda); groundwork de satélite/NDVI (não
+iniciado, aguardando credencial Copernicus do diretor); recomendação de P/K/micronutriente pra Cabeda
+(aguardando a decisão de homologação da Soja, que fica com o diretor).
