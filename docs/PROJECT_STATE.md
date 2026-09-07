@@ -3396,6 +3396,48 @@ o Talhão 3 da Fazenda Bela Vista já existente —, 45 ordens de coleta).
 **Testado**: `npm run typecheck` e `npm run test:handoff` completos aprovados depois de cada mudança desta
 rodada.
 
-**Ainda em aberto**: simplificação do menu lateral (não mexida ainda); groundwork de satélite/NDVI (não
-iniciado, aguardando credencial Copernicus do diretor); recomendação de P/K/micronutriente pra Cabeda
-(aguardando a decisão de homologação da Soja, que fica com o diretor).
+**Ainda em aberto**: groundwork de satélite/NDVI (não iniciado, aguardando credencial Copernicus do
+diretor); recomendação de P/K/micronutriente pra Cabeda (aguardando a decisão de homologação da Soja, que
+fica com o diretor).
+
+## Aviso climático (El Niño 2026/27) na base de fósforo real + validação cruzada + menu simplificado (2026-09-08)
+
+**Aviso climático real, não número inventado**: o diretor pediu clima (El Niño/La Niña) entrando na
+recomendação, com uma correção importante dele mesmo — nunca estimativa numérica de produtividade, só
+orientação qualitativa de manejo de risco. Pesquisei antes de construir: (1) confirmei via NOAA/CPC que a
+safra 2026/27 é El Niño (≥90% de probabilidade); (2) achei um artigo revisado por pares bem recente (da
+Cunha Mello et al., 2026, *Theoretical and Applied Climatology*) que prova que NÃO existe hoje modelo
+confiável ligando fase do ENOS a produtividade de soja no Brasil (correlação mediana ≈0,17 depois de
+correção estatística séria) — decisão de não inventar número está cientificamente respaldada; (3) achei uma
+cifra real quantificada e citável (Soares et al., 2025, *Journal of Environmental Quality*, acesso aberto):
+atraso de plantio depois de ~30/10 custa até 42 kg/ha/dia de queda de produtividade POTENCIAL simulada na
+macrorregião do RS. Construído um novo alerta real em `listOperationalAlerts` (mesmo padrão dos outros 10
+tipos de alerta), disparando pra safra 2026/27, culturas de verão, propriedades no RS.
+
+**Validação cruzada (GPT + Claude, pedido do próprio diretor) corrigiu 3 imprecisões reais** antes de eu
+deixar passar: (1) eu tinha implicado que "ano de El Niño" favorece o RS de forma geral — o próprio estudo
+mostra que o RS tem efeito de ENOS DESPREZÍVEL isolado (é o estado mais volátil do país, mas o ENOS não
+explica essa volatilidade); (2) eu tinha generalizado "RS/SC/PR" como bloco único pra cifra de 42 kg/ha/dia
+— na verdade é específica da macrorregião MR1 (zoneamento oficial MAPA/ZARC), a MR2 (parte de PR/SP/MS) tem
+data de início de queda diferente; (3) eu não tinha deixado claro que 42 kg/ha/dia é um TETO teórico de
+produtividade potencial simulada, não perda medida em lavoura real. Corrigido, testado ao vivo com sessão
+real de novo, commitado. Lição reforçada: mesmo pedindo pesquisa e cruzando duas fontes, ainda vale reler
+com cuidado antes de aceitar — as duas validações concordaram nos fatos brutos mas só uma delas (a segunda
+rodada) trouxe as nuances que realmente mudavam a implementação.
+
+**Menu lateral simplificado**: "Propriedades", "Talhões", "Safras & Culturas" e "Coletas & Pontos" eram 4
+itens de menu que já apontavam pra mesma página (`/coletas`, só com âncora diferente) — ficaram redundantes
+depois do `PropertiesFieldsBrowser` (painel de lista+mapa) construído nesta mesma sessão. Virou 1 item só.
+Seções reorganizadas pra bater com o conceito aprovado: PAINEL / OPERAÇÃO / INTELIGÊNCIA / ADMINISTRAÇÃO
+(só pra quem tem o papel) — de 4 seções/15 itens pra 3 seções/11 itens visíveis pra usuário comum. Nenhuma
+página removida ou escondida, só o menu ficou mais enxuto refletindo páginas que já eram a mesma tela.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` completos aprovados depois de cada mudança;
+verificação ao vivo com sessão autenticada real (curl) confirmou o alerta aparecendo certo pros 3 talhões
+reais da Fazenda Cabeda e a nova estrutura de menu renderizando.
+
+**Ainda em aberto**: teste de ponta a ponta da leitura de laudo por IA (3 tentativas com um PDF real do
+Cabeda deram 503 "alta demanda" no Gemini — indisponibilidade temporária do serviço externo, não bug nosso;
+vale tentar de novo depois); groundwork de satélite/NDVI (não iniciado, aguardando credencial Copernicus do
+diretor); recomendação de P/K/micronutriente pra Cabeda (aguardando a decisão de homologação da Soja, que
+fica com o diretor).
