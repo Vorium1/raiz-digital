@@ -773,3 +773,62 @@ button { color: inherit; }
 .sidebar-form-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
 .sidebar-form .form-submit{margin-top:2px}
 .narrative-review-actions{display:flex;gap:8px;margin-top:8px}
+
+/* ========================================================= */
+/* Painel de análises -- cartões de estatística + gráficos    */
+/* ========================================================= */
+.review-text { color: var(--warning) !important; }
+.analytics-panel { display:flex; flex-direction:column; gap:16px; margin-bottom:26px; }
+.analytics-stat-grid { display:grid; gap:14px; grid-template-columns:repeat(5,1fr); }
+.analytics-stat { background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:16px; }
+.analytics-stat span { color:var(--muted); display:block; font-size:9px; }
+.analytics-stat strong { display:block; font-family:var(--font-heading); font-size:22px; letter-spacing:-.03em; margin-top:6px; }
+.analytics-stat small { color:var(--muted); display:block; font-size:8px; margin-top:3px; }
+.analytics-chart-grid { display:grid; gap:16px; grid-template-columns:1.5fr 1fr; }
+.analytics-chart-body { padding:6px 20px 20px; }
+.analytics-scope-note { color:var(--muted); font-size:10px; margin:0 0 14px; }
+.chart-empty { align-items:center; color:var(--muted); display:flex; font-size:11px; justify-content:center; min-height:130px; text-align:center; }
+
+.range-bar-row { align-items:center; border-bottom:1px solid var(--line); display:grid; gap:14px; grid-template-columns:170px 1fr; padding:11px 0; }
+.range-bar-row:last-child { border-bottom:0; }
+.range-bar-label strong { display:block; font-size:11px; }
+.range-bar-label small { color:var(--muted); display:block; font-size:9px; margin-top:2px; }
+.range-bar-track { background:var(--surface-2); border-radius:5px; height:10px; position:relative; }
+.range-bar-band { border-radius:5px; position:absolute; top:0; bottom:0; }
+.range-bar-marker { border-radius:2px; box-shadow:0 0 0 2px var(--surface); height:16px; position:absolute; top:-3px; transform:translateX(-50%); width:3px; }
+.range-bar-value-only { color:var(--ink); font-size:11px; font-weight:700; padding:6px 0; }
+
+.donut-wrap { align-items:center; display:flex; gap:22px; }
+.donut-svg { flex-shrink:0; height:130px; width:130px; }
+.donut-total-value { fill:var(--ink); font-family:var(--font-heading); font-size:15px; font-weight:700; }
+.donut-total-label { fill:var(--muted); font-size:6px; letter-spacing:.05em; text-transform:uppercase; }
+.donut-legend { flex:1; list-style:none; margin:0; padding:0; }
+.donut-legend li { align-items:center; display:flex; font-size:10px; gap:8px; padding:5px 0; }
+.donut-legend i { border-radius:50%; flex-shrink:0; height:8px; width:8px; }
+.donut-legend span { color:var(--muted); flex:1; }
+.donut-legend b { color:var(--ink); }
+
+.trend-line-svg { height:120px; width:100%; }
+.trend-line-axis { display:flex; justify-content:space-between; margin-top:8px; }
+.trend-line-axis span { color:var(--muted); font-size:8px; }
+.trend-single { padding:34px 0; text-align:center; }
+.trend-single strong { display:block; font-family:var(--font-heading); font-size:24px; }
+.trend-single small { color:var(--muted); display:block; font-size:9px; margin-top:6px; }
+
+.confidence-ranking { list-style:none; margin:0; padding:0; }
+.confidence-ranking li { border-bottom:1px solid var(--line); padding:9px 0; }
+.confidence-ranking li:last-child { border-bottom:0; }
+.confidence-ranking-head { display:flex; font-size:10px; justify-content:space-between; margin-bottom:6px; }
+.confidence-ranking-head b { font-family:var(--font-heading); }
+.confidence-ranking-track { background:var(--surface-2); border-radius:5px; height:6px; overflow:hidden; }
+.confidence-ranking-track i { background:var(--teal); display:block; height:100%; }
+
+@media (max-width: 1180px) {
+  .analytics-stat-grid { grid-template-columns:repeat(2,1fr); }
+  .analytics-chart-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 520px) {
+  .analytics-stat-grid { grid-template-columns:1fr; }
+  .range-bar-row { grid-template-columns:1fr; }
+  .donut-wrap { flex-direction:column; }
+}
