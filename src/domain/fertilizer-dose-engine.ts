@@ -68,6 +68,74 @@ export const SOJA_DOSE_TABLE: GrainDoseTable = {
   source: SOJA_SOURCE,
 };
 
+const MILHO_SOURCE = "Manual de Calagem e Adubação CQFS-RS/SC, 11ª ed. (2016), item 6.1.14 (Milho), p.127 -- Fósforo e potássio, e Tabela 6.1.2, p.106 (rendimento referência).";
+
+/**
+ * Tabela real do milho (Zea mays), conferida contra o PDF oficial (item 6.1.14, p.127). Rendimento
+ * referência 6 t/ha (o dobro da soja) -- valores de dose e de incremento por tonelada extra são
+ * distintos dos da soja, ambos extraídos direto da tabela específica da cultura, não reaproveitados.
+ */
+export const MILHO_DOSE_TABLE: GrainDoseTable = {
+  cropCode: "MILHO",
+  referenceYieldTonPerHa: 6,
+  perExtraTon: { p2o5: 15, k2o: 10 },
+  p2o5: {
+    "Muito Baixo": { first: 200, second: 140 },
+    Baixo: { first: 140, second: 120 },
+    Médio: { first: 130, second: 90 },
+    Alto: { first: 90, second: 90 },
+    "Muito Alto": { first: 0, secondMax: 90 },
+  },
+  k2o: {
+    "Muito Baixo": { first: 140, second: 100 },
+    Baixo: { first: 100, second: 80 },
+    Médio: { first: 90, second: 60 },
+    Alto: { first: 60, second: 60 },
+    "Muito Alto": { first: 0, secondMax: 60 },
+  },
+  source: MILHO_SOURCE,
+};
+
+const TRIGO_SOURCE = "Manual de Calagem e Adubação CQFS-RS/SC, 11ª ed. (2016), item 6.1.21 (Trigo), p.133 -- Fósforo e potássio, e Tabela 6.1.2, p.106 (rendimento referência).";
+
+/**
+ * Tabela real do trigo (Triticum aestivum), conferida contra o PDF oficial (item 6.1.21, p.133).
+ * Rendimento referência 3 t/ha, mesmo incremento de P2O5 por tonelada extra da soja (15 kg/ha) mas
+ * K2O diferente (10 kg/ha) -- valores conferidos individualmente, não assumidos por semelhança.
+ */
+export const TRIGO_DOSE_TABLE: GrainDoseTable = {
+  cropCode: "TRIGO",
+  referenceYieldTonPerHa: 3,
+  perExtraTon: { p2o5: 15, k2o: 10 },
+  p2o5: {
+    "Muito Baixo": { first: 155, second: 95 },
+    Baixo: { first: 95, second: 75 },
+    Médio: { first: 85, second: 45 },
+    Alto: { first: 45, second: 45 },
+    "Muito Alto": { first: 0, secondMax: 45 },
+  },
+  k2o: {
+    "Muito Baixo": { first: 110, second: 70 },
+    Baixo: { first: 70, second: 50 },
+    Médio: { first: 60, second: 30 },
+    Alto: { first: 30, second: 30 },
+    "Muito Alto": { first: 0, secondMax: 30 },
+  },
+  source: TRIGO_SOURCE,
+};
+
+/**
+ * Nitrogênio pra milho e trigo NÃO está automatizado aqui de propósito: ao contrário do P2O5/K2O (uma
+ * tabela simples de 5 níveis), a dose de N depende de várias dimensões ao mesmo tempo (teor de matéria
+ * orgânica, tipo de cultura antecedente -- leguminosa/gramínea/consórcio --, densidade de plantas, e uma
+ * regra não-linear extra pra rendimento muito alto, "aumentar de 20 a 40%", que a própria fonte deixa
+ * como faixa, não valor único). Automatizar isso direito exige mais entrada de dado (histórico de cultura
+ * anterior, densidade de semeadura) que a ficha de talhão ainda não captura -- registrado aqui como
+ * próximo passo real, não implementado às pressas só pra "ter algo".
+ */
+export const NITROGEN_DOSE_NOTE =
+  "Nitrogênio (milho/trigo): não calculado automaticamente nesta versão -- depende de matéria orgânica do solo, cultura antecedente (leguminosa/gramínea/consórcio) e densidade de plantas (milho), com regra adicional não-linear para rendimento muito alto. Consulte o Manual CQFS-RS/SC 2016, itens 6.1.14 (Milho, p.125) e 6.1.21 (Trigo, p.132), até esse cálculo ser automatizado.";
+
 export type FertilizerDoseResult = {
   doseKgPerHa: number;
   isDiscretionaryRange: boolean;

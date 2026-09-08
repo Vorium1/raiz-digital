@@ -3673,3 +3673,49 @@ não se perder de novo.
 mostrar senha (confirmado por screenshot que revela o texto certo), enviou o formulário e chegou de
 verdade em `/dashboard` -- não foi só inspeção visual, foi o fluxo de login completo funcionando. Testado
 em desktop e celular. `npm run typecheck` e `npm run test:handoff` aprovados depois da mudança.
+
+## Motor de dose estendido pra Milho e Trigo + achado real sobre onde a dose é usada de verdade (2026-09-08)
+
+Continuando o item 1 do checklist ("estender o motor de dose pras outras culturas é mecânico, mesma
+seção 6.1 do manual" -- já registrado como próximo passo natural). Adicionadas `MILHO_DOSE_TABLE` e
+`TRIGO_DOSE_TABLE` em `src/domain/fertilizer-dose-engine.ts`, extraídas e conferidas direto do PDF oficial
+(itens 6.1.14 p.127 e 6.1.21 p.133) -- mesma disciplina da soja: nível do solo × 1º/2º cultivo × ajuste
+por rendimento acima da referência, nunca desconta pra rendimento menor, "Muito Alto" sempre marcado como
+faixa discricionária (nunca um número inventado). Rendimento referência do milho é o dobro da soja (6 t/ha
+vs 3 t/ha) e o incremento de K2O por tonelada extra é bem menor no trigo (10 kg/ha) que na soja (25 kg/ha)
+-- valores conferidos individualmente, não assumidos por semelhança entre culturas. 42 cenários testados
+no total (`npm run test:fertilizer-dose`, subiu de 25 pra 42).
+
+**Nitrogênio ficou de fora de propósito**: ao contrário do P2O5/K2O (tabela simples de 5 níveis), a dose
+de N pra milho/trigo depende de várias dimensões ao mesmo tempo (matéria orgânica, cultura antecedente,
+densidade de plantas no milho) e tem uma regra não-linear pra rendimento muito alto que a própria fonte
+deixa como faixa ("aumentar de 20 a 40%"), não valor único -- a ficha de talhão hoje não captura cultura
+antecedente nem densidade de semeadura, então automatizar isso direito exigiria mais campo de entrada.
+Documentado como `NITROGEN_DOSE_NOTE` no próprio módulo, não implementado às pressas.
+
+**Achado real ao rastrear onde esse motor é usado de verdade**: nenhum lugar da aplicação importa
+`fertilizer-dose-engine.ts` fora do próprio teste -- a tela de prescrição por IA
+(`agronomic-prescription-panel.tsx` / `claude-prescription-provider.ts`) não chama o motor determinístico
+diretamente. Investigando o porquê, achei que a arquitetura real já é outra, e é uma arquitetura correta:
+a IA só pode incluir uma recomendação com quantidade se a `technical_sources` (biblioteca técnica curada,
+com fluxo de revisão por `isPlatformCurator` antes de virar ACTIVE) tiver uma tabela real e citável pro
+insumo -- regra escrita no próprio prompt (`PROMPT_VERSION = "prescription-v3-no-invented-recommendation-
+unverified"`). Isso já impede a IA de inventar número, sem eu precisar religar nada.
+
+**Mas achei uma lacuna real dentro dessa arquitetura**: a fonte técnica da Soja (Manual CQFS-RS/SC 2016,
+já cadastrada em sessão anterior) tinha só a descrição do MÉTODO de interpretação (Mehlich-1, classes de
+argila/CTC) -- faltava a tabela de dose de P/K em si, que Milho e Trigo já tinham em prosa no mesmo padrão.
+Sem essa tabela no `content`, a IA não tinha como gerar uma recomendação de P/K pra soja -- só omitir com
+nota em `missingInformation`, mesmo já sendo a cultura mais avançada da plataforma (a única com motor de
+dose já testado). Completei o `content` dessa fonte com o mesmo parágrafo, no mesmo formato, com os
+números já conferidos em `SOJA_DOSE_TABLE` (script `scripts/update-soja-technical-source-pk.mjs`, mantido
+no repositório pra rastreabilidade). **A fonte continua em DRAFT** -- só completei o conteúdo, não
+promovi/aprovei nada sozinho, mesma disciplina já usada pro `crop_profile` da soja.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` (42 cenários no `test:fertilizer-dose`)
+aprovados. Atualização do `technical_sources` verificada direto no banco (status continua DRAFT, conteúdo
+cresceu de 1185 pra 2029 caracteres).
+
+**Ainda em aberto**: promover a fonte técnica da Soja (e as de Milho/Trigo) de DRAFT pra ACTIVE continua
+sendo decisão do diretor/curador da plataforma; nitrogênio de milho/trigo fica documentado como próximo
+passo, não implementado.
