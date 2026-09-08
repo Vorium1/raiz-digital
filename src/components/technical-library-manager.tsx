@@ -162,6 +162,18 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
     finally { setBusy(""); }
   }
 
+  async function activateAllParameters() {
+    if (!selectedProfileId) return;
+    setBusy("param-activate-all"); setMessage(null);
+    try {
+      const result = await postJson(`/api/crop-profiles/${selectedProfileId}/parameters/activate-all`, {});
+      const count = result.activated?.length ?? 0;
+      setMessage({ tone: "success", text: count > 0 ? `${count} parâmetro(s) homologado(s) de uma vez.` : "Nenhum parâmetro em DRAFT com faixa pronta pra homologar." });
+      await loadParameters(selectedProfileId);
+    } catch (error) { setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao homologar em bloco." }); }
+    finally { setBusy(""); }
+  }
+
   async function toggleParameterStatus(parameter: CropProfileParameter) {
     const nextStatus = parameter.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
     setBusy(`param-status-${parameter.id}`); setMessage(null);
@@ -227,6 +239,13 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
             <label className="field-ops-wide"><span>Faixas de suficiência (JSON, ordenadas do menor para o maior — deixe vazio para "aguardando homologação")</span><textarea value={paramRangesText} onChange={(e) => setParamRangesText(e.target.value)} rows={3}/></label>
             <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "param" || !paramCode} onClick={() => void saveParameter()}>{busy === "param" ? "Salvando…" : "Salvar parâmetro"}</button></div>
             </>}
+            {canCurate && parameters.some((p) => p.status === "DRAFT" && p.sufficiencyRanges) && (
+              <div className="field-ops-wide field-ops-inline-warning">
+                <Icon name="sparkles" size={16}/>
+                <span>{parameters.filter((p) => p.status === "DRAFT" && p.sufficiencyRanges).length} parâmetro(s) já têm faixa pronta, só falta homologar.</span>
+                <button className="button secondary" style={{ marginLeft: "auto" }} disabled={busy === "param-activate-all"} onClick={() => void activateAllParameters()}>{busy === "param-activate-all" ? "Homologando…" : "Homologar todos de uma vez"}</button>
+              </div>
+            )}
             <div className="field-ops-wide field-ops-list">
               {parameters.map((parameter) => (
                 <div key={parameter.id} className="field-ops-list-row">

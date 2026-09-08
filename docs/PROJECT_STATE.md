@@ -3719,3 +3719,46 @@ cresceu de 1185 pra 2029 caracteres).
 **Ainda em aberto**: promover a fonte técnica da Soja (e as de Milho/Trigo) de DRAFT pra ACTIVE continua
 sendo decisão do diretor/curador da plataforma; nitrogênio de milho/trigo fica documentado como próximo
 passo, não implementado.
+
+## Causa raiz real da interpretação vazia do Cabeda + mapa "sem cor" (2026-09-08)
+
+O diretor mandou print reclamando que a interpretação da soja do Cabeda continuava vazia (nenhuma resposta
+real desde que ele importou os laudos) e que o mapa mostra "só pontos isolados", sem nenhuma inteligência
+visível. Fui direto na causa em vez de só reagir à reclamação.
+
+**Causa raiz confirmada no banco, não suposição**: as 3 análises reais do Cabeda (`AN-CABEDA-01/02/03`)
+têm interpretação calculada (`param_count: 0`, confiança 38/100 "INSUFICIENTE") com 16 avisos idênticos --
+`"O perfil 'Soja' não tem um parâmetro homologado para [AL/B/CA/...]"`. Confirmei também que os 17
+parâmetros da Soja (P e K se repetem por classe de argila/CTC, por isso 17 linhas pra 16 códigos) **já
+têm faixa de suficiência real cadastrada** (`sufficiency_ranges` preenchido, extraída do mesmo Manual
+CQFS-RS/SC já usado em todo o resto do motor) -- só estão em `DRAFT`, nunca homologadas. Ou seja: o motor
+determinístico está funcionando exatamente como projetado (nunca classifica um parâmetro sem faixa
+aprovada), mas como ninguém homologou a Soja ainda, toda interpretação sai vazia -- não é bug, é a trava de
+revisão profissional que o próprio `CLAUDE.md` pede, só que ninguém tinha executado o lado humano dela
+ainda.
+
+**O mapa "sem cor" é o MESMO problema, não um segundo bug**: `AgronomicMapExplorer` (`/mapas`) já usa o
+`RealFieldMap` real com o polígono do talhão e colore cada ponto pela classificação
+(`classificationColor(point.classification)`) -- sem nenhum parâmetro homologado pra Soja, todo ponto fica
+sem classificação, por isso aparece só como ponto neutro. O mapa em si está certo e já é real (PostGIS +
+Leaflet); falta o mesmo passo de homologação pra ele ganhar cor.
+
+**Existia uma tela real pra fazer essa homologação (`/biblioteca-tecnica`, `TechnicalLibraryManager`),
+mas ninguém tinha passado por ela** -- provavelmente porque homologar a Soja ali significava clicar
+"Homologar" 17 vezes (uma por parâmetro), uma fricção real que ajuda a explicar por que ficou pra trás.
+Corrigido: adicionei `activateAllCropProfileParameters` (repositório) + rota
+`POST /api/crop-profiles/[id]/parameters/activate-all` + botão "Homologar todos de uma vez" na UI, que só
+aparece quando existem parâmetros DRAFT com faixa já pronta -- homologa todos de uma vez, sem tocar no
+status da cultura em si (isso continua uma ação separada e explícita). Testado ao vivo com sessão real:
+naveguei até Soja, confirmei que o botão aparece com a contagem certa ("17 parâmetro(s) já têm faixa
+pronta") -- **não cliquei nele**, porque homologar é decisão do diretor/curador, não minha, mesma posição
+mantida o resto da sessão.
+
+**Registrado pro diretor, de forma direta**: pra ver a interpretação da Soja funcionando de verdade (e o
+mapa ganhar cor), o caminho é `Biblioteca Técnica → Soja → "Homologar todos de uma vez"` (2 cliques: esse
+botão + o botão "Homologar" da cultura Soja em si, na lista de culturas). Como ele mesmo disse que vai
+revisar com um pesquisador antes de ir pro mercado, homologar agora pra ver o resultado (e reverter depois
+se o pesquisador pedir ajuste) é exatamente pra isso que o status DRAFT/ACTIVE existe.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Rota nova verificada ao vivo (sessão
+autenticada real, botão renderizado com a contagem correta) sem executar a ativação.

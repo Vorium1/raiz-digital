@@ -174,6 +174,32 @@ export async function setCropProfileParameterStatus(input: { tenantId: string; u
 }
 
 /**
+ * Homologa em bloco todos os parâmetros DRAFT de um perfil de cultura que já têm faixa de suficiência
+ * cadastrada (sem faixa, o parâmetro fica de fora -- não dá pra homologar "vazio"). Existe porque
+ * homologar cultura por cultura, parâmetro por parâmetro, um por um, é o tipo de fricção que faz um
+ * revisor real desistir no meio -- ex.: a soja tem 17 linhas de parâmetro (P e K se repetem por classe
+ * de argila/CTC), então clicar 17 vezes pra revisar uma única cultura é um obstáculo desnecessário à
+ * decisão que já foi tomada (a faixa já está lá, já é a mesma fonte técnica oficial). NÃO homologa o
+ * perfil de cultura em si (isso continua uma ação separada e explícita) -- só os parâmetros.
+ */
+export async function activateAllCropProfileParameters(input: { tenantId: string; userId: string; cropProfileId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `UPDATE crop_profile_parameters SET status = 'ACTIVE', updated_at = now()
+       WHERE crop_profile_id = $1::uuid AND status = 'DRAFT' AND sufficiency_ranges IS NOT NULL
+       RETURNING id::text, parameter_code AS "parameterCode"`,
+      [input.cropProfileId],
+    );
+    await writeAudit(client, {
+      tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETERS_BULK_ACTIVATED",
+      entityType: "crop_profile", entityId: input.cropProfileId,
+      metadata: { count: result.rowCount, parameterCodes: result.rows.map((r) => r.parameterCode) },
+    });
+    return result.rows;
+  });
+}
+
+/**
  * Base de conhecimento agronômico. Só uma fonte com status ACTIVE pode ser
  * citada como referência técnica pela IA (ver evidence-package.ts) --
  * documentos em DRAFT existem no cadastro mas nunca chegam a uma geração
