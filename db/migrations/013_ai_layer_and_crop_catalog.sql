@@ -37,7 +37,8 @@ ALTER TABLE ai_generations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_generations FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON ai_generations USING (tenant_id = app.current_tenant_id()) WITH CHECK (tenant_id = app.current_tenant_id());
 
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO raiz_app;
+-- (default privileges para tabelas futuras já cobertas pela migration 007, de forma portável --
+-- ver comentário lá; "FOR ROLE postgres" quebrava em provedores sem esse papel, ex.: Neon)
 GRANT SELECT, INSERT, UPDATE, DELETE ON ai_generations TO raiz_app;
 
 -- Base de conhecimento agronomico: fontes tecnicas homologaveis. So uma

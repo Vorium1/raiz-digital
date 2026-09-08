@@ -21,8 +21,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO raiz_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO raiz_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO raiz_app;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO raiz_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO raiz_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app GRANT EXECUTE ON FUNCTIONS TO raiz_app;
+-- "ALTER DEFAULT PRIVILEGES FOR ROLE postgres" removida daqui (só funcionava, e mesmo assim sem efeito
+-- real, em ambiente onde existisse um papel chamado literalmente "postgres" -- em provedores como Neon
+-- esse papel nem existe, e a migration inteira falhava com "role postgres does not exist"). A versão
+-- portável (sem "FOR ROLE", aplicada ao papel que está executando a migration, seja qual for o nome)
+-- já está na migration 007_app_runtime_role_portability.sql, que roda logo em seguida -- não duplicar aqui.
 
 COMMIT;
