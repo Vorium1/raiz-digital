@@ -3635,3 +3635,41 @@ da interface real da RAIZ. Confirmado tirando um screenshot recortado só da tel
 "página inteira" do Playwright, que empilha elementos de posição fixa de forma estranha) -- lição pra
 próxima verificação visual: preferir screenshot de viewport normal a "full page" quando o layout usa
 elementos fixos (barra lateral, botão flutuante do assistente, nav inferior mobile).
+
+## Bug real de contraste na tela de login (2026-09-08) -- achado pelo diretor, corrigido
+
+O diretor mandou print da tela de login e reportou dois problemas reais: (1) não dava pra ver a senha
+digitada, e o texto do e-mail/senha/labels praticamente não aparecia (letra quase preta em cima de fundo
+escuro); (2) a senha real que ele tinha em mãos para `admin@raiz.local` não funcionava.
+
+**Causa raiz do contraste**: a conversão pra tema escuro (feita numa sessão anterior, com um script que
+buscava cor hexadecimal literal) não pegou os lugares que usavam a variável `--forest` como cor de TEXTO
+-- essa variável é `#0b0d10` (quase preto), correta como fundo de botão escuro ou texto sobre um fundo
+CLARO/brilhante (ex.: ícone branco sobre botão verde-água), mas errada como texto normal depois que o
+fundo geral da aplicação passou a ser escuro. Como a variável em si não é um hex literal, o script de
+conversão nunca a alcançou. Encontrei e corrigi **todos** os usos reais desse padrão no
+`src/app/globals.css`, não só no login: `.login-form` (input, select, labels), `.button.secondary`,
+`.button.light`, `.notifications-header`, `.empty-state strong`, `.field-order-empty strong`,
+`.map-explorer-layer-toggle button.active`, `.assistant-suggestions button`, `.choice-card > div` e
+`.field-point small` -- todos trocados pra `var(--ink)` (a cor de texto clara certa pro tema escuro).
+Deixei de propósito os casos onde `--forest` está correto (texto escuro sobre fundo CLARO/brilhante, como
+`.tenant-avatar` e o botão "+" flutuante do menu mobile) -- não são bug.
+
+**Duas melhorias de UX pedidas junto**: adicionei um botão de "olho" (mostrar/ocultar senha) no campo de
+senha do login -- ícone novo em `src/components/icon.tsx` (`eye`/`eye-off`), estado local no
+`LoginForm`. Também adicionei uma cor de placeholder visível (`var(--muted)`) que também tinha ficado
+invisível.
+
+**Causa raiz do login não funcionar**: a senha real de `admin@raiz.local` tinha sido trocada pelo menos
+duas vezes ao longo desta sessão longa (uma vez registrada num arquivo de rascunho antigo, outra vez no
+`.env` local) -- nenhuma delas era a senha que o diretor tinha em mãos, então a tentativa dele deu erro de
+credencial inválida de verdade (não bloqueio por tentativas, confirmei consultando `login_attempts`: só 1
+tentativa falha, longe do limite de 5). Resolvido gerando uma senha nova definitiva com o mesmo Argon2 que
+a aplicação usa de verdade (`@node-rs/argon2`, mesmos parâmetros do `seed-dev.mjs`), atualizando
+`password_hash` direto no banco e sincronizando `SEED_ADMIN_PASSWORD` no `.env` (arquivo fora do git) pra
+não se perder de novo.
+
+**Testado de ponta a ponta com login real**: Playwright preencheu e-mail/senha reais, clicou no botão de
+mostrar senha (confirmado por screenshot que revela o texto certo), enviou o formulário e chegou de
+verdade em `/dashboard` -- não foi só inspeção visual, foi o fluxo de login completo funcionando. Testado
+em desktop e celular. `npm run typecheck` e `npm run test:handoff` aprovados depois da mudança.

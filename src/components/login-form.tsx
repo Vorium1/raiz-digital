@@ -11,6 +11,7 @@ export function LoginForm() {
   const [error, setError] = useState("");
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; role: string }>>([]);
   const [pendingToken, setPendingToken] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,7 +81,12 @@ export function LoginForm() {
       </label>
       <label>
         <span>Senha</span>
-        <input name="password" type="password" autoComplete="current-password" minLength={10} required placeholder="••••••••••" />
+        <div className="password-field">
+          <input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" minLength={10} required placeholder="••••••••••" />
+          <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
+            <Icon name={showPassword ? "eye-off" : "eye"} size={17} />
+          </button>
+        </div>
         <Link href="/esqueci-senha" className="forgot-password-link">Esqueci minha senha</Link>
       </label>
       {tenants.length > 0 && <label>
