@@ -3762,3 +3762,60 @@ se o pesquisador pedir ajuste) é exatamente pra isso que o status DRAFT/ACTIVE 
 
 **Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Rota nova verificada ao vivo (sessão
 autenticada real, botão renderizado com a contagem correta) sem executar a ativação.
+
+## Publicação real em produção (Vercel + Neon) + auditoria de páginas (2026-09-08)
+
+O diretor pediu pra publicar o projeto de verdade na internet (saiu do "só local") e trazer o GPT pra dar
+uma segunda opinião depois. Trabalho real de infraestrutura feito nesta sessão, com dois achados técnicos
+genuínos pelo caminho.
+
+**Descoberta real, não prevista**: o banco "local" (`DATABASE_URL` no `.env`) nunca foi local -- é um
+projeto Supabase real (`aws-0-sa-east-1.pooler.supabase.com`), configurado antes desta sessão, contrariando
+a regra explícita do `CLAUDE.md` de não usar Supabase por conveniência. Reportado ao diretor de forma
+direta (não escondido); decisão dele, com meu argumento técnico, foi migrar pra Neon (Postgres puro,
+gratuito, sem a "pausa manual" do Supabase free-tier, sem funcionalidades além do banco que a RAIZ não usa)
+-- decisão registrada aqui pra não se perder: **o banco de produção agora é Neon, não Supabase**; o
+Supabase antigo continua existindo mas deixou de ser a fonte usada a partir de agora.
+
+**Publicação do código**: `git push origin develop` pro repositório oficial (`Vorium1/raiz-digital`) --
+ação que o próprio ambiente bloqueia de eu executar sozinho (proteção do harness, não escolha minha);
+o diretor rodou no terminal dele.
+
+**Migração do banco pra Neon, com 2 bugs reais achados e corrigidos no processo**:
+- Migrations 006 e 013 declaravam `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`, que só funciona (e mesmo
+  assim sem efeito real -- a migration 007 já existia justamente pra corrigir isso) em provedor onde
+  existe um papel literalmente chamado "postgres". Na Neon esse papel não existe e a migration inteira
+  falhava. Corrigido pra funcionar em qualquer provedor Postgres, não só Supabase/local.
+- `scripts/copy-data-to-cloud.mjs` (novo, sem `pg_dump`/`pg_restore` disponíveis neste ambiente): copia
+  tabela por tabela na ordem de dependência real (não só a ordem de `CREATE TABLE` das migrations -- várias
+  FKs são adicionadas depois via `ALTER TABLE`, ex. `crop_seasons.crop_profile_id` só existe a partir da
+  migration 012) e trata o caso de `crop_profiles` já vir com linhas "esqueleto" inseridas pelas próprias
+  migrations (SOJA/MILHO/TRIGO/AVEIA/TRITICALE/CANOLA, com id novo aleatório) -- apaga a esqueleto antes de
+  inserir a real, senão o id real fica órfão e todo `crop_profile_parameters` daquela cultura falha.
+  **Cópia real executada e conferida**: as 3 análises do Cabeda, os 17 parâmetros da Soja linkados
+  corretamente, usuário `admin@raiz.local` -- tudo migrado e verificado direto no banco novo.
+
+**Auditoria das páginas que o diretor achou "parecidas com landing page"** (Comparativos, Alertas,
+Relatórios, Histórico & Evolução -- ele não tinha especificado quais, fui eu que decidi checar essas 4):
+as 4 são reais e funcionais (não são texto estático) -- Relatórios tem links reais pras análises/ordens/
+propriedades do Cabeda, Comparativos tem seletores reais, Histórico mostra corretamente um estado vazio
+explicado (esperando 2+ análises homologadas do mesmo contexto pra comparar tendência). A sensação de
+"vazio" nessas páginas é o MESMO efeito colateral já diagnosticado antes (Soja não homologada) -- sem faixa
+aprovada, quase tudo no app fica esperando.
+
+**Um bug real achado nessa auditoria, corrigido**: a tela de Alertas contava parâmetro pendente de
+homologação de TODAS as 54 culturas do catálogo global (`crop_profiles` não tem `tenant_id`), mesmo as que
+o tenant nunca vai usar -- 84 alertas de baixa criticidade, a maioria irrelevante pra essa operação
+(abacateiro, alcachofra...), afogando os que realmente importam. Corrigido em
+`src/lib/repositories/alerts.ts`: o alerta de "parâmetro sem homologação" agora só considera culturas que o
+tenant realmente tem vinculada a alguma safra (`crop_seasons.crop_profile_id`). Caiu de 84 pra 38 alertas,
+todos relevantes de verdade (pontos de coleta pendentes, safra sem cultura vinculada, aviso climático, e os
+17 parâmetros da Soja aguardando homologação).
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Cópia de dado verificada direto no
+banco Neon (contagem de análises, parâmetros e usuário batendo com a origem). Auditoria das 4 páginas feita
+ao vivo com sessão real, screenshot antes/depois do fix de alertas confirmando a queda de 84 pra 38.
+
+**Ainda em aberto pra amanhã** (combinado com o diretor -- resolver junto o que for "externo ao código"):
+criar o projeto na Vercel, configurar as variáveis de ambiente (`DATABASE_URL`/`APP_DATABASE_URL` da Neon,
+`AUTH_SECRET`, chaves de IA) e publicar de verdade com link público.

@@ -116,11 +116,19 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
+    // Só alerta sobre culturas que este tenant REALMENTE usa (tem pelo menos uma safra vinculada) --
+    // crop_profiles é catálogo global (54+ culturas, de soja a abacateiro), sem tenant_id; sem esse
+    // filtro, todo tenant via alerta de homologação pendente de toda cultura do catálogo, mesmo as que
+    // nunca vai plantar -- 84 alertas de baixa prioridade que na prática viram ruído, escondendo os que
+    // realmente importam pra essa operação.
     const unhomologatedParams = await client.query(
       `SELECT cp.id::text, cp.name, count(*)::int AS pending
-       FROM crop_profile_parameters cpp JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
+       FROM crop_profile_parameters cpp
+       JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
        WHERE cpp.status != 'ACTIVE'
+         AND cp.id IN (SELECT DISTINCT crop_profile_id FROM crop_seasons WHERE tenant_id = $1::uuid AND crop_profile_id IS NOT NULL)
        GROUP BY cp.id, cp.name`,
+      [tenantId],
     );
     for (const row of unhomologatedParams.rows) {
       alerts.push({
