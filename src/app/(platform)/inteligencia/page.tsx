@@ -21,7 +21,7 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "review" | 
 export default async function AgronomicIntelligenceHubPage() {
   if (!isDatabaseMode()) {
     return <><Topbar eyebrow="Inteligência · demonstração" title="Inteligência Agronômica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplos ilustrativos.</span></div><PageIntro title="Registro de interpretações" description="Toda vez que o motor determinístico roda, fica registrado aqui — com regra usada, versão e status de revisão."/>
-      <section className="card"><table className="report-table">
+      <section className="card"><div className="report-table-wrap"><table className="report-table">
         <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
         <tbody>{demoInterpretationsLog.map((item) => {
           const meta = STATUS_META[item.status] ?? { label: item.status, tone: "waiting" as const };
@@ -37,7 +37,7 @@ export default async function AgronomicIntelligenceHubPage() {
             </tr>
           );
         })}</tbody>
-      </table></section>
+      </table></div></section>
     </div></>;
   }
   const session = await requirePlatformSession();
@@ -50,7 +50,7 @@ export default async function AgronomicIntelligenceHubPage() {
         <PageIntro title="Registro de interpretações" description="Cada execução do motor determinístico gera uma revisão aqui — com a regra/base técnica usada, o nível de confiança e o status de revisão. Nenhuma linha é gerada por IA."/>
         <section className="card">
           {interpretations.length ? (
-            <table className="report-table">
+            <div className="report-table-wrap"><table className="report-table">
               <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
               <tbody>{interpretations.map((item: any) => {
                 const meta = STATUS_META[item.status] ?? { label: item.status, tone: "waiting" as const };
@@ -66,7 +66,7 @@ export default async function AgronomicIntelligenceHubPage() {
                   </tr>
                 );
               })}</tbody>
-            </table>
+            </table></div>
           ) : <EmptyState icon="leaf" title="Nenhuma interpretação calculada ainda" description="Rode o motor determinístico numa análise para começar o registro." action={{ href: "/analises", label: "Ver análises" }}/>}
         </section>
       </div>

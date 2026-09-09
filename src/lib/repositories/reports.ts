@@ -135,7 +135,64 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
       [tenantId, fieldId],
     );
 
-    return { field, seasons: seasonsResult.rows, analyses: analysesResult.rows };
+    const yieldHistoryResult = await client.query(
+      `SELECT id::text, season_label AS "seasonLabel", crop, cultivar, yield_value::float8 AS "yieldValue", yield_unit AS "yieldUnit", source, created_at::text AS "createdAt"
+       FROM field_yield_history WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY created_at`,
+      [tenantId, fieldId],
+    );
+
+    /**
+     * Aderência: recomendado (`input_recommendations`) x aplicado (`input_applications`), agregado por
+     * análise deste talhão -- mesma lógica de `getInputComparisonForAnalysis` (catalog.ts), mas somando
+     * TODAS as análises do talhão de uma vez, pra mostrar a linha do tempo de aderência, não só uma safra.
+     * Pedido real do diretor (2026-09-04): mostrar se o produtor seguiu ou não a recomendação ao longo do
+     * tempo, como respaldo técnico do agrônomo.
+     */
+    const adherenceResult = await client.query(
+      `WITH latest_recommendations AS (
+         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
+         FROM input_recommendations WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
+         ORDER BY analysis_id, input_type, calculated_at DESC
+       ),
+       applied_totals AS (
+         SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
+         FROM input_applications WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
+         GROUP BY analysis_id, input_type, unit
+       )
+       SELECT r.analysis_id::text AS "analysisId", r.input_type AS "inputType", r.quantity::float8 AS "recommendedQuantity", r.unit,
+              a.total_quantity::float8 AS "appliedQuantity"
+       FROM latest_recommendations r
+       LEFT JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
+       ORDER BY r.analysis_id, r.input_type`,
+      [tenantId, analysesResult.rows.map((row) => row.id)],
+    );
+    const adherence = adherenceResult.rows.map((row) => {
+      let status: "OK" | "UNDER" | "OVER" | "NOT_APPLIED";
+      if (row.appliedQuantity == null) status = "NOT_APPLIED";
+      else {
+        const ratio = row.appliedQuantity / row.recommendedQuantity;
+        status = ratio < 0.95 ? "UNDER" : ratio > 1.1 ? "OVER" : "OK";
+      }
+      return { ...row, status };
+    });
+
+    /**
+     * Alerta de reanálise: regra já carregada na base de conhecimento (fonte: Trigo Safra 2026,
+     * `scripts/seed-trigo-safra-2026.mjs`) -- análise de solo deve ser refeita a cada 3 anos no máximo.
+     * Calculado aqui (data real, sem estimativa), não decide nada sozinho -- só sinaliza.
+     */
+    const lastAnalysisAt = analysesResult.rows.length ? analysesResult.rows[analysesResult.rows.length - 1].createdAt : null;
+    const monthsSinceLastAnalysis = lastAnalysisAt ? Math.floor((Date.now() - new Date(lastAnalysisAt).getTime()) / (1000 * 60 * 60 * 24 * 30.44)) : null;
+    const reanalysisDue = monthsSinceLastAnalysis != null && monthsSinceLastAnalysis >= 36;
+
+    return {
+      field,
+      seasons: seasonsResult.rows,
+      analyses: analysesResult.rows,
+      yieldHistory: yieldHistoryResult.rows,
+      adherence,
+      reanalysis: { lastAnalysisAt, monthsSinceLastAnalysis, due: reanalysisDue, source: "Trigo Safra 2026 -- análise de solo a cada 3 anos no máximo" },
+    };
   });
 }
 

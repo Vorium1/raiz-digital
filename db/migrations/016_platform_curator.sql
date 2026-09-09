@@ -1,0 +1,14 @@
+-- A base técnica compartilhada (crop_profiles, crop_profile_parameters, technical_sources,
+-- technical_regions) nunca teve tenant_id: por desenho, é uma única base científica usada por
+-- todas as empresas clientes da plataforma, não uma base por empresa.
+--
+-- Até aqui, porém, qualquer usuário com papel SUPER_ADMIN/TENANT_ADMIN/AGRONOMIST em QUALQUER
+-- empresa cliente podia criar, editar e homologar essa base única — ou seja, o agrônomo de uma
+-- empresa cliente conseguia alterar uma faixa técnica usada por todas as outras. Isso nunca foi
+-- decisão de produto, foi lacuna: a homologação da ciência da plataforma deve ficar restrita a
+-- quem realmente responde por ela (os diretores da RAIZ Digital e o agrônomo pesquisador
+-- responsável, Rafael Cabeda), não a cada agrônomo de cada empresa cliente.
+--
+-- is_platform_curator é global por usuário (não por vínculo de empresa) porque a curadoria da
+-- base científica não tem relação com qual empresa o usuário está usando no momento.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_curator boolean NOT NULL DEFAULT false;

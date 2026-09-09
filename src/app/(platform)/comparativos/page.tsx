@@ -18,8 +18,8 @@ export default function ComparativesPage() {
           {demoComparison.items.map((item) => (
             <div key={item.label}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}><strong>{item.label}</strong><span>pH {item.ph.toFixed(1)} · P {item.p.toFixed(1)} mg/dm³</span></div>
-              <div style={{ background: "#e7ece9", borderRadius: 5, height: 8, overflow: "hidden", marginBottom: 3 }}><div style={{ background: "var(--teal)", height: "100%", width: `${(item.ph / maxPh) * 100}%` }}/></div>
-              <div style={{ background: "#e7ece9", borderRadius: 5, height: 8, overflow: "hidden" }}><div style={{ background: "var(--copper)", height: "100%", width: `${(item.p / maxP) * 100}%` }}/></div>
+              <div style={{ background: "var(--surface-2)", borderRadius: 5, height: 8, overflow: "hidden", marginBottom: 3 }}><div style={{ background: "var(--teal)", height: "100%", width: `${(item.ph / maxPh) * 100}%` }}/></div>
+              <div style={{ background: "var(--surface-2)", borderRadius: 5, height: 8, overflow: "hidden" }}><div style={{ background: "var(--copper)", height: "100%", width: `${(item.p / maxP) * 100}%` }}/></div>
             </div>
           ))}
         </div>

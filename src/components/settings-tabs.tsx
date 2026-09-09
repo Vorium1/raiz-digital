@@ -508,7 +508,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
               </p>
 
               <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-                <div style={{ width: 96, height: 96, border: "1px dashed var(--line)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#fafbfa" }}>
+                <div style={{ width: 96, height: 96, border: "1px dashed var(--line)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "var(--surface-2)" }}>
                   {branding.logoDataUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={branding.logoDataUrl} alt={branding.displayName} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />

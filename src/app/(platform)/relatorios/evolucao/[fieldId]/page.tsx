@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
+import { ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getHistoricalEvolutionReportData } from "@/lib/repositories/reports";
 import { getTenantBranding } from "@/lib/repositories/tenant-branding";
@@ -17,7 +18,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
     getTenantBranding(session.tenantId),
   ]);
   if (!data) notFound();
-  const { field, seasons, analyses } = data;
+  const { field, seasons, analyses, yieldHistory, adherence, reanalysis } = data;
+
+  const adherenceStatusLabel: Record<string, string> = { OK: "Seguiu a recomendação", UNDER: "Aplicou abaixo do recomendado", OVER: "Aplicou acima do recomendado", NOT_APPLIED: "Não aplicou" };
 
   const parameterHistory = new Map<string, Array<{ date: string; season: string; classification: string }>>();
   for (const analysis of analyses) {
@@ -52,6 +55,42 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
             <div><span>Parâmetros com histórico</span><strong>{parameterHistory.size}</strong></div>
           </div>
 
+          {reanalysis.due ? (
+            <p className="report-empty-note" style={{ background: "#fff4e5", padding: "10px 12px", borderRadius: 8, fontWeight: 600 }}>
+              Reanálise recomendada: já se passaram {reanalysis.monthsSinceLastAnalysis} meses desde a última análise deste talhão — a regra técnica carregada (fonte: Trigo Safra 2026) recomenda reanalisar o solo no máximo a cada 3 anos.
+            </p>
+          ) : null}
+
+          <section className="report-section">
+            <h2>Produtividade registrada</h2>
+            {yieldHistory.length ? (
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Safra</th><th>Cultura</th><th>Cultivar</th><th>Produtividade</th><th>Origem</th></tr></thead>
+                <tbody>{yieldHistory.map((row: any) => <tr key={row.id}><td>{row.seasonLabel}</td><td>{row.crop}</td><td>{row.cultivar || "—"}</td><td>{row.yieldValue.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.yieldUnit}</td><td>{row.source || "—"}</td></tr>)}</tbody>
+              </table></div>
+            ) : <p className="report-empty-note">Nenhuma produtividade registrada para este talhão ainda.</p>}
+          </section>
+
+          <section className="report-section">
+            <h2>Aderência à recomendação de insumos</h2>
+            {adherence.length ? (
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Análise</th><th>Insumo</th><th>Recomendado</th><th>Aplicado</th><th>Situação</th></tr></thead>
+                <tbody>{adherence.map((row: any, index: number) => {
+                  const analysis = analyses.find((a: any) => a.id === row.analysisId);
+                  return (
+                    <tr key={index}>
+                      <td>{analysis?.code ?? row.analysisId} {analysis ? `(${new Date(analysis.createdAt).toLocaleDateString("pt-BR")})` : ""}</td>
+                      <td>{row.inputType}</td>
+                      <td>{row.recommendedQuantity}{row.unit}</td>
+                      <td>{row.appliedQuantity != null ? `${row.appliedQuantity.toFixed(2)}${row.unit}` : "—"}</td>
+                      <td>{adherenceStatusLabel[row.status]}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table></div>
+            ) : <p className="report-empty-note">Nenhuma recomendação de insumo registrada para este talhão ainda.</p>}
+            <p className="report-empty-note" style={{ marginTop: 8 }}>Compara a última recomendação técnica de cada análise com o total realmente aplicado — serve como respaldo técnico quando a produtividade não corresponde ao esperado por falta de adesão ao manejo recomendado.</p>
+          </section>
+
           <section className="report-section">
             <h2>Rotação de culturas</h2>
             {seasons.length ? (
@@ -59,9 +98,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
                 <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
                   {seasons.map((season: any) => `${season.currentCrop || "cultura não informada"} ${season.seasonLabel}`).join("  →  ")}
                 </p>
-                <table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
+                <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
                   <tbody>{seasons.map((season: any, index: number) => <tr key={season.id}><td>{index + 1}</td><td>{season.seasonLabel}</td><td>{season.currentCrop || "não informada"}</td></tr>)}</tbody>
-                </table>
+                </table></div>
                 <p className="report-empty-note" style={{ marginTop: 8 }}>Sequência real por ordem de cadastro — nenhuma safra é sobrescrita, cada sucessão fica rastreável para comparar evolução química, física e microbiológica entre ciclos.</p>
               </>
             ) : <p className="report-empty-note">Nenhuma safra cadastrada para este talhão.</p>}
@@ -70,9 +109,9 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
           {parameterHistory.size > 0 ? Array.from(parameterHistory.entries()).map(([parameter, history]) => (
             <section className="report-section" key={parameter}>
               <h2>{parameter}</h2>
-              <table className="report-table"><thead><tr><th>Data</th><th>Safra</th><th>Classificação</th></tr></thead>
-                <tbody>{history.map((entry, index) => <tr key={index}><td>{new Date(entry.date).toLocaleDateString("pt-BR")}</td><td>{entry.season}</td><td>{entry.classification}</td></tr>)}</tbody>
-              </table>
+              <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Data</th><th>Safra</th><th>Classificação</th></tr></thead>
+                <tbody>{history.map((entry, index) => <tr key={index}><td>{new Date(entry.date).toLocaleDateString("pt-BR")}</td><td>{entry.season}</td><td>{entry.classification ? <ClassificationBadge label={entry.classification}/> : "—"}</td></tr>)}</tbody>
+              </table></div>
             </section>
           )) : (
             <section className="report-section"><h2>Classificações homologadas</h2><p className="report-empty-note">Ainda não há interpretações homologadas suficientes para montar histórico comparável por parâmetro. A RAIZ não estima tendência sem dado real compatível.</p></section>

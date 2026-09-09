@@ -10,6 +10,11 @@ type Props = {
   onFileReady?: (file: { fileName: string; content: string } | null) => void;
 };
 
+type PreviewWithSource = LabImportPreview & { aiExtracted?: boolean; csvContent?: string };
+
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
+const MIME_BY_EXTENSION: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
 function readAsBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -31,7 +36,7 @@ const levelLabel: Record<LabImportPreview["confidence"]["level"], string> = {
 
 export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
   const [fileName, setFileName] = useState("");
-  const [preview, setPreview] = useState<LabImportPreview | null>(null);
+  const [preview, setPreview] = useState<PreviewWithSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -47,11 +52,12 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
 
     const extension = file.name.split(".").pop()?.toLowerCase();
     const isSpreadsheet = extension === "xlsx" || extension === "xls";
-    if (!extension || !["csv", "txt", "xlsx", "xls"].includes(extension)) {
-      setError("Nesta versão funcional, use CSV ou XLSX. PDF ainda não é suportado.");
+    const isImageOrPdf = extension === "pdf" || IMAGE_EXTENSIONS.has(extension ?? "");
+    if (!extension || !["csv", "txt", "xlsx", "xls", "pdf", "jpg", "jpeg", "png", "webp"].includes(extension)) {
+      setError("Formatos aceitos: CSV, XLSX, PDF, JPG, PNG ou WEBP.");
       return;
     }
-    const maxSize = isSpreadsheet ? 4_500_000 : 3_500_000;
+    const maxSize = isImageOrPdf ? 8_500_000 : isSpreadsheet ? 4_500_000 : 3_500_000;
     if (file.size > maxSize) {
       setError(`O arquivo excede ${(maxSize / 1_000_000).toLocaleString("pt-BR")} MB. Divida por área ou laboratório nesta etapa do MVP.`);
       return;
@@ -59,6 +65,23 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
 
     setLoading(true);
     try {
+      if (isImageOrPdf) {
+        const content = await readAsBase64(file);
+        const response = await fetch("/api/import/extract", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content, mimeType: file.type || MIME_BY_EXTENSION[extension], fileName: file.name, fallbackMethod: method || undefined }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Falha ao ler o arquivo com IA.");
+        setPreview(payload as PreviewWithSource);
+        onPreviewChange(payload as LabImportPreview);
+        // O que será persistido não é o PDF/foto original, e sim o CSV que a
+        // IA transcreveu (já validado acima pelo mesmo motor do upload
+        // manual) -- é esse texto que a etapa de confirmação reenvia.
+        onFileReady?.({ fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`, content: (payload as PreviewWithSource).csvContent ?? "" });
+        return;
+      }
       const content = isSpreadsheet ? await readAsBase64(file) : await file.text();
       const response = await fetch("/api/import/validate", {
         method: "POST",
@@ -73,7 +96,7 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Falha ao validar o arquivo.");
-      setPreview(payload as LabImportPreview);
+      setPreview(payload as PreviewWithSource);
       onPreviewChange(payload as LabImportPreview);
       onFileReady?.({ fileName: file.name, content });
     } catch (processingError) {
@@ -86,13 +109,15 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
   return (
     <div className="lab-importer">
       <label className={`upload-zone ${preview ? "has-file" : ""} ${error ? "has-error" : ""}`}>
-        <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={(event) => void processFile(event.target.files?.[0])}/>
+        <input type="file" accept=".csv,.txt,.xlsx,.xls,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => void processFile(event.target.files?.[0])}/>
         <div className="upload-icon"><Icon name={preview ? "check" : loading ? "clock" : "upload"} size={27}/></div>
-        <strong>{loading ? "Validando estrutura e resultados…" : fileName || "Arraste o laudo CSV/XLSX ou clique para selecionar"}</strong>
-        <small>{preview ? `${preview.rows.length} resultados normalizados · ${preview.sampleCount} amostras` : "CSV ou XLSX · primeira aba da planilha · PDF ainda não suportado"}</small>
+        <strong>{loading ? (preview === null && fileName ? "Lendo o laudo…" : "Validando estrutura e resultados…") : fileName || "Arraste o laudo (CSV, XLSX, PDF ou foto) ou clique para selecionar"}</strong>
+        <small>{preview ? `${preview.rows.length} resultados normalizados · ${preview.sampleCount} amostras` : "CSV/XLSX (leitura exata) ou PDF/foto (leitura por IA, com conferência obrigatória)"}</small>
       </label>
 
       {error && <div className="import-message danger"><Icon name="warning" size={18}/><div><strong>Arquivo não processado</strong><small>{error}</small></div></div>}
+
+      {preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>Confira CADA valor abaixo contra o laudo original antes de continuar -- leitura automática de PDF/foto pode errar um número ou uma unidade. Nada é salvo até a etapa de confirmação.</small></div></div>}
 
       {preview && <div className="import-preview">
         <div className="import-preview-head">

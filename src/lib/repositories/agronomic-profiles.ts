@@ -43,10 +43,14 @@ export async function getCropProfile(tenantId: string, cropProfileId: string, us
     if (!profile) return null;
     const parametersResult = await client.query(
       `SELECT id::text, parameter_code AS "parameterCode", parameter_category AS "parameterCategory",
+              sample_type AS "sampleType",
               depth_from_cm::float8 AS "depthFromCm", depth_to_cm::float8 AS "depthToCm",
               analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
               sufficiency_ranges AS "sufficiencyRanges", criticality, yield_goal_bracket AS "yieldGoalBracket",
               technical_notes AS "technicalNotes", recommendation_rules AS "recommendationRules", status,
+              condition_parameter_code AS "conditionParameterCode",
+              condition_min::float8 AS "conditionMin", condition_max::float8 AS "conditionMax",
+              derived_parameter_code AS "derivedParameterCode",
               created_at::text AS "createdAt", updated_at::text AS "updatedAt"
        FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid ORDER BY parameter_code, depth_from_cm NULLS FIRST`,
       [cropProfileId],
@@ -99,6 +103,8 @@ export async function upsertCropProfileParameter(input: {
   cropProfileId: string;
   parameterCode: string;
   parameterCategory: "QUIMICO" | "FISICO" | "MICROBIOLOGICO";
+  /** Ver `agronomic-engine.ts` -- tipo de amostra (solo, foliar, pecíolo...). Default 'SOLO' preserva comportamento existente. */
+  sampleType?: "SOLO" | "FOLIAR" | "PECIOLO" | "MASSA_SECA" | "GRAO" | "SEMENTE" | "FERTILIZANTE" | "BIOLOGICO";
   depthFromCm?: number | null;
   depthToCm?: number | null;
   analyticalMethodAllowed?: string[];
@@ -106,21 +112,29 @@ export async function upsertCropProfileParameter(input: {
   sufficiencyRanges?: object | null;
   criticality?: "BAIXA" | "MEDIA" | "ALTA" | null;
   technicalNotes?: string | null;
+  /** Ver `agronomic-engine.ts` -- condição opcional para desambiguar múltiplas faixas do mesmo parâmetro/profundidade/método (ex.: classe de argila para P). */
+  conditionParameterCode?: string | null;
+  conditionMin?: number | null;
+  conditionMax?: number | null;
+  /** Ver `agronomic-engine.ts` -- nome de uma função registrada em DERIVED_PARAMETER_FUNCTIONS (ex.: "FE_TOXICITY_PSFE"). Quando definido, `parameterCode` é um parâmetro virtual calculado, não um resultado de laboratório real. */
+  derivedParameterCode?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO crop_profile_parameters
-       (crop_profile_id, parameter_code, parameter_category, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes)
-       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6::text[], nullif($7,''), $8::jsonb, $9::parameter_criticality, nullif($10,''))
-       ON CONFLICT (crop_profile_id, parameter_code, depth_from_cm, depth_to_cm)
+       (crop_profile_id, parameter_code, parameter_category, sample_type, depth_from_cm, depth_to_cm, analytical_method_allowed, unit_expected, sufficiency_ranges, criticality, technical_notes, condition_parameter_code, condition_min, condition_max, derived_parameter_code)
+       VALUES ($1::uuid, $2, $3::lab_parameter_category, $4, $5, $6, $7::text[], nullif($8,''), $9::jsonb, $10::parameter_criticality, nullif($11,''), nullif($12,''), $13, $14, nullif($15,''))
+       ON CONFLICT (crop_profile_id, parameter_code, sample_type, depth_from_cm, depth_to_cm, condition_parameter_code, condition_min, condition_max)
        DO UPDATE SET parameter_category = EXCLUDED.parameter_category, analytical_method_allowed = EXCLUDED.analytical_method_allowed,
                      unit_expected = EXCLUDED.unit_expected, sufficiency_ranges = EXCLUDED.sufficiency_ranges,
-                     criticality = EXCLUDED.criticality, technical_notes = EXCLUDED.technical_notes, updated_at = now()
+                     criticality = EXCLUDED.criticality, technical_notes = EXCLUDED.technical_notes,
+                     derived_parameter_code = EXCLUDED.derived_parameter_code, updated_at = now()
        RETURNING id::text, parameter_code AS "parameterCode", status`,
       [
         input.cropProfileId,
         input.parameterCode.trim().toUpperCase(),
         input.parameterCategory,
+        input.sampleType ?? "SOLO",
         input.depthFromCm ?? null,
         input.depthToCm ?? null,
         input.analyticalMethodAllowed ?? [],
@@ -128,6 +142,10 @@ export async function upsertCropProfileParameter(input: {
         input.sufficiencyRanges ? JSON.stringify(input.sufficiencyRanges) : null,
         input.criticality ?? null,
         input.technicalNotes ?? "",
+        input.conditionParameterCode ?? "",
+        input.conditionMin ?? null,
+        input.conditionMax ?? null,
+        input.derivedParameterCode ?? "",
       ],
     );
     const saved = result.rows[0];
@@ -152,6 +170,32 @@ export async function setCropProfileParameterStatus(input: { tenantId: string; u
     if (!updated) throw new AgronomicProfileError("Parâmetro não encontrado.", 404);
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETER_STATUS_CHANGED", entityType: "crop_profile_parameter", entityId: updated.id, metadata: { status: input.status } });
     return updated;
+  });
+}
+
+/**
+ * Homologa em bloco todos os parâmetros DRAFT de um perfil de cultura que já têm faixa de suficiência
+ * cadastrada (sem faixa, o parâmetro fica de fora -- não dá pra homologar "vazio"). Existe porque
+ * homologar cultura por cultura, parâmetro por parâmetro, um por um, é o tipo de fricção que faz um
+ * revisor real desistir no meio -- ex.: a soja tem 17 linhas de parâmetro (P e K se repetem por classe
+ * de argila/CTC), então clicar 17 vezes pra revisar uma única cultura é um obstáculo desnecessário à
+ * decisão que já foi tomada (a faixa já está lá, já é a mesma fonte técnica oficial). NÃO homologa o
+ * perfil de cultura em si (isso continua uma ação separada e explícita) -- só os parâmetros.
+ */
+export async function activateAllCropProfileParameters(input: { tenantId: string; userId: string; cropProfileId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `UPDATE crop_profile_parameters SET status = 'ACTIVE', updated_at = now()
+       WHERE crop_profile_id = $1::uuid AND status = 'DRAFT' AND sufficiency_ranges IS NOT NULL
+       RETURNING id::text, parameter_code AS "parameterCode"`,
+      [input.cropProfileId],
+    );
+    await writeAudit(client, {
+      tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETERS_BULK_ACTIVATED",
+      entityType: "crop_profile", entityId: input.cropProfileId,
+      metadata: { count: result.rowCount, parameterCodes: result.rows.map((r) => r.parameterCode) },
+    });
+    return result.rows;
   });
 }
 

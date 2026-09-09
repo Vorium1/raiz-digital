@@ -52,12 +52,12 @@ export default async function CollectionReportPage({ params }: { params: Promise
           <section className="report-section">
             <h2>Pontos ({points.length})</h2>
             {points.length ? (
-              <table className="report-table">
+              <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Código</th><th>Coordenadas</th><th>Status</th><th>Coletado em</th><th>Coletor</th><th>Origem GPS</th></tr></thead>
                 <tbody>{points.map((point: any) => (
                   <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td><td>{point.collectedAt ? new Date(point.collectedAt).toLocaleString("pt-BR") : "—"}</td><td>{point.collectedByName || "—"}</td><td>{point.gpsSource || "—"}</td></tr>
                 ))}</tbody>
-              </table>
+              </table></div>
             ) : <p className="report-empty-note">Nenhum ponto gerado ainda para esta ordem.</p>}
           </section>
           <ReportSignature branding={branding} />

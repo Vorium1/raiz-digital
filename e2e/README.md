@@ -33,6 +33,16 @@ tenant "Raiz Digital Demo": `rbac-agronomist@raiz.local` (AGRONOMIST), `rbac-fie
 (FIELD_TECH), `rbac-commercial@raiz.local` (COMMERCIAL), `rbac-viewer@raiz.local` (VIEWER). Já existem
 no banco de desenvolvimento do handoff.
 
+`platform-curator.spec.ts` (curadoria da base técnica compartilhada — crop_profiles/technical_sources/
+technical_regions, sem tenant_id) não precisa de conta nova: reaproveita `admin@raiz.local` (já marcado
+curador nesta base de dev, `db:set-platform-curator`) e `rbac-agronomist@raiz.local` (não-curador) —
+mesmas senhas `E2E_ADMIN_PASSWORD`/`E2E_RBAC_AGRONOMIST_PASSWORD` já usadas pelos outros testes.
+
+`tenant-prescription-limit.spec.ts` (teto mensal de prescrições por IA) também não precisa de conta
+nova — reaproveita `admin@raiz.local`. Mexe direto no banco (como `two-factor.spec.ts`) só pra baixar e
+restaurar `tenants.monthly_prescription_limit` da empresa "Raiz Digital Demo" durante o teste; precisa de
+`DATABASE_URL` no ambiente, igual aos testes de 2FA.
+
 3. As senhas usadas para login em cada teste vêm de variáveis de ambiente (nunca do código-fonte, já que
    o repositório é público) — defina-as antes de rodar:
 

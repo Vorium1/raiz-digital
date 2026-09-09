@@ -116,11 +116,19 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
+    // Só alerta sobre culturas que este tenant REALMENTE usa (tem pelo menos uma safra vinculada) --
+    // crop_profiles é catálogo global (54+ culturas, de soja a abacateiro), sem tenant_id; sem esse
+    // filtro, todo tenant via alerta de homologação pendente de toda cultura do catálogo, mesmo as que
+    // nunca vai plantar -- 84 alertas de baixa prioridade que na prática viram ruído, escondendo os que
+    // realmente importam pra essa operação.
     const unhomologatedParams = await client.query(
       `SELECT cp.id::text, cp.name, count(*)::int AS pending
-       FROM crop_profile_parameters cpp JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
+       FROM crop_profile_parameters cpp
+       JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
        WHERE cpp.status != 'ACTIVE'
+         AND cp.id IN (SELECT DISTINCT crop_profile_id FROM crop_seasons WHERE tenant_id = $1::uuid AND crop_profile_id IS NOT NULL)
        GROUP BY cp.id, cp.name`,
+      [tenantId],
     );
     for (const row of unhomologatedParams.rows) {
       alerts.push({
@@ -198,6 +206,144 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `broken-trace-${row.id}`, category: "Inconsistência de rastreabilidade", criticality: "ALTA",
         title: `Amostra ${row.laboratory_code} sem ponto de coleta vinculado`, description: `${row.clientName} · ${row.fieldName} · ${row.analysisCode} — código da amostra não bate com nenhum ponto da ordem.`,
         href: `/analises/${row.analysisId}`, context: row.fieldName,
+      });
+    }
+
+    /**
+     * Reanálise vencida: regra já carregada na base de conhecimento (fonte: Trigo Safra 2026) --
+     * análise de solo deve ser refeita a cada 3 anos no máximo. Pedido real do diretor (2026-09-04):
+     * manter o produtor "na vida da plataforma", incentivando recoleta periódica em vez de deixar a
+     * análise antiga silenciosamente desatualizada.
+     */
+    const reanalysisDue = await client.query(
+      `SELECT f.id::text, f.name, c.name AS "clientName", max(a.created_at)::text AS "lastAnalysisAt"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       WHERE a.tenant_id = $1::uuid
+       GROUP BY f.id, f.name, c.name
+       HAVING max(a.created_at) < now() - interval '3 years'`,
+      [tenantId],
+    );
+    for (const row of reanalysisDue.rows) {
+      const years = ((Date.now() - new Date(row.lastAnalysisAt).getTime()) / (1000 * 60 * 60 * 24 * 365.25)).toFixed(1);
+      alerts.push({
+        id: `reanalysis-due-${row.id}`, category: "Reanálise de solo vencida", criticality: "MEDIA",
+        title: `${row.name} sem análise há mais de 3 anos`, description: `${row.clientName} — última análise há ${years} anos (regra: reanalisar no máximo a cada 3 anos).`,
+        href: `/relatorios/evolucao/${row.id}`, context: row.name,
+      });
+    }
+
+    /**
+     * Desvio de aplicação de insumo: recomendado (`input_recommendations`) x aplicado
+     * (`input_applications`) -- pedido real do diretor (2026-09-04, ideia trazida por Rafael/Cabeda):
+     * sinalizar quando o produtor aplicou quantidade muito diferente da recomendada, servindo tanto de
+     * alerta de manejo quanto de respaldo técnico do agrônomo quando a produtividade não bate com o
+     * esperado. Mesmo limiar de `getInputComparisonForAnalysis` (catalog.ts): <95% ou >110% do
+     * recomendado. Só aplica quando HOUVE aplicação registrada -- "não aplicou ainda" não é alertado
+     * aqui (pode ser só falta de tempo, não é necessariamente desvio).
+     */
+    const inputDeviation = await client.query(
+      `WITH latest_recommendations AS (
+         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
+         FROM input_recommendations WHERE tenant_id = $1::uuid
+         ORDER BY analysis_id, input_type, calculated_at DESC
+       ),
+       applied_totals AS (
+         SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
+         FROM input_applications WHERE tenant_id = $1::uuid
+         GROUP BY analysis_id, input_type, unit
+       )
+       SELECT r.analysis_id::text AS "analysisId", r.input_type AS "inputType", r.quantity::float8 AS "recommendedQuantity", r.unit,
+              a.total_quantity::float8 AS "appliedQuantity", an.code, f.name AS "fieldName", c.name AS "clientName"
+       FROM latest_recommendations r
+       JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
+       JOIN analyses an ON an.tenant_id = $1::uuid AND an.id = r.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id = an.tenant_id AND cs.id = an.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id`,
+      [tenantId],
+    );
+    for (const row of inputDeviation.rows) {
+      const ratio = row.appliedQuantity / row.recommendedQuantity;
+      if (ratio >= 0.95 && ratio <= 1.1) continue;
+      const over = ratio > 1.1;
+      alerts.push({
+        id: `input-deviation-${row.analysisId}-${row.inputType}`, category: "Desvio de aplicação de insumo", criticality: over ? "ALTA" : "MEDIA",
+        title: `${row.fieldName} — ${row.inputType} ${over ? "acima" : "abaixo"} do recomendado`,
+        description: `${row.clientName} · ${row.code} — recomendado ${row.recommendedQuantity}${row.unit}, aplicado ${row.appliedQuantity.toFixed(2)}${row.unit} (${Math.round(ratio * 100)}% do recomendado).`,
+        href: `/analises/${row.analysisId}`, context: row.fieldName,
+      });
+    }
+
+    /**
+     * Aviso climático da safra (El Niño 2026/27) -- pedido real do diretor (2026-09-07): não estimar
+     * produtividade numérica ligada ao clima (isso seria número inventado, sem modelo calibrado real por
+     * trás), mas alertar com recomendação QUALITATIVA de manejo de risco, sourced numa fonte técnica real.
+     * Validado depois em DUAS rodadas independentes de pesquisa externa (GPT e Claude com busca na web,
+     * 2026-09-07/08) -- as duas confirmaram as fontes, mas trouxeram 3 correções importantes que mudaram
+     * o texto abaixo; documentadas aqui pra não se perder.
+     *
+     * Fonte 1 (prognóstico da safra): NOAA/CPC (≥90% de probabilidade de El Niño no trimestre ago-set-
+     * out/2026, persistindo até 1º trim. 2027) via INMET/CPTEC; recomendações técnicas de Jossana Ceolin
+     * Cera (Meteorologista, CREA-RS 244228, IRGA), publicadas em "El Niño 2026/27: foi dada a largada!"
+     * (Mais Soja/IRGA/Planeta Arroz, 2026).
+     *
+     * Fonte 2 (existe modelo real ligando clima e produtividade?): DA CUNHA MELLO, F.D.; KUMAR, P.;
+     * NASCIMENTO, E.G.S. "Weak and heterogeneous ENSO teleconnections to Brazilian soybean yields: a
+     * municipal-to-national assessment", Theoretical and Applied Climatology, v.157, art.322, 2026 (DOI
+     * 10.1007/s00704-026-06266-z, acesso aberto) -- 21 safras (2000-2021), 1.733 municípios, 10 estados.
+     * Depois de correção de teste múltiplo (Benjamini-Hochberg, q=0,10), NENHUM estado ficou
+     * estatisticamente significativo; correlação mediana |r|≈0,17 (R² mediano ≈0,03). CORREÇÃO 1
+     * (importante): o RS especificamente aparece como um dos estados de efeito DESPREZÍVEL na comparação
+     * El Niño×La Niña (|δ de Cliff|≤0,12) e é o estado de MAIOR variabilidade interanual do país (σ_RS
+     * 575,5 kg/ha vs. σ_MT 150,8 kg/ha) sem que o ENOS explique essa variação. Conclusão dos próprios
+     * autores: o RÓTULO de fase do ENOS sozinho não é preditor robusto -- o mecanismo real é a CHUVA
+     * dentro da estação, da qual o índice oceânico é só um proxy fraco. Por isso o texto abaixo nunca usa
+     * "é ano de El Niño" como razão determinística, só como contexto oficial de prognóstico.
+     *
+     * Fonte 3 (a única cifra numérica real e quantificada, por isso é a única que entra no texto): SOARES,
+     * M.F. et al. "Assessing environmental and management factors that drive soybean yield gaps in
+     * Brazil", Journal of Environmental Quality, v.54, n.6, p.1383-1396, 2025 (DOI 10.1002/jeq2.70076,
+     * PMC12593302, acesso aberto). CORREÇÃO 2 (geografia): a cifra de "até 42 kg/ha/dia de queda de Yp
+     * após 30/10" é da MR1 (macrorregião edafoclimática MAPA/ZARC que inclui o RS -- não é "RS+SC+PR"
+     * tratados como bloco único; a MR2, que cobre parte de PR/SP/MS, tem a MESMA perda máxima mas a queda
+     * só começa na 2ª quinzena de novembro). Nunca generalizar essa data pra outro estado sem checar a
+     * macrorregião do IN SPA/MAPA nº 1/2021. CORREÇÃO 3 (natureza do número): "até 42 kg/ha/dia" é
+     * DECAIMENTO DE PRODUTIVIDADE POTENCIAL (Yp) SIMULADO (sem limitação hídrica/nutricional), não perda
+     * observada em lavoura real -- é um TETO teórico pra ordenar prioridade ("atrasar custa mais no Sul"),
+     * nunca uma penalidade a se subtrair do laudo como se fosse precisão de campo. O mesmo artigo confirma
+     * que quem sofre queda de produtividade real no Sul é ano de LA NIÑA (por déficit hídrico) -- este ano
+     * sendo El Niño, o risco dominante tende a ser o oposto (chuva em excesso/atraso de plantio).
+     *
+     * Escopo: só dispara pra safra 2026/27, culturas de verão (soja/milho/arroz) em propriedades no RS --
+     * é exatamente o recorte da fonte. Isso é conteúdo datado por natureza (uma previsão climática de uma
+     * safra específica) -- precisa ser atualizado ou removido quando a safra 2026/27 passar; não
+     * generaliza pra safras futuras sozinho.
+     */
+    const CLIMATE_ADVISORY_CROPS = ["soja", "milho", "arroz"];
+    const climateSeasons = await client.query(
+      `SELECT cs.id::text, cs.field_id::text AS "fieldId", cs.season_label AS "seasonLabel",
+              coalesce(cs.next_crop, cs.current_crop) AS crop, f.name AS "fieldName", c.name AS "clientName"
+       FROM crop_seasons cs
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       WHERE cs.tenant_id = $1::uuid AND cs.season_label = '2026/27' AND p.state = 'RS'
+         AND lower(coalesce(cs.next_crop, cs.current_crop, '')) = ANY($2::text[])`,
+      [tenantId, CLIMATE_ADVISORY_CROPS],
+    );
+    for (const row of climateSeasons.rows) {
+      alerts.push({
+        id: `climate-el-nino-2026-27-${row.id}`,
+        category: "Aviso climático da safra",
+        criticality: "MEDIA",
+        title: `${row.crop} 2026/27 sob El Niño confirmado (≥90% NOAA/CPC) — atenção à janela de plantio`,
+        description: `${row.clientName} · ${row.fieldName} — prognóstico oficial (NOAA/CPC via INMET/CPTEC) indica El Niño confirmado para a safra 2026/27, o que historicamente tende a trazer primavera mais chuvosa no RS — mas um estudo científico recente (da Cunha Mello et al., 2026) mostra que, isoladamente, a fase do El Niño/La Niña é um sinal fraco pro RS especificamente; o que importa de verdade é acompanhar a previsão de chuva local, não só o rótulo do fenômeno. Ainda assim, valem os cuidados já recomendados pela meteorologista do IRGA: janela de semeadura tende a ficar menor, com risco de atraso — evitar semeadura tardia (na macrorregião do RS, cada dia de atraso além de ~30/10 pode custar até 42 kg/ha de teto de produtividade potencial simulada, Soares et al. 2025 — é um teto teórico, não uma perda medida em lavoura). Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo em ano de El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também (queda de produtividade por seca no RS está mais associada a anos de La Niña, não a este). Fontes: NOAA/CPC/INMET/CPTEC; Jossana Ceolin Cera (IRGA, CREA-RS 244228); da Cunha Mello et al. (2026, Theoretical and Applied Climatology); Soares et al. (2025, Journal of Environmental Quality). Não é estimativa de produtividade — é orientação de manejo de risco.`,
+        href: `/coletas`, context: row.fieldName,
       });
     }
 

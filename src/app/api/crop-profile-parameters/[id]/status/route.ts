@@ -1,13 +1,12 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { AgronomicProfileError, setCropProfileParameterStatus } from "@/lib/repositories/agronomic-profiles";
 
-const homologationRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const validStatuses = new Set(["DRAFT", "ACTIVE", "SUPERSEDED"]);
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
-  if (!homologationRoles.has(session.role)) return Response.json({ error: "Somente um agrônomo responsável pode homologar um parâmetro." }, { status: 403 });
+  if (!session.isPlatformCurator) return Response.json({ error: "Somente um curador da plataforma pode homologar um parâmetro." }, { status: 403 });
   const { id } = await context.params;
 
   try {
