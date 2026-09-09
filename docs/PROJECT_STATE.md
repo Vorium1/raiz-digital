@@ -3884,3 +3884,27 @@ tinha 4 detalhes que só um teste de verdade contra o serviço real conseguiria 
 
 **Ainda em aberto**: configurar `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` na Vercel (produção) --
 só funciona localmente por enquanto, até isso ser feito no próximo bloco de trabalho "externo".
+
+## Satélite configurado em produção + susto real de login resolvido (2026-09-09, mesmo dia)
+
+Mesma tarde: o diretor topou fazer isso na hora em vez de esperar. Configurou `COPERNICUS_CLIENT_ID` /
+`COPERNICUS_CLIENT_SECRET` na Vercel (Production + Preview), fez o segundo `git push` + PR develop→main
+(mesclando as 4 correções do provedor NDVI), e a Vercel publicou sozinha.
+
+**Susto real no meio do caminho**: login no site publicado deu "Credenciais inválidas" repetidamente,
+mesmo com a senha certa. Investigado direto no banco de produção (Neon): confirmei com `argon2.verify()`
+que o hash salvo bate exatamente com a senha real (`Pdo4xuMd0QjY`) -- não era problema de banco, senha ou
+backend. Testei a API de login direto (`curl` no endpoint real de produção) e funcionou de primeira
+(`{"ok":true,...}`). Causa real: autofill do Chrome reenviando uma senha antiga salva por baixo do que
+aparecia na tela -- resolvido testando em aba anônima. Fica registrado como lição prática: quando um erro
+de login parece "impossível" com credencial confirmada certa, testar a API direto (sem navegador) resolve
+a dúvida rápido, antes de mexer em qualquer coisa do lado do servidor.
+
+**Satélite confirmado funcionando em produção de verdade**: testado direto contra
+`https://raiz-digital-brown.vercel.app/api/fields/.../ndvi` com sessão real -- `HTTP 201`, mesmos números
+reais do teste local (403 pixels, NDVI médio 0,78, variabilidade real capturada), salvo no banco de
+produção. Com isso, os 4 itens do checklist original do diretor (motor agronômico, dados reais, infra,
+visual) mais o satélite estão publicados e funcionando de verdade, não só localmente.
+
+**Testado**: verificação direta via API de produção (curl com sessão real), não só suposição a partir da
+tela. Sessão de teste revogada depois.
