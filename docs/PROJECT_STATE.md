@@ -3884,3 +3884,53 @@ tinha 4 detalhes que só um teste de verdade contra o serviço real conseguiria 
 
 **Ainda em aberto**: configurar `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` na Vercel (produção) --
 só funciona localmente por enquanto, até isso ser feito no próximo bloco de trabalho "externo".
+
+## Satélite configurado em produção + susto real de login resolvido (2026-09-09, mesmo dia)
+
+Mesma tarde: o diretor topou fazer isso na hora em vez de esperar. Configurou `COPERNICUS_CLIENT_ID` /
+`COPERNICUS_CLIENT_SECRET` na Vercel (Production + Preview), fez o segundo `git push` + PR develop→main
+(mesclando as 4 correções do provedor NDVI), e a Vercel publicou sozinha.
+
+**Susto real no meio do caminho**: login no site publicado deu "Credenciais inválidas" repetidamente,
+mesmo com a senha certa. Investigado direto no banco de produção (Neon): confirmei com `argon2.verify()`
+que o hash salvo bate exatamente com a senha real (`Pdo4xuMd0QjY`) -- não era problema de banco, senha ou
+backend. Testei a API de login direto (`curl` no endpoint real de produção) e funcionou de primeira
+(`{"ok":true,...}`). Causa real: autofill do Chrome reenviando uma senha antiga salva por baixo do que
+aparecia na tela -- resolvido testando em aba anônima. Fica registrado como lição prática: quando um erro
+de login parece "impossível" com credencial confirmada certa, testar a API direto (sem navegador) resolve
+a dúvida rápido, antes de mexer em qualquer coisa do lado do servidor.
+
+**Satélite confirmado funcionando em produção de verdade**: testado direto contra
+`https://raiz-digital-brown.vercel.app/api/fields/.../ndvi` com sessão real -- `HTTP 201`, mesmos números
+reais do teste local (403 pixels, NDVI médio 0,78, variabilidade real capturada), salvo no banco de
+produção. Com isso, os 4 itens do checklist original do diretor (motor agronômico, dados reais, infra,
+visual) mais o satélite estão publicados e funcionando de verdade, não só localmente.
+
+**Testado**: verificação direta via API de produção (curl com sessão real), não só suposição a partir da
+tela. Sessão de teste revogada depois.
+
+## Mapa de imagem de satélite real + talhão colorido pelo vigor (2026-09-09)
+
+O diretor testou o mapa e reclamou, com razão: só mostrava linha de mapa tipo Waze (OpenStreetMap),
+nenhuma imagem real de terreno, e o vigor por satélite (que acabamos de validar) ficava escondido numa
+caixinha separada em vez de aparecer no próprio mapa. Corrigido na hora, os dois pontos:
+
+1. **`RealFieldMap` trocado de mapa de rua (OpenStreetMap) pra imagem de satélite real** (Esri World
+   Imagery, gratuito, sem chave -- mesma preferência por self-serve/gratuito do resto do projeto), com uma
+   camada fina de rótulo de rua/rio por cima só pra referência. Agora dá pra ver mata, estrada, área
+   limpa de verdade -- não só linhas abstratas.
+2. **O contorno do talhão agora é colorido pela faixa de vigor predominante do satélite** (não uma média
+   de cor -- a faixa com maior % de área real, a mesma classificação já testada em produção). Prop nova
+   `boundaryFillColor` em `RealFieldMap`; `FieldNdviPanel` ganhou um callback `onZoneColor` que a tela de
+   Propriedades & Talhões usa pra colorir o mapa assim que a leitura de satélite carrega.
+
+**Limite real, dito com clareza pro diretor**: ele também pediu pra ver "produtividade" no mapa -- isso
+não dá pra mostrar ainda porque **não existe nenhum dado real de produtividade cadastrado** pra nenhum
+talhão do Cabeda (`field_yield_history` está com 0 linhas, confirmado na cópia de dados pra Neon). Não é
+falta de funcionalidade -- a tabela e a tela pra cadastrar isso já existem (`Histórico & Evolução`) -- é
+falta de dado real inserido. Diferente do vigor (que é uma leitura objetiva do satélite), produtividade
+real só existe se alguém registrar a colheita depois da safra.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Verificado visualmente com sessão
+real local (screenshot: mata, estrada e talhão real visíveis, contorno verde forte batendo com o vigor
+muito alto já confirmado em produção pra "Área 01").
