@@ -15,13 +15,26 @@ type Snapshot = {
 };
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
-const ZONE_COLOR: Record<VigorZone, string> = {
+export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
   SEM_VEGETACAO: "#9a8468",
   BAIXO: "#d9655a",
   MODERADO: "#d89943",
   ALTO: "#8fbf6b",
   MUITO_ALTO: "#29966f",
 };
+
+/** Cor representativa do talhão inteiro (pra pintar o contorno no mapa) -- a faixa de vigor com maior
+ * % de área, não uma média de cor (misturar cor de faixas diferentes não teria leitura real). */
+export function dominantZoneColor(breakdown: Partial<Record<VigorZone, number>> | undefined): string | null {
+  if (!breakdown) return null;
+  let best: VigorZone | null = null;
+  let bestPct = -1;
+  for (const zone of ZONE_ORDER) {
+    const pct = breakdown[zone] ?? 0;
+    if (pct > bestPct) { best = zone; bestPct = pct; }
+  }
+  return best ? NDVI_ZONE_COLOR[best] : null;
+}
 
 /**
  * Painel de vigor vegetativo por satélite (Sentinel-2/NDVI) -- item 4 do checklist do diretor.
@@ -30,7 +43,7 @@ const ZONE_COLOR: Record<VigorZone, string> = {
  * Sem `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` configurados nesta instância, o botão
  * "Buscar leitura" mostra o erro claro devolvido pela API em vez de qualquer dado inventado.
  */
-export function FieldNdviPanel({ fieldId }: { fieldId: string }) {
+export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZoneColor?: (color: string | null) => void }) {
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [latest, setLatest] = useState<Snapshot | null>(null);
@@ -48,8 +61,10 @@ export function FieldNdviPanel({ fieldId }: { fieldId: string }) {
       setLatest(payload.latest ?? null);
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setLoading(false);
+      onZoneColor?.(dominantZoneColor(payload.latest?.zoneBreakdownPct));
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldId]);
 
   async function handleFetchSatellite() {
@@ -64,6 +79,7 @@ export function FieldNdviPanel({ fieldId }: { fieldId: string }) {
       }
       setLatest(payload.snapshot);
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
+      onZoneColor?.(dominantZoneColor(payload.snapshot?.zoneBreakdownPct));
     } finally {
       setFetching(false);
     }
@@ -95,12 +111,12 @@ export function FieldNdviPanel({ fieldId }: { fieldId: string }) {
           </p>
           <div className="ndvi-zone-bar">
             {ZONE_ORDER.filter((zone) => (latest.zoneBreakdownPct[zone] ?? 0) > 0).map((zone) => (
-              <div key={zone} style={{ width: `${latest.zoneBreakdownPct[zone]}%`, background: ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${latest.zoneBreakdownPct[zone]}%`} />
+              <div key={zone} style={{ width: `${latest.zoneBreakdownPct[zone]}%`, background: NDVI_ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${latest.zoneBreakdownPct[zone]}%`} />
             ))}
           </div>
           <ul className="ndvi-zone-legend">
             {ZONE_ORDER.filter((zone) => (latest.zoneBreakdownPct[zone] ?? 0) > 0).map((zone) => (
-              <li key={zone}><i style={{ background: ZONE_COLOR[zone] }} />{VIGOR_ZONE_LABELS[zone]} — {latest.zoneBreakdownPct[zone]}%</li>
+              <li key={zone}><i style={{ background: NDVI_ZONE_COLOR[zone] }} />{VIGOR_ZONE_LABELS[zone]} — {latest.zoneBreakdownPct[zone]}%</li>
             ))}
           </ul>
           {variabilityNote && <p className="ndvi-panel-variability"><Icon name="warning" size={14} />{variabilityNote}</p>}

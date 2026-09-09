@@ -3908,3 +3908,29 @@ visual) mais o satélite estão publicados e funcionando de verdade, não só lo
 
 **Testado**: verificação direta via API de produção (curl com sessão real), não só suposição a partir da
 tela. Sessão de teste revogada depois.
+
+## Mapa de imagem de satélite real + talhão colorido pelo vigor (2026-09-09)
+
+O diretor testou o mapa e reclamou, com razão: só mostrava linha de mapa tipo Waze (OpenStreetMap),
+nenhuma imagem real de terreno, e o vigor por satélite (que acabamos de validar) ficava escondido numa
+caixinha separada em vez de aparecer no próprio mapa. Corrigido na hora, os dois pontos:
+
+1. **`RealFieldMap` trocado de mapa de rua (OpenStreetMap) pra imagem de satélite real** (Esri World
+   Imagery, gratuito, sem chave -- mesma preferência por self-serve/gratuito do resto do projeto), com uma
+   camada fina de rótulo de rua/rio por cima só pra referência. Agora dá pra ver mata, estrada, área
+   limpa de verdade -- não só linhas abstratas.
+2. **O contorno do talhão agora é colorido pela faixa de vigor predominante do satélite** (não uma média
+   de cor -- a faixa com maior % de área real, a mesma classificação já testada em produção). Prop nova
+   `boundaryFillColor` em `RealFieldMap`; `FieldNdviPanel` ganhou um callback `onZoneColor` que a tela de
+   Propriedades & Talhões usa pra colorir o mapa assim que a leitura de satélite carrega.
+
+**Limite real, dito com clareza pro diretor**: ele também pediu pra ver "produtividade" no mapa -- isso
+não dá pra mostrar ainda porque **não existe nenhum dado real de produtividade cadastrado** pra nenhum
+talhão do Cabeda (`field_yield_history` está com 0 linhas, confirmado na cópia de dados pra Neon). Não é
+falta de funcionalidade -- a tabela e a tela pra cadastrar isso já existem (`Histórico & Evolução`) -- é
+falta de dado real inserido. Diferente do vigor (que é uma leitura objetiva do satélite), produtividade
+real só existe se alguém registrar a colheita depois da safra.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Verificado visualmente com sessão
+real local (screenshot: mata, estrada e talhão real visíveis, contorno verde forte batendo com o vigor
+muito alto já confirmado em produção pra "Área 01").

@@ -48,6 +48,7 @@ export function RealFieldMap({
   colorFor,
   legend,
   hint = "Clique num ponto para ver os dados",
+  boundaryFillColor,
 }: {
   boundary: Geometry;
   points: MapPoint[];
@@ -55,14 +56,18 @@ export function RealFieldMap({
   colorFor?: (point: MapPoint) => { stroke: string; fill: string; fillOpacity: number };
   legend?: MapLegendEntry[];
   hint?: string;
+  /** Cor do preenchimento do próprio talhão, derivada do vigor real (satélite) quando disponível --
+   * substitui o preenchimento cyan neutro padrão. Nunca uma cor inventada: vem sempre de uma
+   * classificação já calculada (ver `classifyNdviValue` em `ndvi-engine.ts`). */
+  boundaryFillColor?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const layersRef = useRef<Record<string, Leaflet.LayerGroup>>({});
-  const latestRef = useRef({ boundary, points, colorFor });
+  const latestRef = useRef({ boundary, points, colorFor, boundaryFillColor });
   const onSelectRef = useRef<(point: MapPoint) => void>(() => {});
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
-  latestRef.current = { boundary, points, colorFor };
+  latestRef.current = { boundary, points, colorFor, boundaryFillColor };
   onSelectRef.current = setSelectedPoint;
 
   function defaultColor(point: MapPoint) {
@@ -77,10 +82,15 @@ export function RealFieldMap({
     boundaryLayer.clearLayers();
     pointsLayer.clearLayers();
 
-    const { boundary, points, colorFor } = latestRef.current;
+    const { boundary, points, colorFor, boundaryFillColor } = latestRef.current;
     const rings = geometryRings(boundary);
     rings.forEach((ring) => {
-      L.polygon(ring, { color: "#00C4D6", weight: 2, fillOpacity: 0.08 }).addTo(boundaryLayer);
+      L.polygon(ring, {
+        color: boundaryFillColor ?? "#00C4D6",
+        weight: 3,
+        fillColor: boundaryFillColor ?? "#00C4D6",
+        fillOpacity: boundaryFillColor ? 0.35 : 0.08,
+      }).addTo(boundaryLayer);
     });
 
     const bounds: [number, number][] = [...rings.flat()];
@@ -112,7 +122,18 @@ export function RealFieldMap({
       if (cancelled || !containerRef.current || mapRef.current) return;
       const L = mod.default;
       const map = L.map(containerRef.current, { attributionControl: true }).setView([-15.7797, -47.9297], 4);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+      // Imagem de satélite real (Esri World Imagery, gratuito, sem chave) -- trocado do mapa de ruas
+      // (OpenStreetMap) porque o diretor pediu explicitamente pra enxergar o terreno de verdade, não só
+      // linha de rua/rio. Camada de rótulos (nome de rua/rio) por cima, sutil, só pra referência.
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri",
+      }).addTo(map);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+        maxZoom: 19,
+        opacity: 0.85,
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      }).addTo(map);
       layersRef.current.boundary = L.layerGroup().addTo(map);
       layersRef.current.points = L.layerGroup().addTo(map);
       mapRef.current = map;
@@ -138,7 +159,7 @@ export function RealFieldMap({
     setSelectedPoint(null);
     void import("leaflet").then((mod) => drawLayers(mod.default, map));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundary, points, colorFor]);
+  }, [boundary, points, colorFor, boundaryFillColor]);
 
   const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;

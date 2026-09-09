@@ -36,6 +36,8 @@ export function PropertiesFieldsBrowser() {
   const [tab, setTab] = useState<Tab>("talhoes");
   const [search, setSearch] = useState("");
   const [selectedFieldId, setSelectedFieldId] = useState("");
+  const [vigorColor, setVigorColor] = useState<string | null>(null);
+  useEffect(() => { setVigorColor(null); }, [selectedFieldId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +151,10 @@ export function PropertiesFieldsBrowser() {
 
       <div className="fields-browser-map">
         {selectedField ? (
-          <RealFieldMap boundary={selectedField.boundary} points={mapPoints} height={420} hint={selectedOrder ? "Clique num ponto pra ver os dados" : "Nenhuma ordem de coleta aberta pra este talhão ainda"} />
+          <>
+            <RealFieldMap boundary={selectedField.boundary} points={mapPoints} height={420} boundaryFillColor={vigorColor ?? undefined} hint={selectedOrder ? "Clique num ponto pra ver os dados" : "Nenhuma ordem de coleta aberta pra este talhão ainda"} />
+            {vigorColor && <p className="fields-browser-map-note">Contorno colorido pela faixa de vigor predominante do satélite (ver detalhe completo no painel abaixo).</p>}
+          </>
         ) : <div className="chart-empty">Selecione um talhão pra ver o mapa.</div>}
 
         {selectedField && (
@@ -170,7 +175,7 @@ export function PropertiesFieldsBrowser() {
           </div>
         )}
 
-        {selectedField && <FieldNdviPanel fieldId={selectedField.id} />}
+        {selectedField && <FieldNdviPanel fieldId={selectedField.id} onZoneColor={setVigorColor} />}
       </div>
     </section>
   );
