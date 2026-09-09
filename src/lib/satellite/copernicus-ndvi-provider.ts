@@ -12,10 +12,13 @@
  * só devolve NÚMERO MEDIDO (reflectância das bandas do satélite) -- a classificação em faixa de
  * vigor é sempre feita depois, de forma determinística, por `src/domain/ndvi-engine.ts`.
  *
- * *** Não testado com credencial real -- ver docs/PROJECT_STATE.md, item 4 do checklist. *** A forma
- * da API (OAuth2 client-credentials + endpoint /api/v1/statistics) segue a documentação pública da
- * Copernicus Data Space Ecosystem / Sentinel Hub, mas nenhuma chamada real foi feita nesta sessão
- * porque a instância não tem `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` configurados.
+ * Testado de ponta a ponta com credencial real do diretor (2026-09-09) contra o talhão real "Área 01"
+ * do Cabeda -- 3 cenas reais recentes, com variação espacial real dentro do talhão (ex.: NDVI mín 0,22
+ * / máx 0,89 no mesmo dia). Três ajustes reais precisaram de correção durante esse teste, todos batendo
+ * em erro 400 real da API antes de acertar: `sampleType: "FLOAT32"` explícito na saída (senão a API
+ * assume um tipo incompatível com histograma de valor contínuo), `binWidth` em vez de `nBins` no
+ * histograma (mesmo motivo), e os limites do histograma (`lowEdge`/`highEdge`) precisam serializar como
+ * float no JSON (`-1.0`, não `-1`) -- ver função `toFloatJson` abaixo.
  */
 
 const TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token";
@@ -27,13 +30,25 @@ const NDVI_EVALSCRIPT = `//VERSION=3
 function setup() {
   return {
     input: [{ bands: ["B04", "B08", "dataMask"] }],
-    output: [{ id: "default", bands: 1 }],
+    output: [
+      { id: "default", bands: 1, sampleType: "FLOAT32" },
+      { id: "dataMask", bands: 1 },
+    ],
   };
 }
 function evaluatePixel(sample) {
   let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04 + 1e-9);
-  return [sample.dataMask === 1 ? ndvi : NaN];
+  return { default: [ndvi], dataMask: [sample.dataMask] };
 }`;
+
+// A Statistical API valida o TIPO JSON de lowEdge/highEdge contra o tipo do binWidth -- um número
+// inteiro (`-1`) e um float (`0.2`) são tratados como tipos diferentes e a API recusa com 400 ("edge
+// value types don't match bin width value type"), mesmo sendo o mesmo valor numérico. JSON.stringify
+// nunca escreve ".0" pra um float de valor inteiro, então o único jeito confiável é reescrever o texto
+// depois de serializar.
+function toFloatJson(body: string): string {
+  return body.replace('"lowEdge":-1,"highEdge":1', '"lowEdge":-1.0,"highEdge":1.0');
+}
 
 export type NdviHistogramBucket = { ndvi: number; pixelCount: number };
 
@@ -115,33 +130,47 @@ export const copernicusNdviProvider: SatelliteNdviProvider = {
   async fetchFieldNdvi(input) {
     const token = await getAccessToken();
 
+    // resx/resy são interpretados na MESMA unidade do CRS dos limites (graus, já que bounds.properties.crs
+    // é WGS84) -- não em metros, mesmo a fonte sendo Sentinel-2 a 10m. Passar `10` aqui (achado testando
+    // com credencial real) pede um pixel de 10 GRAUS, maior que o talhão inteiro, e a API devolve 1 pixel
+    // só pro campo inteiro -- inutilizando a detecção de variabilidade interna. ~0,0001° ≈ 11m no equador,
+    // perto o bastante da resolução nativa da banda (10m) pra manter a granularidade real dentro do talhão.
+    const RESOLUTION_DEGREES = 0.0001;
+
+    let requestBody = JSON.stringify({
+      input: {
+        bounds: {
+          geometry: input.fieldBoundaryGeoJson,
+          properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
+        },
+        data: [
+          {
+            type: "sentinel-2-l2a",
+            dataFilter: { maxCloudCoverage: input.maxCloudCoverPct ?? 30 },
+          },
+        ],
+      },
+      aggregation: {
+        timeRange: { from: `${input.fromDate}T00:00:00Z`, to: `${input.toDate}T23:59:59Z` },
+        aggregationInterval: { of: "P1D" },
+        evalscript: NDVI_EVALSCRIPT,
+        resx: RESOLUTION_DEGREES,
+        resy: RESOLUTION_DEGREES,
+      },
+      // `binWidth` (não `nBins`) -- a Statistical API exige isso pra histograma de banda de saída float
+      // (NDVI é contínuo entre -1 e 1); `nBins` é só pra banda de saída inteira. Achado batendo num erro
+      // 400 real da API ("sampleType FLOAT32 mis-matched with corresponding histogram of type integer").
+      // 0,2 de largura bate exatamente com as faixas de vigor de `src/domain/ndvi-engine.ts`.
+      calculations: {
+        default: { histograms: { default: { binWidth: 0.2, lowEdge: -1, highEdge: 1 } } },
+      },
+    });
+    requestBody = toFloatJson(requestBody);
+
     const response = await fetch(STATISTICS_URL, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        input: {
-          bounds: {
-            geometry: input.fieldBoundaryGeoJson,
-            properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
-          },
-          data: [
-            {
-              type: "sentinel-2-l2a",
-              dataFilter: { maxCloudCoverage: input.maxCloudCoverPct ?? 30 },
-            },
-          ],
-        },
-        aggregation: {
-          timeRange: { from: `${input.fromDate}T00:00:00Z`, to: `${input.toDate}T23:59:59Z` },
-          aggregationInterval: { of: "P1D" },
-          evalscript: NDVI_EVALSCRIPT,
-          resx: 10,
-          resy: 10,
-        },
-        calculations: {
-          default: { histograms: { default: { nBins: 10, lowEdge: -1, highEdge: 1 } } },
-        },
-      }),
+      body: requestBody,
     });
 
     if (!response.ok) {

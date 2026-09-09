@@ -3819,3 +3819,68 @@ ao vivo com sessão real, screenshot antes/depois do fix de alertas confirmando 
 **Ainda em aberto pra amanhã** (combinado com o diretor -- resolver junto o que for "externo ao código"):
 criar o projeto na Vercel, configurar as variáveis de ambiente (`DATABASE_URL`/`APP_DATABASE_URL` da Neon,
 `AUTH_SECRET`, chaves de IA) e publicar de verdade com link público.
+
+## Publicação real concluída (2026-09-09) -- https://raiz-digital-brown.vercel.app
+
+Fechado o combinado do dia anterior. Achado real ao investigar: já existia um projeto Vercel conectado a
+este repositório de uma sessão anterior (`raiz-digital`, 41 implantações), com um fluxo já documentado num
+commit antigo ("develop → preview → aprovação → main") -- só que as variáveis de ambiente de produção
+configuradas em 2 de setembro eram **todas placeholder genérico** (`postgres://user:pass@db.example.com`),
+nunca preenchidas de verdade, e a produção só publicava a branch `main` (que tinha 75 commits reais, mas
+sem os 82 commits desta sessão -- `develop` é estritamente `main` + esse trabalho, sem divergência real).
+
+**Trabalho real feito, direto no painel da Vercel junto com o diretor**: substituídas todas as variáveis
+de ambiente de produção por valores reais (banco Neon real -- admin e papel restrito `raiz_app`
+separados, `AUTH_SECRET` novo gerado só pra produção, `STORAGE_PROVIDER=none` -- ver decisão já registrada
+sobre disco efêmero na Vercel --, `GEMINI_API_KEY` real adicionada). Aberto e mesclado o Pull Request #1
+(`develop` → `main`, 82 commits, sem conflito), seguindo o fluxo já pensado por quem configurou isso
+antes. A Vercel publicou sozinha a partir do merge; um `Redeploy` manual extra garantiu que a variável do
+Gemini (adicionada por último) entrasse no build.
+
+**Testado ao vivo, de ponta a ponta, no site publicado de verdade**: login real
+(`admin@raiz.local`) funcionou, painel mostrando dado real ("DADOS REAIS", 2 clientes, 139 ha, 33 ordens
+abertas, 38 alertas -- os mesmos números já conferidos localmente antes da cópia pro banco novo). A
+publicação está no ar, com os dados reais do Cabeda, pronta pro diretor mandar pro GPT avaliar.
+
+**Ainda em aberto**: credencial do Copernicus (satélite/NDVI) -- groundwork já pronto desde sessão
+anterior, só falta o diretor criar a conta gratuita e passar `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET`
+pra eu configurar na Vercel. Avaliação do GPT sobre a plataforma publicada -- ainda não recebida; mudanças
+a partir dela ficam para quando o diretor trouxer o retorno.
+
+## NDVI por satélite: credencial real criada e primeira leitura real funcionando (2026-09-09)
+
+O diretor criou a conta gratuita no Copernicus Data Space Ecosystem (categoria "Negócios/Comercial -
+PME", sem exigir CNPJ) e gerou o OAuth Client. Testei com a credencial real ANTES de configurar na
+Vercel, e o teste pegou 4 bugs reais no código escrito numa sessão anterior sem acesso a credencial --
+o provedor nunca tinha rodado contra a API de verdade. Todos batidos contra erro 400 real da API, um de
+cada vez, corrigidos e confirmados:
+
+1. **`sampleType: "FLOAT32"` faltando na saída do evalscript** -- sem isso a API assume um tipo
+   incompatível com um valor contínuo como NDVI (-1 a 1).
+2. **`binWidth` em vez de `nBins` no histograma** -- `nBins` é só pra banda de saída inteira; um histograma
+   sobre uma banda float exige `binWidth`.
+3. **`lowEdge`/`highEdge` precisam serializar como float no JSON** (`-1.0`, não `-1`) -- a API compara o
+   TIPO json do limite do histograma com o tipo do `binWidth` e rejeita se um for inteiro e outro float,
+   mesmo sendo o mesmo valor numérico. `JSON.stringify` nunca escreve ".0" pra um float de valor inteiro,
+   então a correção final foi reescrever o texto já serializado (função `toFloatJson`).
+4. **Resolução do pixel em unidade errada** -- `resx`/`resy` são interpretados na mesma unidade do CRS dos
+   limites (graus, já que os limites vêm em WGS84), não em metros. O valor `10` que eu tinha posto pedia um
+   pixel de 10 GRAUS (maior que qualquer talhão), e a API devolvia 1 pixel só pro talhão inteiro --
+   inutilizando a detecção de variabilidade interna, que é um dos pontos centrais dessa funcionalidade.
+   Corrigido pra `0.0001` grau (~11m no equador, perto da resolução nativa real de 10m da banda).
+
+**Testado de ponta a ponta com dado real, no talhão real "Área 01" (4,32 ha) da Fazenda Rafael Cabeda**:
+403 pixels reais (bate com a área real do talhão), NDVI médio 0,78, mínimo 0,22, máximo 0,89 no mesmo dia
+(07/09/2026) -- variabilidade espacial real dentro do próprio talhão, não um número único artificial.
+Classificação real: 80,65% do talhão em vigor muito alto, 8,44% alto, 2,23% moderado, 8,68% baixo. Testado
+via `POST /api/fields/[id]/ndvi` (grava no banco) e `GET` (lê de volta) com sessão real, e confirmado
+visualmente na Biblioteca... digo, no painel "Vigor Vegetativo (Satélite)" da tela de Propriedades &
+Talhões, com o gráfico de barras colorido aparecendo de verdade pela primeira vez.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados depois da correção. Essa é a primeira
+leitura de satélite real de toda a história do projeto -- prova que o groundwork construído sem credencial
+estava estruturalmente certo (schema, motor de classificação, API, UI), só a chamada real à API externa
+tinha 4 detalhes que só um teste de verdade contra o serviço real conseguiria pegar.
+
+**Ainda em aberto**: configurar `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` na Vercel (produção) --
+só funciona localmente por enquanto, até isso ser feito no próximo bloco de trabalho "externo".
