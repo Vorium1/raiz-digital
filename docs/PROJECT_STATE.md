@@ -3819,3 +3819,30 @@ ao vivo com sessão real, screenshot antes/depois do fix de alertas confirmando 
 **Ainda em aberto pra amanhã** (combinado com o diretor -- resolver junto o que for "externo ao código"):
 criar o projeto na Vercel, configurar as variáveis de ambiente (`DATABASE_URL`/`APP_DATABASE_URL` da Neon,
 `AUTH_SECRET`, chaves de IA) e publicar de verdade com link público.
+
+## Publicação real concluída (2026-09-09) -- https://raiz-digital-brown.vercel.app
+
+Fechado o combinado do dia anterior. Achado real ao investigar: já existia um projeto Vercel conectado a
+este repositório de uma sessão anterior (`raiz-digital`, 41 implantações), com um fluxo já documentado num
+commit antigo ("develop → preview → aprovação → main") -- só que as variáveis de ambiente de produção
+configuradas em 2 de setembro eram **todas placeholder genérico** (`postgres://user:pass@db.example.com`),
+nunca preenchidas de verdade, e a produção só publicava a branch `main` (que tinha 75 commits reais, mas
+sem os 82 commits desta sessão -- `develop` é estritamente `main` + esse trabalho, sem divergência real).
+
+**Trabalho real feito, direto no painel da Vercel junto com o diretor**: substituídas todas as variáveis
+de ambiente de produção por valores reais (banco Neon real -- admin e papel restrito `raiz_app`
+separados, `AUTH_SECRET` novo gerado só pra produção, `STORAGE_PROVIDER=none` -- ver decisão já registrada
+sobre disco efêmero na Vercel --, `GEMINI_API_KEY` real adicionada). Aberto e mesclado o Pull Request #1
+(`develop` → `main`, 82 commits, sem conflito), seguindo o fluxo já pensado por quem configurou isso
+antes. A Vercel publicou sozinha a partir do merge; um `Redeploy` manual extra garantiu que a variável do
+Gemini (adicionada por último) entrasse no build.
+
+**Testado ao vivo, de ponta a ponta, no site publicado de verdade**: login real
+(`admin@raiz.local`) funcionou, painel mostrando dado real ("DADOS REAIS", 2 clientes, 139 ha, 33 ordens
+abertas, 38 alertas -- os mesmos números já conferidos localmente antes da cópia pro banco novo). A
+publicação está no ar, com os dados reais do Cabeda, pronta pro diretor mandar pro GPT avaliar.
+
+**Ainda em aberto**: credencial do Copernicus (satélite/NDVI) -- groundwork já pronto desde sessão
+anterior, só falta o diretor criar a conta gratuita e passar `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET`
+pra eu configurar na Vercel. Avaliação do GPT sobre a plataforma publicada -- ainda não recebida; mudanças
+a partir dela ficam para quando o diretor trouxer o retorno.
