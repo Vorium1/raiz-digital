@@ -3934,3 +3934,36 @@ real só existe se alguém registrar a colheita depois da safra.
 **Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Verificado visualmente com sessão
 real local (screenshot: mata, estrada e talhão real visíveis, contorno verde forte batendo com o vigor
 muito alto já confirmado em produção pra "Área 01").
+
+## Bug real de responsividade achado pelo diretor: menu lateral sem rolagem (2026-09-09)
+
+Achado direto pelo diretor testando em produção, sem eu ter pedido: precisou reduzir o zoom do navegador
+pra 30% pra conseguir ver e clicar em "Comparativos", "Alertas", "Relatórios" e "Administração" no menu
+lateral -- numa tela normal, esses itens simplesmente não apareciam nem rolavam pra dentro da área
+visível. Eu tinha diagnosticado errado antes (achei que era cache do navegador) -- conferi direto no
+servidor (HTML real devolvido pra sessão real dele) e o conteúdo estava certo, o que confirmou que o
+problema era só de exibição no navegador dele, mas eu ainda não tinha achado a causa raiz até ele mesmo
+achar (baixando o zoom) que era falta de rolagem.
+
+**Causa raiz real**: `.sidebar` tem `height: 100vh; position: fixed` mas **nunca teve
+`overflow-y: auto`** -- em qualquer tela onde o menu (logo + trocador de empresa + botão + 4 seções de
+navegação + selo de base homologada + perfil do usuário) passa da altura da janela, os itens de baixo
+ficam simplesmente inacessíveis, sem nenhuma barra de rolagem pra alcançá-los. Isso não é raro -- notebooks
+comuns (ex.: 1366×768) já sofrem com isso com a quantidade de itens que o menu tem hoje.
+
+**Corrigido e testado com screenshot antes/depois** numa janela de 700px de altura (simulando notebook
+comum): antes, o menu cortava em "Histórico & Evolução"; depois de `overflow-y: auto`, rolar o menu revela
+"Comparativos", "Alertas", "Relatórios" e toda a seção "Administração" normalmente.
+
+**Achado um segundo caso real do MESMO padrão de bug**, numa varredura proposital em todo o
+`globals.css` procurando `max-height` + `overflow:hidden` (a combinação exata que causa isso -- corta sem
+deixar rolar): `.fields-browser-list` (painel de Talhões/Safras/Ordens de coleta em "Propriedades &
+Talhões") tinha `max-height:620px; overflow:hidden`, mas a lista interna (`.fields-browser-items`) não
+tinha `flex:1; min-height:0` -- sem isso, o filho flex nunca fica realmente restrito em altura, então o
+`overflow-y:auto` dele nunca tinha o que rolar de verdade, e o corte acontecia no container de fora, sem
+rolagem nenhuma. Com o Cabeda tendo 45 ordens de coleta, a maioria delas ficava inacessível. Corrigido do
+mesmo jeito (`flex:1; min-height:0` no filho). Varredura confirmou que esses eram os dois únicos lugares
+com esse padrão exato no arquivo inteiro.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Sidebar verificada com screenshot
+antes/depois numa janela de 700px de altura, simulando notebook comum -- não só suposição.
