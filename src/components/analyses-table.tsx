@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
-import { analysisStatusMeta, formatRelativeOrDate, ANALYSIS_STATUS_OPTIONS } from "@/domain/analysis-ui";
+import { analysisDisplayStatus, formatRelativeOrDate, ANALYSIS_STATUS_OPTIONS } from "@/domain/analysis-ui";
 
 type Analysis = {
   id: string;
@@ -14,6 +14,8 @@ type Analysis = {
   fieldName: string;
   areaHa: number;
   updatedAt: string;
+  latestInterpretationStatus?: string | null;
+  notInterpretableReason?: string | null;
 };
 
 const statusFilters = [{ value: "", label: "Todos os status" }, ...ANALYSIS_STATUS_OPTIONS];
@@ -52,7 +54,7 @@ export function AnalysesTable({ analyses, initialQuery = "" }: { analyses: Analy
             <thead><tr><th>Análise</th><th>Área</th><th>Progresso</th><th>Status</th><th>Atualização</th><th></th></tr></thead>
             <tbody>
               {filtered.map((analysis) => {
-                const meta = analysisStatusMeta(analysis.status);
+                const meta = analysisDisplayStatus(analysis);
                 return (
                   <tr key={analysis.id}>
                     <td><Link href={`/analises/${analysis.id}`} className="table-link">{analysis.code}</Link><strong>{analysis.clientName}</strong></td>

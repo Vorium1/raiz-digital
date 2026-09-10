@@ -8,15 +8,22 @@ export type DashboardSnapshot = {
   clients: number;
 };
 
-export async function getDashboardSnapshot(tenantId: string, userId?: string) {
+/**
+ * `clientId` é opcional -- quando ausente, mantém o comportamento antigo (carteira inteira), usado pelo
+ * layout (badge global do menu). O dashboard passa o cliente filtrado na tela, corrigindo um bug real
+ * confirmado na auditoria (item A): antes esta consulta ignorava o filtro de cliente selecionado, mesmo
+ * aparecendo visualmente na mesma tela que o painel executivo (que já respeitava o filtro).
+ */
+export async function getDashboardSnapshot(tenantId: string, userId?: string, clientId?: string | null) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query<DashboardSnapshot>(
       `SELECT
-        (SELECT count(*)::int FROM analyses WHERE status NOT IN ('ARCHIVED','REPORT_SENT')) AS "activeAnalyses",
-        (SELECT count(*)::int FROM analyses WHERE status = 'AWAITING_REVIEW') AS "awaitingReview",
-        (SELECT count(*)::int FROM analyses WHERE status = 'INCONSISTENT') AS inconsistent,
-        (SELECT count(*)::int FROM sample_points WHERE collected_at IS NOT NULL) AS "collectedPoints",
-        (SELECT count(*)::int FROM clients) AS clients`,
+        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status NOT IN ('ARCHIVED','REPORT_SENT') AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "activeAnalyses",
+        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status = 'AWAITING_REVIEW' AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "awaitingReview",
+        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status = 'INCONSISTENT' AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS inconsistent,
+        (SELECT count(*)::int FROM sample_points sp JOIN collection_orders co ON co.id = sp.collection_order_id JOIN crop_seasons cs ON cs.id = co.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE sp.collected_at IS NOT NULL AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "collectedPoints",
+        (SELECT count(*)::int FROM clients WHERE ($1::uuid IS NULL OR id = $1::uuid)) AS clients`,
+      [clientId ?? null],
     );
     return result.rows[0];
   });
@@ -85,7 +92,16 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
          (SELECT count(*)::int FROM scoped_analyses WHERE status NOT IN ('DRAFT')) AS "labsProcessed",
          (SELECT count(*)::int FROM interpretations WHERE status = 'IN_REVIEW' AND analysis_id IN (SELECT id FROM scoped_analyses)) AS "interpretationsPending",
          (SELECT count(DISTINCT cs.field_id)::int FROM scoped_analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id WHERE a.status = 'INCONSISTENT') AS "criticalFields",
-         (SELECT avg(confidence_score)::float8 FROM scoped_analyses WHERE confidence_score IS NOT NULL) AS "avgConfidence"
+         (SELECT avg(confidence_score)::float8 FROM scoped_analyses WHERE confidence_score IS NOT NULL) AS "avgConfidence",
+         -- Análises com parâmetro aguardando homologação (motor rodou e não achou nada interpretável)
+         -- desaparecem de "interpretationsPending" (não é IN_REVIEW) e de "criticalFields" (não é
+         -- INCONSISTENT) -- ficavam invisíveis no painel principal, só apareciam como alerta de baixa
+         -- prioridade em /alertas. Achado real confirmado na auditoria (item B). "Não avaliado" nunca deve
+         -- virar silêncio na tela -- por isso ganha indicador próprio, nunca contado como "tudo OK".
+         (SELECT count(*)::int FROM scoped_analyses a WHERE EXISTS (
+            SELECT 1 FROM interpretations i WHERE i.analysis_id = a.id AND i.status = 'CALCULATED' AND i.not_interpretable_reason IS NOT NULL
+              AND i.revision = (SELECT max(i2.revision) FROM interpretations i2 WHERE i2.analysis_id = a.id)
+         )) AS "notInterpretableCount"
       `,
       [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );

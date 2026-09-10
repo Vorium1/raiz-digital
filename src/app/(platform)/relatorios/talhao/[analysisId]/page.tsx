@@ -72,7 +72,11 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
             <div><span>Laboratório</span><strong>{analysis.laboratoryName || "Não identificado"}</strong></div>
             <div><span>Período</span><strong>{new Date(analysis.createdAt).toLocaleDateString("pt-BR")} – {new Date(analysis.updatedAt).toLocaleDateString("pt-BR")}</strong></div>
             <div><span>Status</span><strong><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></strong></div>
-            <div><span>Confiabilidade</span><strong>{analysis.confidenceScore != null ? `${Math.round(Number(analysis.confidenceScore))}/100 (${analysis.confidenceLevel})` : "—"}</strong></div>
+            {/* Mesmo rótulo "Confiabilidade do laudo" usado no detalhe da análise -- os dois vêm da mesma
+                fonte (analyses.confidence_score), mas o nome agora deixa explícito do que se trata (não é
+                a mesma coisa que a confiabilidade da interpretação agronômica, mostrada só na tela de
+                detalhe). Achado real confirmado na auditoria, item D. */}
+            <div><span>Confiabilidade do laudo</span><strong>{analysis.confidenceScore != null ? `${Math.round(Number(analysis.confidenceScore))}/100 (${analysis.confidenceLevel})` : "—"}</strong></div>
           </div>
 
           <section className="report-section">

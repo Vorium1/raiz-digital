@@ -6,17 +6,13 @@ import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listAllInterpretations } from "@/lib/repositories/interpretations";
 import { demoInterpretationsLog } from "@/lib/demo-data";
+import { interpretationStatusMeta } from "@/domain/interpretation-status";
 
 export const metadata = { title: "Inteligência Agronômica" };
 
-const STATUS_META: Record<string, { label: string; tone: "success" | "review" | "waiting" }> = {
-  CALCULATED: { label: "Calculado, sem revisão", tone: "waiting" },
-  IN_REVIEW: { label: "Aguardando validação técnica", tone: "review" },
-  APPROVED: { label: "Aprovada", tone: "success" },
-  AI_GENERATED: { label: "Narrativa gerada", tone: "waiting" },
-  PUBLISHED: { label: "Publicada", tone: "success" },
-  SUPERSEDED: { label: "Substituída", tone: "waiting" },
-};
+// Rótulos vêm de src/domain/interpretation-status.ts -- mesma fonte usada em agronomic-intelligence-panel.tsx,
+// pra nunca mais divergir pro mesmo valor de banco (bug real confirmado na auditoria, item C).
+const STATUS_META = interpretationStatusMeta;
 
 export default async function AgronomicIntelligenceHubPage() {
   if (!isDatabaseMode()) {
@@ -24,7 +20,7 @@ export default async function AgronomicIntelligenceHubPage() {
       <section className="card"><div className="report-table-wrap"><table className="report-table">
         <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
         <tbody>{demoInterpretationsLog.map((item) => {
-          const meta = STATUS_META[item.status] ?? { label: item.status, tone: "waiting" as const };
+          const meta = STATUS_META(item.status);
           return (
             <tr key={`${item.code}-${item.revision}`}>
               <td><Link href={`/analises/${item.code}`}>{item.code}</Link> · rev {item.revision}</td>
@@ -53,7 +49,7 @@ export default async function AgronomicIntelligenceHubPage() {
             <div className="report-table-wrap"><table className="report-table">
               <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
               <tbody>{interpretations.map((item: any) => {
-                const meta = STATUS_META[item.status] ?? { label: item.status, tone: "waiting" as const };
+                const meta = STATUS_META(item.status);
                 return (
                   <tr key={item.id}>
                     <td><Link href={`/analises/${item.analysisId}`}>{item.analysisCode}</Link> · rev {item.revision}</td>

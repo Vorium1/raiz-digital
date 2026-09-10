@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { AgronomicNarrativePanel } from "@/components/agronomic-narrative-panel";
 import { AgronomicPrescriptionPanel } from "@/components/agronomic-prescription-panel";
+import { interpretationStatusMeta } from "@/domain/interpretation-status";
 
 type ParameterInterpretation =
   | { sampleCode: string; parameterCode: string; interpretable: true; classification: string; matchedParameter: { id: string; criticality: string | null } }
@@ -29,15 +30,6 @@ type Interpretation = {
 };
 
 type HistoryEntry = { id: string; revision: number; status: string; createdAt: string };
-
-const STATUS_LABEL: Record<string, string> = {
-  CALCULATED: "Calculado, sem parâmetro interpretável",
-  IN_REVIEW: "Aguardando validação técnica",
-  APPROVED: "Aprovada",
-  AI_GENERATED: "Narrativa gerada",
-  PUBLISHED: "Publicada",
-  SUPERSEDED: "Substituída",
-};
 
 export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { analysisId: string; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Interpretation | null | undefined>(undefined);
@@ -98,8 +90,11 @@ export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { 
       ) : (
         <>
           <div className="agro-summary-row">
-            <div className="agro-stat"><span>Status</span><strong>{STATUS_LABEL[latest.status] ?? latest.status}</strong></div>
-            {latest.structuredOutput?.confidence && <div className="agro-stat"><span>Confiabilidade</span><strong>{latest.structuredOutput.confidence.score}/100</strong><small>{latest.structuredOutput.confidence.level}</small></div>}
+            <div className="agro-stat"><span>Status</span><strong>{interpretationStatusMeta(latest.status).label}</strong></div>
+            {/* "Confiabilidade da interpretação" -- não é o mesmo número que "Confiabilidade do laudo" no
+                cabeçalho desta página (fonte diferente: completude da interpretação agronômica, não
+                qualidade do laudo importado). Achado real confirmado na auditoria, item D. */}
+            {latest.structuredOutput?.confidence && <div className="agro-stat"><span>Confiabilidade da interpretação</span><strong>{latest.structuredOutput.confidence.score}/100</strong><small>{latest.structuredOutput.confidence.level}</small></div>}
             <div className="agro-stat"><span>Base técnica</span><strong>{latest.structuredOutput?.trace.cropProfileCode ?? "—"}</strong><small>{latest.structuredOutput?.trace.cropProfileVersion ? `v${latest.structuredOutput.trace.cropProfileVersion}` : "sem cultura vinculada"}</small></div>
             <div className="agro-stat"><span>Revisão</span><strong>#{latest.revision}</strong><small>{new Date(latest.createdAt).toLocaleString("pt-BR")}</small></div>
           </div>
@@ -134,7 +129,7 @@ export function AgronomicIntelligencePanel({ analysisId, canRun, canReview }: { 
           {history.length > 1 && (
             <details className="agro-history">
               <summary>Histórico de revisões ({history.length})</summary>
-              <ul>{history.map((item) => <li key={item.id}>#{item.revision} · {STATUS_LABEL[item.status] ?? item.status} · {new Date(item.createdAt).toLocaleString("pt-BR")}</li>)}</ul>
+              <ul>{history.map((item) => <li key={item.id}>#{item.revision} · {interpretationStatusMeta(item.status).label} · {new Date(item.createdAt).toLocaleString("pt-BR")}</li>)}</ul>
             </details>
           )}
 

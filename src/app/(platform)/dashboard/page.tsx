@@ -9,7 +9,7 @@ import { requirePlatformSession } from "@/lib/auth/session";
 import { getDashboardSnapshot, getExecutiveDashboard, getDashboardFilterOptions } from "@/lib/repositories/dashboard";
 import { listAnalyses } from "@/lib/repositories/analyses";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
-import { analysisStatusMeta, formatRelativeOrDate } from "@/domain/analysis-ui";
+import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-ui";
 
 export const metadata = { title: "Início" };
 
@@ -19,9 +19,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const params = await searchParams;
     const session = await requirePlatformSession();
     const filters = { clientId: params.clientId, propertyId: params.propertyId, cropSeasonId: params.cropSeasonId };
+    // getDashboardSnapshot e listAnalyses agora recebem o mesmo filtro de cliente que o painel executivo --
+    // antes só o painel executivo respeitava o filtro selecionado, e o resto da tela (hero, indicadores,
+    // fluxo de análises) continuava mostrando a carteira inteira sem avisar (bug real confirmado na
+    // auditoria, item A). listOperationalAlerts continua global de propósito (central de alertas cobre a
+    // carteira toda) -- por isso o teaser abaixo diz isso explicitamente.
     const [snapshot, recent, executive, filterOptions, alerts] = await Promise.all([
-      getDashboardSnapshot(session.tenantId, session.userId),
-      listAnalyses(session.tenantId, session.userId),
+      getDashboardSnapshot(session.tenantId, session.userId, filters.clientId ?? null),
+      listAnalyses(session.tenantId, session.userId, filters.clientId ?? null),
       getExecutiveDashboard(session.tenantId, filters, session.userId),
       getDashboardFilterOptions(session.tenantId, session.userId),
       listOperationalAlerts(session.tenantId, session.userId),
@@ -50,13 +55,14 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
     { label: "Laudos processados", value: executive.labsProcessed, icon: "upload" },
     { label: "Interpretações pendentes", value: executive.interpretationsPending, icon: "clock" },
     { label: "Talhões críticos", value: executive.criticalFields, icon: "warning" },
+    { label: "Não avaliado (falta homologação)", value: executive.notInterpretableCount, icon: "shield" },
     { label: "Confiabilidade média", value: executive.avgConfidence != null ? `${Math.round(Number(executive.avgConfidence))}/100` : "—", icon: "shield" },
   ] as const;
   return <>
     <Topbar eyebrow="Operação em tempo real" title={`Olá, ${firstName}.`} />
     <div className="content-wrap dashboard-page">
       <section className="hero-panel real-hero">
-        <div><span className="eyebrow light">CENTRAL DE OPERAÇÕES</span><h2>{priority ? `${priority} item${priority === 1 ? "" : "s"} precisa${priority === 1 ? "" : "m"} de atenção.` : "Operação sem pendências críticas."}</h2><p>Os indicadores abaixo vêm diretamente do PostgreSQL e respeitam o tenant ativo da sessão.</p><div className="hero-actions"><Link href="/analises" className="button light">Abrir análises <Icon name="arrow" size={17}/></Link><Link href="/analises/nova" className="text-link light">Criar nova análise</Link></div></div>
+        <div><span className="eyebrow light">CENTRAL DE OPERAÇÕES</span><h2>{priority ? `${priority} item${priority === 1 ? "" : "s"} precisa${priority === 1 ? "" : "m"} de atenção.` : "Operação sem pendências críticas."}</h2><p>Os indicadores abaixo vêm direto do banco de dados real desta operação e respeitam a empresa ativa da sua sessão.</p><div className="hero-actions"><Link href="/analises" className="button light">Abrir análises <Icon name="arrow" size={17}/></Link><Link href="/analises/nova" className="text-link light">Criar nova análise</Link></div></div>
         <div className="live-system-card"><span><i/>DADOS REAIS</span><strong>{snapshot.clients}</strong><small>clientes isolados nesta empresa</small><dl><div><dt>Revisões</dt><dd>{snapshot.awaitingReview}</dd></div><div><dt>Inconsistências</dt><dd>{snapshot.inconsistent}</dd></div><div><dt>Coletas</dt><dd>{snapshot.collectedPoints}</dd></div></dl></div>
       </section>
 
@@ -67,9 +73,12 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
           {executiveMetrics.map((metric) => <div className="executive-metric" key={metric.label}><Icon name={metric.icon} size={17}/><div><strong>{metric.value}</strong><span>{metric.label}</span></div></div>)}
         </div>
         <div className="dashboard-teasers">
+          {/* Central de alertas é intencionalmente global (cobre a carteira toda, não só o cliente
+              filtrado acima) -- por isso diz isso explicitamente, em vez de parecer só mais um número
+              filtrado igual aos outros (item A/Etapa 4: informação global precisa estar identificada). */}
           <Link href="/alertas" className="dashboard-teaser">
             <Icon name="warning" size={20}/>
-            <div><strong>{alertCount} alerta(s) ativo(s)</strong><small>{criticalAlertCount} de criticidade alta</small></div>
+            <div><strong>{alertCount} alerta(s) ativo(s)</strong><small>{criticalAlertCount} de criticidade alta · toda a carteira</small></div>
             <Icon name="arrow" size={16}/>
           </Link>
           <Link href="/mapas" className="dashboard-teaser">
@@ -81,8 +90,8 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
       </section>
 
       <section className="metric-grid" aria-label="Indicadores reais">{metrics.map((metric)=><article className="metric-card" key={metric.label}><div className="metric-icon teal"><Icon name={metric.icon}/></div><div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small></div></article>)}</section>
-      <section className="card analyses-card"><div className="card-header"><div><span className="eyebrow">FLUXO DE ANÁLISES</span><h2>Atualizações recentes</h2></div><Link href="/analises">Ver todas <Icon name="arrow" size={15}/></Link></div>{recent.length ? <div className="analysis-list">{recent.map((analysis)=>{const meta=analysisStatusMeta(analysis.status); return <Link className="analysis-row" href={`/analises/${analysis.id}`} key={analysis.id}><div className="analysis-id"><span>{analysis.code}</span><strong>{analysis.clientName}</strong><small>{analysis.fieldName} · {Number(analysis.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</small></div><div className="analysis-progress"><div><i style={{width:`${meta.progress}%`}}/></div><small>{meta.progress}% do fluxo</small></div><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><span className="analysis-updated">{formatRelativeOrDate(analysis.updatedAt)}</span><Icon name="chevron" size={18}/></Link>})}</div> : <div className="empty-state"><Icon name="flask"/><strong>Nenhuma análise ainda</strong><small>Crie a primeira análise para alimentar esta central com dados reais.</small><Link className="button primary" href="/analises/nova">Criar análise</Link></div>}</section>
-      <section className="system-foundation-grid"><article className="card foundation-card"><Icon name="shield"/><span className="eyebrow">ISOLAMENTO</span><strong>Tenant aplicado no banco</strong><small>A sessão define `app.tenant_id` dentro da transação antes de acessar entidades operacionais.</small></article><article className="card foundation-card"><Icon name="history"/><span className="eyebrow">AUDITORIA</span><strong>Cadastros rastreáveis</strong><small>Criações de clientes, análises e importações registram autor, entidade e horário.</small></article><article className="card foundation-card"><Icon name="upload"/><span className="eyebrow">LABORATÓRIO</span><strong>CSV validado antes de persistir</strong><small>Bloqueios técnicos mantêm a interpretação indisponível até correção humana.</small></article></section>
+      <section className="card analyses-card"><div className="card-header"><div><span className="eyebrow">FLUXO DE ANÁLISES</span><h2>Atualizações recentes</h2></div><Link href="/analises">Ver todas <Icon name="arrow" size={15}/></Link></div>{recent.length ? <div className="analysis-list">{recent.map((analysis)=>{const meta=analysisDisplayStatus(analysis); return <Link className="analysis-row" href={`/analises/${analysis.id}`} key={analysis.id}><div className="analysis-id"><span>{analysis.code}</span><strong>{analysis.clientName}</strong><small>{analysis.fieldName} · {Number(analysis.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha</small></div><div className="analysis-progress"><div><i style={{width:`${meta.progress}%`}}/></div><small>{meta.progress}% do fluxo</small></div><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge><span className="analysis-updated">{formatRelativeOrDate(analysis.updatedAt)}</span><Icon name="chevron" size={18}/></Link>})}</div> : <div className="empty-state"><Icon name="flask"/><strong>Nenhuma análise ainda</strong><small>Crie a primeira análise para alimentar esta central com dados reais.</small><Link className="button primary" href="/analises/nova">Criar análise</Link></div>}</section>
+      <section className="system-foundation-grid"><article className="card foundation-card"><Icon name="shield"/><span className="eyebrow">ISOLAMENTO</span><strong>Cada empresa só vê os próprios dados</strong><small>Toda consulta ao banco roda isolada pela empresa ativa da sua sessão, aplicado no próprio banco de dados — não é um filtro de tela que dá pra contornar.</small></article><article className="card foundation-card"><Icon name="history"/><span className="eyebrow">AUDITORIA</span><strong>Cadastros rastreáveis</strong><small>Criações de clientes, análises e importações registram autor, entidade e horário.</small></article><article className="card foundation-card"><Icon name="upload"/><span className="eyebrow">LABORATÓRIO</span><strong>CSV validado antes de persistir</strong><small>Bloqueios técnicos mantêm a interpretação indisponível até correção humana.</small></article></section>
     </div>
   </>;
 }
