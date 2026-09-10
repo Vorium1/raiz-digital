@@ -367,7 +367,14 @@ button { color: inherit; }
   .mobile-sheet-heading { align-items: center; display: flex; justify-content: space-between; padding: 3px 1px 11px; }
   .mobile-sheet-heading h2 { font-family: var(--font-heading); font-size: 17px; letter-spacing: -.035em; margin: 4px 0 0; }
   .mobile-more-list { display: flex; flex-direction: column; gap: 14px; max-height: 66vh; overflow-y: auto; }
-  .mobile-more-group { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; overflow: hidden; }
+  /* flex-shrink:0 -- causa raiz real do bug (confirmada medindo scrollHeight vs offsetHeight, 2026-09-10):
+     `.mobile-more-list` é flex-column com max-height+overflow-y:auto, mas os grupos filhos (flex items)
+     têm o flex-shrink:1 padrão -- quando o conteúdo total passa da altura máxima, o flexbox ENCOLHE todos
+     os grupos proporcionalmente (medido: ~63% da altura real) em vez de deixar a lista rolar. Grupos
+     pequenos (1 item) ficavam quase todo cortado por `overflow:hidden`; grupos grandes sofriam o mesmo
+     encolhimento mas tinham pixel sobrando pra ainda parecer legível. Existia antes da reorganização da
+     navegação desta sessão, só nunca tinha conteúdo suficiente pra estourar a altura e revelar o bug. */
+  .mobile-more-group { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
   .mobile-more-group-label { color: var(--muted); display: block; font-size: 9px; font-weight: 700; letter-spacing: .06em; padding: 10px 12px 4px; text-transform: uppercase; }
   .mobile-more-group > a {
     align-items: center;

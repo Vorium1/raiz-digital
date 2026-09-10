@@ -9,38 +9,54 @@ export type NavItem = {
 export type NavSection = { label: string; items: NavItem[] };
 
 /**
- * Estrutura revista em 2026-09-08 pra ficar mais perto do conceito visual aprovado (3 seções pra quem não
- * é admin: Painel/Operação/Inteligência, só Administração aparece a mais pra quem tem o papel).
- * "Propriedades", "Talhões", "Safras & Culturas" e "Coletas & Pontos" eram 4 itens de menu que já
- * apontavam pra MESMA página (`/coletas`, só com âncora diferente) -- viraram 1 item só
- * ("Propriedades & Talhões") depois que o painel de lista+mapa (`PropertiesFieldsBrowser`) passou a cobrir
- * essa navegação de verdade lá dentro da própria página, tornando as âncoras redundantes. Nenhuma página
- * foi removida -- é só o menu que ficou mais enxuto refletindo o que já é a mesma tela.
+ * Reorganizado em 2026-09-10 (RAIZ 2.0, Fase 1, Etapa 3) pro percurso pedido pelo diretor: CARTEIRA ->
+ * TALHÃO -> EVIDÊNCIA -> PRÓXIMA AÇÃO. Nenhuma rota nova foi criada aqui -- é reorganização das mesmas
+ * páginas que já existiam (histórico da estrutura anterior, 3 seções + Administração, preservado abaixo
+ * pra quem for comparar). As 5 entradas pedidas:
+ *
+ * 1. Central de Decisão -- painel + clientes + alertas (o que precisa de atenção agora, carteira toda)
+ * 2. Talhões -- ponto de entrada único pra explorar/gerenciar um talhão específico
+ * 3. Operação -- laudo, laboratório, lista bruta de análises (o trabalho do dia a dia)
+ * 4. Inteligência -- as visões já sintetizadas/interpretadas (mapas, histórico, comparativos)
+ * 5. Entregas -- o que sai pro cliente final (relatórios)
+ *
+ * Biblioteca Técnica e Configurações continuam em navegação secundária de gestão (seção Administração,
+ * já era assim, só não é uma das 5 entradas principais).
  */
 export const navigationSections: NavSection[] = [
   {
-    label: "PAINEL",
+    label: "CENTRAL DE DECISÃO",
     items: [
       { href: "/dashboard", label: "Painel", icon: "home" },
+      { href: "/clientes", label: "Clientes", icon: "users" },
+      { href: "/alertas", label: "Alertas", icon: "warning" },
+    ],
+  },
+  {
+    label: "TALHÕES",
+    items: [
+      { href: "/coletas", label: "Propriedades & Talhões", icon: "map" },
     ],
   },
   {
     label: "OPERAÇÃO",
     items: [
-      { href: "/clientes", label: "Clientes", icon: "users" },
-      { href: "/coletas", label: "Propriedades & Talhões", icon: "map" },
+      { href: "/analises", label: "Análises", icon: "flask" },
       { href: "/analises/nova?etapa=laudo", label: "Laboratório", icon: "upload" },
     ],
   },
   {
     label: "INTELIGÊNCIA",
     items: [
-      { href: "/analises", label: "Análises", icon: "flask" },
       { href: "/inteligencia", label: "Inteligência Agronômica", icon: "sparkles" },
       { href: "/mapas", label: "Mapas", icon: "map" },
       { href: "/historico", label: "Histórico & Evolução", icon: "history" },
       { href: "/comparativos", label: "Comparativos", icon: "layers" },
-      { href: "/alertas", label: "Alertas", icon: "warning" },
+    ],
+  },
+  {
+    label: "ENTREGAS",
+    items: [
       { href: "/relatorios", label: "Relatórios", icon: "file" },
     ],
   },
