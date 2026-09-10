@@ -6,10 +6,11 @@ import { DashboardFilters } from "@/components/dashboard-filters";
 import { analyses, dashboardMetrics, samplePoints, tasks } from "@/lib/demo-data";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { getDashboardSnapshot, getExecutiveDashboard, getDashboardFilterOptions } from "@/lib/repositories/dashboard";
+import { getDashboardSnapshot, getExecutiveDashboard, getDashboardFilterOptions, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
 import { listAnalyses } from "@/lib/repositories/analyses";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-ui";
+import { PortfolioMap } from "@/components/portfolio-map";
 
 export const metadata = { title: "Início" };
 
@@ -24,12 +25,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     // fluxo de análises) continuava mostrando a carteira inteira sem avisar (bug real confirmado na
     // auditoria, item A). listOperationalAlerts continua global de propósito (central de alertas cobre a
     // carteira toda) -- por isso o teaser abaixo diz isso explicitamente.
-    const [snapshot, recent, executive, filterOptions, alerts] = await Promise.all([
+    const [snapshot, recent, executive, filterOptions, alerts, portfolioFields] = await Promise.all([
       getDashboardSnapshot(session.tenantId, session.userId, filters.clientId ?? null),
       listAnalyses(session.tenantId, session.userId, filters.clientId ?? null),
       getExecutiveDashboard(session.tenantId, filters, session.userId),
       getDashboardFilterOptions(session.tenantId, session.userId),
       listOperationalAlerts(session.tenantId, session.userId),
+      // Mapa da carteira (Etapa 4, item C): mesmo filtro de cliente/propriedade/safra do resto da tela --
+      // consulta agregada única (getPortfolioFieldSummaries), nunca uma consulta por talhão.
+      getPortfolioFieldSummaries(session.tenantId, filters, session.userId),
     ]);
     // "Prioridades acionáveis" (RAIZ 2.0, Etapa 4): as 8 mais urgentes, ordenadas por criticidade real
     // (ALTA > MEDIA > BAIXA) e, dentro da mesma criticidade, pela data mais antiga primeiro (o que está
@@ -58,14 +62,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       if (a.date && b.date) return new Date(a.date).getTime() - new Date(b.date).getTime();
       return a.date ? -1 : b.date ? 1 : 0;
     }).slice(0, 8);
-    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} priorities={priorities} />;
+    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} priorities={priorities} portfolioFields={portfolioFields} />;
   }
   return <DemoDashboard/>;
 }
 
 const PRIORITY_TONE: Record<string, "danger" | "review" | "waiting"> = { ALTA: "danger", MEDIA: "review", BAIXA: "waiting" };
 
-function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount, priorities }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number; priorities: any[] }) {
+function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount, priorities, portfolioFields }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number; priorities: any[]; portfolioFields: any[] }) {
   const firstName = sessionName.trim().split(/\s+/)[0] || "equipe";
   const priority = snapshot.awaitingReview + snapshot.inconsistent;
   const metrics = [
@@ -121,6 +125,14 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
           </div>
         </section>
       )}
+
+      {/* Mapa da carteira (Etapa 4, item C) -- respeita o mesmo filtro de cliente/propriedade/safra do
+          resto da tela (getPortfolioFieldSummaries recebe os mesmos `filters`). Cor vem sempre do status
+          real de avaliação calculado no banco, nunca de uma criticidade inventada aqui. */}
+      <section className="card" style={{ marginBottom: 18 }}>
+        <div className="field-ops-section-head compact"><div><span className="eyebrow">MAPA DA CARTEIRA</span><h2>{portfolioFields.length} talhão(ões) no filtro atual</h2></div></div>
+        {portfolioFields.length > 0 ? <PortfolioMap fields={portfolioFields}/> : <div className="chart-empty">Nenhum talhão cadastrado neste filtro ainda.</div>}
+      </section>
 
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="field-ops-section-head compact"><div><span className="eyebrow">PAINEL EXECUTIVO</span><h2>Visão consolidada da operação</h2></div></div>
