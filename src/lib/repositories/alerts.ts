@@ -10,6 +10,13 @@ export type OperationalAlert = {
   description: string;
   href: string;
   context: string;
+  /** Data pertinente ao alerta (ex.: coleta planejada, laudo pendente desde). Null quando a categoria não
+   * tem uma data real associada -- nunca preenchido com "hoje" ou outro valor inventado. */
+  date: string | null;
+  /** Responsável, só quando de fato registrado (ex.: collection_orders.assigned_to). Null na maioria das
+   * categorias -- pedido explícito do briefing: "responsável, somente se registrado", nunca "Não atribuído"
+   * fabricado pra preencher a coluna. */
+  responsible: string | null;
 };
 
 /**
@@ -22,12 +29,13 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
     const alerts: OperationalAlert[] = [];
 
     const overdueOrders = await client.query(
-      `SELECT co.id::text, co.code, co.planned_at::text AS "plannedAt", f.name AS "fieldName", c.name AS "clientName"
+      `SELECT co.id::text, co.code, co.planned_at::text AS "plannedAt", f.name AS "fieldName", c.name AS "clientName", u.name AS "assignedToName"
        FROM collection_orders co
        JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN users u ON u.id = co.assigned_to
        WHERE co.tenant_id = $1::uuid AND co.status IN ('PLANNED','IN_PROGRESS') AND co.planned_at IS NOT NULL AND co.planned_at < now()`,
       [tenantId],
     );
@@ -36,11 +44,12 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `overdue-order-${row.id}`, category: "Coleta atrasada", criticality: "ALTA",
         title: `${row.code} está atrasada`, description: `${row.clientName} · ${row.fieldName} — planejada para ${new Date(row.plannedAt).toLocaleDateString("pt-BR")}`,
         href: `/coletas?orderId=${row.id}#pontos-coleta`, context: row.fieldName,
+        date: row.plannedAt, responsible: row.assignedToName ?? null,
       });
     }
 
     const pendingPoints = await client.query(
-      `SELECT co.id::text, co.code, f.name AS "fieldName", c.name AS "clientName",
+      `SELECT co.id::text, co.code, co.planned_at::text AS "plannedAt", f.name AS "fieldName", c.name AS "clientName", u.name AS "assignedToName",
               count(sp.*) FILTER (WHERE sp.collected_at IS NULL)::int AS pending, count(sp.*)::int AS total
        FROM collection_orders co
        JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
@@ -48,8 +57,9 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        JOIN sample_points sp ON sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
+       LEFT JOIN users u ON u.id = co.assigned_to
        WHERE co.tenant_id = $1::uuid AND co.status IN ('PLANNED','IN_PROGRESS')
-       GROUP BY co.id, co.code, f.name, c.name HAVING count(sp.*) FILTER (WHERE sp.collected_at IS NULL) > 0`,
+       GROUP BY co.id, co.code, co.planned_at, f.name, c.name, u.name HAVING count(sp.*) FILTER (WHERE sp.collected_at IS NULL) > 0`,
       [tenantId],
     );
     for (const row of pendingPoints.rows) {
@@ -60,6 +70,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         // (bug real confirmado na auditoria, item F3). `field-operations-manager.tsx` lê `?orderId=` e
         // pré-seleciona a ordem certa, rolando até ela.
         href: `/coletas?orderId=${row.id}#pontos-coleta`, context: row.fieldName,
+        date: row.plannedAt, responsible: row.assignedToName ?? null,
       });
     }
 
@@ -78,11 +89,12 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `awaiting-lab-${row.id}`, category: "Laudo aguardando importação", criticality: "MEDIA",
         title: `${row.code} sem laudo importado`, description: `${row.clientName} · ${row.fieldName} — desde ${new Date(row.updatedAt).toLocaleDateString("pt-BR")}`,
         href: `/analises/${row.id}`, context: row.fieldName,
+        date: row.updatedAt, responsible: null,
       });
     }
 
     const inconsistent = await client.query(
-      `SELECT a.id::text, a.code, f.name AS "fieldName", c.name AS "clientName"
+      `SELECT a.id::text, a.code, f.name AS "fieldName", c.name AS "clientName", a.updated_at::text AS "updatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
@@ -96,11 +108,12 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `inconsistent-${row.id}`, category: "Dados inválidos", criticality: "ALTA",
         title: `${row.code} tem laudo com bloqueio`, description: `${row.clientName} · ${row.fieldName} — linhas com unidade/método/valor inválido`,
         href: `/analises/${row.id}`, context: row.fieldName,
+        date: row.updatedAt, responsible: null,
       });
     }
 
     const awaitingReview = await client.query(
-      `SELECT i.id::text, i.analysis_id::text AS "analysisId", a.code, f.name AS "fieldName", c.name AS "clientName"
+      `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.created_at::text AS "createdAt", a.code, f.name AS "fieldName", c.name AS "clientName"
        FROM interpretations i
        JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -116,6 +129,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `awaiting-review-${row.id}`, category: "Interpretação aguardando revisão", criticality: "MEDIA",
         title: `${row.code} aguarda validação técnica`, description: `${row.clientName} · ${row.fieldName}`,
         href: `/analises/${row.analysisId}`, context: row.fieldName,
+        date: row.createdAt, responsible: null,
       });
     }
 
@@ -138,6 +152,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `unhomologated-${row.id}`, category: "Parâmetro sem regra homologada", criticality: "BAIXA",
         title: `${row.pending} parâmetro(s) de ${row.name} aguardando homologação`, description: "Faixas de suficiência ainda não aprovadas por um agrônomo responsável.",
         href: "/biblioteca-tecnica", context: row.name,
+        date: null, responsible: null,
       });
     }
 
@@ -155,6 +170,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `season-no-crop-${row.id}`, category: "Talhão sem cultura definida", criticality: "MEDIA",
         title: `${row.fieldName} · ${row.seasonLabel} sem cultura vinculada`, description: `${row.clientName} — o motor não consegue interpretar sem cultura do catálogo.`,
         href: "/coletas#safras", context: row.fieldName,
+        date: null, responsible: null,
       });
     }
 
@@ -171,6 +187,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `field-no-season-${row.id}`, category: "Talhão sem safra definida", criticality: "BAIXA",
         title: `${row.name} sem nenhuma safra cadastrada`, description: `${row.clientName}`,
         href: "/coletas#safras", context: row.name,
+        date: null, responsible: null,
       });
     }
 
@@ -190,6 +207,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `stale-${row.id}`, category: "Análise incompleta", criticality: "BAIXA",
         title: `${row.code} parada há mais de 14 dias`, description: `${row.clientName} · ${row.fieldName} — status atual: ${row.status}`,
         href: `/analises/${row.id}`, context: row.fieldName,
+        date: row.createdAt, responsible: null,
       });
     }
 
@@ -209,6 +227,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `broken-trace-${row.id}`, category: "Inconsistência de rastreabilidade", criticality: "ALTA",
         title: `Amostra ${row.laboratory_code} sem ponto de coleta vinculado`, description: `${row.clientName} · ${row.fieldName} · ${row.analysisCode} — código da amostra não bate com nenhum ponto da ordem.`,
         href: `/analises/${row.analysisId}`, context: row.fieldName,
+        date: null, responsible: null,
       });
     }
 
@@ -236,6 +255,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         id: `reanalysis-due-${row.id}`, category: "Reanálise de solo vencida", criticality: "MEDIA",
         title: `${row.name} sem análise há mais de 3 anos`, description: `${row.clientName} — última análise há ${years} anos (regra: reanalisar no máximo a cada 3 anos).`,
         href: `/relatorios/evolucao/${row.id}`, context: row.name,
+        date: row.lastAnalysisAt, responsible: null,
       });
     }
 
@@ -279,6 +299,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         title: `${row.fieldName} — ${row.inputType} ${over ? "acima" : "abaixo"} do recomendado`,
         description: `${row.clientName} · ${row.code} — recomendado ${row.recommendedQuantity}${row.unit}, aplicado ${row.appliedQuantity.toFixed(2)}${row.unit} (${Math.round(ratio * 100)}% do recomendado).`,
         href: `/analises/${row.analysisId}`, context: row.fieldName,
+        date: null, responsible: null,
       });
     }
 
@@ -347,6 +368,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
         title: `${row.crop} 2026/27 sob El Niño confirmado (≥90% NOAA/CPC) — atenção à janela de plantio`,
         description: `${row.clientName} · ${row.fieldName} — prognóstico oficial (NOAA/CPC via INMET/CPTEC) indica El Niño confirmado para a safra 2026/27, o que historicamente tende a trazer primavera mais chuvosa no RS — mas um estudo científico recente (da Cunha Mello et al., 2026) mostra que, isoladamente, a fase do El Niño/La Niña é um sinal fraco pro RS especificamente; o que importa de verdade é acompanhar a previsão de chuva local, não só o rótulo do fenômeno. Ainda assim, valem os cuidados já recomendados pela meteorologista do IRGA: janela de semeadura tende a ficar menor, com risco de atraso — evitar semeadura tardia (na macrorregião do RS, cada dia de atraso além de ~30/10 pode custar até 42 kg/ha de teto de produtividade potencial simulada, Soares et al. 2025 — é um teto teórico, não uma perda medida em lavoura). Priorizar drenagem eficiente em áreas baixas e evitar investimento pesado perto de rio (risco de enchente). Mesmo em ano de El Niño, pode haver veranico de 10-15 dias no verão — planejar para esse risco também (queda de produtividade por seca no RS está mais associada a anos de La Niña, não a este). Fontes: NOAA/CPC/INMET/CPTEC; Jossana Ceolin Cera (IRGA, CREA-RS 244228); da Cunha Mello et al. (2026, Theoretical and Applied Climatology); Soares et al. (2025, Journal of Environmental Quality). Não é estimativa de produtividade — é orientação de manejo de risco.`,
         href: `/coletas`, context: row.fieldName,
+        date: null, responsible: null,
       });
     }
 

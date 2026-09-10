@@ -147,6 +147,21 @@ button { color: inherit; }
 .status-badge { align-items: center; border-radius: 14px; display: inline-flex; font-size: 8px; font-weight: 700; gap: 5px; padding: 6px 8px; width: fit-content; }
 .status-badge i { border-radius: 50%; height: 5px; width: 5px; }.status-badge.review { background: #2b2015; color: #e0c2ad; }.status-badge.review i { background: var(--copper); }.status-badge.danger { background: #221311; color: #dca9a5; }.status-badge.danger i { background: var(--danger); }.status-badge.waiting { background: #282315; color: #d7ccb3; }.status-badge.waiting i { background: var(--warning); }.status-badge.success { background: #142a1f; color: #b8e4d4; }.status-badge.success i { background: var(--success); }.status-badge.info { background: #142a26; color: #bfe7e2; }.status-badge.info i { background: var(--teal); }
 .analysis-updated { color: #b5bcb9; font-size: 8px; }.analysis-row > svg { color: #a1aaa6; }
+.priority-list{display:flex;flex-direction:column}
+.priority-row{align-items:center;border-bottom:1px solid var(--line);color:inherit;display:grid;gap:12px;grid-template-columns:auto minmax(0,1fr) auto 14px;padding:12px 21px;transition:background .15s ease}
+.priority-row:last-child{border:0}
+.priority-row:hover{background:#131b13}
+.priority-row strong{display:block;font-size:10.5px}
+.priority-row small{color:var(--muted);display:block;font-size:8.5px;margin-top:2px}
+/* Alguns alertas (ex.: aviso climático) têm descrição de parágrafos inteiros -- útil no detalhe completo
+   (/alertas), mas dominava a lista compacta de prioridades. Corta em 2 linhas aqui; o texto completo
+   continua disponível na página de destino. */
+.priority-row small.priority-description{-webkit-box-orient:vertical;-webkit-line-clamp:2;display:-webkit-box;overflow:hidden}
+.priority-areas{color:var(--teal);margin-top:4px}
+.priority-meta{display:flex;flex-direction:column;font-size:8px;gap:2px;text-align:right}
+.priority-meta span{color:var(--muted);white-space:nowrap}
+.priority-row>svg{color:#a1aaa6;flex-shrink:0}
+@media(max-width:760px){.priority-row{grid-template-columns:auto minmax(0,1fr) 14px}.priority-meta{display:none}}
 .agenda-card { overflow: hidden; }.timeline { padding: 8px 20px 2px; }
 .timeline-item { align-items: start; display: grid; gap: 10px; grid-template-columns: 35px 9px 1fr; padding: 12px 0; position: relative; }
 .timeline-item:not(:last-child)::after { background: #202722; content: ""; height: calc(100% - 15px); left: 49px; position: absolute; top: 25px; width: 1px; }

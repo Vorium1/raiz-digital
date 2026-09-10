@@ -31,12 +31,41 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       getDashboardFilterOptions(session.tenantId, session.userId),
       listOperationalAlerts(session.tenantId, session.userId),
     ]);
-    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} />;
+    // "Prioridades acionáveis" (RAIZ 2.0, Etapa 4): as 8 mais urgentes, ordenadas por criticidade real
+    // (ALTA > MEDIA > BAIXA) e, dentro da mesma criticidade, pela data mais antiga primeiro (o que está
+    // esperando há mais tempo sobe). Mesma fonte de dado da Central de Alertas -- nenhuma prioridade
+    // inventada, só uma leitura priorizada do que já existe.
+    //
+    // Antes de ordenar: agrupa alertas do MESMO evento numa linha só, preservando fonte/validade (a
+    // descrição não muda) e juntando as áreas afetadas -- pedido explícito do briefing ("agrupe alertas
+    // repetidos quando houver identidade confiável do evento"). Restrito de propósito a categorias onde UM
+    // evento real dispara vários alertas iguais por natureza (hoje só "Aviso climático da safra", que é o
+    // mesmo aviso oficial repetido por talhão) -- agrupar por "mesmo título" de forma genérica quebrou em
+    // teste real: "2 de 3 pontos pendentes" de ordens DIFERENTES por coincidência têm o mesmo título, mas
+    // são eventos reais distintos (ordens de coleta diferentes) que não podem ser fundidos numa linha só.
+    const GROUPABLE_CATEGORIES = new Set(["Aviso climático da safra"]);
+    const grouped = new Map<string, typeof alerts[number] & { affectedAreas: string[] }>();
+    for (const alert of alerts) {
+      const key = GROUPABLE_CATEGORIES.has(alert.category) ? `${alert.category}::${alert.title}` : alert.id;
+      const existing = grouped.get(key);
+      if (existing) existing.affectedAreas.push(alert.context);
+      else grouped.set(key, { ...alert, affectedAreas: [alert.context] });
+    }
+    const CRITICALITY_ORDER: Record<string, number> = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
+    const priorities = Array.from(grouped.values()).sort((a, b) => {
+      const byCriticality = CRITICALITY_ORDER[a.criticality] - CRITICALITY_ORDER[b.criticality];
+      if (byCriticality !== 0) return byCriticality;
+      if (a.date && b.date) return new Date(a.date).getTime() - new Date(b.date).getTime();
+      return a.date ? -1 : b.date ? 1 : 0;
+    }).slice(0, 8);
+    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} priorities={priorities} />;
   }
   return <DemoDashboard/>;
 }
 
-function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number }) {
+const PRIORITY_TONE: Record<string, "danger" | "review" | "waiting"> = { ALTA: "danger", MEDIA: "review", BAIXA: "waiting" };
+
+function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount, priorities }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number; priorities: any[] }) {
   const firstName = sessionName.trim().split(/\s+/)[0] || "equipe";
   const priority = snapshot.awaitingReview + snapshot.inconsistent;
   const metrics = [
@@ -65,6 +94,33 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
         <div><span className="eyebrow light">CENTRAL DE OPERAÇÕES</span><h2>{priority ? `${priority} item${priority === 1 ? "" : "s"} precisa${priority === 1 ? "" : "m"} de atenção.` : "Operação sem pendências críticas."}</h2><p>Os indicadores abaixo vêm direto do banco de dados real desta operação e respeitam a empresa ativa da sua sessão.</p><div className="hero-actions"><Link href="/analises" className="button light">Abrir análises <Icon name="arrow" size={17}/></Link><Link href="/analises/nova" className="text-link light">Criar nova análise</Link></div></div>
         <div className="live-system-card"><span><i/>DADOS REAIS</span><strong>{snapshot.clients}</strong><small>clientes isolados nesta empresa</small><dl><div><dt>Revisões</dt><dd>{snapshot.awaitingReview}</dd></div><div><dt>Inconsistências</dt><dd>{snapshot.inconsistent}</dd></div><div><dt>Coletas</dt><dd>{snapshot.collectedPoints}</dd></div></dl></div>
       </section>
+
+      {/* "Prioridades acionáveis" (RAIZ 2.0, Fase 1, Etapa 4): responde "o que exige atenção, onde, por
+          quê e qual a próxima ação" -- mesma fonte de dado da Central de Alertas (por isso global/toda a
+          carteira, igual ao teaser abaixo), só que aqui já mostrada como lista priorizada em vez de só um
+          contador. Cada linha é clicável direto pro destino real (não pro índice genérico de alertas). */}
+      {priorities.length > 0 && (
+        <section className="card" style={{ marginBottom: 18 }}>
+          <div className="field-ops-section-head compact"><div><span className="eyebrow">PRIORIDADES ACIONÁVEIS · TODA A CARTEIRA</span><h2>O que precisa de atenção agora</h2></div><Link href="/alertas">Ver todas <Icon name="arrow" size={15}/></Link></div>
+          <div className="priority-list">
+            {priorities.map((item) => (
+              <Link key={item.id} href={item.affectedAreas.length > 1 ? "/alertas" : item.href} className="priority-row">
+                <StatusBadge tone={PRIORITY_TONE[item.criticality]}>{item.criticality}</StatusBadge>
+                <div>
+                  <strong>{item.title}</strong>
+                  <small className="priority-description">{item.description}</small>
+                  {item.affectedAreas.length > 1 && <small className="priority-areas">{item.affectedAreas.length} talhões afetados: {item.affectedAreas.join(", ")}</small>}
+                </div>
+                <div className="priority-meta">
+                  {item.date && <span>{new Date(item.date).toLocaleDateString("pt-BR")}</span>}
+                  {item.responsible && <span>{item.responsible}</span>}
+                </div>
+                <Icon name="chevron" size={16}/>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="field-ops-section-head compact"><div><span className="eyebrow">PAINEL EXECUTIVO</span><h2>Visão consolidada da operação</h2></div></div>
