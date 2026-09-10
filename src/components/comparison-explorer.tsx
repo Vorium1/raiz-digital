@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { ClassificationBadge } from "@/components/ui";
 import { RealFieldMap } from "@/components/real-field-map";
@@ -127,14 +128,25 @@ function DifferenceChart({ rows }: { rows: ParameterComparisonRow[] }) {
 }
 
 export function ComparisonExplorer() {
-  const [mode, setMode] = useState<Mode>("fields");
+  // Fase 3, Bloco C: chegar aqui a partir do cockpit ("Abrir comparação pertinente") já pré-seleciona
+  // modo e o lado A -- economiza o usuário ter que reencontrar o mesmo talhão na lista. Só lê a URL na
+  // primeira renderização (nunca força de novo depois, pra não brigar com a troca manual de modo).
+  const searchParams = useSearchParams();
+  const initialMode = (searchParams.get("mode") as Mode) ?? "fields";
+  const [mode, setMode] = useState<Mode>(MODES.some((m) => m.value === initialMode) ? initialMode : "fields");
   const [context, setContext] = useState<ContextData>({ fields: [], properties: [], seasons: [] });
   const [points, setPoints] = useState<PointOption[]>([]);
-  const [a, setA] = useState("");
+  const [a, setA] = useState(searchParams.get("a") ?? "");
   const [b, setB] = useState("");
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guarda o `mode` já processado (não "já rodou uma vez") -- um ref "consome na primeira chamada"
+  // quebra sob o duplo-disparo de efeito do React 18 Strict Mode em dev (a montagem roda o efeito,
+  // desmonta simulado, roda de novo -- um guarda "só uma vez" é consumido nesse primeiro ciclo simulado e
+  // reseta "a" vindo da URL antes do usuário ver a tela). Comparar o valor real do `mode` é idempotente,
+  // não importa quantas vezes o efeito rode dentro do mesmo ciclo de montagem.
+  const lastResetForMode = useRef(mode);
 
   useEffect(() => {
     void fetch("/api/context").then((r) => r.json()).then((data) => setContext({ fields: data.fields ?? [], properties: data.properties ?? [], seasons: data.seasons ?? [] }));
@@ -152,7 +164,11 @@ export function ComparisonExplorer() {
     return context.properties.map((p) => ({ value: p.id, label: p.name }));
   }, [mode, context, points]);
 
-  useEffect(() => { setA(""); setB(""); setResult(null); setError(null); }, [mode]);
+  useEffect(() => {
+    if (lastResetForMode.current === mode) return; // preserva o "a" vindo da URL -- este `mode` já foi processado
+    lastResetForMode.current = mode;
+    setA(""); setB(""); setResult(null); setError(null);
+  }, [mode]);
 
   async function compare() {
     if (!a || !b) return;

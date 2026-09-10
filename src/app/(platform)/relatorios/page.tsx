@@ -42,7 +42,7 @@ export default async function ReportsPage() {
     <>
       <Topbar eyebrow="Entrega" title="Relatórios"/>
       <div className="content-wrap">
-        <PageIntro title="Documentos técnicos" description="Gerados exclusivamente a partir de dado real persistido. Nenhuma recomendação agronômica aparece onde não houver regra homologada."/>
+        <PageIntro title="Relatórios por destinatário" description="Gerados exclusivamente a partir de dado real persistido, organizados por quem vai ler -- não por nome técnico de tela. Nenhuma recomendação agronômica aparece onde não houver regra homologada."/>
 
         <section className="card" style={{ marginBottom: 18 }}>
           <div className="field-ops-section-head compact"><div><span className="eyebrow">PUBLICADOS</span><h2>Documentos publicados ({published.length})</h2></div></div>
@@ -54,9 +54,24 @@ export default async function ReportsPage() {
           )) : <div style={{ padding: "0 22px 18px" }}><EmptyState icon="file" title="Nenhum relatório publicado ainda" description="Publique a partir de uma interpretação já aprovada, na tela de Análises."/></div>}
         </section>
 
+        {/* Fase 3, Bloco E: organizado por FINALIDADE/destinatário, não por nome técnico de tela --
+            "Executivo" (dono/diretor/gerente), "Técnico" (agrônomo/responsável técnico), "Operacional"
+            (técnico e equipe de campo) e "Resumo ao produtor" (linguagem simples, sem jargão). */}
         <div className="report-generators-grid">
           <section className="card">
-            <div className="field-ops-section-head compact"><div><span className="eyebrow">POR TALHÃO</span><h2>Análise por talhão</h2></div></div>
+            <div className="field-ops-section-head compact"><div><span className="eyebrow">EXECUTIVO · DONO, DIRETOR, GERENTE</span><h2>Situação da propriedade</h2><p>Cobertura da avaliação, áreas que exigem atenção, impedimentos e próximos passos.</p></div></div>
+            <div className="report-generators-list">
+              {context.properties.length ? context.properties.slice(0, 12).map((property: any) => (
+                <Link key={property.id} href={`/relatorios/propriedade/${property.id}`} className="report-list-item">
+                  <span><strong>{property.name}</strong><small>{property.municipality}/{property.state}</small></span>
+                  <Icon name="arrow" size={15}/>
+                </Link>
+              )) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhuma propriedade cadastrada ainda.</p>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="field-ops-section-head compact"><div><span className="eyebrow">TÉCNICO · AGRÔNOMO E RESPONSÁVEL TÉCNICO</span><h2>Análise completa por talhão</h2><p>Resultados, métodos, regras, interpretação, limitações, recomendações e validação profissional.</p></div></div>
             <div className="report-generators-list">
               {analyses.length ? analyses.slice(0, 12).map((analysis: any) => (
                 <Link key={analysis.id} href={`/relatorios/talhao/${analysis.id}`} className="report-list-item">
@@ -68,7 +83,7 @@ export default async function ReportsPage() {
           </section>
 
           <section className="card">
-            <div className="field-ops-section-head compact"><div><span className="eyebrow">POR ORDEM</span><h2>Relatório de coleta</h2></div></div>
+            <div className="field-ops-section-head compact"><div><span className="eyebrow">OPERACIONAL · TÉCNICO E EQUIPE DE CAMPO</span><h2>Ordem de coleta</h2><p>Pontos, datas, responsáveis, situação de execução e mapa da ordem.</p></div></div>
             <div className="report-generators-list">
               {orders.length ? orders.slice(0, 12).map((order: any) => (
                 <Link key={order.id} href={`/relatorios/coleta/${order.id}`} className="report-list-item">
@@ -80,7 +95,19 @@ export default async function ReportsPage() {
           </section>
 
           <section className="card">
-            <div className="field-ops-section-head compact"><div><span className="eyebrow">POR TALHÃO</span><h2>Evolução histórica</h2></div></div>
+            <div className="field-ops-section-head compact"><div><span className="eyebrow">RESUMO AO PRODUTOR</span><h2>Linguagem simples</h2><p>O que foi observado, interpretado, aprovado e o que ainda falta investigar — sem jargão técnico, sem IA.</p></div></div>
+            <div className="report-generators-list">
+              {analyses.length ? analyses.slice(0, 12).map((analysis: any) => (
+                <Link key={analysis.id} href={`/relatorios/produtor/${analysis.id}`} className="report-list-item">
+                  <span><strong>{analysis.code}</strong><small>{analysis.clientName} · {analysis.fieldName} · {analysis.seasonLabel}</small></span>
+                  <Icon name="arrow" size={15}/>
+                </Link>
+              )) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhuma análise cadastrada ainda.</p>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="field-ops-section-head compact"><div><span className="eyebrow">TÉCNICO · EVOLUÇÃO</span><h2>Evolução histórica por talhão</h2><p>Série histórica entre safras, com aderência ao manejo recomendado.</p></div></div>
             <div className="report-generators-list">
               {context.fields.length ? context.fields.slice(0, 12).map((field: any) => (
                 <Link key={field.id} href={`/relatorios/evolucao/${field.id}`} className="report-list-item">
@@ -88,18 +115,6 @@ export default async function ReportsPage() {
                   <Icon name="arrow" size={15}/>
                 </Link>
               )) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhum talhão cadastrado ainda.</p>}
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="field-ops-section-head compact"><div><span className="eyebrow">POR PROPRIEDADE</span><h2>Relatório executivo</h2></div></div>
-            <div className="report-generators-list">
-              {context.properties.length ? context.properties.slice(0, 12).map((property: any) => (
-                <Link key={property.id} href={`/relatorios/propriedade/${property.id}`} className="report-list-item">
-                  <span><strong>{property.name}</strong><small>{property.municipality}/{property.state}</small></span>
-                  <Icon name="arrow" size={15}/>
-                </Link>
-              )) : <p className="report-empty-note" style={{ padding: "0 22px 18px" }}>Nenhuma propriedade cadastrada ainda.</p>}
             </div>
           </section>
         </div>

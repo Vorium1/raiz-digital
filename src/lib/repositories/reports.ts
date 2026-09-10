@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { saveReportSnapshot } from "@/lib/storage";
+import { getExecutiveDashboard, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
 
 export class ReportError extends Error {
   constructor(message: string, public status = 400) {
@@ -61,11 +62,32 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
       [tenantId, analysisId],
     );
 
+    // Fase 3, Bloco F: a tela que gera este relatório sempre lê a interpretação MAIS RECENTE ao vivo
+    // (linha acima), mas o registro imutável publicado (`reports`, com hash) pode ser de uma revisão
+    // ANTERIOR -- reabrir esta URL depois de recalcular mostra o dado novo, não o publicado. Em vez de
+    // fingir que a versão publicada e a exibida são sempre a mesma, a consulta abaixo compara as duas de
+    // verdade e a tela precisa avisar quando divergirem (não há mecanismo nesta instância que sirva de
+    // volta o snapshot publicado -- limitação real, documentada, não resolvida por migração aqui).
+    const publishedResult = await client.query(
+      `SELECT r.id::text, r.revision AS "reportRevision", r.published_at::text AS "publishedAt", r.sha256 AS "contentHash",
+              i.id::text AS "interpretationId", i.revision AS "interpretationRevision", publisher.name AS "publishedByName"
+       FROM reports r
+       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
+       LEFT JOIN users publisher ON publisher.id = r.published_by
+       WHERE r.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+       ORDER BY r.published_at DESC LIMIT 1`,
+      [tenantId, analysisId],
+    );
+    const publishedReport = publishedResult.rows[0] ?? null;
+    const latestInterpretation = interpretationResult.rows[0] ?? null;
+
     return {
       analysis,
       points: pointsResult.rows,
       results: resultsResult.rows,
-      interpretation: interpretationResult.rows[0] ?? null,
+      interpretation: latestInterpretation,
+      publishedReport,
+      isShowingPublishedVersion: Boolean(publishedReport && latestInterpretation && publishedReport.interpretationId === latestInterpretation.id),
     };
   });
 }
@@ -196,6 +218,12 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
   });
 }
 
+/**
+ * Relatório EXECUTIVO (Fase 3, Bloco E): situação da propriedade, áreas que exigem atenção, cobertura
+ * da avaliação, decisões e impedimentos, próximos passos. Reaproveita as MESMAS agregações já usadas na
+ * Central de Decisão (`getExecutiveDashboard`/`getPortfolioFieldSummaries`, Fase 1) -- nenhum número novo
+ * inventado pra este relatório, só a mesma fonte já auditada, reapresentada pro destinatário executivo.
+ */
 export async function getPropertyExecutiveReportData(tenantId: string, propertyId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const propertyResult = await client.query(
@@ -207,35 +235,14 @@ export async function getPropertyExecutiveReportData(tenantId: string, propertyI
     const property = propertyResult.rows[0];
     if (!property) return null;
 
-    const fieldsResult = await client.query(
-      `SELECT f.id::text, f.name, f.area_ha::float8 AS "areaHa",
-              (SELECT count(*)::int FROM crop_seasons cs WHERE cs.tenant_id = f.tenant_id AND cs.field_id = f.id) AS "seasonCount",
-              (SELECT count(*)::int FROM sample_points sp
-                 JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
-                 JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-                 WHERE cs.field_id = f.id) AS "totalPoints",
-              (SELECT count(*)::int FROM sample_points sp
-                 JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
-                 JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-                 WHERE cs.field_id = f.id AND sp.collected_at IS NOT NULL) AS "collectedPoints"
-       FROM fields f WHERE f.tenant_id = $1::uuid AND f.property_id = $2::uuid ORDER BY f.name`,
-      [tenantId, propertyId],
-    );
+    const [summary, fieldSummaries] = await Promise.all([
+      getExecutiveDashboard(tenantId, { propertyId }, userId),
+      getPortfolioFieldSummaries(tenantId, { propertyId }, userId),
+    ]);
 
-    const analysesResult = await client.query(
-      `SELECT count(*)::int AS total,
-              count(*) FILTER (WHERE a.status = 'AWAITING_REVIEW')::int AS "awaitingReview",
-              count(*) FILTER (WHERE a.status = 'APPROVED')::int AS approved,
-              count(*) FILTER (WHERE a.status = 'INCONSISTENT')::int AS inconsistent,
-              avg(a.confidence_score)::float8 AS "avgConfidence"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       WHERE f.tenant_id = $1::uuid AND f.property_id = $2::uuid`,
-      [tenantId, propertyId],
-    );
+    const attentionFields = fieldSummaries.filter((f) => f.evaluationStatus === "SEM_ANALISE" || f.evaluationStatus === "NAO_INTERPRETAVEL");
 
-    return { property, fields: fieldsResult.rows, analysesSummary: analysesResult.rows[0] };
+    return { property, summary, fields: fieldSummaries, attentionFields };
   });
 }
 

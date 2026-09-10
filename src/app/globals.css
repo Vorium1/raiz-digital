@@ -697,8 +697,9 @@ button { color: inherit; }
 .report-table{border-collapse:collapse;font-size:11px;width:100%}
 .report-table th{background:var(--surface-2);color:var(--muted);font-size:9px;letter-spacing:.03em;padding:7px 10px;text-align:left;text-transform:uppercase}
 .report-table td{border-top:1px solid var(--line);padding:7px 10px}
-.report-pendencies{background:#231d11;border:1px solid #f1ddb0;border-radius:10px;padding:12px 16px}
+.report-pendencies{background:#fbf3e2;border:1px solid #e6c789;border-radius:10px;color:#5a4111;padding:12px 16px}
 .report-pendencies li{font-size:11px;margin:4px 0}
+.report-pendencies li svg{vertical-align:-2px}
 .report-empty-note{color:var(--muted);font-size:11px;font-style:italic}
 .report-signature{border-top:1px solid var(--line);display:flex;justify-content:space-between;margin-top:28px;padding-top:14px}
 .report-signature div{font-size:10px}
@@ -1038,3 +1039,69 @@ button { color: inherit; }
   .field-overview-timeline-row { grid-template-columns:20px minmax(0,1fr); }
   .field-overview-timeline-row > span { grid-column:2; }
 }
+
+/* ========================================================= */
+/* Inteligência: fila de trabalho técnico (RAIZ 2.0 Fase 3, Bloco A) */
+/* ========================================================= */
+.intelligence-bucket-summary { display:grid; gap:10px; grid-template-columns:repeat(4,1fr); margin-bottom:14px; }
+.intelligence-bucket-chip { background:var(--surface); border:1px solid var(--line); border-left-width:3px; border-radius:9px; padding:12px 14px; }
+.intelligence-bucket-chip strong { display:block; font-family:var(--font-heading); font-size:20px; }
+.intelligence-bucket-chip span { color:var(--muted); display:block; font-size:9px; margin-top:2px; }
+.intelligence-bucket-chip.tone-danger { border-left-color:var(--danger); }
+.intelligence-bucket-chip.tone-review { border-left-color:var(--warning); }
+.intelligence-bucket-chip.tone-success { border-left-color:var(--success); }
+.intelligence-bucket-chip.tone-waiting { border-left-color:var(--muted); }
+@media(max-width:760px) { .intelligence-bucket-summary { grid-template-columns:repeat(2,1fr); } }
+
+.intelligence-queue-list { display:flex; flex-direction:column; }
+.intelligence-queue-row { align-items:center; border-bottom:1px solid var(--line); color:inherit; display:grid; gap:14px; grid-template-columns:1.4fr auto 1.4fr auto auto; padding:14px 22px; transition:background .15s ease; }
+.intelligence-queue-row:last-child { border:0; }
+.intelligence-queue-row:hover { background:#131b13; }
+.intelligence-queue-context strong { display:block; font-size:10.5px; }
+.intelligence-queue-context small { color:var(--muted); display:block; font-size:8.5px; margin-top:2px; }
+.intelligence-queue-status { align-items:flex-start; display:flex; flex-direction:column; gap:4px; }
+.intelligence-queue-revcount { align-items:center; color:var(--muted); display:flex; font-size:7.5px; gap:4px; }
+.intelligence-queue-conclusion { color:var(--muted); font-size:9px; line-height:1.5; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.intelligence-queue-meta { display:flex; flex-direction:column; font-size:8px; gap:3px; white-space:nowrap; }
+.intelligence-queue-meta > span:first-child { color:var(--muted); }
+.intelligence-queue-responsible { align-items:center; color:var(--muted); display:flex; gap:4px; }
+.intelligence-queue-action { align-items:center; color:var(--teal); display:flex; font-size:9px; font-weight:700; gap:6px; justify-content:flex-end; white-space:nowrap; }
+@media(max-width:900px) {
+  .intelligence-queue-row { grid-template-columns:minmax(0,1fr) auto; }
+  .intelligence-queue-conclusion, .intelligence-queue-meta { display:none; }
+  .intelligence-queue-action { font-size:0; }
+  .intelligence-queue-action svg { display:block; }
+}
+
+/* ========================================================= */
+/* Cockpit técnico contextual (RAIZ 2.0 Fase 3, Bloco B)        */
+/* ========================================================= */
+.detail-columns-secondary { margin-top:18px; }
+.cockpit { display:grid; gap:20px; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); margin-top:18px; }
+.cockpit-region { display:flex; flex-direction:column; gap:12px; }
+.cockpit-evidence { background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.cockpit-technical { display:flex; flex-direction:column; gap:16px; }
+.cockpit-parameter-select { align-items:center; display:flex; gap:8px; }
+.cockpit-parameter-select span { color:var(--muted); font-size:9px; font-weight:700; }
+.cockpit-parameter-select select { background:var(--surface); border:1px solid var(--line); border-radius:7px; height:32px; padding:0 8px; }
+.cockpit-investigation-links { display:flex; flex-wrap:wrap; gap:8px; }
+.cockpit-investigation-links .button.active { background:var(--teal); border-color:var(--teal); color:#04211c; }
+.cockpit-compat-note { align-items:flex-start; background:#241e12; border-radius:9px; color:#e2cfb4; display:flex; font-size:9px; gap:7px; line-height:1.55; padding:9px 12px; }
+.cockpit-compat-note svg { flex-shrink:0; margin-top:1px; }
+.cockpit-revision-badge { align-items:center; display:flex; gap:10px; }
+.cockpit-revision-badge span { color:var(--muted); font-size:9px; }
+.cockpit-stale-approval { align-items:flex-start; background:#241e12; border-radius:9px; color:#e2cfb4; display:flex; font-size:9.5px; gap:8px; line-height:1.6; padding:11px 14px; }
+.cockpit-stale-approval svg { color:var(--warning); flex-shrink:0; margin-top:1px; }
+.cockpit-stale-approval strong { color:#f0dfc2; }
+.cockpit-category { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+.cockpit-category h3 { align-items:center; display:flex; font-family:var(--font-heading); font-size:12px; gap:10px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.03em; }
+.cockpit-category-number { align-items:center; background:var(--surface-2); border-radius:50%; color:var(--teal); display:flex; flex-shrink:0; font-size:10px; height:22px; justify-content:center; width:22px; }
+.cockpit-pattern-list { display:flex; flex-direction:column; font-size:10px; gap:10px; line-height:1.6; list-style:none; margin:0; padding:0; }
+.cockpit-pattern-list li { border-bottom:1px solid var(--line); padding-bottom:10px; }
+.cockpit-pattern-list li:last-child { border:0; padding-bottom:0; }
+.cockpit-pattern-list small { color:var(--muted); display:block; font-size:8.5px; margin-top:3px; }
+.cockpit-validation-list { display:grid; gap:10px; grid-template-columns:repeat(2,1fr); margin:0 0 14px; }
+.cockpit-validation-list dt { color:var(--muted); font-size:8px; letter-spacing:.03em; text-transform:uppercase; }
+.cockpit-validation-list dd { font-size:10.5px; font-weight:700; margin:3px 0 0; }
+@media(max-width:1100px) { .cockpit { grid-template-columns:minmax(0,1fr); } .cockpit-evidence { order:1; } .cockpit-technical { order:2; } }
+@media(max-width:640px) { .cockpit-validation-list { grid-template-columns:1fr; } }

@@ -143,6 +143,10 @@ export type LabResultInput = {
   sampleType: SampleType;
   depthFromCm: number | null;
   depthToCm: number | null;
+  /** MEASURED = resultado direto do laboratório; CALCULATED = derivado (ex.: soma/fórmula a partir de
+   * outros resultados). Só repassado como metadado de rastreabilidade (Fase 3, Bloco B, categoria
+   * "Dado") -- nunca usado para alterar a classificação em si. */
+  source?: "MEASURED" | "CALCULATED";
 };
 
 export type EngineInput = {
@@ -156,6 +160,7 @@ export type ParameterFact = {
   value: number;
   unit: string;
   method: string;
+  source?: "MEASURED" | "CALCULATED";
 };
 
 export type ParameterInterpretation =
@@ -357,7 +362,7 @@ function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: s
 }
 
 export function runAgronomicEngine(input: EngineInput): EngineResult {
-  const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method }));
+  const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method, source: row.source }));
   const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));
 
   const derivedParameters = (input.cropProfile?.parameters ?? []).filter((param) => param.status === "ACTIVE" && param.derivedParameterCode);

@@ -77,11 +77,8 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<{ an
     if (!propertyId) return { answer: "Não identifiquei a propriedade. Diga o nome dela ou abra a propriedade e pergunte de novo.", cards: [] };
     const data = await getPropertyExecutiveReportData(tenantId, propertyId, userId);
     if (!data) return { answer: "Propriedade não encontrada.", cards: [] };
-    const coverage = data.fields.reduce((sum: number, f: any) => sum + f.totalPoints, 0) > 0
-      ? Math.round((data.fields.reduce((sum: number, f: any) => sum + f.collectedPoints, 0) / data.fields.reduce((sum: number, f: any) => sum + f.totalPoints, 0)) * 100)
-      : null;
     return {
-      answer: `${data.property.name}: ${data.fields.length} talhão(ões), ${data.analysesSummary.awaitingReview} análise(s) aguardando revisão, ${data.analysesSummary.inconsistent} inconsistente(s)${coverage != null ? `, ${coverage}% de cobertura de coleta` : ""}.`,
+      answer: `${data.property.name}: ${data.fields.length} talhão(ões), ${data.summary.interpretationsPending} interpretação(ões) aguardando revisão, ${data.summary.criticalFields} talhão(ões) crítico(s), ${data.summary.coveragePct}% de cobertura de coleta.`,
       cards: [{ title: `Ver relatório executivo de ${data.property.name}`, description: "Relatório completo com todos os talhões", href: `/relatorios/propriedade/${propertyId}` }],
     };
   }

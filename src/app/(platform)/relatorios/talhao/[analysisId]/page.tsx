@@ -12,7 +12,7 @@ import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
 import { getLatestAgronomicNarrative, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
 import { getInputComparisonForAnalysis } from "@/lib/repositories/catalog";
 import { getTenantBranding } from "@/lib/repositories/tenant-branding";
-import { analysisStatusMeta } from "@/domain/analysis-ui";
+import { analysisDisplayStatus } from "@/domain/analysis-ui";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
@@ -29,8 +29,11 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
     getTenantBranding(session.tenantId),
   ]);
   if (!data) notFound();
-  const { analysis, points, results, interpretation } = data;
-  const meta = analysisStatusMeta(analysis.status);
+  const { analysis, points, results, interpretation, publishedReport, isShowingPublishedVersion } = data;
+  // Fase 3, Bloco F: usa a MESMA correção já aplicada na tela de análise (Fase 1) -- "Pronta para
+  // interpretar" mentiria aqui quando o motor já rodou e não achou nada interpretável. Esse relatório
+  // divergia da tela de origem antes desta correção (achado real desta rodada).
+  const meta = analysisDisplayStatus({ status: analysis.status, latestInterpretationStatus: interpretation?.status ?? null, notInterpretableReason: interpretation?.notInterpretableReason ?? null });
   const structured = interpretation?.structuredOutput as { interpretation?: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification?: string; reason?: string }>; confidence?: { score: number; level: string } } | null;
   const collectedCount = points.filter((point: any) => point.collectedAt).length;
 
@@ -48,12 +51,23 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
           </div>
         </div>
 
+        {/* Fase 3, Bloco F: rascunho sempre identificado como tal; quando existe versão publicada, avisa
+            explicitamente se o que está na tela é ou não a MESMA versão (esta instância não serve de
+            volta o snapshot imutável publicado -- ver nota em getFieldAnalysisReportData). */}
+        {!publishedReport ? (
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Rascunho — nenhuma versão deste relatório foi publicada ainda. O conteúdo abaixo reflete o dado calculado mais recente e pode mudar.</span></div>
+        ) : !isShowingPublishedVersion ? (
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Este documento mostra o dado ATUAL, não necessariamente igual ao conteúdo já publicado — esta instância não reproduz o snapshot publicado a partir daqui.</span></div>
+        ) : (
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Publicado em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"} — revisão #{publishedReport.interpretationRevision} (versão atual).</span></div>
+        )}
         <article className="report-doc">
           <header className="report-header">
             <ReportBrand branding={branding} />
             <div className="report-header-meta">
               <span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{analysis.code}</strong>
+              <span style={{ marginTop: 6 }}>Situação</span><strong>{!publishedReport ? "Rascunho" : isShowingPublishedVersion ? "Publicado" : "Rascunho (mais recente que o publicado)"}</strong>
             </div>
           </header>
 
@@ -93,7 +107,7 @@ export default async function FieldAnalysisReportPage({ params }: { params: Prom
 
           {points.length > 0 && (
             <section className="report-section no-print">
-              <h2>Mapa real</h2>
+              <h2>Mapa real <span className="report-empty-note">(só na tela — no PDF, ver coordenadas na tabela de pontos de amostragem acima)</span></h2>
               <RealFieldMap boundary={analysis.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, gpsSource: null, notes: null, labResultCount: 0 }))} height={340}/>
             </section>
           )}

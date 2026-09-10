@@ -52,7 +52,22 @@ export default async function CollectionReportPage({ params }: { params: Promise
             <div><span>Cobertura</span><strong>{points.length ? `${collected.length}/${points.length} (${Math.round((collected.length / points.length) * 100)}%)` : "—"}</strong></div>
           </div>
 
-          {points.length > 0 && <section className="report-section no-print"><h2>Mapa do talhão</h2><RealFieldMap boundary={order.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, labResultCount: 0 }))} height={340}/></section>}
+          {/* Fase 3, Bloco E (operacional: "ordem e objetivo" / "instruções registradas"). Não há campo de
+              texto livre de instrução/objetivo persistido em collection_orders hoje -- o objetivo real da
+              ordem é composto do que JÁ é estruturado (safra/cultura, profundidade, estratégia de grid),
+              mostrado acima. Registrado aqui como limitação concreta em vez de inventar um texto. */}
+          <section className="report-section">
+            <h2>Objetivo e instruções</h2>
+            <p style={{ fontSize: 11, lineHeight: 1.7 }}>Coleta de solo na profundidade {order.depthFromCm}–{order.depthToCm} cm, safra {order.seasonLabel}{order.currentCrop ? ` (${order.currentCrop})` : ""}, {order.gridAreaHa ? `grid de ${order.gridAreaHa} ha por ponto` : "por GPS"}.</p>
+            <p className="report-empty-note">Não existe hoje um campo de instrução textual livre persistido na ordem de coleta — as instruções estruturadas disponíveis são exatamente as mostradas acima (profundidade, estratégia, responsável, planejamento).</p>
+          </section>
+
+          {/* Fase 3, Bloco F: o mapa interativo (Leaflet) não é capturado pela impressão do navegador --
+              por isso fica marcado "no-print" e some do PDF/impresso de propósito, em vez de aparecer
+              quebrado. A origem geográfica de cada ponto (coordenadas reais + Origem GPS) continua
+              presente no PDF pela tabela "Pontos" abaixo, que é a evidência espacial que SOBREVIVE à
+              exportação. */}
+          {points.length > 0 && <section className="report-section no-print"><h2>Mapa do talhão <span className="report-empty-note">(só na tela — no PDF, ver coordenadas na tabela de pontos abaixo)</span></h2><RealFieldMap boundary={order.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, labResultCount: 0 }))} height={340}/></section>}
 
           <section className="report-section">
             <h2>Pontos ({points.length})</h2>

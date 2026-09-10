@@ -74,12 +74,22 @@ test("Talhão 360° · Solo e Fertilidade: mostra o valor observado real mesmo s
   test.skip(!withCollected, "nenhuma ordem com pontos coletados agora -- nada de distribuição pra verificar.");
   if (!withCollected) return;
 
-  await page.goto(`/talhoes/${withCollected.fieldId}?aba=evidencias&evidencia=solo&ordem=${withCollected.id}`, { waitUntil: "networkidle" });
-  const select = page.locator(".field-overview-parameter-toolbar select");
-  const options = await select.locator("option").allTextContents();
-  test.skip(options.length < 2, "nenhum parâmetro disponível nesta ordem agora.");
-  const value = await select.locator("option").nth(1).getAttribute("value");
-  await select.selectOption(value!);
+  // Acha, dentre os pontos já coletados desta ordem (resposta de /api/collection-orders já traz
+  // labResultCount por ponto), um parâmetro que realmente tenha valor lançado -- evita depender da
+  // ordem de exibição do <select> (que pode listar primeiro um parâmetro sem nenhum resultado ainda,
+  // num banco de dev com dado parcial/poluído por execuções anteriores da suíte).
+  const parameterWithResults = await page.evaluate(async (orderId) => {
+    const layer = await (await fetch(`/api/collection-orders/${orderId}/map-layer`)).json();
+    for (const code of layer.availableParameters ?? []) {
+      const withResult = await (await fetch(`/api/collection-orders/${orderId}/map-layer?parameter=${encodeURIComponent(code)}`)).json();
+      if ((withResult.points ?? []).some((p: any) => p.value != null)) return code;
+    }
+    return null;
+  }, withCollected.id);
+  test.skip(!parameterWithResults, "nenhum parâmetro desta ordem tem valor lançado agora.");
+  if (!parameterWithResults) return;
+
+  await page.goto(`/talhoes/${withCollected.fieldId}?aba=evidencias&evidencia=solo&ordem=${withCollected.id}&parametro=${encodeURIComponent(parameterWithResults)}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1000);
 
   // O painel de distribuição precisa mostrar contagem real -- nunca "sem dado" só porque falta faixa

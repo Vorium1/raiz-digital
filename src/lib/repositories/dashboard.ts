@@ -117,6 +117,9 @@ export type PortfolioFieldSummary = {
   /** Status real de avaliação, nunca "saudável" pra área não avaliada (achado real da auditoria, item B) --
    * ver `evaluationTone` no componente do mapa pra saber como cada valor vira cor. */
   evaluationStatus: "SEM_ANALISE" | "NAO_INTERPRETAVEL" | "EM_ANDAMENTO" | "APROVADO";
+  /** Motivo real (do motor) quando `evaluationStatus === "NAO_INTERPRETAVEL"` -- nunca inventado (Fase 3,
+   * Bloco E, relatório executivo: "decisões e impedimentos"). */
+  notInterpretableReason: string | null;
 };
 
 /**
@@ -163,7 +166,8 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
                 WHEN count(sa.id) FILTER (WHERE sa.latest_interpretation_status = 'APPROVED') = count(sa.id) THEN 'APROVADO'
                 WHEN count(sa.id) FILTER (WHERE sa.latest_interpretation_status = 'CALCULATED' AND sa.not_interpretable_reason IS NOT NULL) > 0 THEN 'NAO_INTERPRETAVEL'
                 ELSE 'EM_ANDAMENTO'
-              END AS "evaluationStatus"
+              END AS "evaluationStatus",
+              string_agg(DISTINCT sa.not_interpretable_reason, ' · ') FILTER (WHERE sa.not_interpretable_reason IS NOT NULL) AS "notInterpretableReason"
        FROM scoped_fields sf
        LEFT JOIN scoped_points sp ON sp.field_id = sf.id
        LEFT JOIN scoped_analyses sa ON sa.field_id = sf.id
