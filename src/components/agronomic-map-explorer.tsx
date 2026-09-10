@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
@@ -127,6 +128,8 @@ export function AgronomicMapExplorer() {
                 <span><strong>{group.fieldName}</strong><small>{group.clientName} · {group.propertyName}{group.orders.length > 1 ? ` · ${group.orders.length} ordens` : ""}</small></span>
                 <b>{totalCollected}/{totalPlanned}</b>
               </button>
+              {/* Atalho real pra Talhão 360° (Fase 1, Etapa 5) direto da lista de talhões do mapa. */}
+              <Link href={`/talhoes/${group.fieldId}`} className="map-explorer-field-360" title="Abrir Talhão 360°"><Icon name="sparkles" size={13}/>Visão 360°</Link>
               {active && group.orders.length > 1 && (
                 <div className="map-explorer-order-subpicker">
                   {group.orders.map((order) => (

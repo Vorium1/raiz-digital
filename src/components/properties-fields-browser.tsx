@@ -168,7 +168,10 @@ export function PropertiesFieldsBrowser() {
               <div><span>Cobertura de coleta</span><strong>{coveragePct != null ? `${coveragePct}%` : "—"}</strong></div>
             </div>
             <div className="fields-browser-actions">
-              <Link href="/coletas#nova-ordem-coleta" className="button primary"><Icon name="plus" size={15}/>Nova ordem</Link>
+              {/* Talhão 360° (RAIZ 2.0, Fase 1, Etapa 5) -- página real de contexto único por talhão,
+                  reúne mapa, evidências, decisões e linha do tempo num endereço estável e compartilhável. */}
+              <Link href={`/talhoes/${selectedField.id}`} className="button primary"><Icon name="sparkles" size={15}/>Visão 360°</Link>
+              <Link href="/coletas#nova-ordem-coleta" className="button secondary"><Icon name="plus" size={15}/>Nova ordem</Link>
               {/* Antes apontava sempre pra "#nova-ordem-coleta" (criar ordem nova), mesmo quando já existia
                   ordem com pontos reais -- bug real confirmado na auditoria (item F1). Agora leva pra ordem
                   de verdade deste talhão quando ela existe. */}
