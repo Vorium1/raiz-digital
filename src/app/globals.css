@@ -616,6 +616,9 @@ button { color: inherit; }
 .map-explorer-context b{font-family:var(--font-heading);font-size:13px}
 .map-explorer-context small{color:var(--muted);font-size:9px}
 .map-explorer-locked{margin:0}
+.map-explorer-layer-notice{align-items:flex-start;background:#241e12;border-radius:9px;color:#e2cfb4;display:flex;font-size:9px;gap:8px;line-height:1.5;margin-bottom:12px;padding:10px 14px}
+.map-explorer-layer-notice svg{flex-shrink:0;margin-top:1px}
+.map-explorer-layer-notice strong{color:#f0dfc2}
 @media(max-width:900px){.map-explorer{grid-template-columns:minmax(0,1fr)}.map-explorer-list{max-height:220px}}
 @media(max-width:760px){.real-field-map{margin:0 12px}.real-field-map-panel{max-width:none;position:static;margin-top:10px}}
 .point-lab-linked{align-items:center;background:#13221c;border-radius:9px;color:#bbe2d8;display:flex;font-size:7px;font-weight:700;gap:3px;padding:3px 6px}

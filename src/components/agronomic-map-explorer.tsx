@@ -173,16 +173,19 @@ export function AgronomicMapExplorer() {
               </div>
             )}
 
-            {layerMode === "interpolation" ? (
-              <div className="pending-engine map-explorer-locked">
-                <Icon name="shield" size={24}/>
-                <div>
-                  <span className="eyebrow">AGUARDANDO CRITÉRIO HOMOLOGADO</span>
-                  <h3>Mapa interpolado ainda não disponível.</h3>
-                  <p>A interpolação espacial só é liberada quando a densidade de pontos e a validação espacial forem homologadas por um agrônomo responsável, por talhão. Enquanto isso não existir, a RAIZ mostra somente os pontos reais — nunca uma zona estimada.</p>
-                </div>
+            {/* Bug real corrigido (fechamento Fase 1): antes, clicar em "Interpolação" substituía o mapa
+                inteiro por um texto -- o contorno e os pontos reais somem da tela. O briefing pede o
+                oposto: preservar o mapa de base e explicar o impedimento no controle da camada, não
+                trocar o mapa por um aviso. Agora o mapa real continua sempre visível (mostrando os
+                pontos, nunca uma zona interpolada inventada); o aviso aparece junto do próprio seletor
+                de camada, perto de onde o usuário clicou. */}
+            {layerMode === "interpolation" && (
+              <div className="map-explorer-layer-notice">
+                <Icon name="shield" size={15}/>
+                <span><strong>Interpolação ainda não disponível.</strong> Liberada quando a densidade de pontos e a validação espacial forem homologadas por um agrônomo responsável, por talhão. O mapa abaixo mostra os pontos reais — nunca uma zona estimada.</span>
               </div>
-            ) : layerLoading ? (
+            )}
+            {layerLoading ? (
               <div className="agro-loading"><Icon name="clock" size={15}/>Carregando camada…</div>
             ) : (
               <RealFieldMap boundary={layer?.fieldBoundary ?? selectedOrder.fieldBoundary} points={points} height={420} colorFor={colorFor} legend={legend} hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}/>
