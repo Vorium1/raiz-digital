@@ -65,6 +65,11 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       [tenantId, fieldId],
     );
 
+    // NDVI é lido por talhão inteiro (field_ndvi_snapshots não tem crop_season_id -- a leitura de
+    // satélite não sabe de safra, só de contorno/data). Achado real numa revisão independente: nada aqui
+    // tenta adivinhar a qual safra uma leitura "pertenceria" comparando datas -- isso seria inventar uma
+    // associação que o dado não garante. Por isso este histórico é sempre de TODO o talhão, e a tela
+    // precisa rotular isso explicitamente como histórico, nunca como "desta safra".
     const ndviResult = await client.query(
       `SELECT id::text, captured_at::text AS "capturedAt", source, cloud_cover_pct::float8 AS "cloudCoverPct",
               pixel_count AS "pixelCount", mean_ndvi::float8 AS "meanNdvi", min_ndvi::float8 AS "minNdvi", max_ndvi::float8 AS "maxNdvi",
@@ -76,6 +81,9 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
     // Qualidade/origem geográfica real do talhão -- % de pontos coletados com GPS confirmado em campo
     // (gps_source contém 'BROWSER_GPS') vs. estimados/planejados. Mesmo critério já usado no relatório de
     // coleta (item H da auditoria) -- nunca chamar de "real"/"medido" o que não teve captura de GPS real.
+    // Deliberadamente agregado de TODAS as safras do talhão (não só a selecionada): é uma característica
+    // física acumulada do talhão, não um dado específico de uma safra -- a tela precisa deixar isso
+    // explícito, não fingir que é "desta safra".
     const gpsQualityResult = await client.query(
       `SELECT count(*)::int AS total, count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "confirmedCount"
        FROM sample_points sp
@@ -85,8 +93,12 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       [tenantId, fieldId],
     );
 
+    // "cropSeasonId" adicionado -- achado real numa revisão independente: a aba Decisões e a Linha do
+    // Tempo do Talhão 360° mostravam relatórios de QUALQUER safra do talhão, mesmo com uma safra
+    // específica selecionada no filtro. Diferente do NDVI/GPS abaixo, aqui existe um vínculo real e seguro
+    // com a safra (via analyses.crop_season_id) -- não é uma associação inventada por data.
     const reportsResult = await client.query(
-      `SELECT r.id::text, r.revision, r.published_at::text AS "publishedAt", i.analysis_id::text AS "analysisId", a.code AS "analysisCode"
+      `SELECT r.id::text, r.revision, r.published_at::text AS "publishedAt", i.analysis_id::text AS "analysisId", a.code AS "analysisCode", a.crop_season_id::text AS "cropSeasonId"
        FROM reports r
        JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
        JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id

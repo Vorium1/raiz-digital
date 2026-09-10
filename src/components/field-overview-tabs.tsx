@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
@@ -17,6 +18,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "decisoes", label: "Decisões" },
   { id: "timeline", label: "Linha do tempo" },
 ];
+const VALID_TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
 const PRIORITY_TONE: Record<string, "danger" | "review" | "waiting"> = { ALTA: "danger", MEDIA: "review", BAIXA: "waiting" };
 
@@ -29,24 +31,80 @@ type MapLayerResponse = { fieldBoundary: unknown; points: MapPoint[]; availableP
  */
 export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOverview; alerts: OperationalAlert[] }) {
   const { field, seasons, orders, analyses, yieldHistory, ndviSnapshots, gpsQuality, reports } = overview;
-  const [tab, setTab] = useState<Tab>("visao");
-  const [seasonId, setSeasonId] = useState<string>(seasons[0]?.id ?? "");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Item 1 (revisão independente do fechamento da Fase 1): aba/safra/ordem eram só useState local, perdidos
+  // ao recarregar ou abrir um link direto. Corrigido usando a URL como fonte da verdade, mesmo padrão já
+  // usado em DashboardFilters -- nunca confia cegamente no valor da URL: cada um só é aceito se
+  // corresponder a um dado real (aba válida, safra que existe de fato, ordem que pertence à safra
+  // resolvida) -- senão cai no padrão (visão geral / primeira safra / primeira ordem da safra).
+  const urlTab = searchParams.get("aba");
+  const [tab, setTabState] = useState<Tab>(urlTab && VALID_TAB_IDS.has(urlTab) ? (urlTab as Tab) : "visao");
+
+  const urlSeasonId = searchParams.get("safra");
+  const [seasonId, setSeasonIdState] = useState<string>(
+    urlSeasonId && seasons.some((s) => s.id === urlSeasonId) ? urlSeasonId : (seasons[0]?.id ?? ""),
+  );
   const selectedSeason = seasons.find((s) => s.id === seasonId) ?? null;
 
   const seasonOrders = useMemo(() => orders.filter((o) => !seasonId || o.cropSeasonId === seasonId), [orders, seasonId]);
   const seasonAnalyses = useMemo(() => analyses.filter((a) => !seasonId || a.cropSeasonId === seasonId), [analyses, seasonId]);
+  const seasonReports = useMemo(() => reports.filter((r) => !seasonId || r.cropSeasonId === seasonId), [reports, seasonId]);
   const seasonYield = useMemo(() => yieldHistory.filter((y) => !selectedSeason || y.seasonLabel === selectedSeason.seasonLabel), [yieldHistory, selectedSeason]);
 
-  const [selectedOrderId, setSelectedOrderId] = useState<string>("");
-  useEffect(() => { setSelectedOrderId(seasonOrders[0]?.id ?? ""); }, [seasonId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const urlOrderId = searchParams.get("ordem");
+  const [selectedOrderId, setSelectedOrderIdState] = useState<string>(
+    urlOrderId && seasonOrders.some((o) => o.id === urlOrderId) ? urlOrderId : (seasonOrders[0]?.id ?? ""),
+  );
   const selectedOrder = seasonOrders.find((o) => o.id === selectedOrderId) ?? null;
+
+  function updateUrl(next: { tab?: Tab; seasonId?: string; orderId?: string }) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.tab !== undefined) params.set("aba", next.tab);
+    if (next.seasonId !== undefined) { if (next.seasonId) params.set("safra", next.seasonId); else params.delete("safra"); }
+    if (next.orderId !== undefined) { if (next.orderId) params.set("ordem", next.orderId); else params.delete("ordem"); }
+    router.replace(`/talhoes/${field.id}?${params.toString()}`, { scroll: false });
+  }
+  function selectTab(next: Tab) { setTabState(next); updateUrl({ tab: next }); }
+  function selectSeason(next: string) {
+    // Trocar de safra invalida a ordem selecionada (podia pertencer à safra anterior) -- escolhe a
+    // primeira ordem real da nova safra, nunca deixa uma ordem de outra safra "grudada" na seleção.
+    setSeasonIdState(next);
+    const firstOrderOfSeason = orders.find((o) => o.cropSeasonId === next)?.id ?? "";
+    setSelectedOrderIdState(firstOrderOfSeason);
+    updateUrl({ seasonId: next, orderId: firstOrderOfSeason });
+  }
+  function selectOrder(next: string) { setSelectedOrderIdState(next); updateUrl({ orderId: next }); }
+
   const [layer, setLayer] = useState<MapLayerResponse | null>(null);
   const [layerLoading, setLayerLoading] = useState(false);
+  const [layerError, setLayerError] = useState<string | null>(null);
   useEffect(() => {
-    if (!selectedOrderId) { setLayer(null); return; }
+    if (!selectedOrderId) { setLayer(null); setLayerError(null); setLayerLoading(false); return; }
+    // Item 2 (revisão independente): a busca antiga não tratava status HTTP de erro (um 404/500 virava
+    // `.json()` de qualquer jeito, possivelmente mostrando lixo como se fossem pontos reais), não tratava
+    // falha de rede (promise rejeitada sem captura -- carregando ficava travado pra sempre, sem erro
+    // visível), e não cancelava respostas antigas ao trocar de ordem rápido -- se a resposta da ordem
+    // anterior chegasse DEPOIS da nova, ela podia "vencer" e mostrar pontos da ordem errada como se fossem
+    // da atual. AbortController resolve os três: cancela a busca anterior de verdade (nunca aplica o
+    // resultado dela), e o catch trata erro de rede/HTTP com uma mensagem real, nunca uma tela quebrada.
+    const controller = new AbortController();
     setLayerLoading(true);
-    void fetch(`/api/collection-orders/${selectedOrderId}/map-layer`, { cache: "no-store" })
-      .then((r) => r.json()).then((data) => { setLayer(data); setLayerLoading(false); });
+    setLayerError(null);
+    fetch(`/api/collection-orders/${selectedOrderId}/map-layer`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Não foi possível carregar os pontos desta ordem (HTTP ${response.status}).`);
+        return response.json() as Promise<MapLayerResponse>;
+      })
+      .then((data) => { setLayer(data); setLayerLoading(false); })
+      .catch((error) => {
+        if (controller.signal.aborted) return; // ordem trocou antes da resposta chegar -- ignorada de propósito
+        setLayer(null);
+        setLayerLoading(false);
+        setLayerError(error instanceof Error ? error.message : "Falha ao carregar os pontos desta ordem.");
+      });
+    return () => controller.abort();
   }, [selectedOrderId]);
 
   const totalPlanned = seasonOrders.reduce((sum, o) => sum + o.plannedPoints, 0);
@@ -70,6 +128,13 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
   // Linha do tempo: junta datas REAIS de cada tabela (nunca inventa uma data). Quando só existe
   // created_at (sem uma data de domínio própria, ex. planned_at), rotula "Cadastrado em" -- pedido
   // explícito do briefing pra nunca disfarçar data de cadastro como data do evento real.
+  //
+  // Item 3 (revisão independente): NDVI não tem vínculo real com safra (field_ndvi_snapshots não tem
+  // crop_season_id -- não dá pra saber com segurança a qual safra uma leitura pertenceria, e adivinhar por
+  // data seria inventar uma associação que o dado não garante). Por isso essas linhas SEMPRE aparecem
+  // (histórico do talhão inteiro, não filtrado por safra) e ficam marcadas "(histórico do talhão)" pra
+  // nunca parecerem um evento desta safra específica. Ordens/análises/relatórios têm vínculo real de safra
+  // e por isso usam as listas já filtradas (seasonOrders/seasonAnalyses/seasonReports).
   const timelineEvents = useMemo(() => {
     const events: Array<{ date: string; label: string; detail: string; icon: "location" | "flask" | "shield" | "sparkles" | "file" }> = [];
     for (const o of seasonOrders) {
@@ -81,10 +146,10 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
       if (a.reviewedAt) events.push({ date: a.reviewedAt, label: `Revisão registrada — ${a.code}`, detail: "Profissional revisou a interpretação", icon: "shield" });
       if (a.approvedAt) events.push({ date: a.approvedAt, label: `Interpretação aprovada — ${a.code}`, detail: "Validação profissional concluída", icon: "shield" });
     }
-    for (const n of ndviSnapshots) events.push({ date: n.capturedAt, label: "Leitura de satélite (NDVI)", detail: `NDVI médio ${n.meanNdvi.toFixed(2)} · ${n.source}`, icon: "sparkles" });
-    for (const r of reports) events.push({ date: r.publishedAt, label: `Relatório publicado — ${r.analysisCode}`, detail: `Revisão #${r.revision}`, icon: "file" });
+    for (const n of ndviSnapshots) events.push({ date: n.capturedAt, label: "Leitura de satélite (histórico do talhão)", detail: `NDVI médio ${n.meanNdvi.toFixed(2)} · ${n.source}`, icon: "sparkles" });
+    for (const r of seasonReports) events.push({ date: r.publishedAt, label: `Relatório publicado — ${r.analysisCode}`, detail: `Revisão #${r.revision}`, icon: "file" });
     return events.filter((e) => e.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [seasonOrders, seasonAnalyses, ndviSnapshots, reports]);
+  }, [seasonOrders, seasonAnalyses, ndviSnapshots, seasonReports]);
 
   return (
     <div className="field-overview">
@@ -95,11 +160,11 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
           <div><span>Cultura atual</span><strong>{selectedSeason?.currentCrop || "Não informada"}</strong></div>
           <div><span>Próxima cultura</span><strong>{selectedSeason?.nextCrop || "Não planejada"}</strong></div>
           <div><span>Situação da avaliação</span><StatusBadge tone={evaluationStatus.tone === "neutral" ? "waiting" : evaluationStatus.tone}>{evaluationStatus.label}</StatusBadge></div>
-          <div><span>Origem geográfica</span><strong>{gpsPct != null ? `${gpsPct}% GPS confirmado em campo` : "Sem pontos coletados"}</strong></div>
+          <div><span>Origem geográfica (histórico do talhão)</span><strong>{gpsPct != null ? `${gpsPct}% GPS confirmado em campo` : "Sem pontos coletados"}</strong></div>
         </div>
         {seasons.length > 0 && (
           <label className="field-overview-season-filter"><span>Safra</span>
-            <select value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+            <select value={seasonId} onChange={(e) => selectSeason(e.target.value)}>
               {seasons.map((s) => <option key={s.id} value={s.id}>{s.seasonLabel}{s.nextCrop ? ` · ${s.nextCrop}` : s.currentCrop ? ` · ${s.currentCrop}` : ""}</option>)}
             </select>
           </label>
@@ -107,7 +172,7 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
       </div>
 
       <div className="field-overview-tabs">
-        {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? "active" : ""} onClick={() => setTab(t.id)}>{t.label}</button>)}
+        {TABS.map((t) => <button key={t.id} type="button" className={tab === t.id ? "active" : ""} onClick={() => selectTab(t.id)}>{t.label}</button>)}
       </div>
 
       {tab === "visao" && (
@@ -127,8 +192,8 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
           <div className="field-overview-stats card" style={{ padding: 16 }}>
             <div><span>Cobertura de coleta</span><strong>{coveragePct != null ? `${coveragePct}%` : "—"}</strong></div>
             <div><span>Análises nesta safra</span><strong>{seasonAnalyses.length}</strong></div>
-            <div><span>Leituras de satélite</span><strong>{ndviSnapshots.length}</strong></div>
-            <div><span>Relatórios publicados</span><strong>{reports.length}</strong></div>
+            <div><span>Leituras de satélite (histórico do talhão)</span><strong>{ndviSnapshots.length}</strong></div>
+            <div><span>Relatórios publicados nesta safra</span><strong>{seasonReports.length}</strong></div>
           </div>
         </div>
       )}
@@ -138,14 +203,16 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
           <div className="field-overview-order-picker">
             {seasonOrders.length === 0 && <p className="report-empty-note">Nenhuma ordem de coleta nesta safra.</p>}
             {seasonOrders.map((o) => (
-              <button key={o.id} type="button" className={selectedOrderId === o.id ? "active" : ""} onClick={() => setSelectedOrderId(o.id)}>
+              <button key={o.id} type="button" className={selectedOrderId === o.id ? "active" : ""} onClick={() => selectOrder(o.id)}>
                 {o.code} · {o.depthFromCm}–{o.depthToCm}cm · {o.collectedPoints}/{o.plannedPoints}
               </button>
             ))}
           </div>
-          {selectedOrder && (layerLoading ? <div className="agro-loading"><Icon name="clock" size={15}/>Carregando pontos…</div> : (
-            <RealFieldMap boundary={(layer?.fieldBoundary ?? field.boundary) as any} points={layer?.points ?? []} height={380} hint="Clique num ponto pra ver o resultado"/>
-          ))}
+          {selectedOrder && (
+            layerLoading ? <div className="agro-loading"><Icon name="clock" size={15}/>Carregando pontos…</div>
+            : layerError ? <div className="field-ops-message danger"><Icon name="warning" size={17}/><span>{layerError}</span></div>
+            : <RealFieldMap boundary={(layer?.fieldBoundary ?? field.boundary) as any} points={layer?.points ?? []} height={380} hint="Clique num ponto pra ver o resultado"/>
+          )}
           <FieldNdviPanel fieldId={field.id}/>
         </div>
       )}
@@ -164,10 +231,10 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
               );
             })}
           </div>
-          {reports.length > 0 && (
+          {seasonReports.length > 0 && (
             <div className="field-ops-list card">
-              <div className="field-ops-section-head compact"><div><span className="eyebrow">ENTREGAS</span><h2>Relatórios publicados</h2></div></div>
-              {reports.map((r) => (
+              <div className="field-ops-section-head compact"><div><span className="eyebrow">ENTREGAS · ESTA SAFRA</span><h2>Relatórios publicados</h2></div></div>
+              {seasonReports.map((r) => (
                 <Link key={r.id} href={`/relatorios/talhao/${r.analysisId}`} className="field-ops-list-row">
                   <span><strong>{r.analysisCode}</strong><small>Publicado {formatRelativeOrDate(r.publishedAt)} · revisão #{r.revision}</small></span>
                   <Icon name="chevron" size={16}/>
@@ -175,7 +242,7 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
               ))}
             </div>
           )}
-          <Link href={`/relatorios/evolucao/${field.id}`} className="button ghost">Ver evolução histórica completa</Link>
+          <Link href={`/relatorios/evolucao/${field.id}`} className="button ghost">Ver evolução histórica completa (todas as safras)</Link>
         </div>
       )}
 

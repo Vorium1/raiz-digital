@@ -19,7 +19,12 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
   const overview = await getFieldOverview(session.tenantId, fieldId, session.userId);
   if (!overview) notFound();
 
-  const alerts = (await listOperationalAlerts(session.tenantId, session.userId)).filter((alert) => alert.context === overview.field.name);
+  // Antes filtrava por NOME do talhão (alert.context === field.name) -- bug real achado numa revisão
+  // independente: dois talhões homônimos (nome igual, em propriedades/clientes diferentes -- cenário real
+  // e comum, ex. "Área 01" em duas fazendas) mostrariam os alertas um do outro. `listOperationalAlerts` já
+  // é isolado por empresa (`withTenant`); o filtro abaixo agora usa o id real do talhão (fields.id), nunca
+  // o nome, então talhões homônimos nunca mais se confundem.
+  const alerts = (await listOperationalAlerts(session.tenantId, session.userId)).filter((alert) => alert.fieldId === fieldId);
 
   return (
     <>
