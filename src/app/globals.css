@@ -677,6 +677,9 @@ button { color: inherit; }
 .report-version-toggle a{border-radius:7px;color:var(--muted);cursor:pointer;font-size:10px;font-weight:700;padding:7px 14px;text-decoration:none}
 .report-version-toggle a.active{background:var(--surface);color:var(--ink)}
 .report-version-toggle a[aria-disabled="true"]{cursor:not-allowed;opacity:.5}
+.report-integrity-error{background:#2a1512;border:1px solid var(--danger);border-radius:9px;color:#f2c4bd;padding:11px 14px}
+.report-integrity-error strong{color:#ffd9d1}
+.report-integrity-error svg{color:var(--danger);vertical-align:-2px}
 .report-header{align-items:flex-start;border-bottom:2px solid var(--forest);display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:16px}
 .report-header .brand-logo{font-size:10px;height:30px}
 .report-brand{align-items:center;display:inline-flex;gap:10px}

@@ -3,6 +3,33 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { saveReportSnapshot, readRawStoredFile } from "@/lib/storage";
 import { getExecutiveDashboard, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
+import { getTenantBranding, type TenantBranding } from "@/lib/repositories/tenant-branding";
+
+/** Schema do JSON gravado no publish -- versão 2 (fechamento técnico Fase 3, item 2). Snapshots
+ * publicados ANTES desta mudança (se algum dia existirem em outro ambiente) não têm `reportSnapshotVersion`
+ * nem `publishedContext`/`brandingSnapshot` -- tratados como versão 1 implícita em `getPublishedReportSnapshot`/
+ * na tela, que marca esses campos como não capturados em vez de usar dado atual disfarçado de imutável. */
+export const REPORT_SNAPSHOT_VERSION = 2;
+
+export type PublishedReportContext = {
+  id: string; code: string; status: string; confidenceScore: number | null; confidenceLevel: string | null;
+  createdAt: string; updatedAt: string;
+  clientName: string; propertyName: string; municipality: string; state: string;
+  fieldId: string; fieldName: string; areaHa: number;
+  seasonLabel: string; currentCrop: string | null; cultivar: string | null; managementSystem: string | null;
+  soilTexture: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; laboratoryName: string | null;
+};
+
+export type ReportSnapshotV2 = {
+  reportSnapshotVersion: 2;
+  interpretationId: string;
+  revision: number;
+  publishedContext: PublishedReportContext;
+  structuredOutput: unknown;
+  brandingSnapshot: TenantBranding;
+  publishedAt: string;
+  publishedBy: string;
+};
 
 export class ReportError extends Error {
   constructor(message: string, public status = 400) {
@@ -258,7 +285,44 @@ export async function publishFieldAnalysisReport(input: { tenantId: string; user
     if (!interpretation) throw new ReportError("Interpretação não encontrada.", 404);
     if (interpretation.status !== "APPROVED") throw new ReportError("Só é possível publicar um relatório de uma interpretação já aprovada por um agrônomo responsável.", 409);
 
-    const snapshot = JSON.stringify({ interpretationId: interpretation.id, revision: interpretation.revision, structuredOutput: interpretation.structuredOutput, publishedAt: new Date().toISOString() });
+    // Fechamento técnico (item 2 do segundo pedido do diretor): congela TAMBÉM os metadados do documento
+    // no momento do publish -- cliente/propriedade/talhão/safra/cultivar/sistema/textura/meta produtiva/
+    // laboratório e a marca (branding) da empresa. Sem isso, "Versão publicada" continuava lendo esses
+    // campos AO VIVO (ex.: talhão renomeado depois vazaria pro documento supostamente imutável). Mesma
+    // consulta/mesmos nomes de coluna de `getFieldAnalysisReportData`, pra "publishedContext" ser um
+    // substituto direto do objeto `analysis` na tela.
+    const contextResult = await client.query<PublishedReportContext>(
+      `SELECT a.id::text, a.code, a.status::text, a.confidence_score::float8 AS "confidenceScore", a.confidence_level AS "confidenceLevel",
+              a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt",
+              c.name AS "clientName", p.name AS "propertyName", p.municipality, p.state,
+              f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
+              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.cultivar, cs.management_system AS "managementSystem",
+              cs.soil_texture AS "soilTexture", cs.yield_goal::float8 AS "yieldGoal", cs.yield_goal_unit AS "yieldGoalUnit",
+              l.name AS "laboratoryName"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN laboratories l ON l.id = a.laboratory_id
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
+      [input.tenantId, interpretation.analysisId],
+    );
+    const publishedContext = contextResult.rows[0];
+    if (!publishedContext) throw new ReportError("Contexto da análise não encontrado.", 404);
+    const brandingSnapshot = await getTenantBranding(input.tenantId);
+
+    const snapshotPayload: ReportSnapshotV2 = {
+      reportSnapshotVersion: REPORT_SNAPSHOT_VERSION,
+      interpretationId: interpretation.id,
+      revision: interpretation.revision,
+      publishedContext,
+      structuredOutput: interpretation.structuredOutput,
+      brandingSnapshot,
+      publishedAt: new Date().toISOString(),
+      publishedBy: input.userId,
+    };
+    const snapshot = JSON.stringify(snapshotPayload);
     const sha256 = createHash("sha256").update(snapshot).digest("hex");
     const stored = await saveReportSnapshot({ tenantId: input.tenantId, interpretationId: interpretation.id, revision: interpretation.revision, content: snapshot });
     const storageKey = stored?.key ?? `reports/${input.tenantId}/${interpretation.id}/rev-${interpretation.revision}`;
@@ -275,27 +339,43 @@ export async function publishFieldAnalysisReport(input: { tenantId: string; user
   });
 }
 
+/** Snapshot legado (versão 1 implícita, gravado antes desta correção -- sem `reportSnapshotVersion` nem
+ * `publishedContext`/`brandingSnapshot`). Continua legível (nunca quebra um publish antigo), mas a tela
+ * precisa tratar contexto/marca como NÃO capturados nesse caso, nunca usar dado atual como se fosse. */
+export type ReportSnapshotV1Legacy = { interpretationId: string; revision: number; structuredOutput: unknown; publishedAt: string; reportSnapshotVersion?: undefined };
+
 export type PublishedReportSnapshotResult =
   | { found: false }
   | {
       found: true;
       report: { id: string; revision: number; publishedAt: string; publishedByName: string | null; sha256: string };
       /** Conteúdo exatamente como gravado no publish -- nunca reconstruído a partir da interpretação
-       * atual. `null` quando o arquivo não pôde ser lido (ver `readError`). */
-      snapshot: { interpretationId: string; revision: number; structuredOutput: unknown; publishedAt: string } | null;
-      /** true = o hash recalculado do arquivo lido bate com `reports.sha256` (prova de integridade real,
-       * não presumida). false = arquivo lido, mas divergente do hash gravado. null = não deu pra ler. */
+       * atual. `null` quando o arquivo não pôde ser lido OU quando o hash não bateu (ver `readError`/
+       * `hashVerified`) -- item 1 do fechamento (fail closed): conteúdo com hash divergente NUNCA é
+       * devolvido como `snapshot` utilizável, mesmo tendo sido lido e parseado com sucesso. */
+      snapshot: ReportSnapshotV2 | ReportSnapshotV1Legacy | null;
+      /** true = hash recalculado do arquivo lido bate com `reports.sha256` (prova de integridade real,
+       * não presumida) -- ÚNICO caso em que `snapshot` vem preenchido. false = arquivo lido e parseado,
+       * mas o conteúdo diverge do hash gravado -- tratado como violação de integridade, `snapshot` volta
+       * `null` de propósito (nunca devolve conteúdo não confiável pro chamador usar por engano).
+       * null = não deu pra ler/parsear o arquivo. */
       hashVerified: boolean | null;
       readError: string | null;
     };
 
 /**
- * Fechamento técnico da Fase 3 (item 2 do pedido do diretor): lê de volta o snapshot IMUTÁVEL gravado no
- * publish (`saveReportSnapshot`/`storage_key`), em vez de reconstruir o conteúdo publicado a partir da
- * interpretação mais recente. Só funciona quando `STORAGE_PROVIDER=local` (única implementação real de
- * `readRawStoredFile` hoje -- outros provedores como S3 não estão implementados em `src/lib/storage.ts`,
- * então aqui isso vira `readError` explícito, nunca um retorno silencioso de dado desatualizado como se
- * fosse o publicado).
+ * Fechamento técnico da Fase 3 (item 2 do primeiro pedido do diretor): lê de volta o snapshot IMUTÁVEL
+ * gravado no publish (`saveReportSnapshot`/`storage_key`), em vez de reconstruir o conteúdo publicado a
+ * partir da interpretação mais recente. Só funciona quando `STORAGE_PROVIDER=local` (única implementação
+ * real de `readRawStoredFile` hoje -- outros provedores como S3 não estão implementados em
+ * `src/lib/storage.ts`, então aqui isso vira `readError` explícito, nunca um retorno silencioso de dado
+ * desatualizado como se fosse o publicado).
+ *
+ * Fail closed (item 1 do segundo pedido do diretor): esta função é a ÚNICA fonte de verdade sobre
+ * integridade -- `snapshot` só volta preenchido quando o hash recalculado bate com `reports.sha256`. Um
+ * hash divergente (adulteração, corrupção, truncamento) sempre devolve `snapshot: null` com
+ * `hashVerified: false`, nunca o conteúdo lido "mesmo assim" -- quem chama não precisa (e não deve)
+ * reimplementar essa checagem.
  */
 export async function getPublishedReportSnapshot(tenantId: string, analysisId: string, userId?: string): Promise<PublishedReportSnapshotResult> {
   return withTenant({ tenantId, userId }, async (client) => {
@@ -316,8 +396,14 @@ export async function getPublishedReportSnapshot(tenantId: string, analysisId: s
       const buffer = await readRawStoredFile(reportRow.storageKey);
       const rawContent = buffer.toString("utf8");
       const recomputedHash = createHash("sha256").update(rawContent).digest("hex");
+      const hashVerified = recomputedHash === reportRow.sha256;
+      // Fail closed: hash divergente NUNCA devolve o conteúdo parseado como `snapshot` utilizável, mesmo
+      // que o JSON seja válido -- adulteração/corrupção não pode virar "versão publicada" só porque o
+      // arquivo ainda abre. Quem chama recebe `hashVerified: false` e trata como violação de integridade,
+      // nunca como um snapshot incompleto/degradado que dá pra usar "mesmo assim".
+      if (!hashVerified) return { found: true, report, snapshot: null, hashVerified: false, readError: null };
       const snapshot = JSON.parse(rawContent);
-      return { found: true, report, snapshot, hashVerified: recomputedHash === reportRow.sha256, readError: null };
+      return { found: true, report, snapshot, hashVerified: true, readError: null };
     } catch (error) {
       // STORAGE_PROVIDER != local (arquivo nunca foi gravado de verdade) ou arquivo removido/indisponível
       // -- nunca finge que a versão atual é a publicada nesse caso, devolve o motivo real pra tela avisar.

@@ -88,6 +88,108 @@ explícito, nunca dado inventado.
 
 ---
 
+## Segundo fechamento técnico (ainda pós-entrega, mesma branch, sem merge)
+
+O diretor revisou o primeiro fechamento e pediu mais 4 ajustes antes da Fase 4: fail closed na integridade
+do snapshot, reprodutibilidade completa do documento (não só a interpretação), auditoria do storage de
+produção, e testes específicos pra cada um. Nenhuma fórmula agronômica alterada, nenhuma regra
+homologada, nenhuma migração executada, nenhum merge/deploy.
+
+### 1. Integridade do snapshot — fail closed
+
+Achado real do diretor: a tela abria "Versão publicada" sempre que `snapshot != null`, mesmo com
+`hashVerified === false` — um hash divergente (arquivo adulterado/corrompido depois do publish) ainda
+conseguia aparecer na tela como se fosse o documento oficial. Corrigido em duas camadas:
+
+- **No repositório** (`getPublishedReportSnapshot`, `src/lib/repositories/reports.ts`): agora é a ÚNICA
+  fonte de verdade sobre integridade. Quando o hash recalculado não bate com `reports.sha256`, a função
+  devolve `snapshot: null` (mesmo tendo lido e conseguido fazer `JSON.parse` do arquivo com sucesso) — o
+  conteúdo nunca sai do repositório pra quem chama usar "mesmo assim".
+- **Na tela** (`/relatorios/talhao/[analysisId]`): `canShowPublishedView` agora exige explicitamente
+  `snapshot != null && hashVerified === true` (antes só checava `snapshot != null`). Quando a integridade
+  falha: (a) o conteúdo NUNCA é renderizado como oficial — a tela cai pra "Versão atual" de propósito; (b)
+  um erro de integridade explícito aparece, **sempre visível** (não escondido atrás de nenhuma aba,
+  aparece mesmo na aba "Versão atual"), com o prefixo do hash gravado pra conferência; (c) nunca é um
+  fallback silencioso — o aviso é a primeira coisa visível na tela; (d) o botão "Exportar PDF" some
+  enquanto a versão publicada solicitada estiver com integridade falha, pra nunca gerar um PDF rotulado
+  como oficial a partir de conteúdo que não bateu no hash; (e) o toggle mostra "Versão publicada
+  (integridade falhou)", nunca fica marcado como aba ativa.
+- **Bug real encontrado testando esta correção**: `data.isShowingPublishedVersion` (o booleano que decide
+  se a "Situação" mostra "Publicado") só comparava se `reports.interpretation_id` batia com a interpretação
+  atual — nunca checou integridade. Resultado: mesmo com a integridade falhando e a tela caindo pra
+  "Versão atual", a "Situação" continuava dizendo "Publicado" (porque a linha de `reports` realmente
+  apontava pra revisão atual, só o ARQUIVO é que estava corrompido). Corrigido: a página agora usa
+  `isShowingPublishedVersion = data.isShowingPublishedVersion && !integrityFailed`, nunca o valor cru do
+  repositório.
+- **Teste novo**: adultera o arquivo do snapshot DEPOIS de calculado o hash (simulando corrupção/
+  adulteração pós-publicação) e prova que a RAIZ recusa mostrar aquele conteúdo como versão oficial, exibe
+  o erro de integridade, mantém o toggle em "Versão atual", nunca rotula a tela como "Publicado" e nunca
+  oferece "Exportar PDF" nesse estado.
+
+### 2. Reprodutibilidade real do documento (schema versionado)
+
+O snapshot só congelava `structuredOutput` — a tela da versão publicada continuava lendo cliente,
+propriedade, talhão, área, safra, cultivar, sistema, textura, meta produtiva, laboratório e a marca da
+empresa **ao vivo**, mesmo dentro de "Versão publicada". Corrigido com um schema versionado, sem
+migração (a coluna `reports.storage_key` já guardava uma chave opaca pra um blob JSON — só o CONTEÚDO
+desse blob mudou de formato):
+
+```
+{
+  reportSnapshotVersion: 2,
+  interpretationId, revision,
+  publishedContext: { código, cliente, propriedade, talhão, área, safra, cultivar, sistema de cultivo,
+                       textura do solo, meta produtiva, laboratório, confiabilidade do laudo, status,
+                       período (createdAt/updatedAt) -- tudo que aparece no cabeçalho/meta-grid do
+                       documento },
+  structuredOutput: { facts, interpretation, confidence, trace -- como já era },
+  brandingSnapshot: { nome/logo/responsável técnico da empresa no momento do publish },
+  publishedAt, publishedBy,
+}
+```
+
+- `publishFieldAnalysisReport` (`src/lib/repositories/reports.ts`) agora consulta o MESMO contexto que
+  `getFieldAnalysisReportData` usaria (cliente/propriedade/talhão/safra...) e a marca real
+  (`getTenantBranding`) no momento do publish, e grava tudo dentro do snapshot.
+- A tela usa **exclusivamente** `publishedContext`/`brandingSnapshot` do snapshot pra tudo que faz parte
+  do documento oficial quando "Versão publicada" está ativa — nunca mais o dado atual dessas entidades.
+- **Compatibilidade com snapshots antigos**: um snapshot sem `reportSnapshotVersion` (formato anterior a
+  esta correção) é tratado como versão 1 implícita — a tela mostra esses campos como "não capturados
+  neste snapshot", nunca preenche com o dado atual como se fosse imutável. Nenhum publish real existe
+  hoje neste ambiente, então essa compatibilidade é só defensiva (não há dado real pra migrar).
+- **Teste novo**: publica um snapshot com um contexto SINTÉTICO e claramente diferente do dado real (ex.:
+  "Cliente Congelado no Snapshot (teste)") — sem alterar nenhum registro real — e prova que "Versão
+  publicada" mostra exatamente o contexto congelado, e "Versão atual" mostra o dado real, nunca o
+  contrário nem uma mistura dos dois.
+
+### 3. Storage de produção — auditoria (sem implementar infraestrutura paga)
+
+`src/lib/storage.ts` ganhou um bloco de auditoria explícito no topo do arquivo (comentário, sem mudar
+comportamento): `STORAGE_PROVIDER=local` grava no filesystem do processo, adequado só pra desenvolvimento
+local contínuo — **não é armazenamento durável na Vercel** (funções serverless rodam em containers
+efêmeros; escrever em disco local ali não garante que uma leitura futura, possivelmente noutro container,
+vai achar o arquivo). Publicar um relatório em produção hoje, sem trocar o provedor, resultaria em "parece
+publicado, mas nunca mais recuperável" — inaceitável pra um documento que precisa ser imutável.
+
+Proposta documentada (não implementada — contratar um serviço de storage de objetos está fora do escopo
+sem autorização explícita): uma interface `StorageProvider` comum (`save`/`read`), com `local` continuando
+como está pra dev e um provedor real de objeto plugado por variável de ambiente
+(`STORAGE_PROVIDER=local|s3|r2`) pra produção — Cloudflare R2 (compatível com API S3, sem custo de egress)
+ou um bucket S3 padrão, ambos dentro da preferência de `CLAUDE.md` por soluções self-hosted/baratas/
+substituíveis. Migrar pra essa interface não exigiria alterar `db/migrations/` (a coluna `storage_key` já
+é uma chave opaca, independente de quem a resolve).
+
+### Testes executados nesta rodada
+
+```
+npm run typecheck                → sem erros
+npm run build                     → build de produção completo, sem erros
+npm run test:handoff              → todos os cenários aprovados (inclui test:predominance)
+npx playwright test <Fases 1-3>   → ver resultado consolidado na seção "Testes executados" abaixo
+```
+
+---
+
 ## Preparação — o que existe de verdade (antes de desenhar qualquer tela)
 
 - **`/inteligencia` antes**: `listAllInterpretations` listava **uma linha por revisão** de interpretação,
@@ -284,7 +386,7 @@ npm run test:handoff                                                            
                                                                                    9 cenários novos)
 npx playwright test e2e/field-overview-and-priorities.spec.ts \
   e2e/fase2-map-workspace-and-comparisons.spec.ts \
-  e2e/fase3-cockpit-and-reports.spec.ts                                        → 20 passed, 1 skipped, 0 failed
+  e2e/fase3-cockpit-and-reports.spec.ts                                        → 22 passed, 1 skipped, 0 failed
                                                                                    (skip: estado da URL de
                                                                                    satélite/parâmetro em mapas
                                                                                    depende de dado que não
@@ -292,15 +394,17 @@ npx playwright test e2e/field-overview-and-priorities.spec.ts \
                                                                                    execução -- não é falha)
 ```
 
-Os 8 testes e2e novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`, 6 da entrega original + 2 do
-fechamento técnico) cobrem: agrupamento da fila por análise (Bloco A), as 6 categorias reais do cockpit
-(Bloco B), pré-seleção de comparativo pela URL sem disparar comparação sozinha (Bloco C — encontrou e
-provou a correção do bug real do Strict Mode), permissão real de aprovação por role (Bloco D),
-organização por destinatário + ausência de IA no resumo ao produtor (Bloco E), identificação de
-rascunho/publicado (Bloco F), e os dois testes do fechamento técnico (predominância nunca é "padrão
-espacial", ver `test:predominance`; recuperação real do snapshot publicado). Todos descobrem dado real em
-tempo de execução (nunca id fixo) e pulam com `test.skip` quando o dado atual do banco não sustenta o
-cenário, em vez de fingir sucesso.
+Os 10 testes e2e novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`, 6 da entrega original + 1 do
+1º fechamento técnico + 3 do 2º fechamento técnico) cobrem: agrupamento da fila por análise (Bloco A), as
+6 categorias reais do cockpit (Bloco B), pré-seleção de comparativo pela URL sem disparar comparação
+sozinha (Bloco C — encontrou e provou a correção do bug real do Strict Mode), permissão real de aprovação
+por role (Bloco D), organização por destinatário + ausência de IA no resumo ao produtor (Bloco E),
+identificação de rascunho/publicado (Bloco F), recuperação real do snapshot publicado com hash válido,
+bloqueio real por hash divergente (adulteração pós-publicação — encontrou e provou a correção do bug real
+de `isShowingPublishedVersion` não checar integridade), e congelamento real de contexto (metadado
+sintético publicado nunca vaza pra "Versão atual" nem o dado atual vaza pra "Versão publicada"). Todos
+descobrem dado real em tempo de execução (nunca id fixo) e pulam com `test.skip` quando o dado atual do
+banco não sustenta o cenário, em vez de fingir sucesso.
 
 Um teste **pré-existente** da Fase 2 (`Solo e Fertilidade: mostra o valor observado real`) quebrou de
 forma intermitente ao rodar em paralelo com os testes desta Fase (dependia da ordem de exibição do
