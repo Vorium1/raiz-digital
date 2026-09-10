@@ -19,6 +19,21 @@ type TechnicalSource = {
 };
 
 const STATUS_TONE: Record<string, "success" | "review" | "waiting"> = { ACTIVE: "success", DRAFT: "waiting", SUPERSEDED: "review" };
+
+/** Formata as faixas de suficiência em texto legível pra quem vai homologar VER o número real antes de
+ * aprovar -- antes só aparecia "N faixas" (contagem), sem o valor em si, o que não dá pra um agrônomo
+ * conferir de verdade. Ex.: "Muito baixo: <5,0 · Baixo: 5,0–5,5 · Adequado: 5,5–6,2 · Alto: 6,2–7,0". */
+function formatRanges(ranges: Array<{ label: string; min?: number; max?: number }> | null): string {
+  if (!ranges || ranges.length === 0) return "aguardando homologação";
+  return ranges
+    .map((r) => {
+      if (r.min == null && r.max != null) return `${r.label}: <${r.max}`;
+      if (r.max == null && r.min != null) return `${r.label}: >${r.min}`;
+      if (r.min != null && r.max != null) return `${r.label}: ${r.min}–${r.max}`;
+      return r.label;
+    })
+    .join(" · ");
+}
 const CROP_GROUP_LABEL: Record<string, string> = { VERAO: "Culturas de verão", INVERNO: "Culturas de inverno" };
 
 async function postJson(url: string, body: unknown) {
@@ -248,8 +263,12 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
             )}
             <div className="field-ops-wide field-ops-list">
               {parameters.map((parameter) => (
-                <div key={parameter.id} className="field-ops-list-row">
-                  <span><strong>{parameter.parameterCode}</strong><small>{parameter.parameterCategory} · {parameter.depthFromCm ?? "?"}-{parameter.depthToCm ?? "?"}cm · {parameter.sufficiencyRanges ? `${parameter.sufficiencyRanges.length} faixas` : "aguardando homologação"}</small></span>
+                <div key={parameter.id} className="field-ops-list-row param-row">
+                  <span>
+                    <strong>{parameter.parameterCode}</strong>
+                    <small>{parameter.parameterCategory} · {parameter.depthFromCm ?? "?"}-{parameter.depthToCm ?? "?"}cm{parameter.unitExpected ? ` · ${parameter.unitExpected}` : ""}{parameter.analyticalMethodAllowed?.length ? ` · ${parameter.analyticalMethodAllowed.join(", ")}` : ""}</small>
+                    <small className="param-ranges">{formatRanges(parameter.sufficiencyRanges)}</small>
+                  </span>
                   <span className="field-ops-list-actions">
                     <StatusBadge tone={STATUS_TONE[parameter.status]}>{parameter.status}</StatusBadge>
                     {canCurate && <button className="button tiny" disabled={busy === `param-status-${parameter.id}` || !parameter.sufficiencyRanges} title={!parameter.sufficiencyRanges ? "Cadastre as faixas antes de homologar" : undefined} onClick={() => void toggleParameterStatus(parameter)}>{parameter.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>}
