@@ -3967,3 +3967,74 @@ com esse padrão exato no arquivo inteiro.
 
 **Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Sidebar verificada com screenshot
 antes/depois numa janela de 700px de altura, simulando notebook comum -- não só suposição.
+
+## Transparência na homologação de parâmetro + cruzamento automático por IA (2026-09-09)
+
+O diretor apontou uma falha real de transparência: a tela de homologar parâmetro técnico só mostrava
+"Homologar ou não", sem o valor real das faixas de suficiência cadastradas -- um agrônomo não tinha como
+conferir o que estava aprovando. Corrigido primeiro (`technical-library-manager.tsx`): cada parâmetro
+agora mostra o texto real das faixas (ex.: "Baixo: 5,0–5,5 · Adequado: 5,5–6,2 · Alto: 6,2–7,0"), não só a
+contagem.
+
+Na sequência, o diretor pediu pra automatizar a homologação: quando a IA cruzar o parâmetro com várias
+fontes e não achar divergência científica, ele queria que isso já entrasse homologado, sem depender de um
+profissional humano clicar -- reservando revisão humana só pra quando houver inconsistência. Isso bate de
+frente com a regra inegociável do `CLAUDE.md` ("IA não decide agronomia" / "nenhuma recomendação oficial é
+publicada sem revisão profissional"), a mesma linha que vim segurando a sessão inteira mesmo sob pedido
+direto repetido. Expliquei isso ao diretor e propus um meio-termo, que ele aceitou: a IA cruza
+automaticamente e sinaliza, mas o clique final de homologar continua sempre humano (podendo ser o próprio
+diretor, que já é curador da plataforma) -- na prática quase tão rápido quanto automação real, sem abrir
+mão do checkpoint que o projeto exige.
+
+**Implementado** (migration `024_parameter_ai_cross_validation.sql` + `check-migrations.mjs` atualizado):
+
+- `crop_profile_parameters` ganhou `ai_validation_status` (NAO_VALIDADO / CONSISTENTE / INCONSISTENTE /
+  INDETERMINADO), `ai_validation_confidence`, `ai_validation_summary`, `ai_validation_sources` (citações),
+  `ai_validation_model` e `ai_validated_at`. Nenhuma dessas colunas jamais muda `status` do parâmetro --
+  só quem muda `status` pra ACTIVE é o clique humano já existente (`setCropProfileParameterStatus` /
+  `activateAllCropProfileParameters`), sem nenhuma mudança nessa regra.
+- Novo provedor de IA (`src/lib/ai/providers/gemini-parameter-cross-validator.ts` +
+  `parameter-cross-validation-provider.ts`, mesmo padrão dos provedores existentes): pergunta ao Gemini se
+  a faixa cadastrada bate com literatura agronômica brasileira reconhecida (Boletim 100 IAC, Embrapa
+  Cerrados, manual CQFS-RS/SC, etc.), com instrução explícita de nunca inventar fonte e responder
+  "INDETERMINADO" quando não tiver base real -- nunca forçar um "sim" só pra parecer pronto.
+- **Honestidade sobre "várias IAs"**: hoje só existe `GEMINI_API_KEY` configurada nesta instância (nem
+  Anthropic nem OpenAI) -- então a tela sempre mostra o modelo real que rodou (ex.: "modelo:
+  gemini-3.6-flash"), nunca sugere um cruzamento entre múltiplos provedores que não aconteceu de verdade.
+  Se no futuro outro provedor for configurado, dá pra estender sem mudar a UI.
+- Rota `POST /api/crop-profile-parameters/[id]/cross-validate` (gated por `isPlatformCurator`, mesmo
+  padrão das outras rotas de homologação) + botão "Cruzar com IA" por parâmetro e "Cruzar todos com a IA"
+  em lote (sequencial, não paralelo, pra não estourar limite do nível gratuito do Gemini) na tela.
+- Resultado aparece como selo na própria linha do parâmetro: "IA: bate com a literatura" (verde) / "IA:
+  divergência encontrada" (vermelho) / "IA: sem base suficiente" (neutro), com % de confiança, modelo, e o
+  resumo da IA explicando o porquê -- nunca escondido, sempre visível antes do curador decidir.
+
+**Testado de ponta a ponta com credencial real** (sessão real inserida no banco de dev, chamada HTTP real
+à rota, sem simulação): primeira tentativa falhou com "resposta não é JSON válido" -- causa raiz real
+encontrada testando: o `gemini-3.6-flash` é um modelo que "pensa" antes de responder, e o orçamento de
+tokens de saída (`maxOutputTokens`) cobre pensamento + resposta juntos; com um limite de 2000 (baixo
+demais pro prompt real, mais longo que meu teste inicial), o JSON saía cortado no meio. Corrigido pra 8000
+(mesmo valor já usado nos outros provedores desta base) -- funcionou na sequência. Teste real contra um
+parâmetro real do Cabeda ("P" pra Abacateiro) **encontrou uma divergência real**: a faixa cadastrada usa
+o critério genérico de solo argiloso, que a IA apontou como inadequado pra frutífera (deveria estratificar
+por teor de argila ou usar P-Resina) -- prova de que o sistema sinaliza problema real em vez de aprovar
+tudo cegamente, exatamente o comportamento pretendido.
+
+**Bug real e sério encontrado de brinde, testando esta tela pra validar o recurso acima**: a lista de
+culturas só iterava sobre os grupos fixos `VERAO`/`INVERNO` -- as **41 culturas dos grupos FRUTIFERA,
+HORTALICA e TUBERCULO já cadastradas no banco (abacateiro, tomate, batata, citros, etc.) ficavam
+completamente invisíveis na tela**, sem nenhum jeito de selecionar, ver parâmetro ou homologar nenhuma
+delas pela interface, mesmo existindo de verdade nos dados. Corrigido: a lista agora itera sobre os
+grupos realmente presentes nos dados (ordem preferida VERAO/INVERNO/FRUTIFERA/HORTALICA/TUBERCULO, com
+qualquer grupo novo no futuro aparecendo automaticamente em vez de ficar escondido) -- consistente com a
+promessa já documentada de catálogo "extensível, sem lógica fixa por cultura".
+
+**Testado**: `npm run typecheck` e `npm run build` aprovados, migration 024 aplicada de verdade no banco
+de dev, chamada real à API do Gemini confirmada (não simulada), tela conferida com screenshot real
+(desktop e celular) mostrando o selo de IA, o resumo e as 41 culturas antes escondidas. Sessão de teste
+revogada e script temporário de screenshot removido depois.
+
+**Pendente pro diretor decidir ao acordar**: revisar o resultado real acima (divergência real encontrada
+no parâmetro P do Abacateiro) e decidir se cadastra a faixa correta ou mantém como está por enquanto;
+depois, publicar (subir pro `develop`, que já fiz, e aprovar o PR pra `main` quando quiser ver em
+produção -- não fiz isso sozinho, como combinado).

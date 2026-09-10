@@ -24,6 +24,7 @@ const conditionalRanges = await readFile(new URL("../db/migrations/020_condition
 const derivedParameters = await readFile(new URL("../db/migrations/021_derived_parameters.sql", import.meta.url), "utf8");
 const sampleType = await readFile(new URL("../db/migrations/022_sample_type.sql", import.meta.url), "utf8");
 const satelliteNdvi = await readFile(new URL("../db/migrations/023_satellite_ndvi.sql", import.meta.url), "utf8");
+const parameterAiValidation = await readFile(new URL("../db/migrations/024_parameter_ai_cross_validation.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -86,4 +87,7 @@ assert.match(satelliteNdvi, /CREATE TABLE field_ndvi_snapshots/i);
 assert.match(satelliteNdvi, /FORCE ROW LEVEL SECURITY/i);
 assert.match(satelliteNdvi, /mean_ndvi numeric\(6,4\) NOT NULL CHECK \(mean_ndvi BETWEEN -1 AND 1\)/i);
 assert.match(satelliteNdvi, /UNIQUE \(tenant_id,field_id,captured_at,source\)/i);
-console.log("migrations: contratos estruturais 001-023 aprovados");
+assert.match(parameterAiValidation, /ADD COLUMN ai_validation_status text NOT NULL DEFAULT 'NAO_VALIDADO'/i);
+assert.match(parameterAiValidation, /CHECK \(ai_validation_status IN \('NAO_VALIDADO', 'CONSISTENTE', 'INCONSISTENTE', 'INDETERMINADO'\)\)/i);
+assert.match(parameterAiValidation, /ai_validation_sources jsonb/i);
+console.log("migrations: contratos estruturais 001-024 aprovados");

@@ -10,6 +10,10 @@ type CropProfileParameter = {
   id: string; parameterCode: string; parameterCategory: string; depthFromCm: number | null; depthToCm: number | null;
   analyticalMethodAllowed: string[]; unitExpected: string | null; sufficiencyRanges: Array<{ label: string; min?: number; max?: number }> | null;
   criticality: string | null; status: "DRAFT" | "ACTIVE" | "SUPERSEDED";
+  aiValidationStatus: "NAO_VALIDADO" | "CONSISTENTE" | "INCONSISTENTE" | "INDETERMINADO";
+  aiValidationConfidence: number | null; aiValidationSummary: string | null;
+  aiValidationSources: Array<{ title: string; institution: string | null }> | null;
+  aiValidationModel: string | null; aiValidatedAt: string | null;
 };
 type TechnicalRegion = { id: string; code: string; name: string; description: string | null };
 type RuleSet = { id: string; code: string; semanticVersion: string; regionCode: string; supportedCrops: string[]; status: string };
@@ -19,6 +23,8 @@ type TechnicalSource = {
 };
 
 const STATUS_TONE: Record<string, "success" | "review" | "waiting"> = { ACTIVE: "success", DRAFT: "waiting", SUPERSEDED: "review" };
+const AI_VALIDATION_TONE: Record<string, "success" | "danger" | "waiting"> = { CONSISTENTE: "success", INCONSISTENTE: "danger", INDETERMINADO: "waiting" };
+const AI_VALIDATION_LABEL: Record<string, string> = { CONSISTENTE: "IA: bate com a literatura", INCONSISTENTE: "IA: divergência encontrada", INDETERMINADO: "IA: sem base suficiente" };
 
 /** Formata as faixas de suficiência em texto legível pra quem vai homologar VER o número real antes de
  * aprovar -- antes só aparecia "N faixas" (contagem), sem o valor em si, o que não dá pra um agrônomo
@@ -34,7 +40,12 @@ function formatRanges(ranges: Array<{ label: string; min?: number; max?: number 
     })
     .join(" · ");
 }
-const CROP_GROUP_LABEL: Record<string, string> = { VERAO: "Culturas de verão", INVERNO: "Culturas de inverno" };
+const CROP_GROUP_LABEL: Record<string, string> = { VERAO: "Culturas de verão", INVERNO: "Culturas de inverno", FRUTIFERA: "Frutíferas", HORTALICA: "Hortaliças", TUBERCULO: "Tubérculos e raízes" };
+/** Ordem preferida de exibição -- qualquer grupo cadastrado que não esteja aqui (ex.: um novo grupo criado
+ * no futuro) ainda aparece, no fim, em vez de ficar invisível: bug real encontrado testando esta tela
+ * (2026-09-09) -- a lista antes só olhava VERAO/INVERNO e escondia as 41 culturas de FRUTIFERA/HORTALICA/
+ * TUBERCULO já cadastradas no banco, sem nenhum jeito de selecioná-las ou homologá-las pela tela. */
+const KNOWN_CROP_GROUP_ORDER = ["VERAO", "INVERNO", "FRUTIFERA", "HORTALICA", "TUBERCULO"];
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -57,10 +68,11 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
   const [parameters, setParameters] = useState<CropProfileParameter[]>([]);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [busy, setBusy] = useState("");
+  const [aiProgress, setAiProgress] = useState("");
 
   const [newCropCode, setNewCropCode] = useState("");
   const [newCropName, setNewCropName] = useState("");
-  const [newCropGroup, setNewCropGroup] = useState<"" | "VERAO" | "INVERNO">("");
+  const [newCropGroup, setNewCropGroup] = useState("");
   const [newRegionCode, setNewRegionCode] = useState("");
   const [newRegionName, setNewRegionName] = useState("");
   const [sources, setSources] = useState<TechnicalSource[]>([]);
@@ -189,6 +201,37 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
     finally { setBusy(""); }
   }
 
+  /** Cruza UM parâmetro com a IA (literatura reconhecida) -- nunca homologa sozinho, só grava um sinal
+   * (`aiValidationStatus`/confiança/resumo) pro curador decidir mais rápido. Ver crossValidateCropProfileParameter. */
+  async function crossValidateParameter(parameter: CropProfileParameter) {
+    setBusy(`param-ai-${parameter.id}`); setMessage(null);
+    try {
+      await postJson(`/api/crop-profile-parameters/${parameter.id}/cross-validate`, {});
+      await loadParameters(selectedProfileId);
+    } catch (error) { setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao cruzar parâmetro com a IA." }); }
+    finally { setBusy(""); }
+  }
+
+  /** Cruza com a IA, em sequência, todos os parâmetros DRAFT com faixa cadastrada e ainda não cruzados --
+   * evita gastar chamada de IA de novo em quem já foi cruzado antes. Sequencial (não em paralelo) pra não
+   * estourar o limite de requisições do nível gratuito do Gemini. */
+  async function crossValidateAllParameters() {
+    const pending = parameters.filter((p) => p.status === "DRAFT" && p.sufficiencyRanges && p.aiValidationStatus === "NAO_VALIDADO");
+    if (!pending.length) return;
+    setMessage(null);
+    for (let i = 0; i < pending.length; i++) {
+      setAiProgress(`Cruzando ${i + 1}/${pending.length}: ${pending[i].parameterCode}…`);
+      try {
+        await postJson(`/api/crop-profile-parameters/${pending[i].id}/cross-validate`, {});
+      } catch (error) {
+        setMessage({ tone: "danger", text: `Parou em "${pending[i].parameterCode}": ${error instanceof Error ? error.message : "falha ao cruzar com a IA."}` });
+        break;
+      }
+    }
+    setAiProgress("");
+    await loadParameters(selectedProfileId);
+  }
+
   async function toggleParameterStatus(parameter: CropProfileParameter) {
     const nextStatus = parameter.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
     setBusy(`param-status-${parameter.id}`); setMessage(null);
@@ -214,11 +257,11 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
           {canCurate && <>
           <label><span>Código</span><input value={newCropCode} onChange={(e) => setNewCropCode(e.target.value)} placeholder="AVEIA"/></label>
           <label><span>Nome</span><input value={newCropName} onChange={(e) => setNewCropName(e.target.value)} placeholder="Aveia"/></label>
-          <label><span>Grupo (organizacional)</span><select value={newCropGroup} onChange={(e) => setNewCropGroup(e.target.value as typeof newCropGroup)}><option value="">Não definido</option><option value="VERAO">Culturas de verão</option><option value="INVERNO">Culturas de inverno</option></select></label>
+          <label><span>Grupo (organizacional)</span><select value={newCropGroup} onChange={(e) => setNewCropGroup(e.target.value)}><option value="">Não definido</option>{KNOWN_CROP_GROUP_ORDER.map((group) => <option key={group} value={group}>{CROP_GROUP_LABEL[group]}</option>)}</select></label>
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "crop" || !newCropCode || !newCropName} onClick={() => void createCrop()}>{busy === "crop" ? "Salvando…" : "Cadastrar cultura"}</button></div>
           </>}
           <div className="field-ops-wide field-ops-list">
-            {(["VERAO", "INVERNO", ""] as const).map((group) => {
+            {[...KNOWN_CROP_GROUP_ORDER, ...Array.from(new Set(profiles.map((p) => p.cropGroup ?? ""))).filter((g) => g && !KNOWN_CROP_GROUP_ORDER.includes(g)).sort(), ""].map((group) => {
               const groupProfiles = profiles.filter((p) => (p.cropGroup ?? "") === group);
               if (!groupProfiles.length) return null;
               return (
@@ -254,6 +297,13 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
             <label className="field-ops-wide"><span>Faixas de suficiência (JSON, ordenadas do menor para o maior — deixe vazio para "aguardando homologação")</span><textarea value={paramRangesText} onChange={(e) => setParamRangesText(e.target.value)} rows={3}/></label>
             <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "param" || !paramCode} onClick={() => void saveParameter()}>{busy === "param" ? "Salvando…" : "Salvar parâmetro"}</button></div>
             </>}
+            {canCurate && parameters.some((p) => p.status === "DRAFT" && p.sufficiencyRanges && p.aiValidationStatus === "NAO_VALIDADO") && (
+              <div className="field-ops-wide field-ops-inline-warning">
+                <Icon name="sparkles" size={16}/>
+                <span>{aiProgress || `${parameters.filter((p) => p.status === "DRAFT" && p.sufficiencyRanges && p.aiValidationStatus === "NAO_VALIDADO").length} parâmetro(s) ainda não foram cruzados com a IA (literatura reconhecida).`}</span>
+                <button className="button secondary" style={{ marginLeft: "auto" }} disabled={Boolean(aiProgress)} onClick={() => void crossValidateAllParameters()}>{aiProgress ? "Cruzando…" : "Cruzar todos com a IA"}</button>
+              </div>
+            )}
             {canCurate && parameters.some((p) => p.status === "DRAFT" && p.sufficiencyRanges) && (
               <div className="field-ops-wide field-ops-inline-warning">
                 <Icon name="sparkles" size={16}/>
@@ -268,9 +318,22 @@ export function TechnicalLibraryManager({ referenceUnits, canCurate }: { referen
                     <strong>{parameter.parameterCode}</strong>
                     <small>{parameter.parameterCategory} · {parameter.depthFromCm ?? "?"}-{parameter.depthToCm ?? "?"}cm{parameter.unitExpected ? ` · ${parameter.unitExpected}` : ""}{parameter.analyticalMethodAllowed?.length ? ` · ${parameter.analyticalMethodAllowed.join(", ")}` : ""}</small>
                     <small className="param-ranges">{formatRanges(parameter.sufficiencyRanges)}</small>
+                    {parameter.aiValidationStatus !== "NAO_VALIDADO" && (
+                      <>
+                        <small className="param-ai-note">
+                          <StatusBadge tone={AI_VALIDATION_TONE[parameter.aiValidationStatus]}>{AI_VALIDATION_LABEL[parameter.aiValidationStatus]}</StatusBadge>
+                          {parameter.aiValidationConfidence != null && ` ${Math.round(parameter.aiValidationConfidence)}% de confiança`}
+                          {parameter.aiValidationModel && ` · modelo: ${parameter.aiValidationModel}`}
+                        </small>
+                        {parameter.aiValidationSummary && <small className="param-ai-summary">{parameter.aiValidationSummary}</small>}
+                      </>
+                    )}
                   </span>
                   <span className="field-ops-list-actions">
                     <StatusBadge tone={STATUS_TONE[parameter.status]}>{parameter.status}</StatusBadge>
+                    {canCurate && parameter.status === "DRAFT" && (
+                      <button className="button tiny ghost" disabled={busy === `param-ai-${parameter.id}` || Boolean(aiProgress) || !parameter.sufficiencyRanges} title={!parameter.sufficiencyRanges ? "Cadastre as faixas antes de cruzar com a IA" : "Consulta a literatura reconhecida -- não homologa sozinho"} onClick={() => void crossValidateParameter(parameter)}>{busy === `param-ai-${parameter.id}` ? "Cruzando…" : parameter.aiValidationStatus === "NAO_VALIDADO" ? "Cruzar com IA" : "Cruzar de novo"}</button>
+                    )}
                     {canCurate && <button className="button tiny" disabled={busy === `param-status-${parameter.id}` || !parameter.sufficiencyRanges} title={!parameter.sufficiencyRanges ? "Cadastre as faixas antes de homologar" : undefined} onClick={() => void toggleParameterStatus(parameter)}>{parameter.status === "ACTIVE" ? "Reverter" : "Homologar"}</button>}
                   </span>
                 </div>

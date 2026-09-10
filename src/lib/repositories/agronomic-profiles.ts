@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { resolveParameterCrossValidationProvider } from "@/lib/ai/parameter-cross-validation-provider";
 
 export class AgronomicProfileError extends Error {
   constructor(message: string, public status = 400) {
@@ -48,6 +49,9 @@ export async function getCropProfile(tenantId: string, cropProfileId: string, us
               analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
               sufficiency_ranges AS "sufficiencyRanges", criticality, yield_goal_bracket AS "yieldGoalBracket",
               technical_notes AS "technicalNotes", recommendation_rules AS "recommendationRules", status,
+              ai_validation_status AS "aiValidationStatus", ai_validation_confidence::float8 AS "aiValidationConfidence",
+              ai_validation_summary AS "aiValidationSummary", ai_validation_sources AS "aiValidationSources",
+              ai_validation_model AS "aiValidationModel", ai_validated_at::text AS "aiValidatedAt",
               condition_parameter_code AS "conditionParameterCode",
               condition_min::float8 AS "conditionMin", condition_max::float8 AS "conditionMax",
               derived_parameter_code AS "derivedParameterCode",
@@ -196,6 +200,63 @@ export async function activateAllCropProfileParameters(input: { tenantId: string
       metadata: { count: result.rowCount, parameterCodes: result.rows.map((r) => r.parameterCode) },
     });
     return result.rows;
+  });
+}
+
+/**
+ * Cruza UM parâmetro DRAFT com a literatura agronômica reconhecida via IA e salva o veredito em
+ * `ai_validation_*` -- pedido do diretor, 2026-09-09, pra virar um sinal visível ("bate com a literatura" /
+ * "diverge" / "sem base suficiente") que acelera a decisão do curador humano. Nunca muda `status` do
+ * parâmetro: a homologação continua exigindo o clique humano em `setCropProfileParameterStatus` /
+ * `activateAllCropProfileParameters`, sempre.
+ */
+export async function crossValidateCropProfileParameter(input: { tenantId: string; userId: string; parameterId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const parameterResult = await client.query(
+      `SELECT cpp.id::text, cpp.parameter_code AS "parameterCode", cpp.parameter_category AS "parameterCategory",
+              cpp.sample_type AS "sampleType", cpp.depth_from_cm::float8 AS "depthFromCm", cpp.depth_to_cm::float8 AS "depthToCm",
+              cpp.unit_expected AS "unitExpected", cpp.analytical_method_allowed AS "analyticalMethodAllowed",
+              cpp.sufficiency_ranges AS "sufficiencyRanges", cp.name AS "cropName", cp.code AS "cropCode"
+       FROM crop_profile_parameters cpp JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
+       WHERE cpp.id = $1::uuid`,
+      [input.parameterId],
+    );
+    const parameter = parameterResult.rows[0];
+    if (!parameter) throw new AgronomicProfileError("Parâmetro não encontrado.", 404);
+    if (!parameter.sufficiencyRanges) throw new AgronomicProfileError("Cadastre as faixas de suficiência antes de cruzar com a IA.", 400);
+
+    const provider = resolveParameterCrossValidationProvider();
+    const validation = await provider.crossValidate({
+      cropName: parameter.cropName,
+      cropCode: parameter.cropCode,
+      parameterCode: parameter.parameterCode,
+      parameterCategory: parameter.parameterCategory,
+      sampleType: parameter.sampleType,
+      depthFromCm: parameter.depthFromCm,
+      depthToCm: parameter.depthToCm,
+      unitExpected: parameter.unitExpected,
+      analyticalMethodAllowed: parameter.analyticalMethodAllowed ?? [],
+      sufficiencyRanges: parameter.sufficiencyRanges,
+    });
+
+    const result = await client.query(
+      `UPDATE crop_profile_parameters
+       SET ai_validation_status = $2, ai_validation_confidence = $3, ai_validation_summary = $4,
+           ai_validation_sources = $5::jsonb, ai_validation_model = $6, ai_validated_at = now(), updated_at = now()
+       WHERE id = $1::uuid
+       RETURNING id::text, parameter_code AS "parameterCode", ai_validation_status AS "aiValidationStatus",
+                 ai_validation_confidence::float8 AS "aiValidationConfidence", ai_validation_summary AS "aiValidationSummary",
+                 ai_validation_sources AS "aiValidationSources", ai_validation_model AS "aiValidationModel",
+                 ai_validated_at::text AS "aiValidatedAt"`,
+      [input.parameterId, validation.status, validation.confidence, validation.summary, JSON.stringify(validation.sources), validation.model],
+    );
+    const updated = result.rows[0];
+    await writeAudit(client, {
+      tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETER_AI_VALIDATED",
+      entityType: "crop_profile_parameter", entityId: updated.id,
+      metadata: { status: validation.status, confidence: validation.confidence, model: validation.model, provider: validation.provider },
+    });
+    return updated;
   });
 }
 
