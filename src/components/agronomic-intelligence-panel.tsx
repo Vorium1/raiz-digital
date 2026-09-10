@@ -9,7 +9,7 @@ import { AgronomicPrescriptionPanel } from "@/components/agronomic-prescription-
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
 import { FieldNdviPanel } from "@/components/field-ndvi-panel";
 import { interpretationStatusMeta } from "@/domain/interpretation-status";
-import { computeSpatialPatterns } from "@/domain/parameter-patterns";
+import { computeParameterPredominance } from "@/domain/parameter-predominance";
 import { classificationColor } from "@/lib/classification-colors";
 
 type ParameterInterpretation =
@@ -119,7 +119,7 @@ export function AgronomicIntelligencePanel({
     return entries;
   }, [layer]);
 
-  const spatialPatterns = useMemo(() => (latest?.structuredOutput ? computeSpatialPatterns(latest.structuredOutput.interpretation) : []), [latest]);
+  const predominances = useMemo(() => (latest?.structuredOutput ? computeParameterPredominance(latest.structuredOutput.interpretation) : []), [latest]);
 
   // Bloco D: se existe uma revisão anterior APROVADA e a revisão atual não é a mesma (dado novo depois da
   // aprovação), isso precisa ficar visível -- nunca deixar a aprovação antiga parecer que cobre o dado novo.
@@ -246,17 +246,20 @@ export function AgronomicIntelligencePanel({
           <AgronomicNarrativePanel analysisId={analysisId} hasClassifications={Boolean(interpretation.length)} canRun={canRun} canReview={canReview}/>
         </section>
 
-        {/* 3. PADRÃO */}
+        {/* 3. PADRÃO -- corrigido no fechamento técnico da Fase 3: isto é contagem/proporção de
+            classificação (predominância observada), NUNCA análise espacial (não lê coordenada,
+            proximidade nem vizinhança dos pontos). Nunca chamar de "padrão espacial" na UI. */}
         <section className="cockpit-category">
           <h3><span className="cockpit-category-number">3</span>Padrão</h3>
-          {spatialPatterns.length === 0 ? (
-            <p className="report-empty-note">Nenhum padrão espacial sustentado pelos dados desta coleta — é preciso pelo menos 3 pontos comparáveis do mesmo parâmetro com a mesma classificação para apontar um padrão; uma observação isolada não caracteriza padrão.</p>
+          <p className="cockpit-category-subtitle">Predominância de classificação observada nesta coleta — contagem e proporção, sem análise de geografia/vizinhança entre os pontos.</p>
+          {predominances.length === 0 ? (
+            <p className="report-empty-note">Nenhuma predominância observada nos dados desta coleta — só é reportada quando a mesma classificação aparece em mais da metade dos pontos avaliados de um parâmetro, com pelo menos 3 pontos concordantes; uma ou duas observações isoladas não caracterizam predominância.</p>
           ) : (
             <ul className="cockpit-pattern-list">
-              {spatialPatterns.map((p) => (
+              {predominances.map((p) => (
                 <li key={p.parameterCode}>
-                  <strong>{p.parameterCode}</strong>: classificação <ClassificationBadge label={p.classification}/> repetida em {p.matchingCount} de {p.totalCount} pontos desta coleta ({p.observationCodes.join(", ")}).
-                  <small> Limitação: padrão espacial dentro desta única coleta — não avalia repetição entre safras/datas diferentes.</small>
+                  <strong>{p.parameterCode}</strong>: <ClassificationBadge label={p.classification}/> em {p.matchingCount} de {p.totalCount} pontos avaliados desta coleta ({p.observationCodes.join(", ")}).
+                  <small> Predominância de classificação nesta coleta — não é análise espacial (não usa coordenada/vizinhança) nem comparação entre safras/datas diferentes. Um padrão espacial de verdade exigiria geografia dos pontos e um método espacial validado, não implementado aqui.</small>
                 </li>
               ))}
             </ul>

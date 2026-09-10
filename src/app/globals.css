@@ -673,6 +673,10 @@ button { color: inherit; }
 /* Relatórios — documento imprimível (exportação PDF via impressão nativa) */
 .report-doc{--surface:#ffffff;--surface-2:#f7faf8;--ink:#14161a;--muted:#6b7178;--line:#e2e4e7;--forest:#0b0d10;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;margin:0 auto;max-width:900px;padding:36px 40px}
 .report-toolbar{align-items:center;display:flex;justify-content:space-between;margin-bottom:16px}
+.report-version-toggle{background:#181e18;border-radius:9px;display:inline-flex;gap:2px;margin-bottom:12px;padding:3px}
+.report-version-toggle a{border-radius:7px;color:var(--muted);cursor:pointer;font-size:10px;font-weight:700;padding:7px 14px;text-decoration:none}
+.report-version-toggle a.active{background:var(--surface);color:var(--ink)}
+.report-version-toggle a[aria-disabled="true"]{cursor:not-allowed;opacity:.5}
 .report-header{align-items:flex-start;border-bottom:2px solid var(--forest);display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:16px}
 .report-header .brand-logo{font-size:10px;height:30px}
 .report-brand{align-items:center;display:inline-flex;gap:10px}
@@ -1096,6 +1100,7 @@ button { color: inherit; }
 .cockpit-category { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
 .cockpit-category h3 { align-items:center; display:flex; font-family:var(--font-heading); font-size:12px; gap:10px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.03em; }
 .cockpit-category-number { align-items:center; background:var(--surface-2); border-radius:50%; color:var(--teal); display:flex; flex-shrink:0; font-size:10px; height:22px; justify-content:center; width:22px; }
+.cockpit-category-subtitle { color:var(--muted); font-size:9px; font-style:italic; line-height:1.5; margin:-6px 0 12px 32px; }
 .cockpit-pattern-list { display:flex; flex-direction:column; font-size:10px; gap:10px; line-height:1.6; list-style:none; margin:0; padding:0; }
 .cockpit-pattern-list li { border-bottom:1px solid var(--line); padding-bottom:10px; }
 .cockpit-pattern-list li:last-child { border:0; padding-bottom:0; }

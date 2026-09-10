@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
-import { saveReportSnapshot } from "@/lib/storage";
+import { saveReportSnapshot, readRawStoredFile } from "@/lib/storage";
 import { getExecutiveDashboard, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
 
 export class ReportError extends Error {
@@ -64,12 +64,12 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
 
     // Fase 3, Bloco F: a tela que gera este relatório sempre lê a interpretação MAIS RECENTE ao vivo
     // (linha acima), mas o registro imutável publicado (`reports`, com hash) pode ser de uma revisão
-    // ANTERIOR -- reabrir esta URL depois de recalcular mostra o dado novo, não o publicado. Em vez de
-    // fingir que a versão publicada e a exibida são sempre a mesma, a consulta abaixo compara as duas de
-    // verdade e a tela precisa avisar quando divergirem (não há mecanismo nesta instância que sirva de
-    // volta o snapshot publicado -- limitação real, documentada, não resolvida por migração aqui).
+    // ANTERIOR -- reabrir esta URL depois de recalcular mostra o dado novo, não o publicado. A tela avisa
+    // quando divergirem, e o fechamento técnico da Fase 3 passou a servir de volta o snapshot real
+    // (ver `getPublishedReportSnapshot` abaixo) quando `STORAGE_PROVIDER=local` -- a alternância "Versão
+    // atual / Versão publicada" lê o arquivo gravado no publish, não reconstrói a partir do dado atual.
     const publishedResult = await client.query(
-      `SELECT r.id::text, r.revision AS "reportRevision", r.published_at::text AS "publishedAt", r.sha256 AS "contentHash",
+      `SELECT r.id::text, r.revision AS "reportRevision", r.storage_key AS "storageKey", r.published_at::text AS "publishedAt", r.sha256 AS "contentHash",
               i.id::text AS "interpretationId", i.revision AS "interpretationRevision", publisher.name AS "publishedByName"
        FROM reports r
        JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
@@ -272,6 +272,58 @@ export async function publishFieldAnalysisReport(input: { tenantId: string; user
     const report = result.rows[0];
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "REPORT_PUBLISHED", entityType: "report", entityId: report.id, metadata: { interpretationId: interpretation.id, analysisId: interpretation.analysisId } });
     return report;
+  });
+}
+
+export type PublishedReportSnapshotResult =
+  | { found: false }
+  | {
+      found: true;
+      report: { id: string; revision: number; publishedAt: string; publishedByName: string | null; sha256: string };
+      /** Conteúdo exatamente como gravado no publish -- nunca reconstruído a partir da interpretação
+       * atual. `null` quando o arquivo não pôde ser lido (ver `readError`). */
+      snapshot: { interpretationId: string; revision: number; structuredOutput: unknown; publishedAt: string } | null;
+      /** true = o hash recalculado do arquivo lido bate com `reports.sha256` (prova de integridade real,
+       * não presumida). false = arquivo lido, mas divergente do hash gravado. null = não deu pra ler. */
+      hashVerified: boolean | null;
+      readError: string | null;
+    };
+
+/**
+ * Fechamento técnico da Fase 3 (item 2 do pedido do diretor): lê de volta o snapshot IMUTÁVEL gravado no
+ * publish (`saveReportSnapshot`/`storage_key`), em vez de reconstruir o conteúdo publicado a partir da
+ * interpretação mais recente. Só funciona quando `STORAGE_PROVIDER=local` (única implementação real de
+ * `readRawStoredFile` hoje -- outros provedores como S3 não estão implementados em `src/lib/storage.ts`,
+ * então aqui isso vira `readError` explícito, nunca um retorno silencioso de dado desatualizado como se
+ * fosse o publicado).
+ */
+export async function getPublishedReportSnapshot(tenantId: string, analysisId: string, userId?: string): Promise<PublishedReportSnapshotResult> {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const publishedResult = await client.query(
+      `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.sha256, r.published_at::text AS "publishedAt", publisher.name AS "publishedByName"
+       FROM reports r
+       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
+       LEFT JOIN users publisher ON publisher.id = r.published_by
+       WHERE r.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+       ORDER BY r.published_at DESC LIMIT 1`,
+      [tenantId, analysisId],
+    );
+    const reportRow = publishedResult.rows[0];
+    if (!reportRow) return { found: false };
+
+    const report = { id: reportRow.id, revision: reportRow.revision, publishedAt: reportRow.publishedAt, publishedByName: reportRow.publishedByName, sha256: reportRow.sha256 };
+    try {
+      const buffer = await readRawStoredFile(reportRow.storageKey);
+      const rawContent = buffer.toString("utf8");
+      const recomputedHash = createHash("sha256").update(rawContent).digest("hex");
+      const snapshot = JSON.parse(rawContent);
+      return { found: true, report, snapshot, hashVerified: recomputedHash === reportRow.sha256, readError: null };
+    } catch (error) {
+      // STORAGE_PROVIDER != local (arquivo nunca foi gravado de verdade) ou arquivo removido/indisponível
+      // -- nunca finge que a versão atual é a publicada nesse caso, devolve o motivo real pra tela avisar.
+      const message = error instanceof Error ? error.message : "Falha desconhecida ao ler o snapshot.";
+      return { found: true, report, snapshot: null, hashVerified: null, readError: message };
+    }
   });
 }
 

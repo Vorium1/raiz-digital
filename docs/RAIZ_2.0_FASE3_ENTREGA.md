@@ -16,6 +16,78 @@ efeito do React Strict Mode em desenvolvimento — corrigido nesta rodada (ver B
 
 ---
 
+## Fechamento técnico (pós-entrega, mesma branch, sem merge)
+
+O diretor encontrou uma inconsistência real no Bloco B e pediu dois ajustes antes de avançar pra Fase 4.
+Os dois foram corrigidos nesta mesma branch, sem alterar fórmulas/faixas agronômicas, sem homologar
+regra nova, sem migração e sem merge/deploy.
+
+### 1. "Padrão espacial" corrigido para "predominância observada"
+
+`src/domain/parameter-patterns.ts` (renomeado para `src/domain/parameter-predominance.ts`,
+`computeSpatialPatterns`→`computeParameterPredominance`, `SpatialPattern`→`ParameterPredominance`) nunca
+leu coordenada, proximidade, vizinhança ou qualquer geometria — era puramente uma contagem/proporção de
+classificação entre os pontos já classificados de uma coleta. Chamar isso de "padrão espacial" na UI era
+uma afirmação que o algoritmo não sustentava. Corrigido:
+
+- **Semântica**: categoria 3 do cockpit agora fala em "predominância de classificação observada" — nunca
+  mais "padrão espacial". Exemplo real de texto: "P em 6 de 8 pontos avaliados desta coleta", nunca
+  "Padrão espacial de P baixo".
+- **Divergência real entre texto e algoritmo, corrigida**: a UI dizia "pelo menos 3 pontos com a mesma
+  classificação", mas a regra antiga (`MIN_OBSERVATIONS=3` + `MIN_SHARE=0.6`) permitia reportar com só 2
+  de 3 concordando (66,7% ≥ 60%). Regra nova, simples e explícita, documentada no topo do arquivo: só é
+  reportada predominância quando a mesma classificação aparece (a) em **mais da metade** dos pontos
+  avaliados do parâmetro (maioria real, não pluralidade) **e** (b) em **pelo menos 3 pontos** — as duas
+  condições juntas, nunca uma sozinha. Nenhuma significância estatística é atribuída; é só contagem e
+  proporção, rotuladas como tal.
+- **Documentado explicitamente** (no cabeçalho do arquivo) que um padrão espacial de verdade exigiria
+  geometria real dos pontos, uma definição de vizinhança e um método espacial validado (ex.:
+  autocorrelação espacial/Moran's I, interpolação geoestatística com variograma) — nada disso implementado
+  aqui, e nada disso foi improvisado nesta correção.
+- **Teste novo**: `scripts/test-parameter-predominance.mjs` (`npm run test:predominance`, incluído em
+  `npm run test:handoff`) — 9 cenários, incluindo a prova central pedida: dois pontos com coordenadas
+  reais a mais de 2.500 km de distância um do outro produzem **exatamente o mesmo resultado** que dois
+  pontos vizinhos com a mesma classificação — porque o algoritmo nunca lê esses campos — e o objeto de
+  saída nunca carrega `latitude`/`longitude`/`distance`/`geometry`/`neighbor`/`spatial`. Também prova que
+  "2 de 3" concordando (a divergência real encontrada) não é mais reportado.
+
+### 2. Relatório publicado: "Versão atual" × "Versão publicada" (snapshot real)
+
+Investigado antes de implementar: `saveReportSnapshot`/`readRawStoredFile` (`src/lib/storage.ts`) já
+gravam e conseguem ler de volta o arquivo do snapshot quando `STORAGE_PROVIDER=local` (padrão desta
+instância de dev, confirmado em `.env`). O que faltava era `getFieldAnalysisReportData` (e a tela) usar
+essa leitura de volta — implementado, **sem nova migração**, reaproveitando a mesma tabela `reports` e a
+mesma coluna `storage_key`/`sha256` já existentes:
+
+- **`getPublishedReportSnapshot`** (novo, `src/lib/repositories/reports.ts`): busca o `reports` mais
+  recente da análise, lê o arquivo real do storage, **recalcula o hash SHA-256 e verifica contra
+  `reports.sha256`** (prova de integridade real, não presumida), e devolve o conteúdo exatamente como
+  gravado — nunca reconstruído a partir da interpretação atual. Quando o arquivo não pode ser lido (outro
+  `STORAGE_PROVIDER` não implementado, ou arquivo removido), devolve um `readError` explícito — nunca
+  finge sucesso nem mostra o dado atual disfarçado de publicado.
+- **Alternância real na tela** (`/relatorios/talhao/[analysisId]?versao=publicada`): "Versão atual" (como
+  antes) e "Versão publicada", que só aparece habilitada quando o snapshot foi lido e verificado de
+  verdade. A versão publicada mostra os dados que **de fato estavam no snapshot** (parâmetros
+  laboratoriais, classificações, confiabilidade/base técnica — tudo vem de `interpretations.structured_output`,
+  que é o que o publish grava) e marca com uma nota explícita as seções que **não** faziam parte do
+  snapshot gravado (pontos/GPS, mapa, narrativa/prescrição de IA, comparação de insumo — esses vivem em
+  outras tabelas, nunca capturados no momento do publish) — nunca mostra essas seções com dado atual como
+  se fossem parte do documento imutável.
+- **Hash/versionamento preservados**: nenhuma coluna nova, nenhuma migração — só leitura do que já existia.
+- **Teste novo (e2e)**: `e2e/fase3-cockpit-and-reports.spec.ts` — monta um publish real (escreve o
+  snapshot no mesmo caminho que `saveReportSnapshot` usaria, insere a linha real em `reports` apontando
+  pra uma interpretação real já existente — nenhuma regra agronômica homologada por este teste), abre a
+  tela real com `?versao=publicada`, confirma que o conteúdo de teste (marcado com código exclusivo)
+  aparece e que "hash verificado, conteúdo íntegro" é mostrado, e limpa tudo ao final (linha `reports` e
+  arquivo removidos — sem resíduo no banco/storage de dev compartilhado).
+
+**Nenhuma infraestrutura faltou** pra este item — `STORAGE_PROVIDER=local` (o padrão de dev) já grava e
+lê de verdade; a limitação real que permanece é só sobre **outros** provedores de storage (S3 etc.), que
+`src/lib/storage.ts` ainda não implementa — nesse caso `getPublishedReportSnapshot` devolve `readError`
+explícito, nunca dado inventado.
+
+---
+
 ## Preparação — o que existe de verdade (antes de desenhar qualquer tela)
 
 - **`/inteligencia` antes**: `listAllInterpretations` listava **uma linha por revisão** de interpretação,
@@ -67,10 +139,10 @@ mesmo `analysisId`).
 ## Bloco B — Cockpit técnico contextual
 
 `src/components/agronomic-intelligence-panel.tsx` (reescrito), `src/app/(platform)/analises/[id]/page.tsx`
-(reestruturado pra duas regiões), `src/domain/parameter-patterns.ts` (novo,
-`computeSpatialPatterns`), `src/domain/agronomic-engine.ts`/`src/lib/repositories/interpretations.ts`
-(campo `source` MEASURED/CALCULATED thread­ado de `lab_results.source` até a tela — antes existia na
-tabela mas nunca chegava na interface).
+(reestruturado pra duas regiões), `src/domain/parameter-predominance.ts` (novo — **corrigido no
+fechamento técnico**, ver seção própria abaixo), `src/domain/agronomic-engine.ts`/`src/lib/repositories/
+interpretations.ts` (campo `source` MEASURED/CALCULATED thread­ado de `lab_results.source` até a tela —
+antes existia na tabela mas nunca chegava na interface).
 
 Duas regiões complementares (`.cockpit-evidence` / `.cockpit-technical`), contexto (talhão/safra/análise/
 revisão) preservado no cabeçalho existente da página:
@@ -80,9 +152,9 @@ revisão) preservado no cabeçalho existente da página:
    retroativamente).
 2. **Interpretação** — classificação real + base técnica/versão + motivo de bloqueio quando existir;
    síntese em linguagem simples (IA) embutida aqui, nunca misturada com a categoria Hipótese.
-3. **Padrão** — repetição espacial real DENTRO da mesma coleta (≥3 pontos comparáveis, ≥60% mesma
-   classificação); nunca gerado de uma observação isolada; sempre com quantidade/pontos/limitação
-   explícita ("dentro desta única coleta — não avalia repetição entre safras").
+3. **Padrão** — **predominância de classificação observada** entre os pontos já classificados da mesma
+   coleta (contagem e proporção, nunca análise espacial — ver correção abaixo); nunca gerado de uma
+   observação isolada; sempre com contagem/proporção/limitação explícita.
 4. **Hipótese** — declara explicitamente que não existe mecanismo técnico definido pra isso nesta
    instância, em vez de inventar uma explicação causal.
 5. **Recomendação** — painel de prescrição já existente (Fase anterior), reaproveitado, com distinção
@@ -207,9 +279,12 @@ produção.
 ```
 npm run typecheck                                                              → sem erros
 npm run build                                                                   → build de produção completo, sem erros
+npm run test:handoff                                                            → todos os cenários aprovados
+                                                                                   (inclui test:predominance,
+                                                                                   9 cenários novos)
 npx playwright test e2e/field-overview-and-priorities.spec.ts \
   e2e/fase2-map-workspace-and-comparisons.spec.ts \
-  e2e/fase3-cockpit-and-reports.spec.ts                                        → 19 passed, 1 skipped, 0 failed
+  e2e/fase3-cockpit-and-reports.spec.ts                                        → 20 passed, 1 skipped, 0 failed
                                                                                    (skip: estado da URL de
                                                                                    satélite/parâmetro em mapas
                                                                                    depende de dado que não
@@ -217,11 +292,13 @@ npx playwright test e2e/field-overview-and-priorities.spec.ts \
                                                                                    execução -- não é falha)
 ```
 
-Os 6 testes novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`) cobrem: agrupamento da fila por
-análise (Bloco A), as 6 categorias reais do cockpit (Bloco B), pré-seleção de comparativo pela URL sem
-disparar comparação sozinha (Bloco C — encontrou e provou a correção do bug real do Strict Mode),
-permissão real de aprovação por role (Bloco D), organização por destinatário + ausência de IA no resumo
-ao produtor (Bloco E), e identificação de rascunho/publicado (Bloco F). Todos descobrem dado real em
+Os 8 testes e2e novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`, 6 da entrega original + 2 do
+fechamento técnico) cobrem: agrupamento da fila por análise (Bloco A), as 6 categorias reais do cockpit
+(Bloco B), pré-seleção de comparativo pela URL sem disparar comparação sozinha (Bloco C — encontrou e
+provou a correção do bug real do Strict Mode), permissão real de aprovação por role (Bloco D),
+organização por destinatário + ausência de IA no resumo ao produtor (Bloco E), identificação de
+rascunho/publicado (Bloco F), e os dois testes do fechamento técnico (predominância nunca é "padrão
+espacial", ver `test:predominance`; recuperação real do snapshot publicado). Todos descobrem dado real em
 tempo de execução (nunca id fixo) e pulam com `test.skip` quando o dado atual do banco não sustenta o
 cenário, em vez de fingir sucesso.
 
@@ -233,22 +310,29 @@ valor, em vez de confiar na primeira opção da lista.
 
 ## Limitações concretas (documentadas, não escondidas)
 
-- **Reprodutibilidade do relatório publicado**: esta instância grava um snapshot imutável com hash
-  SHA-256 (`reports.sha256`) ao publicar, mas **não o serve de volta** — a tela do relatório sempre lê a
-  interpretação mais recente ao vivo. O aviso real (Bloco F) informa quando a tela diverge do publicado,
-  mas não resolve a causa raiz. **Estrutura que faltaria** pra resolver de verdade: servir o conteúdo a
-  partir do storage do snapshot (já existe `saveReportSnapshot`/`storage_key`) quando
-  `isShowingPublishedVersion` for falso e o usuário pedir explicitamente a versão publicada — isso exigiria
-  uma rota nova de leitura do storage, não uma migração de schema (o dado já existe), mas está fora do
-  escopo desta Fase.
+- **Reprodutibilidade do relatório publicado — resolvida no fechamento técnico** para
+  `STORAGE_PROVIDER=local` (o padrão desta instância de dev): "Versão publicada" agora lê de volta o
+  snapshot imutável real, com hash verificado (ver seção "Fechamento técnico" acima). A limitação que
+  permanece é só sobre outros provedores de storage: `src/lib/storage.ts` só implementa leitura/escrita
+  real para `local` — S3 (ou qualquer outro) segue não implementado, e `getPublishedReportSnapshot`
+  devolve um erro explícito nesse caso, nunca dado inventado. Além disso, o snapshot gravado no publish
+  captura só o que vinha de `interpretations.structured_output` (fatos + classificações + confiabilidade)
+  — pontos/GPS, mapa, narrativa/prescrição de IA e comparação de insumo nunca foram capturados ali, então
+  a "Versão publicada" os mostra como nota explícita de ausência, nunca como dado atual disfarçado de
+  imutável.
 - **Instruções operacionais de campo**: `collection_orders` não tem campo de texto livre pra
   instrução/objetivo — o relatório operacional declara isso explicitamente em vez de inventar texto.
   Resolver exigiria uma migração real (`ALTER TABLE collection_orders ADD COLUMN instructions text`), não
   executada aqui por instrução explícita ("documente a mudança necessária sem executar migração").
-- **Padrão temporal (entre safras)**: a categoria "Padrão" do cockpit só avalia repetição espacial DENTRO
-  da mesma coleta — comparar entre safras/datas diferentes exigiria a mesma disciplina de compatibilidade
+- **Predominância entre safras (temporal)**: a categoria "Padrão" do cockpit só avalia predominância de
+  classificação DENTRO da mesma coleta (contagem/proporção, nunca análise espacial — ver "Fechamento
+  técnico" acima) — comparar entre safras/datas diferentes exigiria a mesma disciplina de compatibilidade
   de profundidade/método/tipo de amostra já usada nos comparativos (Fase 2), e foi deixado de fora desta
-  rodada por prudência (evitar um "padrão" que na verdade combina medidas incompatíveis).
+  rodada por prudência (evitar uma "predominância" que na verdade combina medidas incompatíveis).
+- **Padrão espacial real**: não implementado (nunca foi — a categoria "Padrão" nesta instância é só
+  predominância de classificação, nunca leu coordenada/geometria). Exigiria latitude/longitude real dos
+  pontos, uma definição de vizinhança e um método espacial validado (ex.: autocorrelação espacial/Moran's
+  I, interpolação geoestatística com variograma) — nenhum desses implementado ou improvisado.
 - **Hipótese diagnóstica**: nenhum mecanismo existe — categoria declarada como ausente, não simulada.
 
 ## Estado local e remoto

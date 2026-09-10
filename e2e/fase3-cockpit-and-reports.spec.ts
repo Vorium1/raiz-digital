@@ -1,4 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import { Client } from "pg";
+import { createHash } from "node:crypto";
+import { mkdir, writeFile, rm } from "node:fs/promises";
+import path from "node:path";
 
 // Cobre os comportamentos novos da RAIZ 2.0 Fase 3 (Blocos A/B/C/D/E): fila de Inteligência agrupada por
 // análise (nunca uma linha por revisão antiga), cockpit com as 6 categorias reais, pré-seleção de
@@ -111,4 +115,77 @@ test("Relatório técnico por talhão: rascunho identificado quando não há ver
   // Ou está claramente marcado rascunho, ou claramente publicado -- nunca mudo sobre a situação.
   const situacao = await page.locator(".report-header-meta").textContent();
   expect(situacao).toMatch(/Rascunho|Publicado/);
+});
+
+test("Relatório técnico: 'Versão publicada' lê o snapshot imutável real, nunca reconstrói a partir do dado atual (fechamento técnico Fase 3, item 2)", async ({ page }) => {
+  test.skip(!process.env.DATABASE_URL, "precisa de DATABASE_URL no ambiente pra montar o cenário real deste teste (mesma variável usada por scripts/*.mjs -- ver e2e/README.md).");
+  if (!process.env.DATABASE_URL) return;
+
+  // Monta um "publish" real: escreve o snapshot no MESMO caminho que `saveReportSnapshot` usaria e insere
+  // a linha real em `reports` -- não importa `reports.ts` diretamente (parâmetros de construtor TS não
+  // rodam sob `node --experimental-strip-types`), então replica aqui só a gravação, nunca a leitura --
+  // a leitura de verdade é testada abrindo a página real abaixo, exercitando `getPublishedReportSnapshot`
+  // pelo caminho real (servidor Next.js, sem atalho).
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  let reportId: string | null = null;
+  let storageKey: string | null = null;
+  try {
+    const target = await client.query(
+      `SELECT i.id, i.tenant_id, i.analysis_id, i.revision,
+              (SELECT u.id FROM tenant_members tm JOIN users u ON u.id = tm.user_id
+                 WHERE tm.tenant_id = (SELECT tenant_id FROM tenant_members tm2 JOIN users u2 ON u2.id = tm2.user_id WHERE u2.email = 'admin@raiz.local' LIMIT 1)
+                 LIMIT 1) AS user_id
+       FROM interpretations i
+       WHERE i.tenant_id = (SELECT tenant_id FROM tenant_members tm JOIN users u ON u.id = tm.user_id WHERE u.email = 'admin@raiz.local' LIMIT 1)
+       ORDER BY i.created_at DESC LIMIT 1`,
+    );
+    const row = target.rows[0];
+    test.skip(!row, "nenhuma interpretação real no tenant A agora -- nada de snapshot pra publicar.");
+    if (!row) return;
+
+    const snapshotContent = JSON.stringify({
+      interpretationId: row.id,
+      revision: row.revision,
+      structuredOutput: {
+        facts: [{ sampleCode: "TESTE-E2E-01", parameterCode: "P", value: 12.3, unit: "mg/dm³", method: "TESTE-FECHAMENTO" }],
+        interpretation: [{ sampleCode: "TESTE-E2E-01", parameterCode: "P", interpretable: true, classification: "MEDIO" }],
+        confidence: { score: 77, level: "ADEQUADA" },
+      },
+      publishedAt: new Date().toISOString(),
+    });
+    const sha256 = createHash("sha256").update(snapshotContent).digest("hex");
+    storageKey = `reports/${row.tenant_id}/${row.id}/rev-${row.revision}.json`;
+    const storageRoot = process.env.LOCAL_STORAGE_ROOT?.trim() || path.join(process.cwd(), "storage");
+    const fullPath = path.join(storageRoot, storageKey);
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, snapshotContent, "utf8");
+
+    const inserted = await client.query(
+      `INSERT INTO reports (tenant_id, interpretation_id, revision, storage_key, sha256, published_at, published_by)
+       VALUES ($1,$2,$3,$4,$5, now(), $6) RETURNING id`,
+      [row.tenant_id, row.id, row.revision, storageKey, sha256, row.user_id],
+    );
+    reportId = inserted.rows[0].id;
+
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    await page.goto(`/relatorios/talhao/${row.analysis_id}?versao=publicada`, { waitUntil: "networkidle" });
+
+    // A prova real: o conteúdo do TESTE (marcado com código exclusivo) aparece na tela quando se pede a
+    // "Versão publicada" -- nunca o dado atual reconstruído, e a integridade do arquivo é confirmada.
+    const body = await page.locator("article.report-doc").textContent();
+    expect(body).toContain("TESTE-E2E-01");
+    expect(body).toContain("TESTE-FECHAMENTO");
+    expect(body).toContain("MEDIO");
+    const toolbarText = await page.locator(".report-toolbar.no-print").allTextContents();
+    expect(toolbarText.join(" ")).toMatch(/hash verificado, conteúdo íntegro/i);
+    await expect(page.locator(".report-version-toggle a.active")).toHaveText(/Versão publicada/);
+  } finally {
+    if (reportId) await client.query(`DELETE FROM reports WHERE id = $1`, [reportId]).catch(() => {});
+    if (storageKey) {
+      const storageRoot = process.env.LOCAL_STORAGE_ROOT?.trim() || path.join(process.cwd(), "storage");
+      await rm(path.join(storageRoot, storageKey), { force: true }).catch(() => {});
+    }
+    await client.end();
+  }
 });
