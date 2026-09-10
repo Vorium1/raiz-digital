@@ -4034,7 +4034,15 @@ de dev, chamada real à API do Gemini confirmada (não simulada), tela conferida
 (desktop e celular) mostrando o selo de IA, o resumo e as 41 culturas antes escondidas. Sessão de teste
 revogada e script temporário de screenshot removido depois.
 
-**Pendente pro diretor decidir ao acordar**: revisar o resultado real acima (divergência real encontrada
-no parâmetro P do Abacateiro) e decidir se cadastra a faixa correta ou mantém como está por enquanto;
-depois, publicar (subir pro `develop`, que já fiz, e aprovar o PR pra `main` quando quiser ver em
-produção -- não fiz isso sozinho, como combinado).
+**Pendente pro diretor decidir ao acordar**:
+1. Revisar o resultado real do teste (divergência real encontrada no parâmetro P do Abacateiro) e decidir
+   se cadastra a faixa correta ou mantém como está por enquanto.
+2. Já subi tudo pro `develop` (preview) -- falta só aprovar o PR pra `main` quando quiser ver em produção,
+   do mesmo jeito de sempre (não fiz isso sozinho, como combinado).
+3. **Importante, antes ou junto do merge**: a migration `024_parameter_ai_cross_validation.sql` ainda
+   **não foi aplicada no banco de produção (Neon)** -- eu não tinha acesso confirmado à credencial de
+   produção nesta sessão (sem login no Vercel CLI aqui) pra rodar com segurança sozinho enquanto ele
+   dormia, e é banco de produção, então preferi não arriscar com um dado que só tinha de memória. É só
+   rodar `node --env-file=.env.production scripts/migrate.mjs` (ou o equivalente apontando pra
+   `DATABASE_URL` do Neon) antes de considerar o merge concluído -- sem isso, o código novo em produção
+   vai falhar ao tentar ler as colunas `ai_validation_*` que ainda não existem lá.
