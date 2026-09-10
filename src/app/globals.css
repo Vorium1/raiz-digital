@@ -580,7 +580,7 @@ button { color: inherit; }
 .real-field-map-panel dd{margin:0;text-align:right}
 .real-field-map-reason{color:var(--muted);font-size:9px;max-width:150px}
 .map-explorer{display:grid;gap:16px;grid-template-columns:300px minmax(0,1fr);margin-top:16px}
-.map-explorer-list{max-height:640px;overflow-y:auto;padding-bottom:8px}
+.map-explorer-list{max-height:640px;overflow-y:auto;padding-bottom:8px}.map-explorer-order-subpicker{display:flex;flex-wrap:wrap;gap:5px;padding:0 16px 10px 34px}.map-explorer-order-subpicker button{background:var(--surface);border:1px solid var(--line);border-radius:7px;color:var(--muted);cursor:pointer;font-size:7px;padding:5px 8px}.map-explorer-order-subpicker button.active{background:var(--teal);border-color:var(--teal);color:#04211c;font-weight:700}
 .map-explorer-main{padding:18px}
 .map-explorer-toolbar{align-items:end;display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px}
 .map-explorer-toolbar label{display:flex;flex-direction:column;font-size:9px;gap:5px}

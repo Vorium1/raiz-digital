@@ -54,6 +54,21 @@ export function AgronomicMapExplorer() {
 
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
 
+  /** Lista "Talhões" deve mostrar um talhão único, não uma linha por ordem de coleta -- bug real
+   * confirmado na auditoria (item G): um talhão com 3 ordens aparecia 3 vezes, sem deixar claro que era
+   * o mesmo lugar. Agrupa pelo `fieldId` real (nunca pelo nome -- dois talhões podem ter nomes iguais em
+   * propriedades diferentes); quando o talhão tem mais de uma ordem, elas ficam subordinadas dentro do
+   * próprio card, não soltas na lista principal. */
+  const fieldGroups = useMemo(() => {
+    const map = new Map<string, { fieldId: string; fieldName: string; propertyName: string; clientName: string; orders: OrderSummary[] }>();
+    for (const order of orders) {
+      const existing = map.get(order.fieldId);
+      if (existing) existing.orders.push(order);
+      else map.set(order.fieldId, { fieldId: order.fieldId, fieldName: order.fieldName, propertyName: order.propertyName, clientName: order.clientName, orders: [order] });
+    }
+    return Array.from(map.values());
+  }, [orders]);
+
   useEffect(() => {
     if (!selectedOrderId) { setLayer(null); return; }
     setLayerLoading(true);
@@ -101,13 +116,27 @@ export function AgronomicMapExplorer() {
   return (
     <div className="map-explorer">
       <div className="map-explorer-list card">
-        <div className="field-ops-section-head compact"><div><span className="eyebrow">TALHÕES</span><h2>Selecione</h2></div><span className="field-ops-count">{orders.length}</span></div>
-        {orders.map((order) => (
-          <button key={order.id} className={`field-order-item ${selectedOrderId === order.id ? "active" : ""}`} onClick={() => setSelectedOrderId(order.id)}>
-            <span><strong>{order.fieldName}</strong><small>{order.clientName} · {order.propertyName} · {order.seasonLabel}</small></span>
-            <b>{order.collectedPoints}/{order.plannedPoints}</b>
-          </button>
-        ))}
+        <div className="field-ops-section-head compact"><div><span className="eyebrow">TALHÕES</span><h2>Selecione</h2></div><span className="field-ops-count">{fieldGroups.length}</span></div>
+        {fieldGroups.map((group) => {
+          const active = group.orders.some((order) => order.id === selectedOrderId);
+          const totalPlanned = group.orders.reduce((sum, order) => sum + order.plannedPoints, 0);
+          const totalCollected = group.orders.reduce((sum, order) => sum + order.collectedPoints, 0);
+          return (
+            <div key={group.fieldId} className="map-explorer-field-group">
+              <button className={`field-order-item ${active ? "active" : ""}`} onClick={() => setSelectedOrderId(group.orders[0].id)}>
+                <span><strong>{group.fieldName}</strong><small>{group.clientName} · {group.propertyName}{group.orders.length > 1 ? ` · ${group.orders.length} ordens` : ""}</small></span>
+                <b>{totalCollected}/{totalPlanned}</b>
+              </button>
+              {active && group.orders.length > 1 && (
+                <div className="map-explorer-order-subpicker">
+                  {group.orders.map((order) => (
+                    <button key={order.id} className={selectedOrderId === order.id ? "active" : ""} onClick={() => setSelectedOrderId(order.id)}>{order.seasonLabel} · {order.code}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="map-explorer-main card">

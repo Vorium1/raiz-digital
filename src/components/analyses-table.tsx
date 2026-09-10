@@ -18,8 +18,8 @@ type Analysis = {
 
 const statusFilters = [{ value: "", label: "Todos os status" }, ...ANALYSIS_STATUS_OPTIONS];
 
-export function AnalysesTable({ analyses }: { analyses: Analysis[] }) {
-  const [query, setQuery] = useState("");
+export function AnalysesTable({ analyses, initialQuery = "" }: { analyses: Analysis[]; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("");
 
   const filtered = useMemo(() => {

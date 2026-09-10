@@ -35,7 +35,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       alerts.push({
         id: `overdue-order-${row.id}`, category: "Coleta atrasada", criticality: "ALTA",
         title: `${row.code} está atrasada`, description: `${row.clientName} · ${row.fieldName} — planejada para ${new Date(row.plannedAt).toLocaleDateString("pt-BR")}`,
-        href: `/coletas`, context: row.fieldName,
+        href: `/coletas?orderId=${row.id}#pontos-coleta`, context: row.fieldName,
       });
     }
 
@@ -56,7 +56,10 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       alerts.push({
         id: `pending-points-${row.id}`, category: "Pontos não coletados", criticality: row.pending === row.total ? "MEDIA" : "BAIXA",
         title: `${row.pending} de ${row.total} pontos pendentes`, description: `${row.clientName} · ${row.fieldName} — ordem ${row.code}`,
-        href: `/coletas`, context: row.fieldName,
+        // Antes era só "/coletas", sem identificar a ordem -- o usuário tinha que procurar manualmente
+        // (bug real confirmado na auditoria, item F3). `field-operations-manager.tsx` lê `?orderId=` e
+        // pré-seleciona a ordem certa, rolando até ela.
+        href: `/coletas?orderId=${row.id}#pontos-coleta`, context: row.fieldName,
       });
     }
 

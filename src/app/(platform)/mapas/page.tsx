@@ -13,7 +13,11 @@ export default function MapsPage() {
       <>
         <Topbar eyebrow="Inteligência" title="Mapas"/>
         <div className="content-wrap">
-          <PageIntro title="Mapa agronômico" description="Cada ponto é a coordenada real do PostGIS. Selecione um parâmetro para colorir pela classificação já homologada — sem parâmetro, o mapa mostra só o status de coleta."/>
+          {/* Antes dizia "cada ponto é a coordenada real do PostGIS", incondicional -- mas nem todo ponto
+              tem GPS confirmado em campo (pontos planejados de grid ainda não visitados, ou importações
+              estimadas, têm gps_source diferente de 'BROWSER_GPS'). Texto corrigido pra não afirmar mais
+              do que o dado garante (bug real confirmado na auditoria, item H). */}
+          <PageIntro title="Mapa agronômico" description="Nenhuma coordenada é inventada: pontos já coletados têm GPS confirmado no momento da coleta; os demais mostram a posição planejada do grid, ainda não visitada em campo. Selecione um parâmetro para colorir pela classificação já homologada — sem parâmetro, o mapa mostra só o status de coleta."/>
           <AgronomicMapExplorer/>
         </div>
       </>

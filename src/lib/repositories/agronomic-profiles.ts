@@ -18,6 +18,25 @@ export class AgronomicProfileError extends Error {
  * filtrada por tenant porque a tabela não tem RLS habilitada.
  */
 
+/**
+ * Resumo real de homologação do catálogo -- usado pra tirar o cabeçalho fixo "regras homologadas" da
+ * Biblioteca Técnica, que antes não dizia quantas culturas/parâmetros estavam de fato ACTIVE vs DRAFT
+ * (bug real confirmado na auditoria, item I: cabeçalho estático podia passar a impressão de que tudo já
+ * estava homologado). Conta o catálogo inteiro (não é filtrado por tenant -- ver comentário acima).
+ */
+export async function getCropCatalogHomologationSummary(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT
+         (SELECT count(*) FROM crop_profiles)::int AS "totalCrops",
+         (SELECT count(*) FROM crop_profiles WHERE status = 'ACTIVE')::int AS "activeCrops",
+         (SELECT count(*) FROM crop_profile_parameters)::int AS "totalParameters",
+         (SELECT count(*) FROM crop_profile_parameters WHERE status = 'ACTIVE')::int AS "activeParameters"`,
+    );
+    return result.rows[0] as { totalCrops: number; activeCrops: number; totalParameters: number; activeParameters: number };
+  });
+}
+
 export async function listCropProfiles(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(

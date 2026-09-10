@@ -168,9 +168,16 @@ export function PropertiesFieldsBrowser() {
               <div><span>Cobertura de coleta</span><strong>{coveragePct != null ? `${coveragePct}%` : "—"}</strong></div>
             </div>
             <div className="fields-browser-actions">
-              <Link href="#nova-ordem-coleta" className="button primary"><Icon name="plus" size={15}/>Nova ordem</Link>
-              <Link href="#nova-ordem-coleta" className="button secondary">Ver pontos</Link>
-              <Link href={`/relatorios/evolucao/${selectedField.id}`} className="button ghost">Análises</Link>
+              <Link href="/coletas#nova-ordem-coleta" className="button primary"><Icon name="plus" size={15}/>Nova ordem</Link>
+              {/* Antes apontava sempre pra "#nova-ordem-coleta" (criar ordem nova), mesmo quando já existia
+                  ordem com pontos reais -- bug real confirmado na auditoria (item F1). Agora leva pra ordem
+                  de verdade deste talhão quando ela existe. */}
+              <Link href={selectedOrder ? `/coletas?orderId=${selectedOrder.id}#pontos-coleta` : "/coletas#nova-ordem-coleta"} className="button secondary">Ver pontos</Link>
+              {/* Antes o botão "Análises" levava pro relatório de evolução histórica, não pra lista de
+                  análises do talhão -- bug real confirmado (item F2). Agora filtra a lista real de análises
+                  por este talhão; "Evolução" continua acessível como link separado. */}
+              <Link href={`/analises?talhao=${encodeURIComponent(selectedField.name)}`} className="button ghost">Análises</Link>
+              <Link href={`/relatorios/evolucao/${selectedField.id}`} className="button ghost">Evolução</Link>
             </div>
           </div>
         )}

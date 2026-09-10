@@ -20,6 +20,11 @@ export default async function CollectionReportPage({ params }: { params: Promise
   if (!data) notFound();
   const { order, points } = data;
   const collected = points.filter((point: any) => point.collectedAt);
+  // Nenhum ponto é inventado (posição sempre vem de uma geometria real do PostGIS), mas nem todo ponto tem
+  // GPS confirmado em campo -- só os que passaram por "Confirmar aqui" no celular carregam 'BROWSER_GPS'
+  // no gps_source; os demais são a posição planejada do grid ou uma estimativa. Antes o banner afirmava
+  // "dados reais... nenhuma coordenada inventada" sem checar isso (bug real confirmado na auditoria, item H).
+  const gpsConfirmedCount = points.filter((point: any) => String(point.gpsSource || "").includes("BROWSER_GPS")).length;
 
   return (
     <>
@@ -27,7 +32,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
         <Link href="/relatorios" className="button ghost no-print">Voltar</Link>
       </Topbar>
       <div className="content-wrap">
-        <div className="report-toolbar no-print"><span className="report-empty-note">Dados reais do PostGIS — nenhum ponto ou coordenada inventada.</span><PrintButton/></div>
+        <div className="report-toolbar no-print"><span className="report-empty-note">Nenhuma coordenada é inventada — {gpsConfirmedCount} de {points.length} ponto(s) com GPS confirmado em campo; os demais mostram a posição planejada do grid (coluna "Origem GPS" abaixo identifica cada um).</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
             <ReportBrand branding={branding} />
@@ -47,7 +52,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
             <div><span>Cobertura</span><strong>{points.length ? `${collected.length}/${points.length} (${Math.round((collected.length / points.length) * 100)}%)` : "—"}</strong></div>
           </div>
 
-          {points.length > 0 && <section className="report-section no-print"><h2>Mapa real</h2><RealFieldMap boundary={order.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, labResultCount: 0 }))} height={340}/></section>}
+          {points.length > 0 && <section className="report-section no-print"><h2>Mapa do talhão</h2><RealFieldMap boundary={order.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, labResultCount: 0 }))} height={340}/></section>}
 
           <section className="report-section">
             <h2>Pontos ({points.length})</h2>
@@ -55,7 +60,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
               <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Código</th><th>Coordenadas</th><th>Status</th><th>Coletado em</th><th>Coletor</th><th>Origem GPS</th></tr></thead>
                 <tbody>{points.map((point: any) => (
-                  <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td><td>{point.collectedAt ? new Date(point.collectedAt).toLocaleString("pt-BR") : "—"}</td><td>{point.collectedByName || "—"}</td><td>{point.gpsSource || "—"}</td></tr>
+                  <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td><td>{point.collectedAt ? new Date(point.collectedAt).toLocaleString("pt-BR") : "—"}</td><td>{point.collectedByName || "—"}</td><td>{String(point.gpsSource || "").includes("BROWSER_GPS") ? "Confirmado em campo" : point.gpsSource ? "Estimado / planejado" : "—"}</td></tr>
                 ))}</tbody>
               </table></div>
             ) : <p className="report-empty-note">Nenhum ponto gerado ainda para esta ordem.</p>}
