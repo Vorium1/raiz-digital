@@ -44,15 +44,34 @@ um bug de `flex-shrink` — confirmado medindo `scrollHeight`/`offsetHeight` rea
 maioria das correções foi verificada ao vivo contra o banco de dev real (sessão real inserida, chamadas
 HTTP reais, screenshots reais desktop 1440px e mobile 390px) — não são alegações não verificadas.
 
+### Etapa 4 (parcial) — Central de Decisão: Prioridades acionáveis
+Construí a primeira peça real da Central de Decisão: seção "Prioridades acionáveis" no `/dashboard`, lista
+real (não mockada) do que exige atenção agora — objeto, motivo, situação, data (quando existe de verdade)
+e destino correto, clicável direto pro registro certo. Dois bugs reais achados e corrigidos NO PROCESSO de
+testar com dado real (não hipotéticos):
+- Minha primeira tentativa de agrupar alertas repetidos (pedido do briefing, para o aviso climático que
+  dispara 1x por talhão) era genérica demais e fundiu ordens de coleta DIFERENTES que coincidentemente
+  tinham o mesmo texto ("2 de 3 pontos pendentes") — corrigido, restrito só às categorias onde um evento
+  real dispara vários alertas por natureza.
+- A descrição longa do aviso climático não estava truncando (deveria cortar em 2 linhas) — bug de
+  especificidade CSS (mesmo padrão de outro bug já achado antes nesta sessão), corrigido.
+
+Verificado com screenshot real desktop e mobile, e com números reais do banco de dev.
+
 ## O que NÃO foi feito nesta rodada (pendência real, não maquiada)
 
-As Etapas 4-7 do briefing (Central de Decisão redesenhada de fato, página Talhão 360° nova, ajustes de
-linguagem em mapas/NDVI, QA visual em 5 larguras + suíte de testes automatizados cobrindo os 10 cenários
-pedidos) **não foram construídas nesta sessão**. Não é falta de vontade — é uma estimativa honesta: cada
-uma dessas é, sozinha, um trabalho substancial (a Central de Decisão pede um "mapa da carteira" que hoje
-não existe como componente reutilizável — os mapas existentes são todos por talhão/ordem, não por carteira
-inteira; o Talhão 360° é uma página nova com 4 seções). Preferi entregar as Etapas 1-3 completas, testadas
-de verdade e revisáveis, a entregar as 7 etapas pela metade e sem teste real.
+Dentro da Etapa 4, falta o "Mapa da carteira" (item C da estrutura pedida) — hoje não existe nenhum
+componente de mapa que mostre TODOS os talhões da carteira de uma vez; os mapas existentes
+(`RealFieldMap`, `AgronomicMapExplorer`) são todos por talhão/ordem individual. Precisaria de uma consulta
+nova (todos os `fields.boundary` do tenant/cliente filtrado) e um componente que desenhe múltiplos
+polígonos num mapa só — não é grande, mas é trabalho novo, não reaproveitamento direto.
 
-**Próximo passo sugerido**: revisar esta entrega (branch `feature/raiz-2.0-fase1`) e decidir se sigo direto
-pra Etapa 4 (Central de Decisão) na sequência, ou se algum ponto aqui merece ajuste primeiro.
+As Etapas 5-7 do briefing (página Talhão 360° nova com 4 seções, ajustes de linguagem em mapas/NDVI, QA
+visual formal em 5 larguras + suíte de testes automatizados cobrindo os 10 cenários pedidos) **não foram
+construídas nesta sessão**. Não é falta de vontade — é uma estimativa honesta: o Talhão 360° sozinho é uma
+página nova inteira. Preferi entregar as Etapas 1-4(parcial) completas, testadas de verdade e revisáveis,
+a entregar as 7 etapas pela metade e sem teste real.
+
+**Próximo passo sugerido**: revisar esta entrega (branch `feature/raiz-2.0-fase1`, 6 commits) e decidir se
+sigo direto pro resto da Etapa 4 (mapa da carteira) e Etapa 5 (Talhão 360°) na sequência, ou se algum ponto
+aqui merece ajuste primeiro.
