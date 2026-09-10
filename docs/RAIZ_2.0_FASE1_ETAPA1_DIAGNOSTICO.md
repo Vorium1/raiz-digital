@@ -2,6 +2,24 @@
 
 Branch: `feature/raiz-2.0-fase1` (a partir de `develop`). Investigação feita lendo o código real (não suposição), 2026-09-10.
 
+## Contagem exata (correção de uma imprecisão do relatório anterior)
+
+O briefing original lista **10 itens** (A a J). O item F, sozinho, continha **3 alegações distintas** sobre
+links (F1, F2, F3), cada uma investigada e verificada em separado — por isso a tabela abaixo tem 12 linhas,
+não 10. O relatório de entrega anterior (`RAIZ_2.0_FASE1_ENTREGA.md`) dizia "9 confirmadas, 1 parcial, 1
+não confirmada", o que estava impreciso em dois pontos: usava a contagem de 12 sub-itens sem explicar a
+quebra do F, e contava só 1 "não confirmado" quando na verdade são 2 (B e J). Contagem correta:
+
+- **Pelos 12 sub-itens investigados** (A,B,C,D,E,F1,F2,F3,G,H,I,J): **9 confirmados**, **1 parcial** (I),
+  **2 não confirmados como a alegação literal descrevia** (B e J — ambos com evidência de código mostrando
+  o comportamento real, não uma alegação vaga descartada sem checar).
+- **Pelos 10 itens originais do briefing** (A a J, com F contando como 1 item que passa se todas as 3
+  sub-alegações passarem): **7 confirmados** (A,C,D,E,F,G,H), **1 parcial** (I), **2 não confirmados** (B,J).
+
+Nenhum item ficou sem veredito. B, apesar de "não confirmado" como a frase literal da auditoria descrevia
+("0 críticos"/"0 fora de faixa" contando "não avaliado" como "OK"), gerou um achado real e corrigido
+(análises aguardando homologação sumiam dos indicadores de destaque — ver Etapa 2/commit `2adc94b`).
+
 ## Resumo por item
 
 | Item | Alegação | Veredito |
