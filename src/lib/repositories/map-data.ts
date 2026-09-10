@@ -3,10 +3,17 @@ import { withTenant } from "@/lib/db";
 export type MapPointLayer = {
   id: string;
   code: string;
+  sequence: number | null;
   latitude: number;
   longitude: number;
+  observedLatitude: number | null;
+  observedLongitude: number | null;
   depthFromCm: number;
   depthToCm: number;
+  subsampleCount: number | null;
+  accuracyM: number | null;
+  gpsSource: string | null;
+  notes: string | null;
   collectedAt: string | null;
   value: number | null;
   unit: string | null;
@@ -24,6 +31,8 @@ export type MapLayerResult = {
   interpretationStatus: string | null;
   confidence: { score: number; level: string } | null;
   trace: { cropProfileCode: string | null; cropProfileVersion: string | null } | null;
+  analysisId: string | null;
+  reportId: string | null;
 };
 
 /**
@@ -58,9 +67,12 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
     const availableParameters = paramsResult.rows.map((row) => row.code);
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+      `SELECT sp.id::text, sp.code, sp.sequence, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position) END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position) END AS "observedLongitude",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
-              sp.collected_at::text AS "collectedAt",
+              sp.subsample_count AS "subsampleCount", sp.accuracy_m::float8 AS "accuracyM", sp.gps_source AS "gpsSource",
+              sp.notes, sp.collected_at::text AS "collectedAt",
               lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
               (SELECT count(*)::int FROM lab_results lr2
                  JOIN lab_samples ls2 ON ls2.tenant_id = lr2.tenant_id AND ls2.id = lr2.lab_sample_id
@@ -72,6 +84,16 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
        ORDER BY sp.sequence NULLS LAST, sp.code`,
       [input.tenantId, input.collectionOrderId, input.parameterCode],
     );
+
+    const analysisResult = await client.query<{ id: string; reportId: string | null }>(
+      `SELECT a.id::text AS id,
+              (SELECT r.id::text FROM reports r JOIN interpretations i2 ON i2.tenant_id = r.tenant_id AND i2.id = r.interpretation_id
+                 WHERE i2.tenant_id = a.tenant_id AND i2.analysis_id = a.id ORDER BY r.published_at DESC LIMIT 1) AS "reportId"
+       FROM analyses a WHERE a.tenant_id = $1::uuid AND a.collection_order_id = $2::uuid
+       ORDER BY a.created_at DESC LIMIT 1`,
+      [input.tenantId, input.collectionOrderId],
+    );
+    const analysis = analysisResult.rows[0] ?? null;
 
     const interpretationResult = await client.query<{ status: string; structuredOutput: any }>(
       `SELECT i.status, i.structured_output AS "structuredOutput"
@@ -94,10 +116,17 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       return {
         id: row.id,
         code: row.code,
+        sequence: row.sequence,
         latitude: row.latitude,
         longitude: row.longitude,
+        observedLatitude: row.observedLatitude,
+        observedLongitude: row.observedLongitude,
         depthFromCm: row.depthFromCm,
         depthToCm: row.depthToCm,
+        subsampleCount: row.subsampleCount,
+        accuracyM: row.accuracyM,
+        gpsSource: row.gpsSource,
+        notes: row.notes,
         collectedAt: row.collectedAt,
         value: row.value,
         unit: row.unit,
@@ -116,6 +145,8 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       interpretationStatus: interpretation?.status ?? null,
       confidence: interpretation?.structuredOutput?.confidence ?? null,
       trace: interpretation?.structuredOutput?.trace ?? null,
+      analysisId: analysis?.id ?? null,
+      reportId: analysis?.reportId ?? null,
     };
   });
 }

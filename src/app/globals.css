@@ -619,7 +619,26 @@ button { color: inherit; }
 .map-explorer-layer-notice{align-items:flex-start;background:#241e12;border-radius:9px;color:#e2cfb4;display:flex;font-size:9px;gap:8px;line-height:1.5;margin-bottom:12px;padding:10px 14px}
 .map-explorer-layer-notice svg{flex-shrink:0;margin-top:1px}
 .map-explorer-layer-notice strong{color:#f0dfc2}
-@media(max-width:900px){.map-explorer{grid-template-columns:minmax(0,1fr)}.map-explorer-list{max-height:220px}}
+
+/* Fase 2, Bloco A: mapa como área de trabalho. */
+.map-explorer-search{align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:9px;color:var(--muted);display:flex;gap:8px;margin:0 16px 12px;padding:8px 10px}
+.map-explorer-search input{background:transparent;border:0;color:var(--ink);flex:1;font-size:11px;min-width:0;outline:none}
+.map-explorer-satellite-toggle{align-items:center;color:var(--muted);display:flex;font-size:10px;font-weight:700;gap:6px}
+.map-explorer-layer-info{background:var(--surface-2);border-radius:9px;color:var(--muted);display:flex;flex-direction:column;font-size:9.5px;gap:6px;line-height:1.5;margin-bottom:12px;padding:10px 14px}
+.map-explorer-layer-info strong{color:var(--ink)}
+.map-explorer-distribution{margin-top:12px}
+.map-explorer-distribution dl{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
+.map-explorer-distribution dt{color:var(--muted);font-size:8px;letter-spacing:.03em;text-transform:uppercase}
+.map-explorer-distribution dd{font-size:12px;font-weight:700;margin:2px 0 0}
+.map-explorer-mobile-tabs{display:none}
+@media(max-width:900px){
+  .map-explorer{grid-template-columns:minmax(0,1fr)}
+  .map-explorer-mobile-tabs{background:#181e18;border-radius:10px;display:flex;gap:2px;margin-bottom:12px;padding:3px}
+  .map-explorer-mobile-tabs button{align-items:center;background:transparent;border:0;border-radius:8px;color:var(--muted);cursor:pointer;display:flex;flex:1;font-size:11px;font-weight:700;gap:6px;justify-content:center;padding:10px}
+  .map-explorer-mobile-tabs button.active{background:var(--surface);color:var(--ink)}
+  .map-explorer-hide-mobile{display:none}
+  .map-explorer-list{max-height:none}
+}
 @media(max-width:760px){.real-field-map{margin:0 12px}.real-field-map-panel{max-width:none;position:static;margin-top:10px}}
 .point-lab-linked{align-items:center;background:#13221c;border-radius:9px;color:#bbe2d8;display:flex;font-size:7px;font-weight:700;gap:3px;padding:3px 6px}
 .field-point-actions{align-items:center;display:flex;gap:6px;justify-content:flex-end}
@@ -742,6 +761,22 @@ button { color: inherit; }
 .comparison-grid{display:grid;gap:16px;grid-template-columns:1fr 1fr}
 .comparison-column{max-height:520px;overflow-y:auto}
 @media(max-width:900px){.comparison-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* Fase 2, Bloco E: tabela de diferença por parâmetro + gráfico. */
+.comparison-result{padding-bottom:18px}
+.comparison-table-wrap{margin:12px 22px 0;overflow-x:auto}
+.comparison-table td, .comparison-table th{white-space:nowrap}
+.comparison-table td .status-badge{margin-left:6px}
+.comparison-row-incompatible{opacity:.72}
+.comparison-diff-up{color:#29966f;font-weight:700}
+.comparison-diff-down{color:#d9655a;font-weight:700}
+.comparison-compatible{align-items:center;color:#29966f;display:inline-flex;font-size:9px;font-weight:700;gap:4px}
+.comparison-incompatible{align-items:center;color:var(--warning);cursor:help;display:inline-flex;font-size:9px;font-weight:700;gap:4px}
+.comparison-incompatible-notes{color:var(--muted);font-size:9px;line-height:1.6;margin:10px 22px 4px;padding-top:10px;border-top:1px solid var(--line)}
+.comparison-incompatible-notes strong{color:var(--ink)}
+.comparison-chart{background:var(--surface-2);border-radius:9px;margin:14px 22px 0;width:calc(100% - 44px)}
+.comparison-side-maps{display:grid;gap:16px;grid-template-columns:1fr 1fr;margin-top:16px}
+@media(max-width:760px){.comparison-side-maps{grid-template-columns:1fr}.comparison-table-wrap{margin:12px 12px 0}.comparison-chart{margin:14px 12px 0;width:calc(100% - 24px)}}
 @media print{
   .sidebar,.topbar,.mobile-bottom-nav,.mobile-menu-backdrop,.no-print{display:none!important}
   .main-content{margin-left:0!important}
@@ -918,6 +953,19 @@ button { color: inherit; }
 .ndvi-zone-legend li { align-items:center; color:var(--muted); display:flex; gap:5px; }
 .ndvi-zone-legend i { border-radius:3px; display:block; height:8px; width:8px; }
 @media (max-width:520px) { .ndvi-panel-head { flex-direction:column; align-items:flex-start; } }
+.ndvi-panel-limitation { align-items:flex-start; background:var(--surface-2); border-radius:9px; color:var(--muted); display:flex; font-size:9.5px; gap:7px; line-height:1.5; margin:0 0 12px; padding:9px 11px; }
+.ndvi-panel-limitation svg { color:var(--muted); flex-shrink:0; margin-top:1px; }
+
+/* Fase 2, Bloco D: histórico de aquisições (só estatística agregada -- ver limitação acima). */
+.ndvi-history { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }
+.ndvi-history-chart { background:var(--surface-2); border-radius:9px; height:auto; margin:8px 0 12px; width:100%; }
+.ndvi-history-list { display:flex; flex-direction:column; gap:0; list-style:none; margin:0; padding:0; }
+.ndvi-history-list li { align-items:center; border-bottom:1px solid var(--line); display:grid; font-size:9.5px; gap:10px; grid-template-columns:8px 70px minmax(0,1fr) auto auto auto; padding:8px 2px; }
+.ndvi-history-list li:last-child { border:0; }
+.ndvi-history-list i { border-radius:3px; display:block; height:8px; width:8px; }
+.ndvi-history-date { color:var(--ink); font-weight:700; white-space:nowrap; }
+.ndvi-history-quality, .ndvi-history-source { color:var(--muted); text-align:right; white-space:nowrap; }
+@media(max-width:640px) { .ndvi-history-list li { font-size:9px; grid-template-columns:8px 62px minmax(0,1fr); } .ndvi-history-quality, .ndvi-history-source { display:none; } }
 
 /* ========================================================= */
 /* Talhão 360° (RAIZ 2.0, Fase 1, Etapa 5)                     */
@@ -942,6 +990,35 @@ button { color: inherit; }
 .field-overview-order-picker { display:flex; flex-wrap:wrap; gap:8px; }
 .field-overview-order-picker button { background:var(--surface); border:1px solid var(--line); border-radius:8px; color:var(--muted); cursor:pointer; font-size:9px; padding:8px 12px; }
 .field-overview-order-picker button.active { background:var(--teal); border-color:var(--teal); color:#04211c; font-weight:700; }
+
+/* Fase 2, Bloco B: sub-seleção de Evidências (Solo e Fertilidade / Coletas / Satélite). */
+.field-overview-evidence-subnav { display:flex; gap:6px; }
+.field-overview-evidence-subnav button { background:var(--surface); border:1px solid var(--line); border-radius:20px; color:var(--muted); cursor:pointer; font-size:9.5px; font-weight:700; padding:7px 14px; }
+.field-overview-evidence-subnav button.active { background:var(--teal); border-color:var(--teal); color:#04211c; }
+.field-overview-parameter-toolbar { align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:10px; display:flex; flex-wrap:wrap; gap:12px; padding:12px 16px; }
+.field-overview-parameter-toolbar label { align-items:center; display:flex; gap:8px; }
+.field-overview-parameter-toolbar label span { color:var(--muted); font-size:9px; font-weight:700; }
+.field-overview-parameter-toolbar select { background:var(--paper); border:1px solid var(--line); border-radius:8px; height:32px; padding:0 10px; }
+.field-overview-depth-context { align-items:center; color:var(--muted); display:flex; font-size:9px; gap:6px; }
+.field-overview-parameter-toolbar .button.small { margin-left:auto; }
+@media(max-width:640px) { .field-overview-parameter-toolbar .button.small { margin-left:0; } }
+
+.field-overview-distribution-stats { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); padding:16px 20px; }
+.field-overview-distribution-stats dt { color:var(--muted); font-size:8px; letter-spacing:.03em; text-transform:uppercase; }
+.field-overview-distribution-stats dd { font-size:13px; font-weight:700; margin:3px 0 0; }
+
+/* Bloco C: síntese "disponível / atenção / próxima ação". */
+.field-overview-synthesis { display:grid; gap:14px; grid-template-columns:repeat(3,1fr); }
+.field-overview-synthesis-col { min-height:120px; }
+.field-overview-synthesis-list { display:flex; flex-direction:column; font-size:10px; gap:10px; line-height:1.5; margin:0; padding:6px 18px 18px; }
+.field-overview-synthesis-list li { list-style:disc; }
+.field-overview-synthesis-list.attention li::marker { color:var(--warning); }
+.field-overview-synthesis-action { align-items:center; color:var(--ink); display:flex; font-size:11px; font-weight:700; gap:8px; justify-content:space-between; padding:16px 18px; }
+.field-overview-synthesis-action:hover { color:var(--teal); }
+@media(max-width:900px) { .field-overview-synthesis { grid-template-columns:1fr; } }
+
+.priority-more { background:transparent; border:0; border-top:1px solid var(--line); color:var(--muted); cursor:pointer; font-size:9px; font-weight:700; padding:10px 21px; text-align:left; width:100%; }
+.priority-more:hover { color:var(--teal); }
 .field-overview-timeline { padding:6px 0; }
 .field-overview-timeline-row { align-items:center; border-bottom:1px solid var(--line); display:grid; gap:12px; grid-template-columns:24px minmax(0,1fr) auto; padding:11px 18px; }
 .field-overview-timeline-row:last-child { border:0; }

@@ -3,7 +3,7 @@ type IconName =
   | "settings" | "plus" | "bell" | "chevron" | "search" | "arrow"
   | "check" | "warning" | "clock" | "leaf" | "upload" | "layers"
   | "location" | "calendar" | "dots" | "shield" | "sparkles" | "close" | "logout"
-  | "edit" | "trash" | "eye" | "eye-off";
+  | "edit" | "trash" | "eye" | "eye-off" | "list";
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></>,
@@ -36,6 +36,7 @@ const paths: Record<IconName, React.ReactNode> = {
   trash: <><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></>,
   eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></>,
   "eye-off": <><path d="M2 12s3.5-7 10-7c1.6 0 3 .3 4.2.8M22 12s-3.5 7-10 7c-1.6 0-3-.3-4.2-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></>,
+  list: <><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></>,
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {

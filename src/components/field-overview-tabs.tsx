@@ -8,6 +8,9 @@ import { StatusBadge } from "@/components/ui";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
 import { FieldNdviPanel } from "@/components/field-ndvi-panel";
 import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-ui";
+import { classificationColor } from "@/lib/classification-colors";
+import { computeParameterDistribution } from "@/domain/parameter-distribution";
+import { computeFieldOverviewSynthesis } from "@/domain/field-overview-synthesis";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
 
@@ -20,9 +23,23 @@ const TABS: Array<{ id: Tab; label: string }> = [
 ];
 const VALID_TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
+type EvidenceView = "solo" | "coletas" | "satelite";
+const EVIDENCE_VIEWS: Array<{ id: EvidenceView; label: string }> = [
+  { id: "solo", label: "Solo e Fertilidade" },
+  { id: "coletas", label: "Coletas" },
+  { id: "satelite", label: "Satélite" },
+];
+const VALID_EVIDENCE_VIEW_IDS = new Set<string>(EVIDENCE_VIEWS.map((v) => v.id));
+
 const PRIORITY_TONE: Record<string, "danger" | "review" | "waiting"> = { ALTA: "danger", MEDIA: "review", BAIXA: "waiting" };
 
-type MapLayerResponse = { fieldBoundary: unknown; points: MapPoint[]; availableParameters: string[] };
+type MapLayerResponse = {
+  fieldBoundary: unknown;
+  points: MapPoint[];
+  availableParameters: string[];
+  analysisId: string | null;
+  reportId: string | null;
+};
 
 /**
  * Talhão 360° (RAIZ 2.0, Fase 1, Etapa 5). Reaproveita componentes já prontos inteiros --
@@ -59,11 +76,21 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
   );
   const selectedOrder = seasonOrders.find((o) => o.id === selectedOrderId) ?? null;
 
-  function updateUrl(next: { tab?: Tab; seasonId?: string; orderId?: string }) {
+  // Fase 2, Bloco B: Evidências ganhou sub-seleção Solo e Fertilidade / Coletas / Satélite. Segue o
+  // mesmo padrão de URL-como-fonte-de-verdade já usado em aba/safra/ordem.
+  const urlEvidenceView = searchParams.get("evidencia");
+  const [evidenceView, setEvidenceViewState] = useState<EvidenceView>(
+    urlEvidenceView && VALID_EVIDENCE_VIEW_IDS.has(urlEvidenceView) ? (urlEvidenceView as EvidenceView) : "solo",
+  );
+  const [parameter, setParameterState] = useState<string>(searchParams.get("parametro") ?? "");
+
+  function updateUrl(next: { tab?: Tab; seasonId?: string; orderId?: string; evidenceView?: EvidenceView; parameter?: string }) {
     const params = new URLSearchParams(searchParams.toString());
     if (next.tab !== undefined) params.set("aba", next.tab);
     if (next.seasonId !== undefined) { if (next.seasonId) params.set("safra", next.seasonId); else params.delete("safra"); }
     if (next.orderId !== undefined) { if (next.orderId) params.set("ordem", next.orderId); else params.delete("ordem"); }
+    if (next.evidenceView !== undefined) params.set("evidencia", next.evidenceView);
+    if (next.parameter !== undefined) { if (next.parameter) params.set("parametro", next.parameter); else params.delete("parametro"); }
     router.replace(`/talhoes/${field.id}?${params.toString()}`, { scroll: false });
   }
   function selectTab(next: Tab) { setTabState(next); updateUrl({ tab: next }); }
@@ -76,6 +103,8 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     updateUrl({ seasonId: next, orderId: firstOrderOfSeason });
   }
   function selectOrder(next: string) { setSelectedOrderIdState(next); updateUrl({ orderId: next }); }
+  function selectEvidenceView(next: EvidenceView) { setEvidenceViewState(next); updateUrl({ evidenceView: next }); }
+  function selectParameter(next: string) { setParameterState(next); updateUrl({ parameter: next }); }
 
   const [layer, setLayer] = useState<MapLayerResponse | null>(null);
   const [layerLoading, setLayerLoading] = useState(false);
@@ -92,7 +121,8 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     const controller = new AbortController();
     setLayerLoading(true);
     setLayerError(null);
-    fetch(`/api/collection-orders/${selectedOrderId}/map-layer`, { cache: "no-store", signal: controller.signal })
+    const query = parameter ? `?parameter=${encodeURIComponent(parameter)}` : "";
+    fetch(`/api/collection-orders/${selectedOrderId}/map-layer${query}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Não foi possível carregar os pontos desta ordem (HTTP ${response.status}).`);
         return response.json() as Promise<MapLayerResponse>;
@@ -105,11 +135,21 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
         setLayerError(error instanceof Error ? error.message : "Falha ao carregar os pontos desta ordem.");
       });
     return () => controller.abort();
-  }, [selectedOrderId]);
+  }, [selectedOrderId, parameter]);
 
-  const totalPlanned = seasonOrders.reduce((sum, o) => sum + o.plannedPoints, 0);
-  const totalCollected = seasonOrders.reduce((sum, o) => sum + o.collectedPoints, 0);
-  const coveragePct = totalPlanned > 0 ? Math.round((totalCollected / totalPlanned) * 100) : null;
+  const soloColorFor = useMemo(() => (point: MapPoint) => {
+    if (!point.interpretable) return { stroke: "#9AA79F", fill: "#C9D1CC", fillOpacity: point.labResultCount > 0 ? 0.55 : 0.3 };
+    const color = classificationColor(point.classification ?? null);
+    return { stroke: color, fill: color, fillOpacity: 0.85 };
+  }, []);
+  const soloLegend = useMemo(() => {
+    const present = new Set((layer?.points ?? []).map((point) => point.classification).filter(Boolean) as string[]);
+    const entries = Array.from(present).map((label) => ({ label, color: classificationColor(label) }));
+    entries.push({ label: "Sem classificação / sem faixa homologada", color: "#9AA79F" });
+    return entries;
+  }, [layer]);
+  const distribution = useMemo(() => (parameter && layer ? computeParameterDistribution(parameter, layer.points) : null), [parameter, layer]);
+
   const gpsPct = gpsQuality.total > 0 ? Math.round((gpsQuality.confirmedCount / gpsQuality.total) * 100) : null;
 
   // Situação real da avaliação: baseada nas análises desta safra, nunca "0 problemas" quando na verdade
@@ -151,6 +191,18 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     return events.filter((e) => e.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [seasonOrders, seasonAnalyses, ndviSnapshots, seasonReports]);
 
+  // Fase 2, Bloco C: síntese estruturada "o que está disponível / o que exige atenção / próxima ação",
+  // toda derivada de contagens e estados reais já carregados -- ver src/domain/field-overview-synthesis.ts.
+  const synthesis = useMemo(() => computeFieldOverviewSynthesis({
+    hasSeason: seasons.length > 0,
+    seasonOrders,
+    seasonAnalyses,
+    seasonReports,
+    latestNdviCapturedAt: ndviSnapshots[0]?.capturedAt ?? null,
+    gpsPct,
+  }), [seasons, seasonOrders, seasonAnalyses, seasonReports, ndviSnapshots, gpsPct]);
+  const topAlerts = alerts.slice(0, 3);
+
   return (
     <div className="field-overview">
       <div className="field-overview-header card">
@@ -177,43 +229,112 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
 
       {tab === "visao" && (
         <div className="field-overview-panel">
-          {alerts.length > 0 && (
+          {topAlerts.length > 0 && (
             <div className="priority-list card">
-              {alerts.map((a) => (
+              {topAlerts.map((a) => (
                 <Link key={a.id} href={a.href} className="priority-row">
                   <StatusBadge tone={PRIORITY_TONE[a.criticality]}>{a.criticality}</StatusBadge>
                   <div><strong>{a.title}</strong><small>{a.description}</small></div>
                   <Icon name="chevron" size={16}/>
                 </Link>
               ))}
+              {alerts.length > topAlerts.length && <button type="button" className="priority-more" onClick={() => selectTab("decisoes")}>+{alerts.length - topAlerts.length} outras prioridades — ver em Decisões</button>}
             </div>
           )}
-          <RealFieldMap boundary={field.boundary as any} points={[]} height={380} hint="Contorno real do talhão — veja pontos na aba Evidências"/>
-          <div className="field-overview-stats card" style={{ padding: 16 }}>
-            <div><span>Cobertura de coleta</span><strong>{coveragePct != null ? `${coveragePct}%` : "—"}</strong></div>
-            <div><span>Análises nesta safra</span><strong>{seasonAnalyses.length}</strong></div>
-            <div><span>Leituras de satélite (histórico do talhão)</span><strong>{ndviSnapshots.length}</strong></div>
-            <div><span>Relatórios publicados nesta safra</span><strong>{seasonReports.length}</strong></div>
+          <RealFieldMap boundary={field.boundary as any} points={[]} height={340} hint="Contorno real do talhão — veja pontos na aba Evidências"/>
+
+          {/* Fase 2, Bloco C: síntese estruturada com dados reais, nunca parágrafo genérico -- cada linha
+              vem de uma contagem/estado real já carregado (src/domain/field-overview-synthesis.ts). */}
+          <div className="field-overview-synthesis">
+            <div className="card field-overview-synthesis-col">
+              <div className="field-ops-section-head compact"><div><span className="eyebrow">DISPONÍVEL</span><h2>O que já está disponível</h2></div></div>
+              {synthesis.available.length === 0 ? <p className="report-empty-note" style={{ padding: 16 }}>Nada registrado ainda nesta safra.</p>
+                : <ul className="field-overview-synthesis-list">{synthesis.available.map((line, i) => <li key={i}>{line}</li>)}</ul>}
+            </div>
+            <div className="card field-overview-synthesis-col">
+              <div className="field-ops-section-head compact"><div><span className="eyebrow">ATENÇÃO</span><h2>O que exige atenção</h2></div></div>
+              {synthesis.attention.length === 0 ? <p className="report-empty-note" style={{ padding: 16 }}>Nenhuma lacuna identificada nos dados atuais.</p>
+                : <ul className="field-overview-synthesis-list attention">{synthesis.attention.map((line, i) => <li key={i}>{line}</li>)}</ul>}
+            </div>
+            <div className="card field-overview-synthesis-col">
+              <div className="field-ops-section-head compact"><div><span className="eyebrow">PRÓXIMA AÇÃO</span><h2>Próximo passo real</h2></div></div>
+              {synthesis.nextAction
+                ? <Link href={synthesis.nextAction.href} className="field-overview-synthesis-action">{synthesis.nextAction.label}<Icon name="chevron" size={16}/></Link>
+                : <p className="report-empty-note" style={{ padding: 16 }}>Nenhuma etapa pendente identificada no fluxo desta safra.</p>}
+            </div>
           </div>
         </div>
       )}
 
       {tab === "evidencias" && (
         <div className="field-overview-panel">
-          <div className="field-overview-order-picker">
-            {seasonOrders.length === 0 && <p className="report-empty-note">Nenhuma ordem de coleta nesta safra.</p>}
-            {seasonOrders.map((o) => (
-              <button key={o.id} type="button" className={selectedOrderId === o.id ? "active" : ""} onClick={() => selectOrder(o.id)}>
-                {o.code} · {o.depthFromCm}–{o.depthToCm}cm · {o.collectedPoints}/{o.plannedPoints}
-              </button>
-            ))}
+          <div className="field-overview-evidence-subnav">
+            {EVIDENCE_VIEWS.map((v) => <button key={v.id} type="button" className={evidenceView === v.id ? "active" : ""} onClick={() => selectEvidenceView(v.id)}>{v.label}</button>)}
           </div>
-          {selectedOrder && (
-            layerLoading ? <div className="agro-loading"><Icon name="clock" size={15}/>Carregando pontos…</div>
-            : layerError ? <div className="field-ops-message danger"><Icon name="warning" size={17}/><span>{layerError}</span></div>
-            : <RealFieldMap boundary={(layer?.fieldBoundary ?? field.boundary) as any} points={layer?.points ?? []} height={380} hint="Clique num ponto pra ver o resultado"/>
+
+          {evidenceView === "satelite" ? (
+            <FieldNdviPanel fieldId={field.id}/>
+          ) : (
+            <>
+              <div className="field-overview-order-picker">
+                {seasonOrders.length === 0 && <p className="report-empty-note">Nenhuma ordem de coleta nesta safra.</p>}
+                {seasonOrders.map((o) => (
+                  <button key={o.id} type="button" className={selectedOrderId === o.id ? "active" : ""} onClick={() => selectOrder(o.id)}>
+                    {o.code} · {o.depthFromCm}–{o.depthToCm}cm · {o.collectedPoints}/{o.plannedPoints}
+                  </button>
+                ))}
+              </div>
+
+              {evidenceView === "solo" && selectedOrder && (
+                <div className="field-overview-parameter-toolbar">
+                  <label><span>Parâmetro</span>
+                    <select value={parameter} onChange={(e) => selectParameter(e.target.value)}>
+                      <option value="">Selecione um parâmetro</option>
+                      {(layer?.availableParameters ?? []).map((code) => <option key={code} value={code}>{code}</option>)}
+                    </select>
+                  </label>
+                  <span className="field-overview-depth-context"><Icon name="location" size={13}/>Profundidade desta coleta: {selectedOrder.depthFromCm}–{selectedOrder.depthToCm} cm</span>
+                  {layer?.analysisId && <Link href={`/analises/${layer.analysisId}`} className="button ghost small">Abrir análise de origem</Link>}
+                  {layer?.reportId && <Link href={`/relatorios/talhao/${layer.analysisId}`} className="button ghost small">Abrir laudo publicado</Link>}
+                </div>
+              )}
+
+              {selectedOrder && (
+                layerLoading ? <div className="agro-loading"><Icon name="clock" size={15}/>Carregando pontos…</div>
+                : layerError ? <div className="field-ops-message danger"><Icon name="warning" size={17}/><span>{layerError}</span></div>
+                : <RealFieldMap
+                    boundary={(layer?.fieldBoundary ?? field.boundary) as any}
+                    points={layer?.points ?? []}
+                    height={380}
+                    colorFor={evidenceView === "solo" && parameter ? soloColorFor : undefined}
+                    legend={evidenceView === "solo" && parameter ? soloLegend : undefined}
+                    hint={evidenceView === "solo" && parameter ? `Camada: ${parameter}` : "Clique num ponto pra ver o resultado"}
+                  />
+              )}
+
+              {/* Fase 2, Bloco B: nunca esconde o valor observado só porque falta faixa homologada -- mostra
+                  a distribuição real (contagem, mín/máx/média/mediana, quantos pontos ainda sem valor) mesmo
+                  quando nenhum ponto é interpretável ainda. */}
+              {evidenceView === "solo" && parameter && distribution && (
+                <div className="card field-overview-distribution">
+                  <div className="field-ops-section-head compact"><div><span className="eyebrow">DISTRIBUIÇÃO · {parameter}</span><h2>Valores observados nesta coleta</h2></div></div>
+                  {distribution.observedCount === 0 ? (
+                    <p className="report-empty-note" style={{ padding: 16 }}>Nenhum ponto desta coleta tem resultado lançado para {parameter} ainda.</p>
+                  ) : (
+                    <dl className="field-overview-distribution-stats">
+                      <div><dt>Amostras coletadas</dt><dd>{distribution.sampleCount}</dd></div>
+                      <div><dt>Com valor lançado</dt><dd>{distribution.observedCount}</dd></div>
+                      <div><dt>Sem valor ainda</dt><dd>{distribution.missingCount}</dd></div>
+                      <div><dt>Mínimo</dt><dd>{distribution.min?.toFixed(2)} {distribution.unit}</dd></div>
+                      <div><dt>Máximo</dt><dd>{distribution.max?.toFixed(2)} {distribution.unit}</dd></div>
+                      <div><dt>Média</dt><dd>{distribution.mean?.toFixed(2)} {distribution.unit}</dd></div>
+                      <div><dt>Mediana</dt><dd>{distribution.median?.toFixed(2)} {distribution.unit}</dd></div>
+                    </dl>
+                  )}
+                </div>
+              )}
+            </>
           )}
-          <FieldNdviPanel fieldId={field.id}/>
         </div>
       )}
 

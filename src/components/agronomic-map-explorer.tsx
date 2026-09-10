@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { classificationColor } from "@/lib/classification-colors";
+import { computeParameterDistribution } from "@/domain/parameter-distribution";
+import { dominantZoneColor, NDVI_ZONE_COLOR } from "@/components/field-ndvi-panel";
+import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 
@@ -22,7 +26,11 @@ type MapLayerResponse = {
   interpretationStatus: string | null;
   confidence: { score: number; level: string } | null;
   trace: { cropProfileCode: string | null; cropProfileVersion: string | null } | null;
+  analysisId: string | null;
+  reportId: string | null;
 };
+
+type NdviSnapshot = { capturedAt: string; meanNdvi: number; source: string; cloudCoverPct: number | null; zoneBreakdownPct: Partial<Record<string, number>> };
 
 const STATUS_LABEL: Record<string, string> = {
   CALCULATED: "Calculado, sem revisão",
@@ -32,15 +40,43 @@ const STATUS_LABEL: Record<string, string> = {
   PUBLISHED: "Publicada",
 };
 
+/**
+ * Explorador de mapas como área de trabalho (RAIZ 2.0 Fase 2, Bloco A): lista pesquisável + mapa com
+ * espaço dominante + painel de detalhe (embutido no próprio RealFieldMap) + controles de camada com
+ * metadado (o que representa/unidade/data/fonte/método/limitações). Seleção (URL: ordem/parâmetro/
+ * status/satélite) sobrevive a reload e navegação, mesmo padrão já usado no Talhão 360°.
+ */
 export function AgronomicMapExplorer() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOrderId, setSelectedOrderId] = useState("");
-  const [parameter, setParameter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "collected" | "pending">("all");
+  const [search, setSearch] = useState("");
+  const [mobileView, setMobileView] = useState<"lista" | "mapa">("lista");
+
+  const [selectedOrderId, setSelectedOrderIdState] = useState(searchParams.get("ordem") ?? "");
+  const [parameter, setParameterState] = useState(searchParams.get("parametro") ?? "");
+  const [statusFilter, setStatusFilterState] = useState<"all" | "collected" | "pending">((searchParams.get("status") as any) ?? "all");
   const [layerMode, setLayerMode] = useState<"points" | "interpolation">("points");
+  const [satelliteLayer, setSatelliteLayerState] = useState(searchParams.get("satelite") === "1");
   const [layer, setLayer] = useState<MapLayerResponse | null>(null);
   const [layerLoading, setLayerLoading] = useState(false);
+  const [ndvi, setNdvi] = useState<NdviSnapshot | null>(null);
+  const [ndviLoading, setNdviLoading] = useState(false);
+
+  function updateUrl(next: { ordem?: string; parametro?: string; status?: string; satelite?: boolean }) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.ordem !== undefined) { if (next.ordem) params.set("ordem", next.ordem); else params.delete("ordem"); }
+    if (next.parametro !== undefined) { if (next.parametro) params.set("parametro", next.parametro); else params.delete("parametro"); }
+    if (next.status !== undefined) { if (next.status !== "all") params.set("status", next.status); else params.delete("status"); }
+    if (next.satelite !== undefined) { if (next.satelite) params.set("satelite", "1"); else params.delete("satelite"); }
+    router.replace(`/mapas?${params.toString()}`, { scroll: false });
+  }
+  function setSelectedOrderId(next: string) { setSelectedOrderIdState(next); updateUrl({ ordem: next }); }
+  function setParameter(next: string) { setParameterState(next); updateUrl({ parametro: next }); }
+  function setStatusFilter(next: "all" | "collected" | "pending") { setStatusFilterState(next); updateUrl({ status: next }); }
+  function setSatelliteLayer(next: boolean) { setSatelliteLayerState(next); updateUrl({ satelite: next }); }
 
   useEffect(() => {
     void fetch("/api/collection-orders", { cache: "no-store" })
@@ -48,7 +84,7 @@ export function AgronomicMapExplorer() {
       .then((data) => {
         const list: OrderSummary[] = data.orders ?? [];
         setOrders(list);
-        if (list.length) setSelectedOrderId((current) => current || list[0].id);
+        setSelectedOrderIdState((current) => (current && list.some((o) => o.id === current)) ? current : (list[0]?.id ?? ""));
         setLoading(false);
       });
   }, []);
@@ -70,6 +106,15 @@ export function AgronomicMapExplorer() {
     return Array.from(map.values());
   }, [orders]);
 
+  // Fase 2, Bloco A: lista pesquisável -- filtra por talhão, propriedade ou cliente (nunca esconde um
+  // talhão que já está selecionado, mesmo que a busca digitada não bata mais com ele).
+  const filteredFieldGroups = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return fieldGroups;
+    return fieldGroups.filter((g) => g.fieldId === selectedOrder?.fieldId
+      || g.fieldName.toLowerCase().includes(term) || g.propertyName.toLowerCase().includes(term) || g.clientName.toLowerCase().includes(term));
+  }, [fieldGroups, search, selectedOrder]);
+
   useEffect(() => {
     if (!selectedOrderId) { setLayer(null); return; }
     setLayerLoading(true);
@@ -79,9 +124,18 @@ export function AgronomicMapExplorer() {
       .then((data: MapLayerResponse) => {
         setLayer(data);
         setLayerLoading(false);
-        if (!parameter && data.availableParameters?.length) setParameter(data.availableParameters[0]);
       });
   }, [selectedOrderId, parameter]);
+
+  // Camada "Satélite (talhão inteiro)": só busca quando ligada, e só o que já está salvo (GET, nunca
+  // consulta o provedor externo automaticamente) -- consistente com o painel de NDVI do Talhão 360°.
+  useEffect(() => {
+    if (!satelliteLayer || !selectedOrder) { setNdvi(null); return; }
+    setNdviLoading(true);
+    void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => { setNdvi(data.latest ?? null); setNdviLoading(false); });
+  }, [satelliteLayer, selectedOrder]);
 
   const points: MapPoint[] = useMemo(() => {
     const source = layer?.points ?? selectedOrder?.points ?? [];
@@ -94,7 +148,7 @@ export function AgronomicMapExplorer() {
       return { stroke: collected ? "#00C4D6" : "#B86F3E", fill: collected ? "#00C4D6" : "#F2C879", fillOpacity: collected ? 0.9 : 0.6 };
     }
     if (point.interpretable) {
-      const color = classificationColor(point.classification);
+      const color = classificationColor(point.classification ?? null);
       return { stroke: color, fill: color, fillOpacity: 0.85 };
     }
     return { stroke: "#9AA79F", fill: "#C9D1CC", fillOpacity: point.labResultCount > 0 ? 0.55 : 0.3 };
@@ -104,9 +158,17 @@ export function AgronomicMapExplorer() {
     if (!parameter) return [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
     const present = new Set((layer?.points ?? []).map((point) => point.classification).filter(Boolean) as string[]);
     const entries = Array.from(present).map((label) => ({ label, color: classificationColor(label) }));
-    entries.push({ label: "Sem classificação", color: "#9AA79F" });
+    entries.push({ label: "Sem classificação / sem faixa homologada", color: "#9AA79F" });
     return entries;
   }, [parameter, layer]);
+
+  const distribution = useMemo(() => (parameter && layer ? computeParameterDistribution(parameter, layer.points) : null), [parameter, layer]);
+  const boundaryFillColor = satelliteLayer && ndvi ? dominantZoneColor(ndvi.zoneBreakdownPct) : undefined;
+
+  function selectField(orderId: string) {
+    setSelectedOrderId(orderId);
+    setMobileView("mapa");
+  }
 
   if (loading) return <div className="agro-loading"><Icon name="clock" size={15}/>Carregando mapa agronômico…</div>;
 
@@ -116,16 +178,23 @@ export function AgronomicMapExplorer() {
 
   return (
     <div className="map-explorer">
-      <div className="map-explorer-list card">
-        <div className="field-ops-section-head compact"><div><span className="eyebrow">TALHÕES</span><h2>Selecione</h2></div><span className="field-ops-count">{fieldGroups.length}</span></div>
-        {fieldGroups.map((group) => {
+      <div className="map-explorer-mobile-tabs">
+        <button type="button" className={mobileView === "lista" ? "active" : ""} onClick={() => setMobileView("lista")}><Icon name="list" size={14}/>Lista</button>
+        <button type="button" className={mobileView === "mapa" ? "active" : ""} onClick={() => setMobileView("mapa")}><Icon name="map" size={14}/>Mapa</button>
+      </div>
+
+      <div className={`map-explorer-list card ${mobileView === "lista" ? "" : "map-explorer-hide-mobile"}`}>
+        <div className="field-ops-section-head compact"><div><span className="eyebrow">TALHÕES</span><h2>Selecione</h2></div><span className="field-ops-count">{filteredFieldGroups.length}</span></div>
+        <div className="map-explorer-search"><Icon name="search" size={14}/><input type="search" placeholder="Buscar talhão, propriedade ou cliente…" value={search} onChange={(e) => setSearch(e.target.value)}/></div>
+        {filteredFieldGroups.length === 0 && <p className="report-empty-note" style={{ padding: 16 }}>Nenhum talhão encontrado para &quot;{search}&quot;.</p>}
+        {filteredFieldGroups.map((group) => {
           const active = group.orders.some((order) => order.id === selectedOrderId);
           const totalPlanned = group.orders.reduce((sum, order) => sum + order.plannedPoints, 0);
           const totalCollected = group.orders.reduce((sum, order) => sum + order.collectedPoints, 0);
           return (
             <div key={group.fieldId} className="map-explorer-field-group">
-              <button className={`field-order-item ${active ? "active" : ""}`} onClick={() => setSelectedOrderId(group.orders[0].id)}>
-                <span><strong>{group.fieldName}</strong><small>{group.clientName} · {group.propertyName}{group.orders.length > 1 ? ` · ${group.orders.length} ordens` : ""}</small></span>
+              <button className={`field-order-item ${active ? "active" : ""}`} onClick={() => selectField(group.orders[0].id)}>
+                <span><strong>{group.fieldName}</strong><small>{group.clientName} · {group.propertyName}{group.orders.length > 1 ? ` · ${group.orders.length} ordens` : ""}{group.orders[0]?.seasonLabel ? ` · ${group.orders[0].seasonLabel}` : ""}</small></span>
                 <b>{totalCollected}/{totalPlanned}</b>
               </button>
               {/* Atalho real pra Talhão 360° (Fase 1, Etapa 5) direto da lista de talhões do mapa. */}
@@ -142,7 +211,7 @@ export function AgronomicMapExplorer() {
         })}
       </div>
 
-      <div className="map-explorer-main card">
+      <div className={`map-explorer-main card ${mobileView === "mapa" ? "" : "map-explorer-hide-mobile"}`}>
         {selectedOrder && (
           <>
             <div className="map-explorer-toolbar">
@@ -163,13 +232,33 @@ export function AgronomicMapExplorer() {
                 <button type="button" className={layerMode === "points" ? "active" : ""} onClick={() => setLayerMode("points")}>Pontos</button>
                 <button type="button" className={layerMode === "interpolation" ? "active" : ""} onClick={() => setLayerMode("interpolation")}>Interpolação</button>
               </div>
+              <label className="map-explorer-satellite-toggle">
+                <input type="checkbox" checked={satelliteLayer} onChange={(e) => setSatelliteLayer(e.target.checked)}/>
+                <span>Satélite (talhão inteiro)</span>
+              </label>
+              {layer?.analysisId && <Link href={`/analises/${layer.analysisId}`} className="button ghost small">Análise de origem</Link>}
             </div>
 
-            {parameter && layer && (
+            {/* Fase 2, Bloco A: cada camada ativa informa o que representa, unidade, data, fonte, método e
+                limitações -- nunca um toggle "mudo" sem contexto de leitura. */}
+            <div className="map-explorer-layer-info">
+              {!parameter ? (
+                <p><strong>Camada: status de coleta.</strong> Representa se o ponto planejado já foi visitado em campo. Sem unidade. Fonte: pontos de amostragem reais (PostGIS). Sem limitação além da posição (ver detalhe de GPS ao clicar num ponto).</p>
+              ) : (
+                <p><strong>Camada: {parameter}.</strong> Representa o valor laboratorial observado em cada ponto e, quando existe faixa homologada, a classificação agronômica. Unidade: {distribution?.unit ?? "varia por ponto — ver detalhe"}. Fonte: laudo laboratorial (lab_results). Método: varia por ponto — clique no ponto pra ver o método exato. Limitação: cinza = sem classificação (falta faixa homologada ou parâmetro não coberto), não significa "adequado".</p>
+              )}
+              {satelliteLayer && (
+                ndviLoading ? <p><Icon name="clock" size={12}/> Carregando leitura de satélite…</p>
+                : ndvi ? <p><strong>Camada: satélite (talhão inteiro).</strong> Representa a faixa de vigor NDVI dominante de {new Date(ndvi.capturedAt).toLocaleDateString("pt-BR")} ({ndvi.source}){ndvi.cloudCoverPct != null ? `, ${Math.round(ndvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. <strong>Limitação:</strong> é uma aproximação de talhão inteiro (esta instância só guarda estatística agregada, não raster) — a cor preenche o contorno todo, não representa variação espacial real dentro do talhão.</p>
+                : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
+              )}
+            </div>
+
+            {parameter && layer && layer.interpretationStatus && (
               <div className="map-explorer-context">
                 <span><b>{layer.trace?.cropProfileCode ?? "—"}</b><small>perfil de cultura</small></span>
                 <span><b>{layer.confidence ? `${layer.confidence.score}/100` : "—"}</b><small>confiabilidade</small></span>
-                <span><StatusBadge tone={layer.interpretationStatus === "APPROVED" ? "success" : layer.interpretationStatus ? "review" : "waiting"}>{layer.interpretationStatus ? (STATUS_LABEL[layer.interpretationStatus] ?? layer.interpretationStatus) : "Sem interpretação"}</StatusBadge></span>
+                <span><StatusBadge tone={layer.interpretationStatus === "APPROVED" ? "success" : "review"}>{STATUS_LABEL[layer.interpretationStatus] ?? layer.interpretationStatus}</StatusBadge></span>
               </div>
             )}
 
@@ -188,7 +277,32 @@ export function AgronomicMapExplorer() {
             {layerLoading ? (
               <div className="agro-loading"><Icon name="clock" size={15}/>Carregando camada…</div>
             ) : (
-              <RealFieldMap boundary={layer?.fieldBoundary ?? selectedOrder.fieldBoundary} points={points} height={420} colorFor={colorFor} legend={legend} hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}/>
+              <RealFieldMap boundary={layer?.fieldBoundary ?? selectedOrder.fieldBoundary} points={points} height={420} colorFor={colorFor} legend={legend} boundaryFillColor={boundaryFillColor ?? undefined} hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}/>
+            )}
+
+            {parameter && distribution && (
+              <div className="map-explorer-distribution">
+                {distribution.observedCount === 0 ? (
+                  <p className="report-empty-note">Nenhum ponto desta coleta tem resultado lançado para {parameter} ainda.</p>
+                ) : (
+                  <dl>
+                    <div><dt>Amostras</dt><dd>{distribution.sampleCount}</dd></div>
+                    <div><dt>Com valor</dt><dd>{distribution.observedCount}</dd></div>
+                    <div><dt>Sem valor</dt><dd>{distribution.missingCount}</dd></div>
+                    <div><dt>Mín.</dt><dd>{distribution.min?.toFixed(2)}</dd></div>
+                    <div><dt>Máx.</dt><dd>{distribution.max?.toFixed(2)}</dd></div>
+                    <div><dt>Média</dt><dd>{distribution.mean?.toFixed(2)}</dd></div>
+                    <div><dt>Mediana</dt><dd>{distribution.median?.toFixed(2)}</dd></div>
+                  </dl>
+                )}
+              </div>
+            )}
+            {satelliteLayer && ndvi && (
+              <ul className="ndvi-zone-legend" style={{ padding: "0 4px" }}>
+                {Object.entries(ndvi.zoneBreakdownPct).filter(([, pct]) => (pct ?? 0) > 0).map(([zone, pct]) => (
+                  <li key={zone}><i style={{ background: NDVI_ZONE_COLOR[zone as keyof typeof NDVI_ZONE_COLOR] }}/>{VIGOR_ZONE_LABELS[zone as keyof typeof VIGOR_ZONE_LABELS] ?? zone} — {pct}%</li>
+                ))}
+              </ul>
             )}
           </>
         )}
