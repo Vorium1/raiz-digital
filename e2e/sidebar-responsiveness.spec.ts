@@ -75,6 +75,13 @@ test("Sidebar 1366×768: navegação rola internamente, topo e rodapé (Configur
 });
 
 test("Sidebar em várias resoluções reais de notebook/desktop: sem sobreposição, sem scroll horizontal, mapas e dashboard continuam usáveis", async ({ page }) => {
+  // Este teste deliberadamente navega 8 vezes (4 viewports × /dashboard + /mapas, esta última pesada --
+  // mapa real + tiles), cada uma esperando "networkidle". Isso passa perto do limite mesmo sozinho (~28s
+  // observado) e estourava os 30s padrão do Playwright quando rodava ao lado de outro worker (achado real
+  // na validação pós-merge da Fase 3 -> develop, 2026-09-10) -- não é falha de aplicação (o mesmo teste,
+  // isolado, sempre passou), é margem de tempo insuficiente para o volume de trabalho que o teste mesmo
+  // decide fazer. Timeout maior, sem enfraquecer nenhuma asserção abaixo.
+  test.setTimeout(90_000);
   await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
 
   for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1536, height: 864 }, { width: 1920, height: 1080 }]) {
