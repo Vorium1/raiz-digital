@@ -208,11 +208,13 @@ export async function buildComparisonEvidence(tenantId: string, userId: string, 
 // intelligence
 // ---------------------------------------------------------------------------------------------
 
-export type IntelligenceEvidence = {
-  kind: "intelligence";
-  items: Array<{ analysisId: string; analysisCode: string; clientName: string; propertyName: string; fieldName: string; seasonLabel: string; status: string; bucket: QueueBucket; revisionCount: number }>;
-  totalCount: number;
-};
+export type IntelligenceEvidence =
+  | { kind: "intelligence"; ready: true; items: Array<{ analysisId: string; analysisCode: string; clientName: string; propertyName: string; fieldName: string; seasonLabel: string; status: string; bucket: QueueBucket; revisionCount: number }>; totalCount: number }
+  /** Pré-ajuste 2 (fechamento final da Fase 4A): pelo menos um dos ids do filtro veio preenchido mas fora
+   *  do formato de uuid (`ScreenState.invalidFilter`, ver `assistant-screen.ts`). Nunca roda a consulta
+   *  nesse caso -- devolver a fila inteira (ignorando só o filtro quebrado) seria mostrar MAIS dado do que
+   *  o usuário pediu, não menos; e nunca deixa o valor malformado chegar no `::uuid` do PostgreSQL. */
+  | { kind: "intelligence"; ready: false };
 
 /**
  * Fechamento técnico (2º pedido, item 3): a página `/inteligencia` (`src/app/(platform)/inteligencia/
@@ -224,6 +226,7 @@ export type IntelligenceEvidence = {
  */
 export async function buildIntelligenceEvidence(tenantId: string, userId: string, state: AssistantScreenState | undefined): Promise<IntelligenceEvidence> {
   const s = state && state.screen === "intelligence" ? state : undefined;
+  if (s?.invalidFilter) return { kind: "intelligence", ready: false };
   const rows = await getIntelligenceQueue(tenantId, { clientId: s?.clientId ?? null, propertyId: s?.propertyId ?? null, fieldId: s?.fieldId ?? null, seasonId: s?.seasonId ?? null }, userId);
   const withBucket = rows.map((r: any) => ({ ...r, bucket: interpretationQueueBucket(r) as QueueBucket }));
   const filtered = withBucket.filter((row) => {
@@ -234,6 +237,7 @@ export async function buildIntelligenceEvidence(tenantId: string, userId: string
   });
   return {
     kind: "intelligence",
+    ready: true,
     items: filtered.slice(0, LIST_LIMIT).map((r) => ({ analysisId: r.analysisId, analysisCode: r.analysisCode, clientName: r.clientName, propertyName: r.propertyName, fieldName: r.fieldName, seasonLabel: r.seasonLabel, status: r.status, bucket: r.bucket, revisionCount: r.revisionCount })),
     totalCount: filtered.length,
   };

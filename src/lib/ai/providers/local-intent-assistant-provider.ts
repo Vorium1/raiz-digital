@@ -1,10 +1,12 @@
 import type { OperationalAssistantProvider, OperationalAssistantRequest, OperationalAssistantResponse } from "@/lib/ai/operational-assistant-provider";
 import type { AssistantCard, AssistantStructuredResponse } from "@/lib/ai/assistant-response-schema";
 import { computeRequiresProfessionalReview } from "@/lib/ai/assistant-response-schema";
+import type { AssistantAction } from "@/lib/ai/assistant-actions-schema";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { getExecutiveDashboard } from "@/lib/repositories/dashboard";
 import { countLabsImportedThisMonth, listLowestConfidenceAnalyses, listAnalysesAwaitingReview, findPropertyByName, compareLatestTwoSeasons } from "@/lib/repositories/assistant-queries";
-import { buildPropertyEvidence, type FieldEvidence, type PropertyEvidence, type IntelligenceEvidence } from "@/lib/ai/assistant-evidence";
+import { buildPropertyEvidence, type FieldEvidence, type PropertyEvidence, type IntelligenceEvidence, type MapEvidence, type ComparisonEvidence } from "@/lib/ai/assistant-evidence";
+import type { AgronomicEvidencePackage } from "@/lib/ai/evidence-package";
 import { QUEUE_BUCKET_META } from "@/domain/interpretation-status";
 
 /**
@@ -13,10 +15,14 @@ import { QUEUE_BUCKET_META } from "@/domain/interpretation-status";
  * lugar do antigo `{answer: string, cards}`.
  *
  * Preserva as 8 intenções originais (nenhuma removida) e a mesma fonte de dado real por trás de cada uma.
- * Fechamento técnico (2º pedido, item 3) acrescentou uma 9ª intenção real: dentro da tela de Inteligência,
- * a fila filtrada (mesma regra de bucket da própria tela) passou a ser narrada usando o Evidence Package
- * já resolvido (Bloco 2), que antes existia mas nunca era consumido por nenhuma resposta -- prova real de
- * que Bloco 1 (contexto) e Bloco 2 (evidência) alimentam Bloco 3, não são três camadas desconectadas.
+ * Fechamento técnico (2º pedido, item 3) acrescentou uma 9ª intenção: dentro da tela de Inteligência, a
+ * fila filtrada (mesma regra de bucket da própria tela) passou a ser narrada usando o Evidence Package já
+ * resolvido (Bloco 2), que antes existia mas nunca era consumido por nenhuma resposta. Bloco 5 acrescentou
+ * mais 3 (regra técnica/confiabilidade/pontos de atenção de uma análise, o que está selecionado no mapa +
+ * "mostre só pendentes" como ação real, e o resumo de um comparativo já calculado) -- todas reaproveitando
+ * Evidence Packages que o Bloco 2 já montava mas que nenhuma resposta em texto consumia ainda. 12
+ * intenções no total, cada uma prova real de que Bloco 1 (contexto) e Bloco 2 (evidência) alimentam
+ * Bloco 3, não são camadas desconectadas.
  *
  * `hypotheses` fica sempre vazio aqui, de propósito -- este provedor é determinístico, nunca interpreta,
  * só organiza fato real. `requires_professional_review` é sempre calculado por
@@ -38,7 +44,14 @@ function normalize(text: string) {
   return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards">;
+/**
+ * Bloco 4 -- `actions` é opcional e sempre CRU (`AssistantAction[]`, nunca `ResolvedAssistantAction`): o
+ * provedor só sugere a INTENÇÃO tipada aqui; `/api/assistant` (`route.ts`) é quem valida posse/tenant e
+ * transforma isso num `href` real antes de qualquer coisa chegar ao client. Cada branch de intenção abaixo
+ * só anexa uma ação quando ela corresponde a uma funcionalidade que JÁ EXISTE de verdade na RAIZ (mapa,
+ * comparativos, relatório, talhão, fila de inteligência) -- nunca uma ação especulativa.
+ */
+type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards"> & { actions?: AssistantAction[] };
 
 function empty(summary: string, cards: AssistantCard[] = [], missingInformation: string[] = []): PartialResponse {
   return { summary, facts: [], attention_points: [], missing_information: missingInformation, cards };
@@ -53,15 +66,98 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
   // fila global sem filtro. Checado antes de qualquer intenção genérica: se o usuário está filtrando a fila
   // (ex.: só "Aguardando revisão"), a resposta precisa refletir exatamente esse recorte, nunca a fila
   // inteira sem filtro.
-  if (request.screenContext?.type === "intelligence" && request.evidence?.found && request.evidence.kind === "intelligence" && /(fila|pendenc|quant|situac)/.test(q)) {
+  if (request.screenContext?.type === "intelligence" && request.evidence?.found && request.evidence.kind === "intelligence" && /(fila|pendenc|quant|situac|revis)/.test(q)) {
     const evidence = request.evidence.evidence as IntelligenceEvidence;
+    // Pré-ajuste 2: pelo menos um id do filtro (client/propriedade/talhão/safra) veio preenchido mas fora
+    // do formato de uuid -- nunca responde com a fila inteira sem filtro (seria mostrar mais do que o
+    // usuário pediu), admite honestamente que o filtro não pôde ser aplicado.
+    if (!evidence.ready) return empty("O filtro atual da fila de Inteligência não pôde ser aplicado (um dos ids informados não é válido).", [], ["Um ou mais filtros de cliente/propriedade/talhão/safra vieram com formato inválido -- corrija o filtro na tela de Inteligência e pergunte de novo."]);
     if (!evidence.totalCount) return { ...empty("Nenhuma análise corresponde aos filtros atuais da fila de Inteligência."), facts: [{ label: "Itens na fila (com os filtros atuais)", value: "0", source: "database" }] };
+    const s = request.screenState?.screen === "intelligence" ? request.screenState : undefined;
+    const hasFilter = Boolean(s?.clientId || s?.propertyId || s?.fieldId || s?.seasonId || s?.interpretationState || s?.reviewState);
     return {
       summary: `${evidence.totalCount} item(ns) na fila de Inteligência com os filtros atuais.`,
       facts: [{ label: "Itens na fila (com os filtros atuais)", value: String(evidence.totalCount), source: "database" }],
       attention_points: evidence.items.slice(0, 5).map((i) => ({ label: `${i.clientName} · ${i.fieldName}`, reason: `${QUEUE_BUCKET_META[i.bucket].label} — ${i.analysisCode}` })),
       missing_information: [],
       cards: evidence.items.slice(0, 5).map((i) => ({ title: `${i.analysisCode} — ${i.clientName}`, description: i.fieldName, href: `/analises/${i.analysisId}` })),
+      // Só sugere a ação "ver com este filtro" quando um filtro real está aplicado -- sem isso, seria um
+      // link pra exatamente a mesma tela sem filtro nenhum, uma ação sem propósito real.
+      actions: hasFilter ? [{ kind: "filter_intelligence", clientId: s?.clientId, propertyId: s?.propertyId, fieldId: s?.fieldId, seasonId: s?.seasonId, interpretationState: s?.interpretationState as "BLOQUEADA" | "INTERPRETAVEL" | undefined, reviewState: s?.reviewState as "AGUARDANDO_REVISAO" | "REVISAO_EM_ANDAMENTO" | "APROVADA" | undefined }] : undefined,
+    };
+  }
+
+  // Bloco 5 -- dentro de uma análise, narra regra técnica usada e confiabilidade (ambas já presentes em
+  // `AgronomicEvidencePackage.ruleUsed`/`.confidence`, Fase 3, nunca consumidas por nenhuma resposta em
+  // texto antes) e pontos de atenção reais (parâmetros não interpretáveis, com o motivo real do motor).
+  if (request.screenContext?.type === "analysis" && request.evidence?.found && request.evidence.kind === "analysis" && /(regra|confiabilidade|ponto.*atenc|atenc.*ponto)/.test(q)) {
+    const evidence = request.evidence.evidence as AgronomicEvidencePackage;
+    const facts: PartialResponse["facts"] = [];
+    if (evidence.confidence) facts.push({ label: "Confiabilidade da interpretação", value: `${evidence.confidence.score}/100 (${evidence.confidence.level})`, source: "database" });
+    const ruleName = evidence.ruleUsed?.cropProfileCode ?? evidence.ruleUsed?.cropProfileName;
+    if (ruleName) facts.push({ label: "Regra técnica usada", value: `${ruleName}${evidence.ruleUsed?.version ? ` v${evidence.ruleUsed.version}` : ""}`, source: "database" });
+    const attentionPoints = evidence.classifications.filter((c) => !c.interpretable).map((c) => ({ label: `${c.sampleCode} · ${c.parameterCode}`, reason: c.reason ?? "Não interpretável" }));
+    if (!facts.length && !attentionPoints.length) return empty("Ainda não há regra técnica, confiabilidade ou pontos de atenção calculados para esta análise.");
+    return {
+      summary: evidence.confidence ? `Confiabilidade desta interpretação: ${evidence.confidence.score}/100 (${evidence.confidence.level}).` : "Esta análise ainda não tem confiabilidade calculada.",
+      facts,
+      attention_points: attentionPoints,
+      missing_information: [],
+      cards: [],
+    };
+  }
+
+  // Bloco 5 -- dentro do mapa, narra o talhão selecionado (quando há um) ou admite honestamente que nada
+  // está selecionado. "Mostre apenas os pontos pendentes" vira uma ação real (`show_on_map`, status
+  // "pending"), nunca só texto -- é exatamente pra isso que o Bloco 4 existe.
+  if (request.screenContext?.type === "map" && request.evidence?.found && request.evidence.kind === "map") {
+    const mapEvidence = request.evidence.evidence as MapEvidence;
+    const s = request.screenState?.screen === "map" ? request.screenState : undefined;
+    if (/(pendente|pending)/.test(q) && mapEvidence.delegatedTo === "field" && s?.collectionOrderId) {
+      const pending = mapEvidence.field.collectionSummary.plannedPoints - mapEvidence.field.collectionSummary.collectedPoints;
+      return {
+        summary: `Filtrando o mapa pra mostrar só os pontos pendentes (${pending} de ${mapEvidence.field.collectionSummary.plannedPoints}).`,
+        facts: [{ label: "Pontos pendentes", value: String(pending), source: "database" }],
+        attention_points: [],
+        missing_information: [],
+        cards: [],
+        actions: [{ kind: "show_on_map", collectionOrderId: s.collectionOrderId, status: "pending" }],
+      };
+    }
+    if (/(vendo|mostra|mapa)/.test(q)) {
+      if (mapEvidence.delegatedTo === "field") {
+        const f = mapEvidence.field;
+        return {
+          summary: `Você está vendo o talhão ${f.field.name} (${f.field.propertyName}).`,
+          facts: [
+            { label: "Área", value: `${f.field.areaHa} ha`, source: "database" },
+            { label: "Pontos coletados", value: `${f.collectionSummary.collectedPoints} de ${f.collectionSummary.plannedPoints}`, source: "database" },
+          ],
+          attention_points: [],
+          missing_information: [],
+          cards: [],
+        };
+      }
+      return empty("Nenhum talhão selecionado no mapa no momento -- o mapa está mostrando a visão geral da operação.", [], ["Nenhuma ordem de coleta selecionada no mapa."]);
+    }
+  }
+
+  // Bloco 5 -- dentro de um comparativo, narra o que já foi calculado (`ComparisonEvidence`, Bloco 2, nunca
+  // narrado antes). Checado ANTES do `/resum/` genérico (que faria busca de propriedade por nome e erraria
+  // aqui).
+  if (request.screenContext?.type === "comparison" && request.evidence?.found && request.evidence.kind === "comparison" && /(resum|diferenc|compar)/.test(q)) {
+    const evidence = request.evidence.evidence as ComparisonEvidence;
+    if (!evidence.ready) return empty("Ainda não há dois itens selecionados para comparar -- escolha A e B na tela de Comparativos.", [], ["Comparativo sem os dois lados (A/B) selecionados ainda."]);
+    return {
+      summary: `Comparando ${evidence.labelA} com ${evidence.labelB}: ${evidence.rowCount} parâmetro(s) com diferença calculada.`,
+      facts: [
+        { label: "Lado A", value: evidence.labelA, source: "database" },
+        { label: "Lado B", value: evidence.labelB, source: "database" },
+        { label: "Parâmetros comparados", value: String(evidence.rowCount), source: "database" },
+      ],
+      attention_points: [],
+      missing_information: [],
+      cards: [],
     };
   }
 
@@ -142,6 +238,7 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
           attention_points: [],
           missing_information: [],
           cards: [{ title: "Ver comparativo completo", description: "Abrir Comparativos com estas safras", href: "/comparativos" }],
+          actions: [{ kind: "open_comparison", mode: "seasons", a: latest.id, b: previous.id }],
         };
       }
       const comparison = await compareLatestTwoSeasons(tenantId, request.screenContext.id, userId);
@@ -155,6 +252,7 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
         attention_points: [],
         missing_information: [],
         cards: [{ title: "Ver comparativo completo", description: "Abrir Comparativos com estas safras", href: "/comparativos" }],
+        actions: [{ kind: "open_comparison", mode: "seasons", a: comparison.latest.id, b: comparison.previous.id }],
       };
     }
     return empty("Para comparar safras preciso saber o talhão — abra o talhão desejado e pergunte de novo, ou use a tela de Comparativos.", [{ title: "Abrir Comparativos", description: "Escolher talhão e safras manualmente", href: "/comparativos" }], ["Nenhum talhão identificado no contexto atual."]);
@@ -225,6 +323,7 @@ function summarizePropertyEvidence(evidence: PropertyEvidence): PartialResponse 
     attention_points: evidence.attentionFields.map((f) => ({ label: f.name, reason: f.notInterpretableReason ?? f.evaluationStatus })),
     missing_information: [],
     cards: [{ title: `Ver relatório executivo de ${evidence.property.name}`, description: "Relatório completo com todos os talhões", href: `/relatorios/propriedade/${evidence.property.id}` }],
+    actions: [{ kind: "open_report", reportType: "property", id: evidence.property.id }],
   };
 }
 
@@ -253,6 +352,14 @@ export const localIntentAssistantProvider: OperationalAssistantProvider = {
   isRealLanguageModel: false,
   async ask(request: OperationalAssistantRequest): Promise<OperationalAssistantResponse> {
     const partial = isInvalidContext(request) ? INVALID_CONTEXT_RESPONSE : await resolveIntent(request);
+    const actions = [...(partial.actions ?? [])];
+    // Afordance genérica de contexto: sempre que a tela é uma análise e a evidência real resolveu, oferece
+    // "ver talhão" -- independe de qual intenção respondeu a pergunta (não é algo específico de uma
+    // pergunta, é sempre relevante enquanto o usuário está olhando pra uma análise específica).
+    if (request.screenContext?.type === "analysis" && request.evidence?.found && request.evidence.kind === "analysis") {
+      const evidence = request.evidence.evidence as AgronomicEvidencePackage;
+      actions.push({ kind: "open_field", fieldId: evidence.field.id });
+    }
     const structured: AssistantStructuredResponse = {
       summary: partial.summary,
       facts: partial.facts,
@@ -261,7 +368,7 @@ export const localIntentAssistantProvider: OperationalAssistantProvider = {
       hypotheses: [],
       missing_information: partial.missing_information,
       technical_references: [],
-      suggested_actions: [],
+      suggested_actions: actions,
       requires_professional_review: false,
       cards: partial.cards,
     };

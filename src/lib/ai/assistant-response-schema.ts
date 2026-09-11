@@ -12,6 +12,8 @@
  * `node --experimental-strip-types` sem precisar de banco real.
  */
 
+import type { AssistantAction } from "@/lib/ai/assistant-actions-schema";
+
 export type AssistantFact = { label: string; value: string; source: "database" };
 export type AssistantAttentionPoint = { label: string; reason: string };
 export type AssistantPattern = { description: string; ruleRef: string };
@@ -32,18 +34,20 @@ export type AssistantStructuredResponse = {
   hypotheses: AssistantHypothesis[];
   missing_information: string[];
   technical_references: AssistantTechnicalReference[];
-  /** Reservado pro Bloco 4 (ações estruturadas + allowlist server-side) -- ainda NÃO implementado nesta
-   *  etapa. O tipo tupla vazia (`[]`) impede, em tempo de compilação, que este bloco comece a popular esse
-   *  campo antes do schema fechado de `AssistantAction` existir. */
-  suggested_actions: [];
+  /** Bloco 4 — o que o PROVIDER sugere, ainda cru/não validado (`AssistantAction`, `assistant-actions-
+   *  schema.ts`). NUNCA chega ao client neste formato: `src/app/api/assistant/route.ts` revalida cada
+   *  item (`validateAssistantAction`) antes de responder -- o wire format final troca este array pela
+   *  versão já resolvida (`ResolvedAssistantAction[]`, com `href` só depois de posse/tenant confirmados). */
+  suggested_actions: AssistantAction[];
   /** Calculado por código (ver `computeRequiresProfessionalReview` abaixo), nunca pelo provider -- o
    *  diretor pediu explicitamente pra não usar heurística textual tipo "se parece recomendação". */
   requires_professional_review: boolean;
-  /** Navegação determinística já existente antes da Fase 4A (antes chamada de `AssistantCard[]` solta em
-   *  `OperationalAssistantResponse`) -- preservada como está, só passou a viver dentro da resposta
-   *  estruturada. Não é o mesmo mecanismo de `suggested_actions` (que exigirá validação server-side contra
-   *  um allowlist fechado no Bloco 4); estes hrefs já são computados inteiramente pelo próprio provider
-   *  determinístico no servidor, nunca sugeridos por um modelo. */
+  /** LEGADO (documentado, não removido) -- navegação determinística que já existia antes da Fase 4A, com
+   *  `href` computado inteiramente pelo próprio provider local determinístico (nunca sugerido por um
+   *  modelo). Continua alimentando as intenções que já usavam isso; `suggested_actions`/
+   *  `ResolvedAssistantAction` (Bloco 4) é o mecanismo OFICIAL novo daqui pra frente -- um futuro provider
+   *  de LLM real nunca deve poder popular `cards.href` diretamente, só `suggested_actions` (que sempre
+   *  passa pela validação server-side antes de virar link). */
   cards: AssistantCard[];
 };
 

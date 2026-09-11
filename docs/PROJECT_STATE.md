@@ -4046,3 +4046,37 @@ revogada e script temporário de screenshot removido depois.
    rodar `node --env-file=.env.production scripts/migrate.mjs` (ou o equivalente apontando pra
    `DATABASE_URL` do Neon) antes de considerar o merge concluído -- sem isso, o código novo em produção
    vai falhar ao tentar ler as colunas `ai_validation_*` que ainda não existem lá.
+
+## Assistente RAIZ, Fase 4 — de bolha de chat a painel contextual com ações seguras
+
+Branch dedicada `feature/raiz-2.0-fase4`, sem merge em `develop`/`main` nesta fase, sem migração, sem
+provedor de IA generativa conectado. Documentação completa em `docs/RAIZ_2.0_FASE4A_ENTREGA.md` (Blocos
+0-3, aprovado no commit `429d9b1`) e `docs/RAIZ_2.0_FASE4BCD_ENTREGA.md` (Blocos 4-6, esta rodada) --
+resumo aqui, detalhe nos dois arquivos.
+
+- **Fase 4A (Blocos 0-3, aprovada)**: separou `ScreenContext` (qual tela) de `ScreenState` (filtro/seleção
+  visível na URL), um Evidence Package Builder por contexto (sempre `withTenant`, sempre com teto de
+  tamanho), resposta estruturada (`summary`/`facts`/`attention_points`/`patterns`/`hypotheses`/
+  `missing_information`/`technical_references`/`requires_professional_review`), e um manifesto de auditoria
+  (`evidenceManifest`) gravado em `ai_generations` sem migração.
+- **Blocos 4-6 (esta rodada)**: 2 pré-ajustes de segurança corrigidos antes de começar (contexto inválido
+  nunca mais é auditado como Dashboard; filtro de Inteligência malformado nunca mais chega no banco nem
+  amplia a consulta). Bloco 4: schema fechado de 6 ações (`AssistantAction -> validação de formato ->
+  validação de posse/tenant/role no banco -> ResolvedAssistantAction`) -- o provider só sugere intenção
+  tipada, nunca um `href`. Bloco 5: `AssistantRaizWidget` reescrito -- cabeçalho contextual real (nunca
+  inventado), perguntas sugeridas por tela (12 intenções reais no provedor local, nada aspiracional),
+  resposta em seções visuais distintas (fato nunca misturado com hipótese), botão de entrada contextual
+  em 5 telas (Talhão 360°, Análise, Inteligência, Mapas, Comparativos, todos abrindo o MESMO assistente),
+  drawer de altura cheia no mobile. Bloco 6: auditoria completa (ações sugeridas E resolvidas gravadas
+  separadamente), documentação de `evidenceHash` corrigida (é fingerprint de integridade, nunca
+  "reconstruível" -- correção aplicada nos dois documentos de entrega), migração progressiva dos cards
+  legados sem quebrar intenções existentes.
+- **Bug real encontrado na verificação visual** (não pego por nenhum teste automatizado): o mapa (Leaflet)
+  renderizava por cima do painel do Assistente em `/mapas` -- `z-index` do painel perdia pra uma camada
+  interna do Leaflet. Corrigido subindo o painel pra `z-index:950`. Prova de por que "ver o screenshot antes
+  de concluir" continua parte do processo, não um passo opcional.
+- **Validação**: `typecheck`/`build` limpos, `test:handoff` completo (23 scripts, incluindo 2 novos deste
+  bloco), e-2e do Assistente (`assistant-fase4a`/`assistant-actions`/`assistant-widget-ux`, 29 passed / 4
+  skipped honestos / 0 failed) e `sidebar-responsiveness` sem regressão.
+- **Pendente**: Bloco 7 (provedor de LLM real) aguarda autorização explícita -- nada conectado ainda
+  (Claude/OpenAI/Gemini), nenhum RAG, nenhuma ação de banco, nenhuma recomendação autônoma.

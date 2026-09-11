@@ -20,13 +20,26 @@ import type { AgronomicEvidencePackage } from "@/lib/ai/evidence-package";
  * carregado em tempo de execução.
  */
 
+/**
+ * Pré-ajuste 1 (fechamento final da Fase 4A) -- `screenContext` aqui é `AssistantScreenContext | {type:
+ * "invalid"}`, nunca só `AssistantScreenContext`. Achado real: `/api/assistant` fazia
+ * `screenContext ?? {type:"dashboard"}` ao montar o manifesto -- um contexto explicitamente inválido
+ * (`parseAssistantScreenContext` devolve `INVALID_SCREEN_CONTEXT`, então a variável `screenContext` local
+ * vira `undefined`) registrava a tentativa como se tivesse acontecido no Dashboard, mesmo a resposta já
+ * sendo corretamente fail-closed. O chamador agora passa `{type:"invalid"}` explicitamente nesse caso
+ * (nunca deixa o valor "cair" pra dashboard por ausência de outra coisa pra colocar ali) -- ver `route.ts`.
+ */
 export type EvidenceManifest = {
-  screenContext: AssistantScreenContext;
+  screenContext: AssistantScreenContext | { type: "invalid" };
   entityIds: Record<string, string>;
   builtAt: string;
   ruleRefs: string[];
   technicalSourceIds: string[];
+  /** Fingerprint (SHA-256) do Evidence Package resolvido -- prova igualdade/integridade, NUNCA
+   *  "reconstruibilidade" (ver comentário completo em `buildEvidenceManifest`, abaixo). */
   evidenceHash: string;
+  /** Recorte dos fatos efetivamente citados na resposta -- isto, e não `evidenceHash`, é o que preserva o
+   *  conteúdo caso o banco mude depois. */
   factsSnapshot: Array<{ label: string; value: string }>;
 };
 
@@ -67,15 +80,25 @@ function deriveManifestRefs(evidenceResult: AssistantEvidenceResult): { ruleRefs
 
 /**
  * Monta o manifesto de auditoria a partir do Evidence Package Result já resolvido (Bloco 2). Nunca copia
- * o Evidence Package inteiro nem histórico bruto pra dentro de `ai_generations` -- só o hash (prova de
- * integridade, reconstruível reconsultando o banco com os mesmos `entityIds`) e um recorte explicitamente
- * limitado (20 itens) dos fatos que a resposta final efetivamente citou.
+ * o Evidence Package inteiro nem histórico bruto pra dentro de `ai_generations` -- só um hash e um recorte
+ * explicitamente limitado (20 itens) dos fatos que a resposta final efetivamente citou.
+ *
+ * IMPORTANTE sobre `evidenceHash` (Fase 4, Bloco 6, instrução explícita do diretor) -- `evidenceHash` é só
+ * um FINGERPRINT do pacote (SHA-256 do Evidence Package resolvido no momento da resposta): prova
+ * IGUALDADE/INTEGRIDADE (duas respostas com o mesmo hash usaram exatamente a mesma evidência; um hash
+ * alterado prova que algo mudou), NUNCA "reconstruibilidade". Ele não guarda o conteúdo -- se o banco mudar
+ * depois (edição, nova coleta, revisão), reconsultar `entityIds` com o hash em mãos NÃO devolve o Evidence
+ * Package original, só o estado ATUAL (possivelmente diferente). Quem precisa saber exatamente quais fatos
+ * foram citados na resposta usa `factsSnapshot` (abaixo), que preserva o recorte de fatos em si, não um
+ * ponteiro pra reconsultar. Isso é suficiente pro provedor local determinístico de hoje; uma futura IA
+ * generativa real pode exigir um snapshot normalizado mais completo do input efetivamente usado -- não
+ * implementado nesta fase (fora de escopo, ver `docs/RAIZ_2.0_FASE4BCD_ENTREGA.md`).
  *
  * `extraRuleRefs` existe pra regras que a CAMADA DE RESPOSTA calcula (ex.: um futuro `patterns[].ruleRef`
  * de predominância), que o Evidence Package sozinho não tem como saber -- mesclado e deduplicado com o que
  * foi derivado automaticamente.
  */
-export function buildEvidenceManifest(input: { screenContext: AssistantScreenContext; evidenceResult: AssistantEvidenceResult; factsUsed: Array<{ label: string; value: string }>; extraRuleRefs?: string[] }): EvidenceManifest {
+export function buildEvidenceManifest(input: { screenContext: AssistantScreenContext | { type: "invalid" }; evidenceResult: AssistantEvidenceResult; factsUsed: Array<{ label: string; value: string }>; extraRuleRefs?: string[] }): EvidenceManifest {
   const evidenceForHash = input.evidenceResult.found ? input.evidenceResult.evidence : null;
   const evidenceHash = createHash("sha256").update(JSON.stringify(evidenceForHash)).digest("hex");
   const derived = deriveManifestRefs(input.evidenceResult);

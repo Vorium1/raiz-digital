@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { EmptyState, PageIntro, StatusBadge } from "@/components/ui";
 import { IntelligenceQueueFilters } from "@/components/intelligence-queue-filters";
+import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getIntelligenceQueue, getIntelligenceFilterOptions } from "@/lib/repositories/interpretations";
@@ -67,7 +68,7 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
 
   return (
     <>
-      <Topbar eyebrow="Inteligência" title="Inteligência Agronômica"/>
+      <Topbar eyebrow="Inteligência" title="Inteligência Agronômica"><AssistantEntryButton label="Pergunte sobre a fila"/></Topbar>
       <div className="content-wrap">
         <PageIntro title="Fila de trabalho técnico" description="Situações que precisam de investigação ou revisão — uma linha por análise, sempre com sua revisão mais recente. Versões anteriores continuam acessíveis dentro de cada item, nunca listadas como problemas separados."/>
 

@@ -1,4 +1,4 @@
-type IconName =
+export type IconName =
   | "home" | "users" | "map" | "flask" | "file" | "history" | "wallet"
   | "settings" | "plus" | "bell" | "chevron" | "search" | "arrow"
   | "check" | "warning" | "clock" | "leaf" | "upload" | "layers"

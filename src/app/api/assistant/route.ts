@@ -1,9 +1,17 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { resolveOperationalAssistantProvider } from "@/lib/ai/operational-assistant-provider";
+import { resolveOperationalAssistantProvider, type OperationalAssistantResponse } from "@/lib/ai/operational-assistant-provider";
 import { parseAssistantScreenContext, parseAssistantScreenState, INVALID_SCREEN_CONTEXT } from "@/lib/ai/assistant-screen";
 import { buildAssistantEvidence, type AssistantEvidenceResult } from "@/lib/ai/assistant-evidence";
 import { buildEvidenceManifest } from "@/lib/ai/assistant-evidence-manifest";
+import { validateAssistantActions } from "@/lib/ai/assistant-actions";
+import type { ResolvedAssistantAction } from "@/lib/ai/assistant-actions-schema";
 import { recordOperationalAssistantGeneration } from "@/lib/repositories/ai-generations";
+
+const PROMPT_VERSION = "local-intent-v3-actions";
+
+/** O que realmente trafega pro client: `suggested_actions` SEMPRE trocado pela versão já validada/resolvida
+ *  (`ResolvedAssistantAction[]`) -- o que o provider sugeriu cru nunca sai do servidor. */
+type ClientAssistantResponse = Omit<OperationalAssistantResponse, "suggested_actions"> & { suggested_actions: ResolvedAssistantAction[] };
 
 export async function POST(request: Request) {
   const session = await getPlatformSession();
@@ -35,25 +43,39 @@ export async function POST(request: Request) {
   const provider = resolveOperationalAssistantProvider();
   const result = await provider.ask({ question, tenantId: session.tenantId, userId: session.userId, role: session.role, screenContext, screenState, evidence });
 
+  // Bloco 4 -- o provider só sugere `AssistantAction[]` (intenção tipada, ainda não confiada). Cada uma é
+  // revalidada aqui: formato/allowlist, role da sessão, e posse/tenant reconferida no banco (nunca confia
+  // no que "estava" no Evidence Package). Só o que sobrevive vira `ResolvedAssistantAction` com `href`
+  // real -- é isso, e só isso, que chega ao client.
+  const resolvedActions = await validateAssistantActions({ tenantId: session.tenantId, userId: session.userId, role: session.role }, result.suggested_actions);
+
+  const clientResponse: ClientAssistantResponse = { ...result, suggested_actions: resolvedActions };
+
+  // Pré-ajuste 1 (fechamento final da Fase 4A): o manifesto precisa distinguir Dashboard real de contexto
+  // inválido -- `screenContext ?? {type:"dashboard"}` registraria uma tentativa inválida como se tivesse
+  // acontecido no Dashboard. Aqui `{type:"invalid"}` é explícito, nunca inferido por ausência.
   const evidenceManifest = buildEvidenceManifest({
-    // Registra o contexto REALMENTE resolvido (dashboard/inválido) pra auditoria refletir o que de fato
-    // aconteceu, nunca o valor cru não-validado que o corpo mandou.
-    screenContext: screenContext ?? { type: "dashboard" },
+    screenContext: parsedContext === INVALID_SCREEN_CONTEXT ? { type: "invalid" } : parsedContext,
     evidenceResult: evidence,
     factsUsed: result.facts,
     extraRuleRefs: result.patterns.map((p) => p.ruleRef),
   });
 
+  // Bloco 6 -- auditoria completa, tudo dentro do jsonb já existente de `ai_generations` (nenhuma coluna
+  // nova, nenhuma migration): pergunta, contexto/estado JÁ VALIDADOS (nunca o corpo cru não confiável),
+  // evidence manifest, ações SUGERIDAS (cru, o que o provider propôs) e ações RESOLVIDAS (o que
+  // efetivamente sobreviveu à validação) como campos distintos -- nunca só um dos dois, pra auditoria
+  // conseguir diferenciar "o que o provider tentou sugerir" de "o que realmente foi oferecido ao usuário".
   await recordOperationalAssistantGeneration({
     tenantId: session.tenantId,
     userId: session.userId,
     provider: result.provider,
     model: result.model,
-    promptVersion: "local-intent-v2-structured",
+    promptVersion: PROMPT_VERSION,
     requestPayload: { question, screenContext, screenState, evidenceManifest },
-    responsePayload: result,
+    responsePayload: { ...result, suggested_actions: result.suggested_actions, resolved_actions: resolvedActions },
     status: result.requires_professional_review ? "PENDING_REVIEW" : "APPROVED",
   });
 
-  return Response.json(result);
+  return Response.json(clientResponse);
 }

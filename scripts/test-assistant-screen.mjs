@@ -62,10 +62,13 @@ assert.deepEqual(
 // modo inválido nunca é aceito como se fosse um dos 4 reais.
 assert.equal(inferScreenState("/comparativos", searchParams({ mode: "invalido" })).mode, undefined);
 
-// 10. ScreenState da inteligência.
+// 10. ScreenState da inteligência (uuids reais e válidos -- ver cenário 19+ pra ids malformados).
+// UUID_A ("1111...1111") NÃO bate o formato estrito (nibble de variante precisa ser 8/9/a/b, aqui é "1")
+// -- por isso os testes de intelligence usam REAL_UUID/REAL_UUID_2, ambos realmente válidos.
+const REAL_UUID_2 = "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d";
 assert.deepEqual(
-  inferScreenState("/inteligencia", searchParams({ clientId: "c1", fieldId: "f1" })),
-  { screen: "intelligence", clientId: "c1", propertyId: undefined, fieldId: "f1", seasonId: undefined, interpretationState: undefined, reviewState: undefined },
+  inferScreenState("/inteligencia", searchParams({ clientId: REAL_UUID, fieldId: REAL_UUID_2 })),
+  { screen: "intelligence", clientId: REAL_UUID, propertyId: undefined, fieldId: REAL_UUID_2, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: false },
 );
 
 // 11. Tela sem ScreenState definido (ex.: dashboard) -> undefined, nunca um objeto vazio inventado.
@@ -114,7 +117,40 @@ assert.deepEqual(
 );
 assert.deepEqual(
   parseAssistantScreenState({ screen: "intelligence", interpretationState: "BLOQUEADA", reviewState: "APROVADA" }),
-  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: "BLOQUEADA", reviewState: "APROVADA" },
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: "BLOQUEADA", reviewState: "APROVADA", invalidFilter: false },
 );
 
-console.log("assistant-screen: 18 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto; contexto inválido do corpo nunca vira dashboard silenciosamente)");
+// ---------------------------------------------------------------------------------------------
+// Pré-ajuste 2 (fechamento final da Fase 4A) -- UUIDs do ScreenState de Inteligência: um id malformado
+// nunca pode virar "solta o filtro quebrado e consulta mais amplo" nem lançar erro de cast no Postgres.
+// ---------------------------------------------------------------------------------------------
+
+// 19. Um único id malformado (fieldId) -> invalidFilter true, e os 4 ids (inclusive o clientId válido que
+// veio junto) são zerados -- nunca "quase filtrado" (ex.: só clientId aplicado, fieldId quebrado ignorado).
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", clientId: REAL_UUID, fieldId: "nao-e-um-uuid" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: true },
+);
+
+// 20. Todos os 4 ids malformados -> mesmo resultado (invalidFilter true, tudo zerado).
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", clientId: "x", propertyId: "y", fieldId: "z", seasonId: "w" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: true },
+);
+
+// 21. interpretationState/reviewState nunca são afetados pelo invalidFilter dos ids -- são strings de
+// enum próprias, validadas em outro lugar (o builder), não fazem parte da checagem de uuid.
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", fieldId: "quebrado", reviewState: "APROVADA" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: "APROVADA", invalidFilter: true },
+);
+
+// 22. Nenhum id informado (só reviewState) -> invalidFilter false -- ausência não é malformação.
+assert.equal(parseAssistantScreenState({ screen: "intelligence", reviewState: "APROVADA" }).invalidFilter, false);
+
+// 23. Mesma regra do lado do client (inferScreenState, usada pelo widget antes de mandar pro servidor) --
+// nunca dois comportamentos diferentes pro mesmo dado.
+assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).invalidFilter, true);
+assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).fieldId, undefined);
+
+console.log("assistant-screen: 23 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto; contexto inválido do corpo nunca vira dashboard silenciosamente; uuid malformado no filtro de Inteligência nunca amplia a consulta nem chega no banco)");

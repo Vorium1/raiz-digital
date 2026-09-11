@@ -1,6 +1,7 @@
 import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { AgronomicMapExplorer } from "@/components/agronomic-map-explorer";
+import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { PageIntro } from "@/components/ui";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { samplePoints } from "@/lib/demo-data";
@@ -11,7 +12,7 @@ export default function MapsPage() {
   if (isDatabaseMode()) {
     return (
       <>
-        <Topbar eyebrow="Inteligência" title="Mapas"/>
+        <Topbar eyebrow="Inteligência" title="Mapas"><AssistantEntryButton label="Pergunte sobre o mapa"/></Topbar>
         <div className="content-wrap">
           {/* Antes dizia "cada ponto é a coordenada real do PostGIS", incondicional -- mas nem todo ponto
               tem GPS confirmado em campo (pontos planejados de grid ainda não visitados, ou importações

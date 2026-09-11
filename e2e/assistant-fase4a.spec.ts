@@ -110,6 +110,9 @@ test("Assistente: comparação de safra com talhão de outro tenant nunca usa a 
   // safras", nunca o nome real da safra/cultura da tenant A.
   expect(result.json?.summary).toMatch(/ainda não tem duas safras/i);
   expect(result.text).not.toContain(fieldA.name);
+  // Bloco 4: nenhuma ação (`open_comparison` referenciando as safras de A) é sugerida/resolvida quando o
+  // Evidence Package não resolveu -- o provedor só anexa essa ação no ramo de SUCESSO da comparação.
+  expect(result.json?.suggested_actions).toEqual([]);
 });
 
 test("Assistente: tenantId enviado no corpo da requisição nunca altera o tenant da sessão", async ({ page }) => {

@@ -31,10 +31,43 @@ export type AssistantScreenContext =
 export type AssistantScreenState =
   | { screen: "map"; collectionOrderId?: string; parameter?: string; status?: "all" | "collected" | "pending"; satellite?: boolean }
   | { screen: "comparison"; mode?: "fields" | "seasons" | "points" | "properties"; a?: string; b?: string }
-  | { screen: "intelligence"; clientId?: string; propertyId?: string; fieldId?: string; seasonId?: string; interpretationState?: string; reviewState?: string };
+  /** `invalidFilter` (pré-ajuste 2, fechamento final da Fase 4A): `true` quando pelo menos um dos 4 ids
+   *  veio PREENCHIDO mas fora do formato de uuid. Nesse caso os 4 campos ficam `undefined` de propósito
+   *  (nunca alguns preenchidos e outros não) -- ver `buildIntelligenceEvidence`, que trata isso como
+   *  "filtro indisponível" e NUNCA roda a consulta com um subconjunto de filtros, pra nunca devolver uma
+   *  fila mais ampla do que o usuário pretendia filtrar. */
+  | { screen: "intelligence"; clientId?: string; propertyId?: string; fieldId?: string; seasonId?: string; interpretationState?: string; reviewState?: string; invalidFilter?: boolean };
 
 /** Mesmo padrão de UUID já usado em `src/lib/repositories/field-overview.ts` (RFC 4122 v1-5). */
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+/** Exportado pra quem faz `import type`/testes puros deste módulo (`assistant-actions-schema.ts` duplica
+ *  este padrão localmente em vez de importar o VALOR daqui -- ver comentário lá -- porque um import de
+ *  valor com alias `@/...` não resolve sob `node --experimental-strip-types`). */
+export const UUID_EXACT = new RegExp(`^${UUID}$`, "i");
+
+/**
+ * Pré-ajuste 2 (fechamento final da Fase 4A) -- os 4 filtros de `intelligence` (`clientId`/`propertyId`/
+ * `fieldId`/`seasonId`) viajavam como string livre até `getIntelligenceQueue`, que faz `::uuid` no
+ * PostgreSQL -- um valor malformado lançava erro de cast direto do banco. Valida ANTES de qualquer query:
+ * se pelo menos um dos ids foi informado mas não bate o formato, a intenção era filtrar por algo
+ * específico que não resolveu -- nunca "solta" só o filtro quebrado (isso ampliaria a consulta pra além do
+ * que o usuário pediu); marca `invalidFilter` e zera os 4, pra `buildIntelligenceEvidence` recusar a
+ * consulta inteira e devolver "filtro indisponível" em vez de uma fila mais ampla.
+ */
+function buildIntelligenceState(input: { clientId?: string; propertyId?: string; fieldId?: string; seasonId?: string; interpretationState?: string; reviewState?: string }): Extract<AssistantScreenState, { screen: "intelligence" }> {
+  const ids = [input.clientId, input.propertyId, input.fieldId, input.seasonId];
+  const invalidFilter = ids.some((id) => id !== undefined && !UUID_EXACT.test(id));
+  return {
+    screen: "intelligence",
+    clientId: invalidFilter ? undefined : input.clientId,
+    propertyId: invalidFilter ? undefined : input.propertyId,
+    fieldId: invalidFilter ? undefined : input.fieldId,
+    seasonId: invalidFilter ? undefined : input.seasonId,
+    interpretationState: input.interpretationState,
+    reviewState: input.reviewState,
+    invalidFilter,
+  };
+}
 
 type RoutePattern = { pattern: RegExp; build: (match: RegExpMatchArray) => AssistantScreenContext };
 
@@ -91,15 +124,14 @@ export function inferScreenState(pathname: string, searchParams: SearchParamsLik
     };
   }
   if (/^\/inteligencia\/?$/i.test(pathname)) {
-    return {
-      screen: "intelligence",
+    return buildIntelligenceState({
       clientId: searchParams.get("clientId") ?? undefined,
       propertyId: searchParams.get("propertyId") ?? undefined,
       fieldId: searchParams.get("fieldId") ?? undefined,
       seasonId: searchParams.get("seasonId") ?? undefined,
       interpretationState: searchParams.get("interpretationState") ?? undefined,
       reviewState: searchParams.get("reviewState") ?? undefined,
-    };
+    });
   }
   return undefined;
 }
@@ -122,7 +154,6 @@ export function inferScreenState(pathname: string, searchParams: SearchParamsLik
 
 const VALID_CONTEXT_TYPES = new Set(["dashboard", "property", "field", "analysis", "intelligence", "map", "comparison", "report-field", "report-property"]);
 const ID_REQUIRED_TYPES = new Set(["property", "field", "analysis", "report-field", "report-property"]);
-const UUID_EXACT = new RegExp(`^${UUID}$`, "i");
 
 /** Sentinela explícita -- nunca confundida com um `AssistantScreenContext` real. */
 export const INVALID_SCREEN_CONTEXT = "invalid" as const;
@@ -154,7 +185,7 @@ export function parseAssistantScreenState(raw: unknown): AssistantScreenState | 
     return { screen: "comparison", mode: mode === "fields" || mode === "seasons" || mode === "points" || mode === "properties" ? mode : undefined, a: str("a"), b: str("b") };
   }
   if (screen === "intelligence") {
-    return { screen: "intelligence", clientId: str("clientId"), propertyId: str("propertyId"), fieldId: str("fieldId"), seasonId: str("seasonId"), interpretationState: str("interpretationState"), reviewState: str("reviewState") };
+    return buildIntelligenceState({ clientId: str("clientId"), propertyId: str("propertyId"), fieldId: str("fieldId"), seasonId: str("seasonId"), interpretationState: str("interpretationState"), reviewState: str("reviewState") });
   }
   return undefined;
 }

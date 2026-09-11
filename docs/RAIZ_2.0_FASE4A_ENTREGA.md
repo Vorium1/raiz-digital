@@ -201,9 +201,14 @@ type EvidenceManifest = {
 
 Gravado dentro de `ai_generations.request_payload` (já `jsonb`, já existia) via
 `src/app/api/assistant/route.ts` — nunca copia o Evidence Package inteiro nem histórico bruto pra dentro da
-tabela de auditoria, só o hash (prova de integridade, reconstruível a qualquer momento reconsultando o
-banco com os mesmos `entityIds`) e um recorte explicitamente limitado (20 itens no máximo) dos fatos que a
+tabela de auditoria, só o hash e um recorte explicitamente limitado (20 itens no máximo) dos fatos que a
 resposta final efetivamente usou.
+
+> **Correção (Fase 4, Bloco 6)**: esta linha dizia antes que o hash era "reconstruível reconsultando o
+> banco" — impreciso, corrigido no Bloco 6 (`docs/RAIZ_2.0_FASE4BCD_ENTREGA.md`). `evidenceHash` só prova
+> igualdade/integridade (SHA-256 do Evidence Package no momento da resposta); reconsultar o banco com os
+> mesmos `entityIds` depois devolve o estado ATUAL, não o pacote original se algo mudou. `factsSnapshot` é
+> quem preserva o conteúdo, não o hash.
 
 `src/lib/repositories/ai-generations.ts` (`recordOperationalAssistantGeneration`): ganhou um parâmetro
 `status?: "APPROVED" | "PENDING_REVIEW"` (antes sempre `'APPROVED'`, hardcoded na query) — a rota passa

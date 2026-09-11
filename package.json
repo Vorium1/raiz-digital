@@ -28,7 +28,9 @@
     "test:assistant-screen": "node --experimental-strip-types scripts/test-assistant-screen.mjs",
     "test:assistant-response-schema": "node --experimental-strip-types scripts/test-assistant-response-schema.mjs",
     "test:assistant-evidence-manifest": "node --experimental-strip-types scripts/test-assistant-evidence-manifest.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run check:migrations",
+    "test:assistant-actions-schema": "node --experimental-strip-types scripts/test-assistant-actions-schema.mjs",
+    "test:assistant-context-label": "node --experimental-strip-types scripts/test-assistant-context-label.mjs",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run test:assistant-actions-schema && npm run test:assistant-context-label && npm run check:migrations",
     "test:e2e": "playwright test"
   },
   "dependencies": {

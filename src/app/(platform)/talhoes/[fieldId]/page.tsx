@@ -4,6 +4,7 @@ import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldOverview } from "@/lib/repositories/field-overview";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
+import { AssistantEntryButton } from "@/components/assistant-entry-button";
 
 export const metadata = { title: "Talhão" };
 
@@ -28,7 +29,7 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
 
   return (
     <>
-      <Topbar eyebrow="Talhões" title={overview.field.name} />
+      <Topbar eyebrow="Talhões" title={overview.field.name}><AssistantEntryButton label={`Pergunte sobre ${overview.field.name}`}/></Topbar>
       <div className="content-wrap">
         <FieldOverviewTabs overview={overview} alerts={alerts} />
       </div>
