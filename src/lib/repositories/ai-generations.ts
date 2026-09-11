@@ -210,16 +210,20 @@ export async function reviewAgronomicPrescription(input: { tenantId: string; use
 export async function recordOperationalAssistantGeneration(input: {
   tenantId: string; userId: string; provider: string; model: string; promptVersion: string;
   requestPayload: unknown; responsePayload: unknown; tokensUsed?: number | null; costUsd?: number | null;
+  /** Fase 4A (auditoria, Correção 3 da arquitetura) -- `PENDING_REVIEW` quando a resposta trouxe hipótese
+   *  agronômica (`requires_professional_review === true`, calculado por código, nunca pelo provider);
+   *  `APPROVED` (padrão, igual ao comportamento anterior) pra resposta puramente operacional/factual. */
+  status?: "APPROVED" | "PENDING_REVIEW";
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
-       VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, 'APPROVED', $9::uuid)
+       VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::ai_review_status, $10::uuid)
        RETURNING id::text, created_at::text AS "createdAt"`,
-      [input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload), JSON.stringify(input.responsePayload), input.tokensUsed ?? null, input.costUsd ?? null, input.userId],
+      [input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload), JSON.stringify(input.responsePayload), input.tokensUsed ?? null, input.costUsd ?? null, input.status ?? "APPROVED", input.userId],
     );
     const created = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "AI_ASSISTANT_QUERY", entityType: "ai_generation", entityId: created.id, metadata: { provider: input.provider, model: input.model } });
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "AI_ASSISTANT_QUERY", entityType: "ai_generation", entityId: created.id, metadata: { provider: input.provider, model: input.model, status: input.status ?? "APPROVED" } });
     return created;
   });
 }

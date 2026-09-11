@@ -1,12 +1,18 @@
-# RAIZ 2.0, Fase 4 — Assistente RAIZ como copiloto contextual (arquitetura, sem código)
+# RAIZ 2.0, Fase 4 — Assistente RAIZ como copiloto contextual (arquitetura)
 
 Branch: `feature/raiz-2.0-fase4`, criada a partir de `develop` já consolidado (commit `f21e1df`, que
-contém toda a Fase 3 + o patch de responsividade da sidebar + a correção de timeout de teste). Este
-documento é a ÚNICA entrega desta primeira etapa da Fase 4 — **nenhum código funcional foi escrito**,
-nenhuma migração foi executada, nenhum provedor de IA generativa foi conectado, nenhum merge foi feito.
+contém toda a Fase 3 + o patch de responsividade da sidebar + a correção de timeout de teste).
 
-Todo o conteúdo abaixo vem de leitura real do repositório nesta sessão (arquivos citados com caminho
-exato), não de memória — onde eu não tinha certeza, fui ler o arquivo antes de escrever a frase.
+Todo o conteúdo abaixo vem de leitura real do repositório (arquivos citados com caminho exato), não de
+memória — onde não havia certeza, o arquivo foi lido antes de escrever a frase.
+
+> **Revisado após aprovação com 4 correções obrigatórias** (diretor): (1) o exemplo de "coincidência
+> espacial" entre NDVI e pontos de solo não é suportado pelo dado atual — corrigido na seção 5.4; (2) a
+> escolha de provedor futuro não será só por preço — corrigida na seção 10.1; (3) `evidenceHash` sozinho
+> não bastava pra auditoria — substituído/complementado por um `evidenceManifest` estruturado e limitado na
+> seção 9.2; (4) `ScreenContext` (qual tela/entidade) e `ScreenState` (filtros/seleções visíveis) são
+> conceitos diferentes — separados na seção 4.3. A implementação dos Blocos 0-3 sobre esta arquitetura
+> corrigida está registrada em `docs/RAIZ_2.0_FASE4A_ENTREGA.md`.
 
 ---
 
@@ -200,7 +206,37 @@ E generalizar `inferScreenContext` (hoje só 2 `if`s) para uma tabela de padrõe
 `{ pattern: RegExp, build: (match) => AssistantScreenContext }`, testada em ordem contra `pathname`. Isso é
 uma mudança pequena e mecânica, não uma reescrita.
 
-### 4.3 O exemplo do diretor, resolvido
+### 4.3 Correção do diretor — `ScreenContext` × `ScreenState` são conceitos diferentes
+
+A versão anterior deste documento misturava dois conceitos num só objeto. A correção separa:
+
+- **`ScreenContext`** = **qual entidade/tela** está sendo trabalhada — o que já está na seção 4.2
+  (`{type: "field", id}` etc.). Isso muda pouco durante o uso e é o que decide QUAL Evidence Package
+  Builder roda.
+- **`ScreenState`** = **filtros/seleções que estão visíveis naquele momento**, dentro da MESMA tela — muda a
+  cada clique, e hoje já vive inteiramente na URL de cada página (seção 1.2: `?ordem=&parametro=&status=
+  &satelite=`, `?mode=&a=&b=`, `?clientId=&propertyId=&fieldId=&seasonId=&interpretationState=
+  &reviewState=`). O client já tem esse estado pronto — não precisa recalculá-lo, só repassá-lo.
+
+```ts
+export type AssistantScreenState =
+  | { screen: "map"; collectionOrderId?: string; parameter?: string; status?: "all" | "collected" | "pending"; satellite?: boolean }
+  | { screen: "comparison"; mode?: "fields" | "seasons" | "points" | "properties"; a?: string; b?: string }
+  | { screen: "intelligence"; clientId?: string; propertyId?: string; fieldId?: string; seasonId?: string; interpretationState?: string; reviewState?: string };
+```
+
+**Regra que não é opcional**: o client PODE mandar esses valores (eles já fazem parte da URL/estado visível
+daquela tela, não é segredo nenhum o usuário estar vendo aquilo) — mas o servidor NUNCA usa um valor de
+`ScreenState` como se fosse autorização. Todo ID sensível dentro de `ScreenState` (ex.: `fieldId` dentro do
+estado do mapa) passa pela MESMA verificação de tenant/RBAC que o `ScreenContext` já exige antes de entrar
+em qualquer Evidence Package Builder — o servidor sempre reconsulta o banco pra confirmar que aquele
+`fieldId` existe e pertence ao tenant da sessão, nunca aceita "porque o browser mandou" como prova de nada.
+Na prática: `ScreenState` só influencia QUAL RECORTE do Evidence Package builder olha (ex.: "o usuário está
+filtrando por este parâmetro no mapa, então destaque esse parâmetro na resposta"), nunca decide sozinho o
+que pode ou não ser mostrado — isso continua sendo decidido pelo par tenant+RBAC da sessão, do mesmo jeito
+que a própria página faria ao processar esses mesmos query params.
+
+### 4.4 O exemplo do diretor, resolvido
 
 "Dentro de um talhão: 'o que mudou aqui?' não deveria exigir reinformar o talhão." — com o contexto
 `{ type: "field", id }` chegando junto da pergunta, o Evidence Package Builder de talhão (seção 5.3) já
@@ -255,6 +291,33 @@ compor com a interpretação estruturada da análise mais recente de cada safra 
 Nenhum builder pode devolver um campo "inferido" — cada campo é dado persistido ou `null`/lista vazia. A
 interpretação (fato → classificação → predominância → hipótese) acontece DEPOIS, na camada de resposta
 (seção 6), nunca dentro do builder.
+
+### 5.4 Correção do diretor — NDVI não tem geometria espacial suficiente
+
+Achado na revisão: o exemplo original deste documento ("a região de menor vigor coincide com 4 de 5 pontos
+classificados como baixos para P") **não é suportado pelos dados atuais**. Conferido em
+`db/migrations/*.sql` e `src/lib/repositories/field-overview.ts`: `field_ndvi_snapshots` guarda, por
+snapshot, `mean_ndvi`/`min_ndvi`/`max_ndvi`, `pixel_count`, `cloud_cover_pct` e `zone_breakdown_pct` (um
+percentual agregado por faixa de vigor, ex.: `{alto: 30, medio: 45, baixo: 25}`) — **tudo agregado pro
+talhão inteiro, sem polígono/raster/coordenada de onde cada zona de vigor está**. Não existe, hoje, nenhuma
+geometria que permita dizer "esta coordenada específica cai dentro da zona de baixo vigor".
+
+Regra obrigatória pra qualquer builder ou schema de resposta que toque NDVI:
+
+- **Nunca afirmar coincidência espacial** entre NDVI e pontos de solo — não existe base geográfica real pra
+  essa afirmação.
+- **Nunca cruzar espacialmente `zoneBreakdownPct` com coordenadas de amostragem** — `zoneBreakdownPct` é um
+  percentual por talhão, não uma zona localizável; qualquer cruzamento desses dois dados seria inventar uma
+  geometria que a RAIZ não tem.
+- Uma pergunta desse tipo é **dado insuficiente para coincidência espacial** — a resposta correta é declarar
+  isso em `missing_information` (ex.: "falta camada NDVI espacial georreferenciada — os snapshots atuais só
+  agregam vigor por talhão inteiro, sem localizar zonas"), nunca inventar uma correlação geográfica.
+- É permitido dizer que os dois fenômenos **coexistem no mesmo talhão** (ex.: "este talhão tem vigor médio
+  baixo e também tem pontos de P classificados como baixos" — ambos fatos reais, cada um por si), **desde
+  que nunca seja chamado de "coincidência espacial"** nem usado pra sugerir causalidade.
+- Isso não é um limite temporário de implementação — é um limite real do dado atual. Se um dia a RAIZ tiver
+  raster/polígono de zona de vigor georreferenciado, essa regra pode ser revisada; até lá, ela é obrigatória
+  no builder de `field` e em qualquer `patterns`/`hypotheses` que mencione NDVI.
 
 ---
 
@@ -351,6 +414,7 @@ type AssistantAction =
 | Ações arbitrárias | Sem mecanismo de execução hoje | Seção 7 — allowlist fechado + revalidação server-side |
 | Resposta não fundamentada | Provider local hoje só responde com dado real ou recusa | `requires_professional_review` calculado por código (seção 6.1); nunca apresentar `hypotheses` como `facts` |
 | Isolamento de tenant do endpoint | RLS + sessão real | **Falta teste e2e automatizado** (achado real, seção 1.3, item 7) — deveria ser o primeiro item de um bloco de implementação, antes de qualquer coisa nova |
+| `ScreenState` usado como autorização | Nenhuma hoje (conceito novo, seção 4.3) | Todo ID dentro de `ScreenState` (ex.: `fieldId` do mapa, `a`/`b` do comparativo) precisa ser revalidado contra tenant/RBAC no servidor antes de entrar em qualquer Evidence Package — nunca tratar "o browser mandou esse ID" como prova de que o usuário pode vê-lo |
 | Limites de contexto | Evidence packages hoje são pequenos (uma análise) | Builders por tela (seção 5) precisam ter um teto explícito de tamanho (ex.: histórico limitado a N registros, como `evidence-package.ts` já limita a 5) |
 
 ---
@@ -364,18 +428,48 @@ prompt_version, request_payload/response_payload (jsonb — cabe qualquer coisa)
 status de revisão profissional (`reviewer_note`/`reviewed_by`/`reviewed_at`), horário (`created_at`),
 cadeia de gerações (`superseded_by`). `audit_events` já registra a ação em paralelo.
 
-### 9.2 O que realmente falta (nenhum item exige migração)
+### 9.2 Correção do diretor — `evidenceHash` sozinho não basta
 
-- **Contexto de tela**: já cabe dentro de `request_payload` (é `jsonb` livre) — só passar
-  `screenContext` no objeto gravado por `recordOperationalAssistantGeneration` (hoje só grava
-  `{question, screenContext}` — já grava, só não é usado pra nada ainda).
-- **Referência ao Evidence Package usado**: proponho gravar um hash (`sha256` do JSON do evidence package,
-  mesmo padrão já usado em `reports.sha256` pro snapshot de relatório publicado) dentro de
-  `request_payload.evidenceHash`, e opcionalmente o pacote inteiro dentro do mesmo jsonb quando pequeno —
-  sem coluna nova.
+Achado na revisão: um hash prova que dois pacotes são idênticos byte-a-byte, mas **não permite reconstruir
+o que a IA efetivamente viu** se o dado de origem mudar depois (ex.: talhão renomeado, nova safra criada,
+interpretação recalculada) — o hash vira inútil pra investigação/depuração sem o conteúdo por trás. A
+correção não é copiar o Evidence Package inteiro (isso pode ficar grande e caro pra sempre gravar), é um
+**`evidenceManifest` estruturado e deliberadamente limitado**, dentro do mesmo `jsonb` que já existe (sem
+migração):
+
+```ts
+type EvidenceManifest = {
+  screenContext: AssistantScreenContext;              // qual tela/entidade gerou a pergunta
+  entityIds: Record<string, string>;                  // ex.: { fieldId, propertyId, analysisId, seasonId }
+  entityRevisions: Record<string, string | number>;    // ex.: { interpretationRevision: 3, reportRevision: 1 }
+  builtAt: string;                                     // timestamp ISO de quando o builder rodou
+  ruleRefs: string[];                                  // ex.: ["parameter-predominance-v1", "crop-profile:soja-rs@1.2.0"]
+  technicalSourceIds: string[];                        // ids de technical_sources efetivamente incluídos, se houver
+  evidenceHash: string;                                // sha256 do JSON completo do evidence package (prova de integridade)
+  factsSnapshot: Array<{ label: string; value: string }>; // SÓ os fatos que a resposta final efetivamente citou -- não o pacote inteiro
+};
+```
+
+Regras de tamanho, explícitas (nenhuma dessas é opcional):
+
+- `entityIds`/`entityRevisions`: só os identificadores realmente usados pela pergunta — nunca a lista
+  completa de safras/análises de um talhão, só a(s) referenciada(s) na resposta.
+- `factsSnapshot`: no máximo os fatos que aparecem em `facts`/`attention_points`/`patterns` da resposta
+  final (tipicamente < 20 itens) — nunca o histórico bruto do builder (que pode ter dezenas de registros).
+  Isso é o "snapshot normalizado dos fatos efetivamente usados" pedido na correção — não é um segundo
+  Evidence Package, é o subconjunto que já apareceu na resposta, então não duplica dado que a interpretação
+  não usou.
+- **Nunca copiar histórico inteiro, coleção de pontos de amostragem, nem o Evidence Package bruto completo**
+  pra dentro de `ai_generations` — só o manifesto acima. Quem precisar do pacote completo pra auditoria
+  profunda reconstrói a partir de `entityIds`/`entityRevisions` (interrogando o banco de novo, com a mesma
+  revisão), não relendo uma cópia congelada gigante.
+- Teto prático de tamanho: o `jsonb` de `request_payload` com o manifesto deve ficar na casa de poucos KB,
+  nunca dezenas de KB — se um builder específico não couber nisso, é sinal de que ele está devolvendo
+  histórico demais (ver seção 5.3/8, "limites de contexto").
+
+### 9.3 Demais itens (nenhum exige migração)
+
 - **Ações sugeridas**: cabem dentro de `response_payload.suggestedActions` — já é jsonb livre.
-- **Regras técnicas utilizadas**: quando `patterns`/`hypotheses` citam uma regra (ex.:
-  `parameter-predominance-v1`) ou uma fonte técnica, isso já cabe no mesmo jsonb.
 - **Gatilho de revisão profissional**: hoje `recordOperationalAssistantGeneration` grava sempre
   `status = 'APPROVED'`. Proponho que, quando `requires_professional_review === true` (seção 6.1), a
   inserção use `status = 'PENDING_REVIEW'` em vez de `'APPROVED'` — a COLUNA já aceita esse valor hoje
@@ -391,13 +485,39 @@ não há necessidade concreta disso agora.
 
 ## 10. Estratégia de provider
 
-Ver `docs/COMPARATIVO_PROVEDORES_IA.md` para a comparação completa de custo/qualidade — não duplico aqui.
-Resumo da conclusão já registrada lá: **para o Assistente RAIZ especificamente, adiar a contratação de um
-LLM real até existir necessidade concreta de responder pergunta fora do repertório reconhecido**, e nesse
-momento usar a opção mais barata (GPT mini/Gemini Flash) — o risco ali é baixo porque o assistente nunca
-decide agronomia.
+Ver `docs/COMPARATIVO_PROVEDORES_IA.md` para a comparação de custo/qualidade — não duplico aqui. Mantém-se
+a conclusão de lá sobre **adiar a contratação de um LLM real até existir necessidade concreta de responder
+pergunta fora do repertório reconhecido**.
 
-### 10.1 Menor evolução possível (não trocar o padrão, só generalizar o tipo)
+### 10.1 Correção do diretor — a escolha do provedor NÃO será só por preço
+
+Versão anterior deste documento sugeria "quando chegar a hora, usar a opção mais barata, porque o risco ali
+é baixo". O diretor corrigiu isso: **preço mais baixo não é critério suficiente**, mesmo o assistente nunca
+decidindo agronomia — a qualidade da resposta (ela obedecer ao schema, não alucinar dado que não está no
+Evidence Package, separar fato de hipótese de verdade) importa tanto quanto custo, porque uma resposta mal
+fundamentada mina a confiança na plataforma inteira, não só no assistente.
+
+**Quando houver autorização pra conectar um LLM real** (fora desta fase), a escolha deve vir de uma
+**avaliação controlada**, com perguntas reais da RAIZ (as mesmas do repertório atual + as do item 13 deste
+documento) rodadas contra cada candidato, medindo pelo menos:
+
+- **Groundedness**: a resposta só cita fato que está no Evidence Package recebido, nunca inventa número.
+- **Taxa de alucinação**: com o MESMO Evidence Package, quantas vezes o modelo afirma algo que não está lá
+  (incluindo o caso de NDVI/coincidência espacial da seção 5.4 — um bom teste de alucinação é justamente ver
+  se o modelo resiste à tentação de "conectar os pontos" geograficamente sem ter a geometria).
+- **Obediência ao schema**: taxa de respostas que batem exatamente no formato de `AssistantStructuredResponse`
+  sem precisar de correção/repetição.
+- **Português técnico/agronômico**: qualidade da terminologia usada, sem gírias nem tradução literal
+  estranha.
+- **Capacidade de separar fato de hipótese**: o modelo classifica corretamente o que é `facts` vs.
+  `hypotheses` quando o Evidence Package tem os dois tipos de informação, sem confundir.
+- **Latência**: tempo de resposta real, relevante pra UX de um assistente conversacional.
+- **Custo**: por pergunta, na prática (não só o preço de tabela por token).
+
+Essa avaliação **não foi feita nesta etapa** e **nenhum provedor foi escolhido** — isso é trabalho do Bloco
+7 (fora do escopo autorizado agora), não uma decisão antecipada aqui.
+
+### 10.2 Menor evolução possível (não trocar o padrão, só generalizar o tipo)
 
 `OperationalAssistantProvider`/`resolveOperationalAssistantProvider()` continuam exatamente como estão
 estruturalmente. A única mudança de contrato é o `request`/`response` aceitarem o Evidence Package
@@ -484,7 +604,7 @@ Nenhuma etapa deu ao provider acesso a SQL; nenhuma etapa gerou uma URL fora do 
 | "Quais são os três principais problemas desta propriedade?" | `property` — `getPropertyExecutiveReportData` já devolve `attentionFields` | `attention_points` ordenado, cortado em 3 |
 | "Mostre apenas os pontos críticos." | contexto atual (`field`/`map`) | `suggested_actions: [{kind:"filter_critical", scope:"queue"}]` → resolve pro filtro real já existente na fila/mapa |
 | "Compare esta análise com a anterior." | `analysis` — `assistant-queries.compareLatestTwoSeasons` ou histórico de `evidence-package.ts` (`history`) | `facts` com os dois lados + `suggested_actions: [{kind:"compare_seasons"}]` |
-| "Existe coincidência entre baixo vigor e os pontos de baixa fertilidade?" | `field` — cruza `ndviSnapshots` (zona) com `computeParameterPredominance` dos resultados de P/K | `patterns` (nunca `facts`) — ex.: "A região de menor vigor coincide com 4 de 5 pontos classificados como baixos para P" — **nunca** "o baixo P causou o baixo NDVI" (isso seria `hypotheses`, se algum dia justificável, nunca `facts`/`patterns`) |
+| "Existe coincidência entre baixo vigor e os pontos de baixa fertilidade?" | `field` — **correção do diretor (revisão da arquitetura)**: `field_ndvi_snapshots` só guarda estatística agregada por talhão inteiro (`mean/min/max NDVI`, `pixelCount`, `cloudCoverPct`, `zoneBreakdownPct` percentual) — **não tem geometria/raster/polígono da zona de vigor**, então não existe base real pra cruzar espacialmente com coordenada de ponto de amostragem. Ver seção 5.4. | `missing_information` deve declarar "falta camada NDVI espacial georreferenciada pra confirmar coincidência espacial" — é permitido só dizer que os dois fenômenos (baixo vigor médio do talhão + pontos baixos de P) **coexistem no mesmo talhão**, nunca "coincidem espacialmente", e nunca em `patterns` (que exige método real) |
 | "Quais evidências sustentam essa conclusão?" | reaproveita o MESMO evidence package já usado na resposta anterior (por isso o hash em auditoria importa) | lista `facts`/`patterns` já citados, nunca inventa novos |
 | "Prepare um resumo para o produtor." | `analysis`/`field` | reaproveita a MESMA lógica do relatório "Resumo ao produtor" já existente (`/relatorios/produtor/[analysisId]`), nunca um texto novo e paralelo |
 
@@ -507,9 +627,10 @@ Nenhuma etapa deu ao provider acesso a SQL; nenhuma etapa gerou uma URL fora do 
    clicáveis (seção 11) — consumindo o schema do Bloco 3/4.
 7. **Bloco 6 — auditoria completa**: gravar `evidenceHash`/`suggestedActions`/gatilho de
    `PENDING_REVIEW` (seção 9.2) — sem migração.
-8. **Bloco 7 (fora desta fase, sob autorização explícita)**: conectar um provedor real, seguindo
-   `docs/COMPARATIVO_PROVEDORES_IA.md`, implementando a mesma interface — só depois de Blocos 0-6 provados
-   com o provedor local.
+8. **Bloco 7 (fora desta fase, sob autorização explícita)**: avaliação controlada de provedores reais
+   (seção 10.1 — groundedness, taxa de alucinação, obediência ao schema, português técnico, separação
+   fato/hipótese, latência, custo, com as perguntas reais da RAIZ) e só depois conectar o escolhido,
+   implementando a mesma interface — só depois de Blocos 0-6 provados com o provedor local.
 
 Cada bloco é entregável e testável isoladamente — nenhum depende de LLM real para funcionar.
 
@@ -526,9 +647,11 @@ Cada bloco é entregável e testável isoladamente — nenhum depende de LLM rea
 - **Confundir `patterns`/`hypotheses` com `facts` na renderização** — risco de UX, não só de dado: a
   interface precisa diferenciar visualmente essas categorias sempre, não só a estrutura de dados ter os
   campos certos.
-- **Pressão pra "só ligar um LLM logo"** — `docs/COMPARATIVO_PROVEDORES_IA.md` já documenta que isso é
-  adiável; ligar cedo demais custa dinheiro sem necessidade comprovada (o repertório determinístico ainda
-  cobre a maior parte das perguntas reais).
+- **Pressão pra "só ligar um LLM logo" (ou "só usar o mais barato")** — adiar é a decisão certa até haver
+  necessidade concreta comprovada (o repertório determinístico ainda cobre a maior parte das perguntas
+  reais), e quando chegar a hora, a escolha precisa vir de avaliação controlada (seção 10.1), nunca só de
+  preço de tabela — um provedor barato que aluciona dado ou ignora o schema custa mais caro em confiança
+  perdida do que economiza em token.
 - **Revisão profissional viesada por confiar no LLM se autoavaliar** — por isso `requires_professional_review`
   precisa ser regra de código, nunca campo que o modelo preenche livremente (seção 6.1).
 
@@ -554,7 +677,7 @@ Replicando exatamente o limite dado pelo diretor, sem ambiguidade:
 
 ## 17. Estado desta entrega
 
-Nenhum código funcional foi alterado. Nenhuma migração foi executada. Nenhum provedor de IA generativa foi
-conectado. Este documento é o único artefato desta etapa, na branch `feature/raiz-2.0-fase4`, sem merge.
-
-Peço revisão do diretor antes de qualquer bloco da seção 14 começar a ser implementado.
+Este documento (com as 4 correções da seção de revisão) é a arquitetura aprovada. A implementação real dos
+Blocos 0-3 sobre esta arquitetura — código, testes, validação — está registrada em
+`docs/RAIZ_2.0_FASE4A_ENTREGA.md`, na mesma branch `feature/raiz-2.0-fase4`, sem merge, sem migração, sem
+provedor de IA generativa conectado. Blocos 4-7 continuam não implementados, aguardando autorização.

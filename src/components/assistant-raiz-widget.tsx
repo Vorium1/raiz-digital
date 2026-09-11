@@ -2,12 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
+import { inferScreenContext, inferScreenState, type AssistantScreenContext, type AssistantScreenState } from "@/lib/ai/assistant-screen";
 
 type AssistantCard = { title: string; description: string; href?: string };
-type AssistantScreenContext = { type: "field" | "analysis" | "property" | "dashboard"; id?: string };
-type ChatEntry = { question: string; answer: string; cards: AssistantCard[]; isRealLanguageModel: boolean };
+type AssistantFact = { label: string; value: string };
+type AssistantAttentionPoint = { label: string; reason: string };
+type ChatEntry = {
+  question: string;
+  summary: string;
+  facts: AssistantFact[];
+  attentionPoints: AssistantAttentionPoint[];
+  missingInformation: string[];
+  cards: AssistantCard[];
+  isRealLanguageModel: boolean;
+};
 
 const DEFAULT_SUGGESTIONS = [
   "Quais talhões têm pontos pendentes?",
@@ -17,20 +27,23 @@ const DEFAULT_SUGGESTIONS = [
   "Quais são as principais pendências da minha operação?",
 ];
 
-function inferScreenContext(pathname: string): AssistantScreenContext | undefined {
-  const analysisMatch = pathname.match(/^\/analises\/([0-9a-f-]{36})$/);
-  if (analysisMatch) return { type: "analysis", id: analysisMatch[1] };
-  if (pathname === "/dashboard") return { type: "dashboard" };
-  return undefined;
-}
-
-const CONTEXT_HINT: Record<string, string> = {
-  analysis: "Pergunte sobre esta análise — ex.: “Explique este resultado.”",
+/** Fase 4A, Bloco 1: dica de pergunta inicial por tela -- as sugestões deixam de ser as mesmas 5 fixas em
+ *  qualquer lugar quando o contexto real da tela é conhecido. */
+const CONTEXT_HINT: Partial<Record<AssistantScreenContext["type"], string>> = {
   dashboard: "Pergunte sobre a operação inteira — ex.: “Qual é minha maior pendência hoje?”",
+  analysis: "Pergunte sobre esta análise — ex.: “Explique este resultado.”",
+  field: "Pergunte sobre este talhão — ex.: “O que mudou desde a última safra?”",
+  property: "Pergunte sobre esta propriedade — ex.: “Quais são os principais problemas aqui?”",
+  "report-property": "Pergunte sobre esta propriedade — ex.: “Quais são os principais problemas aqui?”",
+  "report-field": "Pergunte sobre este relatório — ex.: “Este relatório está publicado?”",
+  comparison: "Pergunte sobre o comparativo — ex.: “Existe diferença relevante entre os dois lados?”",
+  intelligence: "Pergunte sobre a fila de trabalho técnico — ex.: “Quais análises aguardam revisão?”",
+  map: "Pergunte sobre o mapa — ex.: “Mostre os talhões com pontos pendentes.”",
 };
 
 export function AssistantRaizWidget() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +52,7 @@ export function AssistantRaizWidget() {
   if (pathname === "/login" || pathname.startsWith("/esqueci-senha") || pathname.startsWith("/redefinir-senha")) return null;
 
   const screenContext = inferScreenContext(pathname);
+  const screenState = inferScreenState(pathname, searchParams);
 
   async function ask(text: string) {
     const trimmed = text.trim();
@@ -46,12 +60,12 @@ export function AssistantRaizWidget() {
     setBusy(true);
     setQuestion("");
     try {
-      const response = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: trimmed, screenContext }) });
+      const response = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: trimmed, screenContext, screenState }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Não foi possível responder.");
-      setHistory((current) => [...current, { question: trimmed, answer: data.answer, cards: data.cards ?? [], isRealLanguageModel: data.isRealLanguageModel }]);
+      setHistory((current) => [...current, { question: trimmed, summary: data.summary, facts: data.facts ?? [], attentionPoints: data.attention_points ?? [], missingInformation: data.missing_information ?? [], cards: data.cards ?? [], isRealLanguageModel: data.isRealLanguageModel }]);
     } catch (error) {
-      setHistory((current) => [...current, { question: trimmed, answer: error instanceof Error ? error.message : "Falha ao consultar o assistente.", cards: [], isRealLanguageModel: false }]);
+      setHistory((current) => [...current, { question: trimmed, summary: error instanceof Error ? error.message : "Falha ao consultar o assistente.", facts: [], attentionPoints: [], missingInformation: [], cards: [], isRealLanguageModel: false }]);
     } finally {
       setBusy(false);
     }
@@ -74,7 +88,7 @@ export function AssistantRaizWidget() {
             {history.length === 0 ? (
               <div className="assistant-empty">
                 <Icon name="sparkles" size={22}/>
-                <p>{screenContext ? CONTEXT_HINT[screenContext.type] ?? "Pergunte sobre sua operação." : "Pergunte sobre clientes, talhões, coletas, laudos ou revisões."}</p>
+                <p>{screenContext ? (CONTEXT_HINT[screenContext.type] ?? "Pergunte sobre sua operação.") : "Pergunte sobre clientes, talhões, coletas, laudos ou revisões."}</p>
                 <div className="assistant-suggestions">
                   {DEFAULT_SUGGESTIONS.map((suggestion) => <button type="button" key={suggestion} onClick={() => void ask(suggestion)}>{suggestion}</button>)}
                 </div>
@@ -85,7 +99,20 @@ export function AssistantRaizWidget() {
                   <div className="assistant-question">{entry.question}</div>
                   <div className="assistant-answer">
                     <span className="assistant-answer-badge"><Icon name="sparkles" size={11}/>{entry.isRealLanguageModel ? "IA" : "Motor local · sem custo"}</span>
-                    <p>{entry.answer}</p>
+                    <p>{entry.summary}</p>
+                    {entry.facts.length > 0 && (
+                      <ul className="assistant-facts">
+                        {entry.facts.map((fact, factIndex) => <li key={factIndex}><strong>{fact.value}</strong> {fact.label}</li>)}
+                      </ul>
+                    )}
+                    {entry.attentionPoints.length > 0 && (
+                      <ul className="assistant-attention">
+                        {entry.attentionPoints.map((point, pointIndex) => <li key={pointIndex}><Icon name="warning" size={11}/> <strong>{point.label}</strong> — {point.reason}</li>)}
+                      </ul>
+                    )}
+                    {entry.missingInformation.length > 0 && (
+                      <p className="assistant-missing-info">{entry.missingInformation.join(" ")}</p>
+                    )}
                     {entry.cards.length > 0 && (
                       <div className="assistant-cards">
                         {entry.cards.map((card, cardIndex) => card.href ? (

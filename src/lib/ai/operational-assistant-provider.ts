@@ -1,4 +1,7 @@
 import { localIntentAssistantProvider } from "@/lib/ai/providers/local-intent-assistant-provider";
+import type { AssistantScreenContext, AssistantScreenState } from "@/lib/ai/assistant-screen";
+import type { AssistantEvidenceResult } from "@/lib/ai/assistant-evidence";
+import type { AssistantStructuredResponse } from "@/lib/ai/assistant-response-schema";
 
 /**
  * Interface desacoplada do Assistente RAIZ (IA operacional) — distinta do
@@ -6,13 +9,17 @@ import { localIntentAssistantProvider } from "@/lib/ai/providers/local-intent-as
  * a IA nunca toca em classificação técnica, só organiza/consulta dado
  * operacional (coleta, laudo, revisão, comparação) que o usuário já tem
  * permissão para ver.
+ *
+ * Fase 4A: `AssistantScreenContext`/`AssistantScreenState` agora vêm de
+ * `assistant-screen.ts` (fonte única, ver Correção 4 da arquitetura --
+ * contexto de tela e estado/filtros são conceitos diferentes). O request
+ * carrega o Evidence Package já resolvido no servidor (`assistant-evidence.ts`)
+ * -- o provider nunca recebe conexão de banco, só o objeto pronto. A resposta
+ * agora é a `AssistantStructuredResponse` (fato/atenção/padrão/hipótese/
+ * revisão necessária), não mais um texto solto.
  */
 
-export type AssistantScreenContext =
-  | { type: "field"; id: string }
-  | { type: "analysis"; id: string }
-  | { type: "property"; id: string }
-  | { type: "dashboard" };
+export type { AssistantScreenContext, AssistantScreenState };
 
 export type OperationalAssistantRequest = {
   question: string;
@@ -20,13 +27,14 @@ export type OperationalAssistantRequest = {
   userId: string;
   role: string;
   screenContext?: AssistantScreenContext;
+  screenState?: AssistantScreenState;
+  /** Evidence Package já resolvido pelo endpoint (`assistant-evidence.ts`) -- `found: false` quando o
+   *  `ScreenContext` apontava pra uma entidade que não existe/não pertence ao tenant da sessão; o provider
+   *  precisa tratar isso como "sem evidência disponível", nunca inventar dado no lugar. */
+  evidence?: AssistantEvidenceResult;
 };
 
-export type AssistantCard = { title: string; description: string; href?: string };
-
-export type OperationalAssistantResponse = {
-  answer: string;
-  cards: AssistantCard[];
+export type OperationalAssistantResponse = AssistantStructuredResponse & {
   suggestedQuestions: string[];
   provider: string;
   model: string;

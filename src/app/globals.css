@@ -840,6 +840,15 @@ button { color: inherit; }
 .assistant-answer{background:var(--surface-2);border:1px solid var(--line);border-radius:3px 12px 12px 12px;margin-top:8px;max-width:92%;padding:10px 12px}
 .assistant-answer-badge{align-items:center;color:var(--teal);display:inline-flex;font-size:8px;font-weight:700;gap:4px;letter-spacing:.04em;margin-bottom:6px;text-transform:uppercase}
 .assistant-answer p{font-size:11.5px;line-height:1.5;margin:0}
+.assistant-facts{list-style:none;margin:8px 0 0;padding:0}
+.assistant-facts li{border-top:1px solid var(--line);color:var(--muted);font-size:10.5px;padding:6px 0}
+.assistant-facts li:first-child{border-top:0}
+.assistant-facts li strong{color:var(--ink);margin-right:5px}
+.assistant-attention{list-style:none;margin:8px 0 0;padding:0}
+.assistant-attention li{align-items:flex-start;color:#d9b98a;display:flex;font-size:10.5px;gap:5px;line-height:1.45;margin-top:6px}
+.assistant-attention li svg{flex-shrink:0;margin-top:2px}
+.assistant-attention li strong{color:var(--ink)}
+.assistant-missing-info{color:var(--muted);font-size:9.5px;line-height:1.5;margin:10px 0 0}
 .assistant-cards{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .assistant-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;color:inherit;display:block;padding:9px 11px}
 .assistant-card:hover{border-color:var(--teal)}
