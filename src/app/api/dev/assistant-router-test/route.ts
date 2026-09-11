@@ -22,9 +22,17 @@ import type { AssistantScreenContext, AssistantScreenState } from "@/lib/ai/assi
  * - `"malicious_href"` — tenta devolver `cards`/`suggested_actions` com conteúdo malicioso -- prova que
  *   nada disso sobrevive na resposta final (mesmo quando o resto da resposta passa no gate).
  * - `"none"` — nenhum provider generativo injetado (simula ausência total de provider externo).
+ * - `"abort_probe"` (patch de pré-merge, item 2) — provider fake que NUNCA resolve por conta própria, só
+ *   reage ao `request.signal` (o mesmo contrato que `gemini-operational-assistant-provider.ts` respeita de
+ *   verdade no `fetch`) -- registra em `abortProbe` (devolvido no corpo da resposta, só pra este
+ *   comportamento) se o abort disparou de verdade e quantas vezes `ask()` foi chamado, provando que o
+ *   timeout do router aborta a chamada externa (não só para de esperar por ela) e que nenhuma 2ª tentativa
+ *   acontece depois do abort.
  */
 
 const REAL_FIELD_ID = "00000000-0000-4000-8000-000000000001";
+
+const abortProbe = { attempts: 0, wasAborted: false };
 
 function fakeResponse(overrides: Partial<OperationalAssistantResponse>): OperationalAssistantResponse {
   return {
@@ -63,6 +71,28 @@ function buildFakeProvider(behavior: string): OperationalAssistantProvider | nul
       };
     case "none":
       return null;
+    case "abort_probe":
+      abortProbe.attempts = 0;
+      abortProbe.wasAborted = false;
+      return {
+        name: "fake-generative", model: "fake-model", isRealLanguageModel: true,
+        async ask(request) {
+          abortProbe.attempts += 1;
+          // Nunca resolve por conta própria (simula uma chamada de rede pendurada) -- só reage ao abort,
+          // exatamente como o `fetch(url, { signal })` real do provider Gemini reage.
+          return new Promise<OperationalAssistantResponse>((_resolve, reject) => {
+            if (request.signal?.aborted) {
+              abortProbe.wasAborted = true;
+              reject(new DOMException("Chamada abortada.", "AbortError"));
+              return;
+            }
+            request.signal?.addEventListener("abort", () => {
+              abortProbe.wasAborted = true;
+              reject(new DOMException("Chamada abortada.", "AbortError"));
+            });
+          });
+        },
+      };
     default:
       return null;
   }
@@ -88,5 +118,5 @@ export async function POST(request: Request) {
     { question, tenantId: session.tenantId, userId: session.userId, role: session.role, screenContext, screenState, evidence },
     { mode, generativeProvider, timeoutMs: 500 },
   );
-  return Response.json(routed);
+  return Response.json({ ...routed, ...(fakeGenerativeBehavior === "abort_probe" ? { abortProbe: { ...abortProbe } } : {}) });
 }

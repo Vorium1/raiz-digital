@@ -19,6 +19,18 @@ const TENANT_B_PASSWORD = requiredEnv("E2E_TENANT_B_PASSWORD");
 const INSIDE_FIELD_POINTS_CSV =
   "codigo;latitude;longitude\nT01;-28.256;-52.416\nT02;-28.254;-52.414\nT03;-28.252;-52.412\n";
 
+// Patch de pré-merge (item 4) -- causa real dos 5 testes intermitentes: `orders[0]?.cropSeasonId` assumia
+// que a "primeira ordem" da lista sempre pertencia ao "Talhão 3" (o único talhão cujo boundary real cobre
+// as coordenadas fixas de `INSIDE_FIELD_POINTS_CSV`). O banco de desenvolvimento acumulou ordens de outras
+// suítes ao longo de meses de sessões -- `orders[0]` deixou de ser determinístico, e quando a "primeira"
+// pertencia a outro talhão, o import caía fora do boundary real dele e a rota rejeitava com 422 (validação
+// de geometria correta, não um bug de produção). Corrige localizando a ordem-fixture do "Talhão 3" pelo
+// nome do talhão (`fieldName`), nunca pela posição na lista -- qualquer ordem já existente para esse talhão
+// serve, porque `cropSeasonId` sempre aponta pra uma safra DESTE MESMO talhão fixo.
+function findTalhao3CropSeasonId(orders: Array<{ fieldName?: string; cropSeasonId?: string }>): string | undefined {
+  return orders.find((o) => o.fieldName === "Talhão 3")?.cropSeasonId;
+}
+
 async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.fill('input[name="email"]', email);
@@ -131,7 +143,7 @@ test.describe("regra: nao substituir pontos depois que a coleta comecou", () => 
   test("importar, coletar um ponto e depois tentar substituir tudo e bloqueado", async ({ page }) => {
     await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
     const listA = await api(page, "/api/collection-orders");
-    const cropSeasonId = listA.payload.orders[0]?.cropSeasonId;
+    const cropSeasonId = findTalhao3CropSeasonId(listA.payload.orders);
     expect(cropSeasonId).toBeTruthy();
 
     const created = await api(page, "/api/collection-orders", {
@@ -184,7 +196,7 @@ test.describe("concorrencia: duas importacoes simultaneas na mesma ordem nova", 
   test("duas importacoes concorrentes nao duplicam nem corrompem os pontos", async ({ page }) => {
     await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
     const listA = await api(page, "/api/collection-orders");
-    const cropSeasonId = listA.payload.orders[0]?.cropSeasonId;
+    const cropSeasonId = findTalhao3CropSeasonId(listA.payload.orders);
 
     const created = await api(page, "/api/collection-orders", {
       method: "POST",
@@ -224,7 +236,7 @@ test.describe("regra: distancia maxima entre GPS observado e ponto planejado", (
   test("rejeita GPS a ~224m (fora do limite) e aceita a ~20m (dentro do limite) do mesmo ponto", async ({ page }) => {
     await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
     const listA = await api(page, "/api/collection-orders");
-    const cropSeasonId = listA.payload.orders[0]?.cropSeasonId;
+    const cropSeasonId = findTalhao3CropSeasonId(listA.payload.orders);
 
     const created = await api(page, "/api/collection-orders", {
       method: "POST",

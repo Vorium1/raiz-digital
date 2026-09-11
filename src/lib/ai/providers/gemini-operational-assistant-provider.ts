@@ -160,6 +160,12 @@ export const geminiOperationalAssistantProvider: BenchmarkProvider = {
             // custo), nunca aumentar além do que o operador configurar explicitamente.
             generationConfig: { maxOutputTokens: generativeMaxTokens() ?? 8000, temperature: 0 },
           }),
+          // Patch de pré-merge (item 2) -- repassa o `AbortSignal` do router pro `fetch` de verdade. Quando o
+          // router aborta por timeout, este `fetch` rejeita imediatamente com `AbortError` -- o `throw`
+          // escapa do loop de retry sem passar pelo `if (response.ok)`/`shouldRetry` abaixo, então nenhuma
+          // nova tentativa é agendada depois do abort (não precisa de checagem explícita: o `await fetch`
+          // rejeitado já interrompe o loop por conta própria).
+          signal: request.signal,
         },
       );
       if (response.ok) break;
@@ -167,6 +173,14 @@ export const geminiOperationalAssistantProvider: BenchmarkProvider = {
       const shouldRetry = RETRYABLE_STATUS.has(response.status) && attempt < RETRY_DELAYS_MS.length;
       if (!shouldRetry) break;
       await sleep(RETRY_DELAYS_MS[attempt]);
+      // Patch de pré-merge (item 2) -- o abort pode chegar DURANTE a espera entre tentativas (não só
+      // durante um `fetch` em andamento). Sem esta checagem, uma tentativa 429/503 seguida de timeout do
+      // router ainda dispararia uma 2ª chamada real depois do abort -- gastando cota que o router já
+      // desistiu de esperar. `request.signal` é o mesmo `AbortController` do router; se já abortou, para
+      // aqui, sem nova tentativa.
+      if (request.signal?.aborted) {
+        throw new DOMException("Chamada abortada (timeout do router).", "AbortError");
+      }
     }
 
     if (!response!.ok) {

@@ -19,6 +19,15 @@ const ACCOUNTS = {
 
 const INSIDE_FIELD_POINTS_CSV = "codigo;latitude;longitude\nT01;-28.256;-52.416\nT02;-28.254;-52.414\n";
 
+// Patch de pré-merge (item 4) -- mesma causa/correção documentada em field-operations-isolation.spec.ts:
+// `orders[0]?.cropSeasonId` assumia que a "primeira ordem" da lista sempre pertencia ao "Talhão 3" (o
+// único talhão cujo boundary real cobre as coordenadas fixas de `INSIDE_FIELD_POINTS_CSV`) -- deixou de
+// ser determinístico conforme o banco de desenvolvimento acumulou ordens de outras suítes. Localiza a
+// ordem-fixture do "Talhão 3" pelo nome do talhão (`fieldName`), nunca pela posição na lista.
+function findTalhao3CropSeasonId(orders: Array<{ fieldName?: string; cropSeasonId?: string }>): string | undefined {
+  return orders.find((o) => o.fieldName === "Talhão 3")?.cropSeasonId;
+}
+
 async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.fill('input[name="email"]', email);
@@ -53,7 +62,7 @@ for (const [roleKey, account] of Object.entries(ACCOUNTS)) {
       expect(layer.status).toBe(200);
     }
 
-    const cropSeasonId = list.payload.orders[0]?.cropSeasonId;
+    const cropSeasonId = findTalhao3CropSeasonId(list.payload.orders);
     expect(cropSeasonId).toBeTruthy();
 
     const create = await api(page, "/api/collection-orders", {

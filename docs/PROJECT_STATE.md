@@ -4166,3 +4166,29 @@ Documentação completa em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`. **Fecha a Fase 
 - **Pendente**: decisão do diretor sobre ligar `RAIZ_ASSISTANT_MODE=hybrid` em algum ambiente real (o
   default continua local em todo lugar); modelo self-hosted próprio da RAIZ fica só documentado, sem
   nenhuma implementação ainda.
+
+#### Patch de pré-merge (antes do merge da Fase 4 em `develop`)
+
+Ainda em `feature/raiz-2.0-fase4`, sem migração, sem ligar híbrido. Documentação completa (atualizada)
+continua em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`.
+
+- **Correção real 1** -- `checkGenerativeUsageLimit` contava só `provider <> 'raiz-local-intent'`, o que
+  perdia toda tentativa generativa que caiu em fallback (Gemini falhou/deu timeout/foi reprovado pelo
+  Grounding Gate -- a geração final é gravada com `provider` local, mesmo tendo havido uma chamada externa
+  real). Corrigido: agora conta por `response_payload.routing.escalatedToGenerative` (só `true` nos 4
+  desfechos que realmente iniciaram uma chamada externa), não mais pela coluna `provider`. Teste novo prova
+  que 21 respostas em fallback ainda estouram o limite diário.
+- **Correção real 2** -- o timeout do router só parava de ESPERAR pela chamada externa, sem abortá-la de
+  verdade (continuava rodando e consumindo custo em segundo plano). `OperationalAssistantRequest` ganhou um
+  `signal?: AbortSignal` opcional; o router cria um `AbortController` por tentativa e aborta no timeout; o
+  provider Gemini repassa o signal pro `fetch` real e para de tentar retry assim que detecta abort (inclusive
+  durante o intervalo de espera entre tentativas 429/503, não só durante uma chamada em andamento). Teste
+  novo com um provider fake prova o abort de verdade e "nenhuma 2ª tentativa depois do abort".
+- **5 testes antigos de Field Operations** (`field-operations-isolation.spec.ts`/`-rbac.spec.ts`) --
+  confirmado que NÃO era bug de produção: localizavam a safra-fixture via `orders[0]?.cropSeasonId`
+  ("primeira ordem da lista"), premissa que deixou de ser determinística conforme o banco de dev acumulou
+  ordens de outras suítes. Corrigido localizando pelo nome real do talhão-fixture (`fieldName === "Talhão
+  3"`) -- nenhuma regra de negócio/isolamento/RBAC foi alterada, só a forma de localizar o fixture. 11/11
+  passando depois da correção.
+- Validação final: typecheck, build, `test:handoff` e a suíte e2e inteira do projeto, todos verdes (ver
+  `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md` para os números exatos da rodada completa).

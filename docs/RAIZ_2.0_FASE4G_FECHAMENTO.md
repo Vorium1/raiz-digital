@@ -116,13 +116,54 @@ garantia isso desde a Fase 4F); `cards` sempre `[]`; `patterns`/fontes/fatos det
 resolvidos contra o Evidence Catalog, nunca escritos livremente pelo modelo. 429/503/timeout/JSON
 inválido/reprovação do gate → fallback local, sem exceção.
 
+**Patch de pré-merge, item 2 (cancelamento real, não só "parar de esperar")**: `OperationalAssistantRequest`
+ganhou um campo opcional `signal?: AbortSignal`. O router cria um `AbortController` por tentativa
+generativa e chama `controller.abort()` no exato momento em que o timeout dispara (antes de rejeitar a
+promessa que o `route.ts` está esperando) — qualquer provider que faça I/O de rede precisa repassar esse
+`signal` pra sua chamada real. `gemini-operational-assistant-provider.ts` agora passa
+`signal: request.signal` pro `fetch`; um abort faz o `fetch` rejeitar imediatamente com `AbortError`, que
+escapa do loop de retry sem passar pela lógica de "tentar de novo" (nenhum código extra precisou checar
+isso no caminho do `fetch` em andamento). O único ponto que precisava de uma checagem explícita é o
+intervalo de espera ENTRE tentativas (`sleep(RETRY_DELAYS_MS[...])`, usado só quando o Gemini responde
+429/503 e o provider decide tentar de novo) — sem essa checagem, um abort que chegasse durante essa espera
+ainda deixaria uma 2ª chamada real disparar depois que o router já tinha desistido; agora o loop confere
+`request.signal?.aborted` logo depois do `sleep` e para ali, sem nova tentativa. Contrato válido pra
+qualquer provider generativo futuro (self-hosted incluso, item 9).
+
+Teste dedicado (`e2e/assistant-fase4g.spec.ts`, "Patch pré-merge, item 2"): um provider fake que nunca
+resolve sozinho (só reage ao `AbortSignal`, exatamente como o `fetch` real reagiria) confirma que o abort
+disparou de verdade dentro do provider (`abortProbe.wasAborted === true`) e que `ask()` foi chamado
+exatamente uma vez (`abortProbe.attempts === 1`) — nenhuma segunda tentativa depois do abort.
+
 ## Item 6 — Controle de custo/uso
 
 `src/lib/ai/assistant-usage-limits.ts`. Reaproveita `ai_generations` (já existe, já é gravado em toda
-resposta) — **nenhuma migração, nenhuma tabela nova**. Contador real via consulta SQL (`count(*) ... WHERE
-tenant_id=... AND kind='OPERATIONAL_ASSISTANT' AND provider <> 'raiz-local-intent' AND created_at >=
-date_trunc('day', now())`) — nunca um contador em memória de processo Node/serverless (que zeraria a cada
-cold start e não seria compartilhado entre instâncias).
+resposta) — **nenhuma migração, nenhuma tabela nova**. Contador real via consulta SQL — nunca um contador
+em memória de processo Node/serverless (que zeraria a cada cold start e não seria compartilhado entre
+instâncias).
+
+**Patch de pré-merge, item 1 (correção real de contagem)**: a consulta original filtrava por
+`provider <> 'raiz-local-intent'`. Isso perdia toda tentativa generativa que caiu em fallback — quando o
+Gemini falha/dá timeout/é reprovado pelo Grounding Gate, `route.ts` grava a geração final com `provider` =
+LOCAL (é a resposta que o cliente de fato recebeu), mesmo tendo havido uma chamada externa real. Um
+provider instável (ou um Grounding Gate que reprova com frequência) virava, na prática, um jeito de gastar
+cota externa paga sem nunca bater no limite diário. Corrigido: a consulta agora conta por
+`response_payload -> 'routing' ->> 'escalatedToGenerative'` (o campo que `assistant-provider-router.ts`
+grava com precisão — só fica `true` nos 4 desfechos que realmente iniciaram uma chamada externa: `approved`,
+`rejected_by_gate`, `provider_error`, `timeout`; fica `false` tanto quando nunca houve motivo de escalonar
+quanto quando o limite já bloqueou ANTES da chamada, `rate_limited`), não mais pela coluna `provider`:
+
+```sql
+SELECT count(*) FILTER (WHERE created_by = $2::uuid) AS "userCount", count(*) AS "tenantCount"
+FROM ai_generations
+WHERE tenant_id = $1::uuid AND kind = 'OPERATIONAL_ASSISTANT' AND created_at >= date_trunc('day', now())
+  AND (response_payload -> 'routing' ->> 'escalatedToGenerative')::boolean IS TRUE
+```
+
+Teste dedicado (`e2e/assistant-fase4g.spec.ts`, "Patch pré-merge, item 1"): insere 21 linhas reais com
+`provider = 'raiz-local-intent'` mas `routing.escalatedToGenerative: true` (simulando 21 perguntas que
+escalonaram e caíram em fallback) e confirma que o limite diário é atingido mesmo assim — o mesmo cenário
+que, com a consulta antiga, jamais contaria contra o limite (`provider` sempre era local nessas linhas).
 
 ```
 RAIZ_ASSISTANT_MAX_GENERATIVE_CALLS_PER_USER_DAY     (padrão: 20)
@@ -225,6 +266,36 @@ Chamadas reais ao Gemini só acontecem no benchmark explicitamente autorizado
 (`/api/dev/assistant-benchmark`, `provider:"gemini"`), como já estabelecido nas Fases 4E/4F — nada disso
 mudou.
 
+Patch de pré-merge — 2 testes novos no mesmo arquivo: "tentativas generativas que caem em fallback ainda
+consomem o limite diário" (item 6 acima) e "timeout aborta a chamada externa de verdade, sem 2ª tentativa
+depois do abort" (item 2 acima). 16 testes no total no arquivo (14 anteriores + 2 novos).
+
+## Patch de pré-merge — causa e correção dos 5 testes antigos de Field Operations
+
+A suíte completa (rodada ao final da Fase 4G) revelou 5 falhas em `e2e/field-operations-isolation.spec.ts`
+e `e2e/field-operations-rbac.spec.ts`, todas com o mesmo sintoma: `expect(imported.status).toBe(200)`
+recebendo `422` numa importação de CSV de pontos.
+
+**Causa raiz confirmada (não é bug de produção)**: os 4 pontos de teste envolvidos localizavam a safra alvo
+com `list.payload.orders[0]?.cropSeasonId` — assumindo que a "primeira ordem" retornada pela API sempre
+pertencia ao talhão-fixture usado pelas outras suítes ("Talhão 3", tenant A), cujo boundary geográfico real
+cobre as coordenadas fixas do CSV de teste (`INSIDE_FIELD_POINTS_CSV`). O banco de desenvolvimento
+acumulou ordens de coleta de várias suítes ao longo de meses de sessões — quando a "primeira" ordem da
+lista passou a pertencer a outro talhão (não "Talhão 3"), a nova ordem criada a partir dessa
+`cropSeasonId` ficava vinculada a um talhão cujo boundary real não cobre as coordenadas fixas do CSV, e a
+importação era corretamente rejeitada com 422 (validação de geometria funcionando como deveria — nenhuma
+regra de negócio alterada).
+
+Confirmado consultando o banco de desenvolvimento diretamente: existem múltiplas ordens de coleta
+associadas ao talhão "Talhão 3" (mesmo `crop_season_id` em todas), prova de que esse talhão-fixture já
+tinha pelo menos uma ordem existente o tempo todo — só não era mais garantidamente a primeira da lista.
+
+**Correção**: os 4 pontos trocaram `orders[0]?.cropSeasonId` por uma busca explícita pelo nome do talhão
+(`orders.find(o => o.fieldName === "Talhão 3")?.cropSeasonId`) — nunca mais pela posição na lista. Isolamento
+multiempresa e RBAC continuam sendo exercitados exatamente como antes (nenhuma asserção de segurança foi
+enfraquecida ou removida) — só a forma de localizar a safra-fixture mudou. Confirmado: os 11 testes dos
+2 arquivos passam 100% depois da correção, rodando isoladamente e dentro da suíte completa.
+
 ## Limitações atuais / o que fica pra fases futuras
 
 - Gemini continua candidato — `resolveOperationalAssistantProvider()` (função original, ainda usada em
@@ -252,6 +323,30 @@ npx playwright test <assistente completo + sidebar>, --workers=2
                                                         0 failed
 Benchmark local (provider:"local")                    → 49/49, todos os eixos objetivos em 1.00
 ```
+
+## Patch de pré-merge — validação final (suíte inteira)
+
+Depois das 2 correções reais (item 6/contagem de limite, item 5/abort real) e da correção dos 5 testes
+antigos de Field Operations:
+
+```
+npm run typecheck                                   → sem erros
+npm run build                                        → build de produção completo, sem erros
+npm run test:handoff                                 → todos os 25 scripts aprovados
+e2e/field-operations-isolation.spec.ts +
+e2e/field-operations-rbac.spec.ts (isolado)          → 11/11 passed, 0 failed
+e2e/assistant-fase4g.spec.ts (16 testes: os 14
+anteriores + 2 novos do patch)                        → 16/16 passed contra o banco real (14 direto, os
+                                                        2 que dependem de DATABASE_URL confirmados à parte)
+npx playwright test (SUÍTE INTEIRA, 16 arquivos,
+--workers=2)                                          → 111 testes: 105 passed, 6 skipped (honestos,
+                                                        já documentados em entregas anteriores -- nenhum
+                                                        novo), 0 failed
+```
+
+**0 falhas na suíte completa.** Os 6 skips são os mesmos já conhecidos de entregas anteriores (dependem de
+estado de fixture específico não montado neste ambiente, ex. duas safras do mesmo talhão pra comparação) --
+nenhum skip novo, nenhum skip escondendo falha.
 
 ## O que continua fora de escopo (reafirmado)
 

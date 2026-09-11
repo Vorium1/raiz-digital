@@ -172,13 +172,17 @@ test("Item 11: limite diário de chamadas generativas por usuário atingido -> l
     if (!userId || !tenantId) return;
 
     // Limite padrão (sem override de env nesta instância): 20 chamadas generativas/dia por usuário --
-    // insere 21 linhas reais em `ai_generations` (provider != local) pra estourar o limite de propósito.
+    // insere 21 linhas reais em `ai_generations` pra estourar o limite de propósito. Patch de pré-merge
+    // (item 1): a contagem agora lê `response_payload.routing.escalatedToGenerative`, não mais a coluna
+    // `provider` -- por isso o payload precisa carregar essa estrutura de verdade (o que `route.ts` grava
+    // de verdade em toda resposta roteada), senão o teste passaria "por acidente" com a query antiga E com
+    // a nova, sem provar nada sobre a correção real.
     for (let i = 0; i < 21; i++) {
       const inserted = await client.query(
         `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, status, created_by)
-         VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', 'fake-generative', 'fake-model', 'test', '{}'::jsonb, '{}'::jsonb, 'APPROVED'::ai_review_status, $2::uuid)
+         VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', 'fake-generative', 'fake-model', 'test', '{}'::jsonb, $3::jsonb, 'APPROVED'::ai_review_status, $2::uuid)
          RETURNING id::text`,
-        [tenantId, userId],
+        [tenantId, userId, JSON.stringify({ routing: { mode: "hybrid", localHandling: "unsupported", escalatedToGenerative: true, generativeOutcome: "approved" } })],
       );
       insertedIds.push(inserted.rows[0].id);
     }
@@ -196,6 +200,62 @@ test("Item 11: limite diário de chamadas generativas por usuário atingido -> l
     for (const id of insertedIds) await client.query(`DELETE FROM ai_generations WHERE id = $1::uuid`, [id]);
     await client.end();
   }
+});
+
+test("Patch pré-merge, item 1: tentativas generativas que caem em fallback (timeout/erro/reprovadas) ainda consomem o limite diário", async ({ page }) => {
+  test.skip(!process.env.DATABASE_URL, "precisa de DATABASE_URL no ambiente pra este teste.");
+  if (!process.env.DATABASE_URL) return;
+
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  const insertedIds: string[] = [];
+  try {
+    const userRow = await client.query(`SELECT id::text AS id, (SELECT tenant_id::text FROM tenant_members WHERE user_id = users.id LIMIT 1) AS "tenantId" FROM users WHERE email = $1`, [TENANT_A_EMAIL]);
+    const { id: userId, tenantId } = userRow.rows[0] ?? {};
+    test.skip(!userId || !tenantId, "precisa localizar o usuário/tenant reais de admin@raiz.local.");
+    if (!userId || !tenantId) return;
+
+    // As 21 linhas simulam perguntas que ESCALONARAM pro generativo mas todas caíram em fallback --
+    // `provider` gravado é o LOCAL (é a resposta que o cliente de fato recebeu), exatamente como
+    // `route.ts` grava de verdade quando o router cai em fallback. Antes do patch, `checkGenerativeUsageLimit`
+    // filtrava só por `provider <> 'raiz-local-intent'` -- essas linhas (provider = local) nunca seriam
+    // contadas, e um provider generativo instável (ou um Grounding Gate que reprova muito) viraria um jeito
+    // de gastar cota externa ilimitada sem nunca bater no limite diário.
+    const outcomes = ["timeout", "provider_error", "rejected_by_gate"];
+    for (let i = 0; i < 21; i++) {
+      const inserted = await client.query(
+        `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, status, created_by)
+         VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', 'raiz-local-intent', 'intent-v1', 'test', '{}'::jsonb, $3::jsonb, 'APPROVED'::ai_review_status, $2::uuid)
+         RETURNING id::text`,
+        [tenantId, userId, JSON.stringify({ routing: { mode: "hybrid", localHandling: "unsupported", escalatedToGenerative: true, generativeOutcome: outcomes[i % outcomes.length] } })],
+      );
+      insertedIds.push(inserted.rows[0].id);
+    }
+
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    const result = await callRouter(page, { mode: "hybrid", question: UNSUPPORTED_QUESTION, fakeGenerativeBehavior: "success" });
+    expect(result.status).toBe(200);
+    expect(result.body.routing.generativeOutcome).toBe("rate_limited");
+    expect(result.body.routing.escalatedToGenerative).toBe(false);
+    expect(result.body.response.provider).toBe("raiz-local-intent");
+  } finally {
+    for (const id of insertedIds) await client.query(`DELETE FROM ai_generations WHERE id = $1::uuid`, [id]);
+    await client.end();
+  }
+});
+
+test("Patch pré-merge, item 2: timeout aborta a chamada externa de verdade, sem 2ª tentativa depois do abort", async ({ page }) => {
+  await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+  const result = await callRouter(page, { mode: "hybrid", question: UNSUPPORTED_QUESTION, fakeGenerativeBehavior: "abort_probe" });
+  expect(result.status).toBe(200);
+  expect(result.body.routing.generativeOutcome).toBe("timeout");
+  // Usuário recebe o fallback local normalmente -- o abort nunca vaza pro client.
+  expect(result.body.response.provider).toBe("raiz-local-intent");
+  // O sinal de abort disparou DENTRO do provider fake (mesmo contrato `request.signal` que o Gemini real
+  // respeita no `fetch`) -- prova que o router aborta a chamada de verdade, não só para de esperar por ela.
+  expect(result.body.abortProbe.wasAborted).toBe(true);
+  // `ask()` foi chamado exatamente uma vez -- nenhuma segunda tentativa aconteceu depois do abort.
+  expect(result.body.abortProbe.attempts).toBe(1);
 });
 
 test("Item 14: benchmark local continua 49/49 (Benchmark V2 + adversariais, Fase 4F) depois de todas as mudanças da Fase 4G", async ({ page }) => {

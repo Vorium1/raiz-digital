@@ -32,6 +32,15 @@ export type OperationalAssistantRequest = {
    *  `ScreenContext` apontava pra uma entidade que não existe/não pertence ao tenant da sessão; o provider
    *  precisa tratar isso como "sem evidência disponível", nunca inventar dado no lugar. */
   evidence?: AssistantEvidenceResult;
+  /**
+   * Patch de pré-merge (item 2) -- cancelamento real de chamada externa, não só "o router para de esperar".
+   * `assistant-provider-router.ts` cria um `AbortController` por tentativa generativa e aborta no timeout;
+   * qualquer provider que faça I/O de rede (Gemini hoje, self-hosted amanhã) DEVE repassar este `signal`
+   * pra sua chamada (`fetch(url, { signal })`) e parar de tentar retry assim que `signal.aborted` for
+   * `true` -- nunca continuar gastando tempo/custo numa chamada cujo resultado já foi descartado. O
+   * provider local ignora este campo (nunca faz I/O de rede, nada a abortar).
+   */
+  signal?: AbortSignal;
 };
 
 /**

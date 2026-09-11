@@ -1,5 +1,4 @@
 import { withTenant } from "@/lib/db";
-import { localIntentAssistantProvider } from "@/lib/ai/providers/local-intent-assistant-provider";
 
 /**
  * Fase 4G, item 6 — controle de custo/uso de provider GENERATIVO, real e server-side, nunca um contador em
@@ -7,10 +6,16 @@ import { localIntentAssistantProvider } from "@/lib/ai/providers/local-intent-as
  * instâncias). Reaproveita `ai_generations` (já existe, já é gravado em toda resposta do Assistente,
  * `recordOperationalAssistantGeneration`) -- nenhuma migração, nenhuma tabela nova.
  *
- * Conta só chamadas a um provider GENERATIVO (`provider <> "raiz-local-intent"`) -- o provider local nunca
- * conta contra o limite (é gratuito/determinístico, sempre disponível). Quando o limite é atingido, o
- * router (`assistant-provider-router.ts`) nunca escalona -- o usuário simplesmente recebe a resposta do
- * provider local pra aquela pergunta, sem nenhuma mensagem sobre cota/limite.
+ * Patch de pré-merge (achado real, item 1): a contagem NÃO pode se basear na coluna `provider` sozinha.
+ * Quando uma tentativa generativa falha/dá timeout/é reprovada pelo Grounding Gate, `route.ts` grava a
+ * geração final com `provider` = LOCAL (é a resposta local que o cliente recebeu) — mas isso ainda foi uma
+ * tentativa/consumo real contra um provider externo pago, e precisa contar contra o limite diário, senão um
+ * provider generativo instável (ou um Grounding Gate que reprova muito) vira um jeito de gastar cota
+ * ilimitada sem nunca bater no limite. `assistant-provider-router.ts` já registra isso com precisão em
+ * `response_payload.routing.escalatedToGenerative` — só fica `true` nos 4 casos que realmente iniciaram uma
+ * chamada externa (`approved`, `rejected_by_gate`, `provider_error`, `timeout`); fica `false` tanto quando
+ * nunca havia motivo de escalonar (`not_attempted`) quanto quando o limite já barrou ANTES da chamada
+ * (`rate_limited`) — exatamente a distinção pedida. Contar por esse campo, não pela coluna `provider`.
  */
 
 export type UsageLimitCheck = { allowed: true } | { allowed: false; reason: string };
@@ -57,9 +62,9 @@ export async function checkGenerativeUsageLimit(tenantId: string, userId: string
        FROM ai_generations
        WHERE tenant_id = $1::uuid
          AND kind = 'OPERATIONAL_ASSISTANT'
-         AND provider <> $3
-         AND created_at >= date_trunc('day', now())`,
-      [tenantId, userId, localIntentAssistantProvider.name],
+         AND created_at >= date_trunc('day', now())
+         AND (response_payload -> 'routing' ->> 'escalatedToGenerative')::boolean IS TRUE`,
+      [tenantId, userId],
     );
     const row = result.rows[0];
     const userCount = Number(row?.userCount ?? 0);

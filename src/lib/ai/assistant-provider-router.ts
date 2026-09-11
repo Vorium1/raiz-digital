@@ -54,9 +54,18 @@ export type AssistantRoutingTelemetry = {
 
 export type RoutedAssistantResult = { response: OperationalAssistantResponse; routing: AssistantRoutingTelemetry };
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+/**
+ * Patch de pré-merge (item 2) -- o timeout precisa ABORTAR a chamada externa de verdade, não só parar de
+ * esperar por ela. `controller.abort()` é chamado no disparo do timer, ANTES da rejeição -- qualquer
+ * provider que tenha repassado `signal` pro seu `fetch` recebe o abort imediatamente (o próprio `fetch`
+ * rejeita com `AbortError`, que nunca é tratado como "retryable" -- ver `gemini-operational-assistant-provider.ts`).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, controller: AbortController): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timeout após ${ms}ms sem resposta`)), ms);
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`timeout após ${ms}ms sem resposta`));
+    }, ms);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
       (error) => { clearTimeout(timer); reject(error); },
@@ -99,11 +108,16 @@ export async function routeAssistantRequest(
   }
 
   const started = Date.now();
+  const controller = new AbortController();
   let candidateResponse: OperationalAssistantResponse | undefined;
   let errorMessage: string | undefined;
   let timedOut = false;
   try {
-    candidateResponse = await withTimeout(generativeProvider.ask(request), options.timeoutMs ?? generativeTimeoutMs());
+    candidateResponse = await withTimeout(
+      generativeProvider.ask({ ...request, signal: controller.signal }),
+      options.timeoutMs ?? generativeTimeoutMs(),
+      controller,
+    );
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);
     timedOut = errorMessage.includes("timeout após");
