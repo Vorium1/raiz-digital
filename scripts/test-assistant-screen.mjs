@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { inferScreenContext, inferScreenState } from "../src/lib/ai/assistant-screen.ts";
+import { inferScreenContext, inferScreenState, parseAssistantScreenContext, parseAssistantScreenState, INVALID_SCREEN_CONTEXT } from "../src/lib/ai/assistant-screen.ts";
 
 // Fase 4A, Bloco 1 -- resolução de rota/contexto e estado de tela do Assistente RAIZ. Cobre exatamente as
 // rotas reais do app (nenhuma inventada) e prova a separação real entre ScreenContext (qual entidade) e
@@ -71,4 +71,50 @@ assert.deepEqual(
 // 11. Tela sem ScreenState definido (ex.: dashboard) -> undefined, nunca um objeto vazio inventado.
 assert.equal(inferScreenState("/dashboard", searchParams({})), undefined);
 
-console.log("assistant-screen: 11 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto)");
+// ---------------------------------------------------------------------------------------------
+// Fechamento técnico (2º pedido, item 2) -- parseAssistantScreenContext/parseAssistantScreenState:
+// parsing do CORPO de /api/assistant. Correção do diretor: contexto explicitamente informado porém
+// inválido/malformado NUNCA vira `{type:"dashboard"}` silenciosamente -- só a ausência LEGÍTIMA
+// (nada enviado) pode virar contexto global.
+// ---------------------------------------------------------------------------------------------
+
+// 12. Ausência legítima (corpo não mandou screenContext nenhum) -> dashboard é a escolha correta.
+assert.deepEqual(parseAssistantScreenContext(undefined), { type: "dashboard" });
+assert.deepEqual(parseAssistantScreenContext(null), { type: "dashboard" });
+
+// 13. Tela Dashboard real, explícita -> dashboard (trivial).
+assert.deepEqual(parseAssistantScreenContext({ type: "dashboard" }), { type: "dashboard" });
+
+// 14. Tipo desconhecido/não reconhecido -> INVALID, nunca dashboard.
+assert.equal(parseAssistantScreenContext({ type: "isso-nao-existe" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({}), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext("string-solta"), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext(42), INVALID_SCREEN_CONTEXT);
+
+// 15. Tipo que exige id, mas id ausente ou malformado -> INVALID, nunca dashboard (achado real do
+// diretor -- antes da correção, isso virava {type:"dashboard"} e a RAIZ respondia sobre a operação
+// inteira em vez de admitir que não sabia de qual talhão/análise/propriedade se tratava).
+assert.equal(parseAssistantScreenContext({ type: "field" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({ type: "field", id: "nao-e-um-uuid" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({ type: "analysis", id: "12345" }), INVALID_SCREEN_CONTEXT);
+
+// 16. Tipo que exige id, com um uuid real e válido -> contexto real, id normalizado pra minúsculo.
+assert.deepEqual(parseAssistantScreenContext({ type: "field", id: REAL_UUID.toUpperCase() }), { type: "field", id: REAL_UUID });
+
+// 17. Tipo que NÃO exige id (map/comparison/intelligence) sem id nenhum -> contexto real, não é inválido.
+assert.deepEqual(parseAssistantScreenContext({ type: "map" }), { type: "map" });
+assert.deepEqual(parseAssistantScreenContext({ type: "comparison" }), { type: "comparison" });
+
+// 18. parseAssistantScreenState -- mesma leitura defensiva, corpo sem `screen` reconhecido -> undefined.
+assert.equal(parseAssistantScreenState(undefined), undefined);
+assert.equal(parseAssistantScreenState({ screen: "tela-desconhecida" }), undefined);
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "map", collectionOrderId: "abc", satellite: true }),
+  { screen: "map", collectionOrderId: "abc", parameter: undefined, status: undefined, satellite: true },
+);
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", interpretationState: "BLOQUEADA", reviewState: "APROVADA" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: "BLOQUEADA", reviewState: "APROVADA" },
+);
+
+console.log("assistant-screen: 18 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto; contexto inválido do corpo nunca vira dashboard silenciosamente)");

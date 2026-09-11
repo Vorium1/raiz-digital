@@ -8,24 +8,26 @@ foram tocados**.
 
 ## Resumo objetivo
 
-- Bloco 0 (segurança primeiro): 4 testes e2e novos cobrindo isolamento de tenant, ID de outro tenant
-  rejeitado, `tenantId` do corpo nunca altera a sessão, e RBAC sem ação indevida.
+- Bloco 0 (segurança primeiro): 4 dos testes de `e2e/assistant-fase4a.spec.ts` cobrem isolamento de tenant,
+  ID de outro tenant rejeitado, `tenantId` do corpo nunca altera a sessão, e RBAC sem ação indevida.
 - Bloco 1 (contexto): `AssistantScreenContext` estendido pras 9 rotas reais, `ScreenState` separado
   (Correção 4 da arquitetura), `inferScreenContext`/`inferScreenState` puros e testados.
 - Bloco 2 (Evidence Package Builders): um builder por contexto, reaproveitando repositórios já existentes,
   com o teto de tamanho e o `spatialGeometryAvailable: false` explícito do NDVI (Correção 1).
 - Bloco 3 (resposta estruturada): `local-intent-assistant-provider.ts` migrado pro novo
-  `AssistantStructuredResponse`, preservando as 8 intenções reais, sem LLM, `requires_professional_review`
-  calculado por código.
+  `AssistantStructuredResponse`, preservando as 8 intenções originais + 1 nova (fila de Inteligência
+  filtrada), sem LLM, `requires_professional_review` calculado por código.
 - Auditoria: `evidenceManifest` (Correção 3) gravado em `ai_generations.request_payload`, sem migração;
   `status` passa a ser `PENDING_REVIEW` quando uma resposta trouxer hipótese (hoje nunca acontece, porque o
   provedor local nunca gera hipótese).
+- **Fechamento técnico pós-entrega** (esta mesma branch, sem merge): 3 inconsistências reais corrigidas —
+  ver seção dedicada abaixo.
 
 ## Bloco 0 — segurança primeiro
 
-Arquivo novo: `e2e/assistant-fase4a.spec.ts` (7 testes). Antes desta entrega, **nenhum** teste automatizado
-cobria isolamento de tenant do `/api/assistant` — confirmado por busca no diretório `e2e/` inteiro durante
-a etapa de arquitetura (nenhum arquivo mencionava "assistant"/"Assistente").
+Arquivo novo: `e2e/assistant-fase4a.spec.ts`. Antes desta entrega, **nenhum** teste automatizado cobria
+isolamento de tenant do `/api/assistant` — confirmado por busca no diretório `e2e/` inteiro durante a etapa
+de arquitetura (nenhum arquivo mencionava "assistant"/"Assistente"). Os 4 testes específicos do Bloco 0:
 
 - **Tenant B nunca recebe evidência de talhão/propriedade da tenant A**, mesmo enviando um ID real de A em
   5 tipos de `ScreenContext` diferentes (`field`, `property`, `analysis`, `report-field`,
@@ -99,8 +101,8 @@ repositório já existente (nenhuma consulta SQL duplicada onde já havia reposi
 | `analysis` | `buildAnalysisEvidence` | `buildAgronomicEvidencePackage` (Fase 3, sem alterar) |
 | `report-field` | `buildReportFieldEvidence` | `getFieldAnalysisReportData` |
 | `comparison` | `buildComparisonEvidence` | `compareFields`/`compareSeasons`/`comparePoints`/`compareProperties` |
-| `intelligence` | `buildIntelligenceEvidence` | `getIntelligenceQueue` |
-| `map` | `buildMapEvidence` | delega pra `field` (via 1 consulta nova e pequena, `collection_orders -> crop_seasons -> field_id`, tenant-escopada) ou `dashboard` |
+| `intelligence` | `buildIntelligenceEvidence` | `getIntelligenceQueue` + `interpretationQueueBucket` (mesma regra de bucket da tela real — ver fechamento técnico, item 3) |
+| `map` | `buildMapEvidence` | delega pra `field` (via 1 consulta nova e pequena, `collection_orders -> crop_seasons -> field_id`, tenant-escopada), `dashboard` (nenhuma seleção) ou `unavailable` (seleção informada mas não resolveu — ver fechamento técnico, item 2) |
 
 Regras aplicadas em todos (arquitetura, seção 5.3):
 
@@ -122,8 +124,8 @@ ndvi: { latestCapturedAt: string | null; latestMeanNdvi: number | null; zoneBrea
 escolhidos no `ScreenState` (mesma regra de UX já testada na Fase 3 pra `comparison-explorer.tsx`); IDs
 inválidos ou de outro tenant caem em `ready: false` sem vazar detalhe do erro.
 
-**Testes**: cobertos pelos 7 testes e2e de `e2e/assistant-fase4a.spec.ts` (que exercitam o dispatcher real
-via `/api/assistant`, incluindo um teste que confere a contagem real de talhões de uma propriedade contra
+**Testes**: cobertos pelos testes e2e de `e2e/assistant-fase4a.spec.ts` que exercitam o dispatcher real via
+`/api/assistant` (incluindo um teste que confere a contagem real de talhões de uma propriedade contra
 `/api/context`) — a decisão de testar builders via Playwright (não `node --experimental-strip-types`) é
 técnica: `assistant-evidence.ts` importa `reports.ts`/`interpretations.ts`, que têm classes com parâmetro de
 construtor TypeScript (`ReportError`, `InterpretationError`) — sintaxe que o strip-types de Node não
@@ -153,31 +155,37 @@ nunca uma heurística textual tipo "se parece recomendação". Como o provedor l
 `requires_professional_review` sempre resolve `false` nesta etapa — exatamente o esperado (provider
 determinístico, sem interpretação nova).
 
-`src/lib/ai/providers/local-intent-assistant-provider.ts` migrado, preservando as 8 intenções reais
+`src/lib/ai/providers/local-intent-assistant-provider.ts` migrado, preservando as 8 intenções originais
 (coleta atrasada, pontos pendentes, laudos do mês, revisões pendentes, confiabilidade, comparação de
-safra, resumo de propriedade, pendências gerais) — nenhuma removida, nenhuma nova. Onde o `ScreenContext`
-já trazia um Evidence Package pronto pro talhão/propriedade em questão (Bloco 1+2), o provedor usa esse
-pacote já resolvido em vez de consultar de novo (comparação de safra dentro de um talhão, resumo dentro de
-uma propriedade) — prova real de que os 3 blocos já estão conectados, não são camadas paralelas. A única
+safra, resumo de propriedade, pendências gerais) — nenhuma removida. Onde o `ScreenContext` já trazia um
+Evidence Package pronto pro talhão/propriedade em questão (Bloco 1+2), o provedor usa esse pacote já
+resolvido em vez de consultar de novo (comparação de safra dentro de um talhão, resumo dentro de uma
+propriedade) — prova real de que os 3 blocos já estão conectados, não são camadas paralelas. A única
 exceção documentada: resolver uma propriedade a partir do **nome digitado livremente** na pergunta (fora
 de uma tela de propriedade) é uma operação que depende do texto da pergunta, que nenhum Evidence Package
 pré-construído poderia antecipar — nesse único caso, o provedor chama o MESMO builder (`buildPropertyEvidence`)
 diretamente, depois de resolver o nome via `findPropertyByName`, nunca uma consulta paralela.
 
+No fechamento técnico pós-entrega (item 3, seção dedicada abaixo), ganhou uma **9ª intenção real**: dentro
+da tela de Inteligência, a fila filtrada (mesma regra de bucket da própria tela) passou a ser narrada.
+
 `src/app/api/assistant/route.ts` reescrito: valida `screenContext`/`screenState` do corpo de forma
-defensiva (tipo desconhecido ou ID malformado cai pro `dashboard`, nunca vira consulta com entrada
-inválida), monta o Evidence Package via `buildAssistantEvidence`, chama o provedor, grava auditoria.
+defensiva via `parseAssistantScreenContext`/`parseAssistantScreenState` (`assistant-screen.ts`) — tipo
+desconhecido ou ID malformado nunca vira consulta com entrada inválida, e (fechamento técnico, item 2)
+nunca vira `dashboard` silenciosamente — monta o Evidence Package via `buildAssistantEvidence`, chama o
+provedor, grava auditoria.
 
 **Testes**: `scripts/test-assistant-response-schema.mjs` (`npm run test:assistant-response-schema`), 5
 cenários — regra de revisão profissional (código, nunca o provider) e a prova pedida explicitamente pelo
 diretor: `describeNdviFieldCoexistence` **nunca** produz um texto que afirme coincidência espacial como
 fato — só nega ("NÃO é uma coincidência espacial confirmada"/"Não é possível afirmar coincidência
-espacial...") ou declara a lacuna em `missing_information`. Mais 1 teste e2e (`Assistente: resposta sempre
-traz o novo schema estruturado`) confirma o formato real trafegando pelo endpoint.
+espacial...") ou declara a lacuna em `missing_information`. Mais o teste e2e `Assistente: resposta sempre
+traz o novo schema estruturado` confirma o formato real trafegando pelo endpoint.
 
 ## Auditoria (Correção 3 — `evidenceManifest`)
 
-`src/lib/ai/assistant-evidence.ts` exporta `buildEvidenceManifest`, sem nenhuma migração:
+`src/lib/ai/assistant-evidence-manifest.ts` exporta `buildEvidenceManifest`, sem nenhuma migração (ver
+fechamento técnico, item 1, pra por que este virou um arquivo próprio):
 
 ```ts
 type EvidenceManifest = {
@@ -202,39 +210,144 @@ resposta final efetivamente usou.
 `PENDING_REVIEW` quando `requires_professional_review === true`. Coluna e enum (`ai_review_status`) já
 existiam — nenhuma migração.
 
+---
+
+## Fechamento técnico pós-entrega (mesma branch, sem merge) — 3 inconsistências corrigidas
+
+O diretor aprovou a Fase 4A conceitualmente, mas encontrou 3 inconsistências reais no código antes dos
+Blocos 4-6. Corrigidas nesta mesma branch (`feature/raiz-2.0-fase4`), sem migração, sem merge, sem alteração
+agronômica, sem conexão de LLM.
+
+### Item 1 — `EvidenceManifest` não podia ficar com `ruleRefs`/`technicalSourceIds` sempre vazios
+
+Achado real: `EvidenceManifest` já declarava os dois campos, mas `/api/assistant` chamava
+`buildEvidenceManifest()` sem fornecer nenhum dos dois — ficavam sempre vazios, mesmo quando o Evidence
+Package de análise (`AgronomicEvidencePackage`) já tinha `ruleUsed`/`technicalSources` reais.
+
+- **`src/lib/ai/evidence-package.ts`**: `technicalSources` passou a carregar `id` real (`SELECT id::text,
+  title, ...`) — antes só tinha título em texto livre, sem identificador nenhum.
+- **`src/lib/ai/assistant-evidence-manifest.ts`** (novo arquivo, movido de `assistant-evidence.ts`):
+  `buildEvidenceManifest` agora **deriva automaticamente** `ruleRefs`/`technicalSourceIds` do
+  `AssistantEvidenceResult` recebido — nunca depende do chamador lembrar de passar isso manualmente. Pra
+  contexto `analysis`: registra `código/nome do perfil@versão#hash-truncado` quando `ruleUsed` tem
+  identificação real (nunca um rótulo genérico quando os campos vêm todos nulos), e os IDs reais das
+  fontes técnicas presentes. Outros contextos (dashboard/propriedade/talhão/...) nunca carregam regra/fonte
+  hoje — arrays vazios são a resposta honesta, não uma lacuna. `extraRuleRefs` reservado pra quando a
+  camada de resposta (`patterns[].ruleRef`) calcular uma regra que o Evidence Package sozinho não sabe.
+  Motivo de ser um arquivo separado: deliberadamente puro (só `import type` de `assistant-evidence.ts`),
+  testável com `node --experimental-strip-types` sem banco real — `assistant-evidence.ts` importa
+  `reports.ts`/`interpretations.ts`, que têm classes incompatíveis com o strip-types de Node.
+
+**Testes**: `scripts/test-assistant-evidence-manifest.mjs` (`npm run test:assistant-evidence-manifest`), 9
+cenários — análise com regra real, análise com fontes reais, `ruleUsed` presente mas vazio (nunca vira
+rótulo genérico), contexto sem regra/fonte (array vazio honesto), `found: false` nunca lança erro,
+`extraRuleRefs` mesclado e deduplicado, hash determinístico, teto de 20 fatos. Mais 2 testes e2e
+(`assistant-fase4a.spec.ts`) confirmando a integração real via `/api/assistant` — um deles (regra+fonte
+real) pulado nesta rodada por falta de dado semeado no banco de dev com essa combinação exata (crop_profile
+com `technical_sources` `ACTIVE`), skip honesto, não uma falha; a lógica em si já está exaustivamente
+provada pelos 9 cenários unitários.
+
+### Item 2 — contexto inválido precisa falhar fechado, nunca virar Dashboard
+
+Achado real: `parseScreenContext` convertia QUALQUER contexto inválido/malformado pra `{type: "dashboard"}`
+— seguro contra vazamento, mas semanticamente errado: um erro de contexto (id malformado, tipo
+desconhecido) fazia a RAIZ responder sobre a operação inteira, em vez de admitir que não sabia do que se
+tratava.
+
+- **`src/lib/ai/assistant-screen.ts`**: novas `parseAssistantScreenContext`/`parseAssistantScreenState`
+  (parsing do CORPO da requisição, movidos de dentro de `route.ts` pra serem puros e testáveis) separam 3
+  situações: (1) ausência legítima (nada enviado) → `{type:"dashboard"}`, contexto global correto; (2)
+  Dashboard real explícito → `{type:"dashboard"}`; (3) contexto informado mas inválido (tipo desconhecido,
+  id ausente/malformado) → sentinela `INVALID_SCREEN_CONTEXT`, **nunca** dashboard.
+- **`src/lib/ai/assistant-evidence.ts`**: novo `AssistantEvidenceResult` kind `"invalid"` — `route.ts`
+  monta `{found:false, kind:"invalid"}` diretamente (sem chamar `buildAssistantEvidence`) quando o parsing
+  falhou.
+- **`src/lib/ai/providers/local-intent-assistant-provider.ts`**: checa `evidence.kind === "invalid"` ANTES
+  de qualquer casamento de intenção — mesmo uma pergunta que bateria no repertório global (ex.:
+  "pendências") responde "Não consegui identificar o contexto atual. Reabra a tela ou selecione novamente
+  o item." em vez de silenciosamente narrar a operação inteira.
+- **`/mapas`**: `buildMapEvidence`/`MapEvidence` passaram a distinguir `"dashboard"` (nenhuma seleção
+  informada — ausência legítima) de `"unavailable"` (uma ordem foi informada mas não resolveu pra uma
+  ordem real do tenant — antes isso também caía silenciosamente em `dashboard`). O dispatcher registra
+  `entityIds.attemptedCollectionOrderId` nesse caso, pra auditoria conseguir distinguir os dois cenários
+  (o valor já veio do próprio client, não é segredo).
+
+**Testes**: 6 testes e2e novos — talhão com UUID malformado (fail-closed), tipo de contexto desconhecido
+(fail-closed), UUID válido de outro tenant (continua um contexto real `found:false`, nunca vira dashboard —
+confirmado inspecionando `ai_generations.request_payload.screenContext` real), ordem de mapa inválida
+(`attemptedCollectionOrderId` registrado, nunca dashboard), mapa sem nenhuma seleção (dashboard real,
+ausência legítima), e Dashboard explícito continua funcionando normalmente (regressão).
+
+### Item 3 — `ScreenState` de Inteligência precisa refletir a MESMA regra da tela real
+
+Achado real: `AssistantScreenState` já recebia `interpretationState`/`reviewState`, mas
+`buildIntelligenceEvidence` ignorava os dois — a página `/inteligencia` nunca passa esses filtros pra
+`getIntelligenceQueue` (que não os suporta), ela busca as linhas e filtra DEPOIS em memória, comparando o
+`bucket` derivado (`interpretationQueueBucket`, `src/domain/interpretation-status.ts`) contra os filtros.
+
+- **`src/lib/ai/assistant-evidence.ts`**: `buildIntelligenceEvidence` reescrito pra reproduzir EXATAMENTE
+  essa regra — importa `interpretationQueueBucket` (nunca uma segunda definição de bucket), calcula o
+  `bucket` de cada linha, e aplica o mesmo filtro de dois estágios que `inteligencia/page.tsx` já usa
+  (`interpretationState === "BLOQUEADA"` → só bloqueadas; `"INTERPRETAVEL"` → tudo menos bloqueadas;
+  `reviewState` → só aquele bucket específico). `totalCount` agora é o tamanho da lista FILTRADA (antes era
+  o total sem filtro nenhum) — o que a tela realmente mostra pros mesmos parâmetros.
+  `IntelligenceEvidence.items` ganhou o campo `bucket`.
+- **`src/lib/ai/providers/local-intent-assistant-provider.ts`**: ganhou a 9ª intenção real — dentro da
+  tela de Inteligência, perguntas como "quantos itens estão na fila?" agora narram
+  `evidence.totalCount`/`evidence.items` (o recorte já filtrado), em vez desse Evidence Package existir sem
+  nunca ser consumido por nenhuma resposta (a lacuna real que motivou o pedido).
+
+**Testes**: 2 testes e2e novos comparando a contagem real de `.intelligence-queue-row` em
+`/inteligencia?reviewState=APROVADA` / `?interpretationState=BLOQUEADA` contra o fato
+`"Itens na fila (com os filtros atuais)"` devolvido pelo Assistente pros MESMOS parâmetros — prova direta
+de paridade, não só de que a lógica existe.
+
 ## Arquivos alterados/criados
 
-**Novos**:
+**Novos (entrega original dos Blocos 0-3)**:
 - `src/lib/ai/assistant-screen.ts` (Bloco 1 — puro, testável sem banco)
-- `src/lib/ai/assistant-evidence.ts` (Bloco 2 — builders + `evidenceManifest`)
+- `src/lib/ai/assistant-evidence.ts` (Bloco 2 — builders)
 - `src/lib/ai/assistant-response-schema.ts` (Bloco 3 — puro, testável sem banco)
-- `e2e/assistant-fase4a.spec.ts` (Bloco 0/1/2/3 — 7 testes)
-- `scripts/test-assistant-screen.mjs`, `scripts/test-assistant-response-schema.mjs`
+- `e2e/assistant-fase4a.spec.ts`, `scripts/test-assistant-screen.mjs`, `scripts/test-assistant-response-schema.mjs`
 
-**Alterados**:
-- `src/app/api/assistant/route.ts` — parsing defensivo, monta evidência, grava `evidenceManifest`, gatilho de `PENDING_REVIEW`
+**Novos (fechamento técnico pós-entrega)**:
+- `src/lib/ai/assistant-evidence-manifest.ts` (item 1 — `EvidenceManifest`, movido/derivado automaticamente)
+- `scripts/test-assistant-evidence-manifest.mjs` (item 1)
+
+**Alterados (entrega original + fechamento técnico)**:
+- `src/app/api/assistant/route.ts` — parsing defensivo (agora via `assistant-screen.ts`), monta evidência,
+  grava `evidenceManifest`, gatilho de `PENDING_REVIEW`, fail-closed pra contexto inválido (item 2)
 - `src/lib/ai/operational-assistant-provider.ts` — tipos estendidos, reexporta `assistant-screen.ts`
-- `src/lib/ai/providers/local-intent-assistant-provider.ts` — migrado pro schema estruturado
+- `src/lib/ai/providers/local-intent-assistant-provider.ts` — migrado pro schema estruturado; fechamento
+  técnico: checagem de contexto inválido (item 2) + 9ª intenção real de Inteligência (item 3)
+- `src/lib/ai/assistant-evidence.ts` — fechamento técnico: `kind: "invalid"` (item 2), `map` distingue
+  `unavailable`/`dashboard` (item 2), `buildIntelligenceEvidence` reproduz o bucket real da tela (item 3)
+- `src/lib/ai/evidence-package.ts` — fechamento técnico: `technicalSources` ganhou `id` real (item 1)
 - `src/lib/repositories/ai-generations.ts` — `status` parametrizável
 - `src/components/assistant-raiz-widget.tsx` — consome `assistant-screen.ts`, renderiza o novo schema
 - `src/app/globals.css` — CSS mínimo pros novos elementos (`facts`/`attention_points`/`missing_information`), sem redesenho
 - `docs/RAIZ_2.0_FASE4_ARQUITETURA_ASSISTENTE.md` — as 4 correções do diretor
-- `package.json` — 2 scripts de teste novos, incluídos em `test:handoff`
+- `package.json` — scripts de teste novos, incluídos em `test:handoff`
+- `e2e/assistant-fase4a.spec.ts` — fechamento técnico: 10 testes novos (2 do item 1, 6 do item 2, 2 do item 3)
 
 ## Validação
 
 ```
 npm run typecheck                                → sem erros
 npm run build                                     → build de produção completo, sem erros
-npm run test:handoff                              → todos os cenários aprovados (inclui os 2 scripts novos:
-                                                       test:assistant-screen, 11 cenários; e
-                                                       test:assistant-response-schema, 5 cenários)
-npx playwright test e2e/assistant-fase4a.spec.ts  → 7 passed, 0 failed (isolado)
+npm run test:handoff                              → todos os cenários aprovados (inclui os 3 scripts novos:
+                                                       test:assistant-screen, 18 cenários;
+                                                       test:assistant-response-schema, 5 cenários; e
+                                                       test:assistant-evidence-manifest, 9 cenários)
+npx playwright test e2e/assistant-fase4a.spec.ts  → 15 passed, 2 skipped, 0 failed (isolado -- os 2 skips
+                                                     são por falta de dado semeado no banco de dev com a
+                                                     combinação exata necessária: crop_profile com fonte
+                                                     técnica ACTIVE, e análise no bucket "APROVADA";
+                                                     ambos cobertos exaustivamente pelos testes unitários)
 npx playwright test <assistente + sidebar + Fases 1-3>, --workers=2
-                                                   → 35 passed, 1 skipped, 0 failed
-                                                     (skip: estado da URL de satélite/parâmetro em mapas
-                                                     depende de dado que não estava disponível nesta
-                                                     execução -- mesmo skip de sempre, não é falha)
+                                                   → 43 passed, 3 skipped, 0 failed
+                                                     (skips: satélite/parâmetro em mapas -- o de sempre --,
+                                                     e os 2 já explicados acima, todos honestos, 0 falhas)
 ```
 
 ## O que NÃO foi feito nesta entrega (reafirmado)

@@ -4,18 +4,19 @@ import { computeRequiresProfessionalReview } from "@/lib/ai/assistant-response-s
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { getExecutiveDashboard } from "@/lib/repositories/dashboard";
 import { countLabsImportedThisMonth, listLowestConfidenceAnalyses, listAnalysesAwaitingReview, findPropertyByName, compareLatestTwoSeasons } from "@/lib/repositories/assistant-queries";
-import { buildPropertyEvidence, type FieldEvidence, type PropertyEvidence } from "@/lib/ai/assistant-evidence";
+import { buildPropertyEvidence, type FieldEvidence, type PropertyEvidence, type IntelligenceEvidence } from "@/lib/ai/assistant-evidence";
+import { QUEUE_BUCKET_META } from "@/domain/interpretation-status";
 
 /**
  * Fase 4A, Bloco 3 — provedor local (intent-matching por regex, sem LLM) migrado pro novo
  * `AssistantStructuredResponse` (fato/atenção/padrão/hipótese/dados faltantes/revisão necessária), no
  * lugar do antigo `{answer: string, cards}`.
  *
- * Preserva EXATAMENTE as mesmas 8 intenções reconhecidas antes (nenhuma removida, nenhuma nova) e a mesma
- * fonte de dado real por trás de cada uma. A única mudança de comportamento real: quando o `ScreenContext`
- * já trouxe um Evidence Package pronto (`request.evidence`, Bloco 2) pro talhão/propriedade em questão, o
- * provedor usa esse pacote já resolvido em vez de consultar o banco de novo -- prova real de que Bloco 1
- * (contexto) e Bloco 2 (evidência) já alimentam Bloco 3, não são três camadas desconectadas.
+ * Preserva as 8 intenções originais (nenhuma removida) e a mesma fonte de dado real por trás de cada uma.
+ * Fechamento técnico (2º pedido, item 3) acrescentou uma 9ª intenção real: dentro da tela de Inteligência,
+ * a fila filtrada (mesma regra de bucket da própria tela) passou a ser narrada usando o Evidence Package
+ * já resolvido (Bloco 2), que antes existia mas nunca era consumido por nenhuma resposta -- prova real de
+ * que Bloco 1 (contexto) e Bloco 2 (evidência) alimentam Bloco 3, não são três camadas desconectadas.
  *
  * `hypotheses` fica sempre vazio aqui, de propósito -- este provedor é determinístico, nunca interpreta,
  * só organiza fato real. `requires_professional_review` é sempre calculado por
@@ -46,6 +47,23 @@ function empty(summary: string, cards: AssistantCard[] = [], missingInformation:
 async function resolveIntent(request: OperationalAssistantRequest): Promise<PartialResponse> {
   const q = normalize(request.question);
   const { tenantId, userId } = request;
+
+  // Dentro da tela de Inteligência, usa o Evidence Package já resolvido (Bloco 2) -- que já aplica a MESMA
+  // regra de bucket da própria tela (`interpretationQueueBucket`, ver `assistant-evidence.ts`) -- em vez da
+  // fila global sem filtro. Checado antes de qualquer intenção genérica: se o usuário está filtrando a fila
+  // (ex.: só "Aguardando revisão"), a resposta precisa refletir exatamente esse recorte, nunca a fila
+  // inteira sem filtro.
+  if (request.screenContext?.type === "intelligence" && request.evidence?.found && request.evidence.kind === "intelligence" && /(fila|pendenc|quant|situac)/.test(q)) {
+    const evidence = request.evidence.evidence as IntelligenceEvidence;
+    if (!evidence.totalCount) return { ...empty("Nenhuma análise corresponde aos filtros atuais da fila de Inteligência."), facts: [{ label: "Itens na fila (com os filtros atuais)", value: "0", source: "database" }] };
+    return {
+      summary: `${evidence.totalCount} item(ns) na fila de Inteligência com os filtros atuais.`,
+      facts: [{ label: "Itens na fila (com os filtros atuais)", value: String(evidence.totalCount), source: "database" }],
+      attention_points: evidence.items.slice(0, 5).map((i) => ({ label: `${i.clientName} · ${i.fieldName}`, reason: `${QUEUE_BUCKET_META[i.bucket].label} — ${i.analysisCode}` })),
+      missing_information: [],
+      cards: evidence.items.slice(0, 5).map((i) => ({ title: `${i.analysisCode} — ${i.clientName}`, description: i.fieldName, href: `/analises/${i.analysisId}` })),
+    };
+  }
 
   if (/atras/.test(q) && /(coleta|propriedade)/.test(q)) {
     const alerts = await listOperationalAlerts(tenantId, userId);
@@ -210,12 +228,31 @@ function summarizePropertyEvidence(evidence: PropertyEvidence): PartialResponse 
   };
 }
 
+/**
+ * Fechamento técnico (2º pedido, item 2) -- contexto explicitamente informado pelo client mas inválido/
+ * malformado (`evidence.kind === "invalid"`, montado em `/api/assistant` a partir de
+ * `parseAssistantScreenContext`) NUNCA responde como se fosse a operação inteira (dashboard). Checado
+ * ANTES de qualquer casamento de intenção -- mesmo uma pergunta que bateria no repertório global (ex.:
+ * "pendências") não deve silenciosamente ignorar que a tela de origem estava com um contexto quebrado.
+ */
+function isInvalidContext(request: OperationalAssistantRequest): boolean {
+  return request.evidence?.found === false && request.evidence.kind === "invalid";
+}
+
+const INVALID_CONTEXT_RESPONSE: PartialResponse = {
+  summary: "Não consegui identificar o contexto atual. Reabra a tela ou selecione novamente o item.",
+  facts: [],
+  attention_points: [],
+  missing_information: ["O contexto de tela enviado não pôde ser identificado ou já não é válido."],
+  cards: [],
+};
+
 export const localIntentAssistantProvider: OperationalAssistantProvider = {
   name: "raiz-local-intent",
   model: "intent-matcher-v2",
   isRealLanguageModel: false,
   async ask(request: OperationalAssistantRequest): Promise<OperationalAssistantResponse> {
-    const partial = await resolveIntent(request);
+    const partial = isInvalidContext(request) ? INVALID_CONTEXT_RESPONSE : await resolveIntent(request);
     const structured: AssistantStructuredResponse = {
       summary: partial.summary,
       facts: partial.facts,

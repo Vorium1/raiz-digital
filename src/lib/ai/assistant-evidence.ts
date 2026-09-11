@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
 import type { AssistantScreenContext, AssistantScreenState } from "@/lib/ai/assistant-screen";
 import { buildAgronomicEvidencePackage, type AgronomicEvidencePackage } from "@/lib/ai/evidence-package";
@@ -8,6 +7,7 @@ import { getPropertyExecutiveReportData, getFieldAnalysisReportData } from "@/li
 import { getFieldOverview } from "@/lib/repositories/field-overview";
 import { compareFields, compareSeasons, comparePoints, compareProperties } from "@/lib/repositories/comparisons";
 import { getIntelligenceQueue } from "@/lib/repositories/interpretations";
+import { interpretationQueueBucket, type QueueBucket } from "@/domain/interpretation-status";
 
 /**
  * Fase 4A, Bloco 2 — Evidence Package Builders, um por tipo de `ScreenContext`.
@@ -210,17 +210,32 @@ export async function buildComparisonEvidence(tenantId: string, userId: string, 
 
 export type IntelligenceEvidence = {
   kind: "intelligence";
-  items: Array<{ analysisId: string; analysisCode: string; clientName: string; propertyName: string; fieldName: string; seasonLabel: string; status: string; revisionCount: number }>;
+  items: Array<{ analysisId: string; analysisCode: string; clientName: string; propertyName: string; fieldName: string; seasonLabel: string; status: string; bucket: QueueBucket; revisionCount: number }>;
   totalCount: number;
 };
 
+/**
+ * Fechamento técnico (2º pedido, item 3): a página `/inteligencia` (`src/app/(platform)/inteligencia/
+ * page.tsx`) NUNCA passa `interpretationState`/`reviewState` pra `getIntelligenceQueue` -- ela busca as
+ * linhas já filtradas por cliente/propriedade/talhão/safra e filtra `interpretationState`/`reviewState`
+ * DEPOIS, em memória, comparando contra o `bucket` derivado (`interpretationQueueBucket`, a mesma função
+ * usada aqui). Reproduz exatamente essa regra -- nunca uma segunda definição de bucket -- pra que a
+ * contagem/evidência do Assistente sempre coincida com o que a tela real mostra pros mesmos filtros.
+ */
 export async function buildIntelligenceEvidence(tenantId: string, userId: string, state: AssistantScreenState | undefined): Promise<IntelligenceEvidence> {
   const s = state && state.screen === "intelligence" ? state : undefined;
   const rows = await getIntelligenceQueue(tenantId, { clientId: s?.clientId ?? null, propertyId: s?.propertyId ?? null, fieldId: s?.fieldId ?? null, seasonId: s?.seasonId ?? null }, userId);
+  const withBucket = rows.map((r: any) => ({ ...r, bucket: interpretationQueueBucket(r) as QueueBucket }));
+  const filtered = withBucket.filter((row) => {
+    if (s?.interpretationState === "BLOQUEADA" && row.bucket !== "BLOQUEADA") return false;
+    if (s?.interpretationState === "INTERPRETAVEL" && row.bucket === "BLOQUEADA") return false;
+    if (s?.reviewState && row.bucket !== s.reviewState) return false;
+    return true;
+  });
   return {
     kind: "intelligence",
-    items: rows.slice(0, LIST_LIMIT).map((r: any) => ({ analysisId: r.analysisId, analysisCode: r.analysisCode, clientName: r.clientName, propertyName: r.propertyName, fieldName: r.fieldName, seasonLabel: r.seasonLabel, status: r.status, revisionCount: r.revisionCount })),
-    totalCount: rows.length,
+    items: filtered.slice(0, LIST_LIMIT).map((r) => ({ analysisId: r.analysisId, analysisCode: r.analysisCode, clientName: r.clientName, propertyName: r.propertyName, fieldName: r.fieldName, seasonLabel: r.seasonLabel, status: r.status, bucket: r.bucket, revisionCount: r.revisionCount })),
+    totalCount: filtered.length,
   };
 }
 
@@ -228,10 +243,17 @@ export async function buildIntelligenceEvidence(tenantId: string, userId: string
 // map -- não tem entidade única; delega pro talhão selecionado no ScreenState, ou pro dashboard
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Fechamento técnico (2º pedido, item 2): `"unavailable"` é um estado DIFERENTE de `"dashboard"` --
+ * `collectionOrderId` foi informado (o usuário tinha algo selecionado no mapa) mas não resolveu pra uma
+ * ordem real do tenant (id malformado, ordem inexistente ou de outro tenant). Isso NUNCA vira uma resposta
+ * de portfólio inteiro disfarçada de "contexto normal" -- só `"dashboard"` representa a ausência LEGÍTIMA
+ * de seleção (nenhum `collectionOrderId` informado, comportamento global pretendido de verdade).
+ */
 export type MapEvidence =
   | { kind: "map"; delegatedTo: "field"; field: FieldEvidence }
   | { kind: "map"; delegatedTo: "dashboard"; dashboard: DashboardEvidence }
-  | { kind: "map"; delegatedTo: "none" };
+  | { kind: "map"; delegatedTo: "unavailable" };
 
 async function resolveFieldIdForCollectionOrder(tenantId: string, userId: string, collectionOrderId: string): Promise<string | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(collectionOrderId)) return null;
@@ -250,11 +272,12 @@ export async function buildMapEvidence(tenantId: string, userId: string, state: 
   const s = state && state.screen === "map" ? state : undefined;
   if (s?.collectionOrderId) {
     const fieldId = await resolveFieldIdForCollectionOrder(tenantId, userId, s.collectionOrderId);
-    if (fieldId) {
-      const field = await buildFieldEvidence(tenantId, userId, fieldId);
-      if (field) return { kind: "map", delegatedTo: "field", field };
-    }
+    if (!fieldId) return { kind: "map", delegatedTo: "unavailable" };
+    const field = await buildFieldEvidence(tenantId, userId, fieldId);
+    if (!field) return { kind: "map", delegatedTo: "unavailable" };
+    return { kind: "map", delegatedTo: "field", field };
   }
+  // Só aqui, sem NENHUMA seleção informada, o dashboard (contexto global) é o comportamento correto.
   const dashboard = await buildDashboardEvidence(tenantId, userId);
   return { kind: "map", delegatedTo: "dashboard", dashboard };
 }
@@ -275,7 +298,12 @@ export type AssistantEvidenceResult =
   | { found: false; kind: "report-field"; entityIds: Record<string, string> }
   | { found: true; kind: "comparison"; evidence: ComparisonEvidence; entityIds: Record<string, string> }
   | { found: true; kind: "intelligence"; evidence: IntelligenceEvidence; entityIds: Record<string, string> }
-  | { found: true; kind: "map"; evidence: MapEvidence; entityIds: Record<string, string> };
+  | { found: true; kind: "map"; evidence: MapEvidence; entityIds: Record<string, string> }
+  /** Fechamento técnico (2º pedido, item 2): contexto explicitamente informado pelo client, mas
+   *  inválido/malformado (tipo desconhecido, id ausente ou fora do formato) -- NUNCA um `ScreenContext`
+   *  real por trás, nunca vira `dashboard` silenciosamente. Só `parseAssistantScreenContext` (`assistant-
+   *  screen.ts`) decide quando isso se aplica; este dispatcher nunca precisa construir esse caso sozinho. */
+  | { found: false; kind: "invalid"; entityIds: Record<string, string> };
 
 /**
  * Único ponto de entrada: dado o `ScreenContext` (já validado pelo endpoint, seção 4 da arquitetura) e o
@@ -331,41 +359,19 @@ export async function buildAssistantEvidence(tenantId: string, userId: string, s
       const evidence = await buildMapEvidence(tenantId, userId, screenState);
       const entityIds: Record<string, string> = {};
       if (evidence.delegatedTo === "field") entityIds.fieldId = evidence.field.field.id;
+      // Registra qual ordem foi TENTADA mesmo quando não resolveu -- só pra auditoria/depuração (o valor já
+      // veio do próprio client, não é segredo). É o que distingue de verdade, no manifesto, "nada
+      // selecionado" (dashboard, `entityIds` vazio) de "algo selecionado que não resolveu" (`unavailable`).
+      if (evidence.delegatedTo === "unavailable" && screenState?.screen === "map" && screenState.collectionOrderId) {
+        entityIds.attemptedCollectionOrderId = screenState.collectionOrderId;
+      }
       return { found: true, kind: "map", evidence, entityIds };
     }
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// evidenceManifest (Correção 3 da arquitetura) -- auditoria sem migration, sem copiar histórico inteiro
-// ---------------------------------------------------------------------------------------------
-
-export type EvidenceManifest = {
-  screenContext: AssistantScreenContext;
-  entityIds: Record<string, string>;
-  builtAt: string;
-  ruleRefs: string[];
-  technicalSourceIds: string[];
-  evidenceHash: string;
-  factsSnapshot: Array<{ label: string; value: string }>;
-};
-
-const MANIFEST_FACTS_LIMIT = 20;
-
-/**
- * Monta o manifesto de auditoria a partir do Evidence Package já resolvido -- nunca copia o pacote
- * inteiro nem histórico bruto pra dentro de `ai_generations`, só o hash (prova de integridade) e um
- * recorte explicitamente limitado dos fatos que a resposta final efetivamente citou.
- */
-export function buildEvidenceManifest(input: { screenContext: AssistantScreenContext; entityIds: Record<string, string>; evidence: unknown; factsUsed: Array<{ label: string; value: string }>; ruleRefs?: string[]; technicalSourceIds?: string[] }): EvidenceManifest {
-  const evidenceHash = createHash("sha256").update(JSON.stringify(input.evidence)).digest("hex");
-  return {
-    screenContext: input.screenContext,
-    entityIds: input.entityIds,
-    builtAt: new Date().toISOString(),
-    ruleRefs: input.ruleRefs ?? [],
-    technicalSourceIds: input.technicalSourceIds ?? [],
-    evidenceHash,
-    factsSnapshot: input.factsUsed.slice(0, MANIFEST_FACTS_LIMIT),
-  };
-}
+// `EvidenceManifest`/`buildEvidenceManifest` moveram pra `src/lib/ai/assistant-evidence-manifest.ts`
+// (fechamento técnico, 2º pedido, item 1) -- arquivo deliberadamente puro (só `import type` deste
+// módulo), pra poder ser testado com `node --experimental-strip-types` sem precisar de banco real. Este
+// arquivo (`assistant-evidence.ts`) importa `reports.ts`/`interpretations.ts`, que têm classes com
+// parâmetro de construtor TypeScript incompatíveis com o strip-types de Node.

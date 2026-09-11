@@ -103,3 +103,58 @@ export function inferScreenState(pathname: string, searchParams: SearchParamsLik
   }
   return undefined;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Fechamento técnico (2º pedido, item 2) -- parsing do CORPO da requisição de /api/assistant,
+// server-side. Diferente de `inferScreenContext`/`inferScreenState` acima (que leem a URL real do
+// client): aqui o servidor nunca confia no que o corpo diz ser verdade -- só decide se o formato é
+// reconhecível.
+//
+// Correção do diretor: contexto inválido/malformado NÃO pode virar `{ type: "dashboard" }` silenciosamente
+// -- isso faria a RAIZ responder sobre a operação inteira quando, na verdade, a tela de origem está com um
+// problema real (id malformado, tipo desconhecido). As 3 situações são diferentes:
+//   1. Ausência legítima (corpo não mandou `screenContext` nenhum, ex.: tela sem inferência de contexto
+//      hoje) -> contexto global apropriado (`{ type: "dashboard" }`) é uma escolha correta aqui.
+//   2. Tela Dashboard real (`{ type: "dashboard" }` explícito) -> `{ type: "dashboard" }`, trivialmente.
+//   3. Contexto explicitamente informado, mas o tipo não é reconhecido OU o id exigido está ausente/não
+//      bate o formato de uuid -> `"invalid"` (fail closed) -- nunca vira Dashboard.
+// ---------------------------------------------------------------------------------------------
+
+const VALID_CONTEXT_TYPES = new Set(["dashboard", "property", "field", "analysis", "intelligence", "map", "comparison", "report-field", "report-property"]);
+const ID_REQUIRED_TYPES = new Set(["property", "field", "analysis", "report-field", "report-property"]);
+const UUID_EXACT = new RegExp(`^${UUID}$`, "i");
+
+/** Sentinela explícita -- nunca confundida com um `AssistantScreenContext` real. */
+export const INVALID_SCREEN_CONTEXT = "invalid" as const;
+
+export function parseAssistantScreenContext(raw: unknown): AssistantScreenContext | typeof INVALID_SCREEN_CONTEXT {
+  // Ausência legítima (nada enviado) -- contexto global apropriado, não é um erro.
+  if (raw === undefined || raw === null) return { type: "dashboard" };
+  if (typeof raw !== "object") return INVALID_SCREEN_CONTEXT;
+  const body = raw as Record<string, unknown>;
+  const type = typeof body.type === "string" ? body.type : undefined;
+  if (!type || !VALID_CONTEXT_TYPES.has(type)) return INVALID_SCREEN_CONTEXT;
+  if (!ID_REQUIRED_TYPES.has(type)) return { type } as AssistantScreenContext;
+  const id = typeof body.id === "string" ? body.id : undefined;
+  if (!id || !UUID_EXACT.test(id)) return INVALID_SCREEN_CONTEXT;
+  return { type, id: id.toLowerCase() } as AssistantScreenContext;
+}
+
+export function parseAssistantScreenState(raw: unknown): AssistantScreenState | undefined {
+  if (raw === undefined || raw === null || typeof raw !== "object") return undefined;
+  const body = raw as Record<string, unknown>;
+  const screen = typeof body.screen === "string" ? body.screen : undefined;
+  const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : undefined);
+  if (screen === "map") {
+    const status = str("status");
+    return { screen: "map", collectionOrderId: str("collectionOrderId"), parameter: str("parameter"), status: status === "collected" || status === "pending" || status === "all" ? status : undefined, satellite: body.satellite === true };
+  }
+  if (screen === "comparison") {
+    const mode = str("mode");
+    return { screen: "comparison", mode: mode === "fields" || mode === "seasons" || mode === "points" || mode === "properties" ? mode : undefined, a: str("a"), b: str("b") };
+  }
+  if (screen === "intelligence") {
+    return { screen: "intelligence", clientId: str("clientId"), propertyId: str("propertyId"), fieldId: str("fieldId"), seasonId: str("seasonId"), interpretationState: str("interpretationState"), reviewState: str("reviewState") };
+  }
+  return undefined;
+}

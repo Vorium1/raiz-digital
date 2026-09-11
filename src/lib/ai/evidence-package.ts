@@ -21,7 +21,9 @@ export type AgronomicEvidencePackage = {
   classifications: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification: string | null; reason: string | null }>;
   ruleUsed: { cropProfileCode: string | null; cropProfileName: string | null; version: string | null; contentHash: string | null } | null;
   confidence: { score: number; level: string } | null;
-  technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null }>;
+  /** `id` incluído (fechamento técnico, 2º pedido, item 1) -- sem ele, o manifesto de auditoria nunca
+   *  conseguia registrar QUAL fonte técnica foi realmente usada, só o título em texto livre. */
+  technicalSources: Array<{ id: string; title: string; institution: string | null; editionYear: number | null; subject: string | null }>;
   history: Array<{ analysisCode: string; seasonLabel: string; createdAt: string; parameterCode: string; classification: string }>;
   reviewStatus: string | null;
 };
@@ -76,7 +78,7 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
 
     const sourcesResult = base.cropProfileId
       ? await client.query(
-          `SELECT title, institution, edition_year AS "editionYear", subject FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
+          `SELECT id::text, title, institution, edition_year AS "editionYear", subject FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
           [base.cropProfileId],
         )
       : { rows: [] };
