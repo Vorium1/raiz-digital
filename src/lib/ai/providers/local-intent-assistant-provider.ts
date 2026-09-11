@@ -1,4 +1,4 @@
-import type { OperationalAssistantProvider, OperationalAssistantRequest, OperationalAssistantResponse } from "@/lib/ai/operational-assistant-provider";
+import type { OperationalAssistantProvider, OperationalAssistantRequest, OperationalAssistantResponse, AssistantHandlingResult } from "@/lib/ai/operational-assistant-provider";
 import type { AssistantCard, AssistantStructuredResponse } from "@/lib/ai/assistant-response-schema";
 import { computeRequiresProfessionalReview } from "@/lib/ai/assistant-response-schema";
 import type { AssistantAction } from "@/lib/ai/assistant-actions-schema";
@@ -54,10 +54,24 @@ function normalize(text: string) {
  * só anexa uma ação quando ela corresponde a uma funcionalidade que JÁ EXISTE de verdade na RAIZ (mapa,
  * comparativos, relatório, talhão, fila de inteligência) -- nunca uma ação especulativa.
  */
-type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards"> & { actions?: AssistantAction[]; technical_references?: AssistantStructuredResponse["technical_references"] };
+type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards"> & { actions?: AssistantAction[]; technical_references?: AssistantStructuredResponse["technical_references"]; handling?: AssistantHandlingResult };
 
 function empty(summary: string, cards: AssistantCard[] = [], missingInformation: string[] = []): PartialResponse {
   return { summary, facts: [], attention_points: [], missing_information: missingInformation, cards };
+}
+
+/**
+ * Fase 4G, item 2 — classificação PADRÃO de `handling` quando a branch de intenção não declara um valor
+ * explícito (só a branch de fallback final -- "não reconheci essa pergunta" -- e o contexto inválido
+ * precisam declarar explicitamente, porque são os únicos 2 casos em que a inferência abaixo erraria).
+ * Nunca olha o TEXTO de `summary` -- só a FORMA estrutural da resposta: teve algum fato/ponto de
+ * atenção/fonte técnica real (mesmo uma contagem "0" é um fato completo) -> `"handled"`; senão, se
+ * declarou o que falta -> `"insufficient_evidence"`.
+ */
+function inferHandling(partial: PartialResponse): AssistantHandlingResult {
+  const hasRealContent = partial.facts.length > 0 || partial.attention_points.length > 0 || (partial.technical_references?.length ?? 0) > 0;
+  if (hasRealContent) return "handled";
+  return partial.missing_information.length > 0 ? "insufficient_evidence" : "handled";
 }
 
 async function resolveIntent(request: OperationalAssistantRequest): Promise<PartialResponse> {
@@ -312,7 +326,10 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
     };
   }
 
-  // fallback: painel executivo geral
+  // fallback: painel executivo geral -- ÚNICO branch que declara `handling: "unsupported"` explicitamente.
+  // Tem `facts` (contexto geral, pra nunca devolver uma tela vazia), então a inferência padrão erraria
+  // pra "handled" -- esta é EXATAMENTE a pergunta que o diretor pediu pra nunca detectar por texto
+  // (`summary.includes("não entendi")`); o sinal estruturado é este campo, não o texto do resumo.
   const executive = await getExecutiveDashboard(tenantId, {}, userId);
   return {
     summary: `Não reconheci essa pergunta ainda. Posso responder sobre coleta atrasada, pontos pendentes, laudos do mês, revisões pendentes, confiabilidade, comparação de safra e pendências.`,
@@ -324,6 +341,7 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
     attention_points: [],
     missing_information: ["A pergunta não bate com nenhuma das intenções reconhecidas hoje."],
     cards: [{ title: "Ver alertas", description: "Central de pendências completa", href: "/alertas" }],
+    handling: "unsupported",
   };
 }
 
@@ -360,6 +378,7 @@ const INVALID_CONTEXT_RESPONSE: PartialResponse = {
   attention_points: [],
   missing_information: ["O contexto de tela enviado não pôde ser identificado ou já não é válido."],
   cards: [],
+  handling: "insufficient_evidence",
 };
 
 export const localIntentAssistantProvider: OperationalAssistantProvider = {
@@ -389,6 +408,19 @@ export const localIntentAssistantProvider: OperationalAssistantProvider = {
       cards: partial.cards,
     };
     structured.requires_professional_review = computeRequiresProfessionalReview(structured);
+    let handling: AssistantHandlingResult = partial.handling ?? inferHandling(partial);
+    // Fase 4G, item 5/13 -- contexto de tela reconhecido (ex.: "field", "analysis") mas a ENTIDADE
+    // específica não existe/não pertence a este tenant (`evidence.found === false`) -- mesmo quando
+    // nenhuma intenção de texto bateu e a resposta caiu no fallback genérico (painel executivo, que é
+    // seguro -- nunca vaza dado da entidade que não resolveu, só estatística agregada do próprio tenant),
+    // isto NUNCA é `"unsupported"` (a pergunta em si não foi entendida) -- é `"insufficient_evidence"`
+    // (sabemos do que a pergunta trata, só não existe pra este tenant). Só sobrescreve DE
+    // `"unsupported"` PRA `"insufficient_evidence"` -- nunca esconde um `"unsupported"` real quando o
+    // contexto resolveu normalmente, nunca muda o TEXTO da resposta (só a classificação estrutural que o
+    // router usa pra decidir se escalona pro generativo).
+    if (handling === "unsupported" && request.evidence?.found === false && request.evidence.kind !== "invalid") {
+      handling = "insufficient_evidence";
+    }
     return {
       ...structured,
       suggestedQuestions: SUGGESTED_QUESTIONS,
@@ -396,6 +428,7 @@ export const localIntentAssistantProvider: OperationalAssistantProvider = {
       model: "intent-matcher-v2",
       isRealLanguageModel: false,
       generatedAt: new Date().toISOString(),
+      handling,
     };
   },
 };

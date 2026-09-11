@@ -196,7 +196,10 @@ export function AssistantRaizWidget() {
                   {entry.contextLabel && <div className="assistant-entry-context"><Icon name="location" size={10}/>{entry.contextLabel}</div>}
                   <div className="assistant-question">{entry.question}</div>
                   <div className="assistant-answer">
-                    <span className="assistant-answer-badge"><Icon name="sparkles" size={11}/>{entry.isRealLanguageModel ? "IA" : "Motor local · sem custo"}</span>
+                    {/* Fase 4G, item 8 -- a marca do Assistente é sempre "Assistente RAIZ", nunca o
+                        fornecedor de IA por trás (nunca "Gemini"/"Google"/"provider local"/código de erro).
+                        `isRealLanguageModel` continua guiando a UI internamente, só o TEXTO mudou. */}
+                    <span className="assistant-answer-badge"><Icon name="sparkles" size={11}/>{entry.isRealLanguageModel ? "Análise assistida" : "Resposta baseada nos dados da sua operação"}</span>
                     <p>{entry.summary}</p>
 
                     {entry.facts.length > 0 && (

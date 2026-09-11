@@ -36,7 +36,7 @@ function baseResponse(overrides: Partial<OperationalAssistantResponse> = {}): Op
     summary: "Resumo padrão.",
     facts: [], attention_points: [], patterns: [], hypotheses: [], missing_information: [], technical_references: [], suggested_actions: [],
     requires_professional_review: false, cards: [],
-    suggestedQuestions: [], provider: "selftest", model: "selftest", isRealLanguageModel: true, generatedAt: new Date().toISOString(),
+    suggestedQuestions: [], provider: "selftest", model: "selftest", isRealLanguageModel: true, generatedAt: new Date().toISOString(), handling: "handled",
     ...overrides,
   };
 }

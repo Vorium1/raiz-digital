@@ -1,4 +1,5 @@
-import type { OperationalAssistantRequest } from "@/lib/ai/operational-assistant-provider";
+import type { OperationalAssistantRequest, AssistantHandlingResult } from "@/lib/ai/operational-assistant-provider";
+import { generativeMaxTokens } from "@/lib/ai/assistant-usage-limits";
 import { computeRequiresProfessionalReview } from "@/lib/ai/assistant-response-schema";
 import type { AssistantAction } from "@/lib/ai/assistant-actions-schema";
 import { buildEvidenceCatalog, serializeCatalogForPrompt, materializeFromCatalog, resolveHypothesesFromCatalog } from "@/lib/ai/assistant-evidence-catalog";
@@ -154,8 +155,10 @@ export const geminiOperationalAssistantProvider: BenchmarkProvider = {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: buildPrompt(request, catalogJson) }] }],
-            // Mesmo valor (8000, não 2000) e mesmo motivo documentado em `gemini-parameter-cross-validator.ts`.
-            generationConfig: { maxOutputTokens: 8000, temperature: 0 },
+            // 8000 (não 2000) por padrão -- mesmo motivo documentado em `gemini-parameter-cross-validator.ts`.
+            // Fase 4G, item 6 -- `RAIZ_ASSISTANT_GENERATIVE_MAX_TOKENS` pode reduzir isso (controle de
+            // custo), nunca aumentar além do que o operador configurar explicitamente.
+            generationConfig: { maxOutputTokens: generativeMaxTokens() ?? 8000, temperature: 0 },
           }),
         },
       );
@@ -208,12 +211,20 @@ export const geminiOperationalAssistantProvider: BenchmarkProvider = {
       cards: [],
     };
 
+    // Fase 4G, item 2 -- mesmo princípio do provider local: `handling` é inferido da FORMA estruturada da
+    // resposta (teve algum conteúdo materializado do catálogo, ou pelo menos uma hipótese real?), nunca do
+    // texto do `summary`. O router só chama este provider quando o local já disse "unsupported" -- este
+    // campo aqui reflete se o PRÓPRIO Gemini conseguiu produzir algo com a evidência dada.
+    const hasContent = structured.facts.length > 0 || structured.attention_points.length > 0 || structured.patterns.length > 0 || structured.technical_references.length > 0 || structured.hypotheses.length > 0;
+    const handling: AssistantHandlingResult = hasContent ? "handled" : structured.missing_information.length > 0 ? "insufficient_evidence" : "handled";
+
     return {
       ...structured,
       suggestedQuestions: [],
       provider: "google",
       model,
       isRealLanguageModel: true,
+      handling,
       generatedAt: new Date().toISOString(),
       tokensUsed: usage?.totalTokenCount,
       // Preço aproximado do tier gratuito/pago não está configurado nesta base -- `costUsd` fica

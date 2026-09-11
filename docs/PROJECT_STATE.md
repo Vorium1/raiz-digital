@@ -4137,3 +4137,32 @@ Documentação completa em `docs/RAIZ_2.0_FASE4F_GROUNDING_GATE.md`. Fecha a úl
   `resolveOperationalAssistantProvider()` continua devolvendo só o local.
 - **Pendente**: decisão do diretor sobre Bloco 7 -- rodada completa do Gemini fica pendente de cota
   suficiente (mecanismo já pronto pra isso a qualquer momento via `/api/dev/assistant-benchmark`).
+
+### Fase 4G — Provider Routing + Controle de Custo + Fechamento do Assistente
+
+Documentação completa em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`. **Fecha a Fase 4 do Assistente RAIZ.**
+
+- `AssistantHandlingResult` (`"handled"|"unsupported"|"insufficient_evidence"`) -- sinalização ESTRUTURADA
+  de como cada provider tratou a pergunta, nunca detectada por texto (`summary.includes(...)`). Achado real
+  corrigido: um contexto reconhecido mas com entidade cross-tenant/inexistente caía em "unsupported" em vez
+  de "insufficient_evidence", o que faria o router tentar escalonar pro generativo à toa -- corrigido.
+- Router de providers (`assistant-provider-router.ts`): local sempre primeiro; só escalona pro generativo
+  quando o local diz `"unsupported"` explicitamente, nunca pra dado insuficiente (evidência que não existe
+  não pode ser inventada por ninguém). Desacoplado do Gemini -- trabalha só com o contrato
+  `OperationalAssistantProvider`, pronto pra receber um `SelfHostedOperationalAssistantProvider` no futuro
+  trocando uma peça.
+- Modos `RAIZ_ASSISTANT_MODE=local` (padrão, sempre) / `=hybrid` -- ter `GEMINI_API_KEY` configurada nunca
+  basta sozinha pra consumir a API, precisa dos dois.
+- Controle de custo real (`assistant-usage-limits.ts`): limites diários por usuário/tenant/timeout,
+  configuráveis por env, consultados de verdade em `ai_generations` (sem migração, sem contador em
+  memória). Limite atingido -> provider local continua respondendo, nada quebra, nenhuma menção a cota.
+- Auditoria (`routing` em `ai_generations.response_payload`): modo, se escalonou, resultado da tentativa
+  generativa (aprovado/reprovado pelo gate/erro/timeout/limite), provider/modelo/latência/tokens -- tudo
+  isso NUNCA aparece na resposta que o cliente recebe (a marca é sempre "Assistente RAIZ"; o selo do
+  painel virou "Resposta baseada nos dados da sua operação"/"Análise assistida", nunca nomeia fornecedor).
+- 14 testes novos, todos contra um provider generativo FAKE (nunca gastando cota real do Gemini) cobrindo
+  429/503/timeout/JSON inválido/reprovação do gate/limite diário/cross-tenant -- todos caem em fallback
+  local seguro. Benchmark local confirmado 49/49 depois de todas as mudanças.
+- **Pendente**: decisão do diretor sobre ligar `RAIZ_ASSISTANT_MODE=hybrid` em algum ambiente real (o
+  default continua local em todo lugar); modelo self-hosted próprio da RAIZ fica só documentado, sem
+  nenhuma implementação ainda.

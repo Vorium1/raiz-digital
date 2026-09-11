@@ -1,5 +1,5 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { resolveOperationalAssistantProvider, type OperationalAssistantResponse } from "@/lib/ai/operational-assistant-provider";
+import type { OperationalAssistantResponse } from "@/lib/ai/operational-assistant-provider";
 import { parseAssistantScreenContext, parseAssistantScreenState, INVALID_SCREEN_CONTEXT } from "@/lib/ai/assistant-screen";
 import { buildAssistantEvidence, type AssistantEvidenceResult } from "@/lib/ai/assistant-evidence";
 import { buildEvidenceManifest } from "@/lib/ai/assistant-evidence-manifest";
@@ -8,8 +8,18 @@ import type { ResolvedAssistantAction } from "@/lib/ai/assistant-actions-schema"
 import { recordOperationalAssistantGeneration } from "@/lib/repositories/ai-generations";
 import { withQueryCounting } from "@/lib/db-query-count";
 import { sanitizeLegacyCards } from "@/lib/ai/assistant-response-schema";
+import { routeAssistantRequest } from "@/lib/ai/assistant-provider-router";
+import { resolveGenerativeProvider } from "@/lib/ai/assistant-generative-provider-resolver";
+import { localIntentAssistantProvider, LOCAL_INTENT_PROMPT_VERSION } from "@/lib/ai/providers/local-intent-assistant-provider";
+import { geminiOperationalAssistantProvider, GEMINI_ASSISTANT_PROMPT_VERSION } from "@/lib/ai/providers/gemini-operational-assistant-provider";
 
-const PROMPT_VERSION = "local-intent-v3-actions";
+// Fase 4G -- versão do "prompt" (contrato de comportamento) registrada na auditoria reflete quem REALMENTE
+// respondeu (`result.provider`), não mais um valor fixo assumindo sempre o local -- agora que o router
+// (item 3) pode devolver uma resposta de um provider generativo aprovado pelo Grounding Gate.
+const PROMPT_VERSIONS_BY_PROVIDER: Record<string, string> = {
+  [localIntentAssistantProvider.name]: LOCAL_INTENT_PROMPT_VERSION,
+  [geminiOperationalAssistantProvider.name]: GEMINI_ASSISTANT_PROMPT_VERSION,
+};
 
 /** O que realmente trafega pro client: `suggested_actions` SEMPRE trocado pela versão já validada/resolvida
  *  (`ResolvedAssistantAction[]`) -- o que o provider sugeriu cru nunca sai do servidor. */
@@ -53,8 +63,15 @@ export async function POST(request: Request) {
           return result;
         })();
 
-  const provider = resolveOperationalAssistantProvider();
-  const result = await provider.ask({ question, tenantId: session.tenantId, userId: session.userId, role: session.role, screenContext, screenState, evidence });
+  // Fase 4G, item 3 -- roteamento explícito (local primeiro, generativo só quando o local diz
+  // "unsupported" E o modo híbrido está ligado E há um provider generativo configurado). O provider
+  // generativo em si é resolvido num arquivo à parte (`assistant-generative-provider-resolver.ts`) -- o
+  // router nunca importa Gemini diretamente.
+  const routed = await routeAssistantRequest(
+    { question, tenantId: session.tenantId, userId: session.userId, role: session.role, screenContext, screenState, evidence },
+    { generativeProvider: resolveGenerativeProvider() },
+  );
+  const result = routed.response;
 
   // Bloco 4 -- o provider só sugere `AssistantAction[]` (intenção tipada, ainda não confiada). Cada uma é
   // revalidada aqui: formato/allowlist, role da sessão, e posse/tenant reconferida no banco (nunca confia
@@ -77,19 +94,26 @@ export async function POST(request: Request) {
     extraRuleRefs: result.patterns.map((p) => p.ruleRef),
   });
 
-  // Bloco 6 -- auditoria completa, tudo dentro do jsonb já existente de `ai_generations` (nenhuma coluna
-  // nova, nenhuma migration): pergunta, contexto/estado JÁ VALIDADOS (nunca o corpo cru não confiável),
-  // evidence manifest, ações SUGERIDAS (cru, o que o provider propôs) e ações RESOLVIDAS (o que
-  // efetivamente sobreviveu à validação) como campos distintos -- nunca só um dos dois, pra auditoria
-  // conseguir diferenciar "o que o provider tentou sugerir" de "o que realmente foi oferecido ao usuário".
+  // Bloco 6 (Fase 4) -- auditoria completa, tudo dentro do jsonb já existente de `ai_generations` (nenhuma
+  // coluna nova, nenhuma migration): pergunta, contexto/estado JÁ VALIDADOS (nunca o corpo cru não
+  // confiável), evidence manifest, ações SUGERIDAS (cru, o que o provider propôs) e ações RESOLVIDAS (o
+  // que efetivamente sobreviveu à validação) como campos distintos.
+  //
+  // Fase 4G, item 7 -- `routing` registra a história completa do roteamento pra cada pergunta: modo,
+  // se o local resolveu sozinho, se escalonou pra um generativo, o resultado dessa tentativa (aprovado/
+  // reprovado pelo gate/erro/timeout/limite atingido), provider/modelo/latência/tokens de QUALQUER
+  // tentativa generativa (mesmo quando ela falhou e caiu no fallback) -- nunca custo inventado quando não
+  // há tabela de preço real configurada (`costUsd` só é gravado quando o provider devolve um valor real).
+  // Isto fica SÓ na auditoria -- nunca no `clientResponse` abaixo (item 8: o cliente nunca vê detalhe de
+  // provider/erro técnico externo).
   await recordOperationalAssistantGeneration({
     tenantId: session.tenantId,
     userId: session.userId,
     provider: result.provider,
     model: result.model,
-    promptVersion: PROMPT_VERSION,
+    promptVersion: PROMPT_VERSIONS_BY_PROVIDER[result.provider] ?? "unknown",
     requestPayload: { question, screenContext, screenState, evidenceManifest },
-    responsePayload: { ...result, suggested_actions: result.suggested_actions, resolved_actions: resolvedActions },
+    responsePayload: { ...result, suggested_actions: result.suggested_actions, resolved_actions: resolvedActions, routing: routed.routing },
     status: result.requires_professional_review ? "PENDING_REVIEW" : "APPROVED",
   });
 

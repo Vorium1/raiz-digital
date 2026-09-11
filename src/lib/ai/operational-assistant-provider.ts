@@ -34,12 +34,29 @@ export type OperationalAssistantRequest = {
   evidence?: AssistantEvidenceResult;
 };
 
+/**
+ * Fase 4G, item 2 — sinalização ESTRUTURADA de como o provider tratou a pergunta, nunca inferida por
+ * texto (nunca `summary.includes("não entendi")`). Todo provider (local hoje, Gemini/self-hosted amanhã)
+ * declara isso explicitamente:
+ * - `"handled"` — reconheceu a pergunta e respondeu com dado real (inclusive uma contagem "0" honesta,
+ *   que é uma resposta completa, não uma lacuna).
+ * - `"insufficient_evidence"` — reconheceu a INTENÇÃO da pergunta, mas a evidência necessária não existe/
+ *   não resolveu (ex.: comparar safra sem uma segunda safra cadastrada, contexto de tela inválido). Um
+ *   provider generativo NUNCA deve ser chamado pra "preencher" este caso -- se o dado não existe, um
+ *   provider generativo também não pode inventá-lo (`assistant-provider-router.ts` nunca escalona quando o
+ *   local devolve isto).
+ * - `"unsupported"` — nenhuma intenção/capacidade reconhecida pra esta pergunta. É o ÚNICO caso em que o
+ *   router (modo híbrido) considera escalonar pra um provider generativo opcional.
+ */
+export type AssistantHandlingResult = "handled" | "unsupported" | "insufficient_evidence";
+
 export type OperationalAssistantResponse = AssistantStructuredResponse & {
   suggestedQuestions: string[];
   provider: string;
   model: string;
   isRealLanguageModel: boolean;
   generatedAt: string;
+  handling: AssistantHandlingResult;
 };
 
 export interface OperationalAssistantProvider {
