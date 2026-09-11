@@ -31,7 +31,10 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
         <Icon name="chevron" size={16} />
       </div>
 
-      <Link href="/analises/nova" className="sidebar-create"><Icon name="plus" size={18}/>Criar nova análise</Link>
+      {/* Patch de responsividade (Fase 3, fechamento final): CTA "Criar nova análise" removido daqui pra
+          desktop -- a mesma ação já existe na topbar ("Nova análise", src/components/topbar.tsx) e manter
+          os dois consumia altura útil da sidebar sem necessidade. O mobile preserva sua própria ação
+          equivalente em MobileNavigation, que não depende deste componente. */}
 
       <nav className="sidebar-nav" aria-label="Navegação principal">
         {sections.map((section) => (
@@ -53,12 +56,12 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
         ))}
       </nav>
 
+      {/* Card "Base técnica homologada" removido da navegação lateral (consumia altura fixa permanente e
+          declarava situação técnica com texto hardcoded). A informação em si não foi apagada do sistema --
+          continua existindo em /biblioteca-tecnica e nas rotas de regras/homologação; só não fica mais
+          fixada na sidebar. */}
       <div className="sidebar-bottom">
         <Link href="/configuracoes" className={pathname.startsWith("/configuracoes") ? "active" : ""}><Icon name="settings" size={19}/><span>Configurações</span></Link>
-        <div className="support-card">
-          <Icon name="shield" size={20}/>
-          <div><strong>Base técnica homologada</strong><small>RS Grãos · v1.0.0</small></div>
-        </div>
         <div className="user-card">
           <div className="user-avatar">{userInitials}</div>
           <div><strong>{userLabel}</strong><small>{roleText}</small></div>

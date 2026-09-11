@@ -263,6 +263,128 @@ npx playwright test <Fases 1-3>   → ver resultado consolidado na seção "Test
 
 ---
 
+## Patch de responsividade da sidebar (fechamento final da Fase 3, mesma branch, sem merge)
+
+Último ajuste antes da Fase 4. O diretor reportou, usando a plataforma de verdade, que em notebook/desktop
+comum, com o navegador em 100% de zoom, não dava pra acessar a sidebar inteira — só reduzindo o Chrome pra
+~50-60% de zoom conseguia ver o menu completo. Confirmado como bug real de arquitetura, não de conteúdo
+demais. Nenhuma fórmula agronômica alterada, nenhuma regra homologada, nenhuma migração executada, nenhum
+merge/deploy, e a lógica de relatórios/snapshot dos fechamentos anteriores não foi tocada.
+
+### Causa raiz
+
+`.sidebar` (`src/app/globals.css`) era um único bloco flex-column com `height: 100vh` e `overflow-y: auto`
+no CONTAINER inteiro — logo, seletor de empresa, CTA "Criar nova análise", todas as seções de navegação,
+Configurações e o card de perfil competiam pela mesma altura, sem nenhuma zona protegida. Quando o
+conteúdo total excedia a altura da janela (comum em notebooks de 768px de altura, com o perfil admin tendo
+6 seções e ~13 links), o único jeito de ver os itens do fim (Configurações, perfil) era reduzir o zoom do
+navegador pra "encolher" tudo — exatamente o sintoma relatado. Não era falta de espaço; era falta de uma
+arquitetura de scroll que isolasse o que devia ficar sempre visível do que podia rolar.
+
+### Correção — arquitetura de 3 zonas
+
+`src/app/globals.css`: `.sidebar` continua sendo um flex-column, mas agora com `overflow: hidden` no
+container e `height: 100vh; height: 100dvh` (fallback progressivo — `100dvh` desconta a barra de endereço
+móvel da altura disponível onde o navegador suporta; sem efeito real aqui, já que a sidebar já fica oculta
+abaixo de 820px de largura, mas é a unidade tecnicamente correta pra altura de viewport). As 3 zonas viram
+puro flexbox, sem wrapper extra:
+
+- **Topo fixo** (`.brand`, `.tenant-switcher`): ganharam `flex-shrink: 0` — nunca encolhem nem somem.
+- **Centro flexível e rolável** (`.sidebar-nav`): ganhou `flex: 1; min-height: 0; overflow-y: auto;
+  overflow-x: hidden`. `min-height: 0` é a peça que faltava — sem isso, um filho flex nunca encolhe abaixo
+  do próprio conteúdo, então o `overflow-y: auto` nunca tinha efeito de verdade (era o mecanismo do bug:
+  existia `overflow-y: auto` na `.sidebar`, mas o scroll relevante nunca aparecia isolado onde devia).
+  Scrollbar fina e discreta (`scrollbar-width: thin` + `::-webkit-scrollbar` customizado), coerente com o
+  tema escuro — nunca a barra branca padrão do navegador.
+- **Rodapé fixo** (`.sidebar-bottom`: Configurações + perfil): ganhou `flex-shrink: 0` — sempre acessível,
+  nunca empurrado pra fora da tela pelo conteúdo da navegação.
+
+### Eliminação de desperdício de altura
+
+- **CTA duplicado removido**: `sidebar.tsx` não renderiza mais o botão grande "Criar nova análise" no
+  desktop — a mesma ação já existe na topbar (`src/components/topbar.tsx`, botão "Nova análise", presente
+  em toda página que usa `<Topbar>`). CSS morto de `.sidebar-create` removido de `globals.css`. O mobile
+  não foi afetado: usa `MobileNavigation`, um componente totalmente separado, com sua própria ação
+  "Criar nova análise" (confirmado com o novo teste de regressão, ver abaixo).
+- **Card "Base técnica homologada" removido da navegação lateral**: consumia altura fixa permanente e
+  declarava situação técnica com texto hardcoded (`RS Grãos · v1.0.0`). A informação em si não foi apagada
+  do sistema — continua existindo em `/biblioteca-tecnica` e nas rotas de regras/homologação; só não fica
+  mais fixada na sidebar. CSS morto de `.support-card` removido.
+
+### Responsividade por altura
+
+Novo `@media (max-height: 800px)` em `globals.css` (polimento, não é requisito funcional — a navegação já
+rola em qualquer altura graças à arquitetura acima): reduz moderadamente padding da sidebar, margens do
+seletor de empresa, espaço entre seções de navegação e padding dos links, em telas de notebook mais baixas
+(cobre 1366×768; não afeta 1440×900/1536×864/1920×1080). Preserva fonte, ícones e hit area — nunca usa
+`transform: scale()`, zoom CSS ou fonte microscópica.
+
+### Antes / depois
+
+| | Antes | Depois |
+|---|---|---|
+| 1366×768, 100% de zoom | Precisava reduzir o zoom do Chrome pra ~50-60% pra ver toda a sidebar | Sidebar inteira acessível: topo e rodapé sempre visíveis, navegação rola internamente até o último item |
+| Scroll da sidebar | `.sidebar` inteira tentava rolar (`overflow-y: auto` sem efeito real, por causa do `min-height` ausente) | Só `.sidebar-nav` rola; logo/empresa/Configurações/perfil nunca se movem |
+| CTA "Criar nova análise" | Duplicado (sidebar desktop + topbar) | Só na topbar (desktop); mobile mantém sua própria ação |
+| Card "Base técnica homologada" | Fixo na sidebar, consumindo altura permanente | Removido da navegação lateral (informação continua em `/biblioteca-tecnica`) |
+
+### Arquivos alterados
+
+- `src/components/sidebar.tsx` — remove CTA "Criar nova análise" e card "Base técnica homologada".
+- `src/app/globals.css` — reestrutura `.sidebar`/`.sidebar-nav`/`.sidebar-bottom` em 3 zonas, scrollbar
+  discreta, `@media (max-height: 800px)`, remove CSS morto (`.sidebar-create`, `.support-card`).
+- `e2e/sidebar-responsiveness.spec.ts` (novo) — teste de regressão.
+
+### Teste de regressão
+
+`e2e/sidebar-responsiveness.spec.ts` (3 testes), em viewport CSS normal (nunca simulando zoom reduzido):
+
+1. **1366×768** — prova que `.sidebar-nav` tem overflow real (`scrollHeight > clientHeight`, cenário real
+   do perfil admin), que Configurações e o cartão de perfil ficam visíveis sem precisar rolar até o fim,
+   que rolar a navegação até o fim revela o último item dentro da área da própria navegação (sem sobrepor
+   o rodapé fixo), que não existe scroll horizontal relevante (página inteira e dentro da navegação), e
+   que a sidebar não invade `.main-content`/`.topbar`.
+2. **1366×768, 1440×900, 1536×864, 1920×1080** — sem sobreposição, sem scroll horizontal, em `/dashboard`
+   e `/mapas` (tela mais pesada de layout).
+3. **Mobile (390×844)** — confirma que a `.sidebar` desktop continua oculta abaixo do breakpoint existente
+   e que a ação "Criar nova análise" do `MobileNavigation` continua funcionando — prova de que a remoção
+   do CTA duplicado não afetou a experiência mobile.
+
+### Validação
+
+```
+npm run typecheck   → sem erros
+npm run build        → build de produção completo, sem erros
+npm run test:handoff → todos os cenários aprovados
+```
+
+A primeira rodada da suíte e2e completa (sidebar + Fases 1-3, 29 testes com `--workers=3`) teve 14 falhas
+— todas com o MESMO padrão (`TimeoutError` esperando a navegação pra `/dashboard` depois do login),
+inclusive em specs que este patch não tocou (`fase2-map-workspace-and-comparisons.spec.ts`,
+`fase3-cockpit-and-reports.spec.ts`, `field-overview-and-priorities.spec.ts`). Investigado antes de
+concluir, como exigido: rodando só `sidebar-responsiveness.spec.ts` sozinho (`--workers=1`), os 3 testes
+novos passaram limpos. Rodando a suíte completa de novo com `--workers=2` (menos contenção no servidor de
+dev, que fica sob carga real de banco de dados a cada login/render), os 29 testes passaram limpos — **28
+passed, 1 skipped, 0 failed** (o skip é o mesmo de sempre, sobre estado de satélite/parâmetro em mapas,
+não é falha). Conclusão: a causa raiz foi contenção de paralelismo no ambiente de teste local, não uma
+regressão deste patch — nenhum teste pré-existente das Fases 1-3 quebrou por causa da mudança de sidebar.
+
+### Revisão visual
+
+Screenshots reais capturados com Playwright em viewport real (nunca reduzindo o zoom da aplicação),
+`/dashboard` logado como `admin@raiz.local`:
+
+- **1366×768**: logo e seletor de empresa visíveis no topo; navegação mostra até a seção "Entregas"
+  (seções "Entregas"/"Administração" ficam abaixo da dobra, acessíveis rolando a navegação);
+  "Configurações" e o cartão "Administrador Raiz" fixos e visíveis no rodapé, sem precisar rolar.
+- **1440×900**: mais conteúdo de navegação visível (até "Comparativos"); mesmo comportamento de
+  topo/rodapé fixos.
+
+Nenhuma sobreposição, nenhum item escondido sem possibilidade de acesso, sem scroll horizontal, sidebar
+não invade o conteúdo principal, topbar correta, mapas/dashboard não quebraram, mobile continua funcional.
+
+---
+
 ## Preparação — o que existe de verdade (antes de desenhar qualquer tela)
 
 - **`/inteligencia` antes**: `listAllInterpretations` listava **uma linha por revisão** de interpretação,
