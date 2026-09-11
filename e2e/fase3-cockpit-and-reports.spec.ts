@@ -305,3 +305,115 @@ test("Relatório técnico: metadado atual alterado depois do publish não muda o
     await client.end();
   }
 });
+
+test("Relatório técnico: data 'Gerado em' da 'Versão publicada' fica congelada -- reabrir não muda a data mostrada (fechamento técnico Fase 3, 3ª rodada, item 1)", async ({ page }) => {
+  test.skip(!process.env.DATABASE_URL, "precisa de DATABASE_URL no ambiente pra montar o cenário real deste teste.");
+  if (!process.env.DATABASE_URL) return;
+
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  let reportId: string | null = null;
+  let storageKey: string | null = null;
+  try {
+    const row = await findRealInterpretationForTenantA(client);
+    test.skip(!row, "nenhuma interpretação real no tenant A agora.");
+    if (!row) return;
+
+    const result = await publishTestSnapshot(client, row, {});
+    reportId = result.reportId; storageKey = result.storageKey;
+
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    await page.goto(`/relatorios/talhao/${row.analysis_id}?versao=publicada`, { waitUntil: "networkidle" });
+    const firstGeradoEm = await page.locator(".report-header-meta strong").first().textContent();
+
+    // Espera passar de um segundo cheio pra provar que, se a tela ainda usasse `new Date()` em vez da data
+    // congelada no publish, o segundo valor seria diferente do primeiro.
+    await page.waitForTimeout(1500);
+    await page.goto(`/relatorios/talhao/${row.analysis_id}?versao=publicada`, { waitUntil: "networkidle" });
+    const secondGeradoEm = await page.locator(".report-header-meta strong").first().textContent();
+
+    expect(secondGeradoEm).toBe(firstGeradoEm);
+  } finally {
+    await cleanupTestSnapshot(client, reportId, storageKey);
+    await client.end();
+  }
+});
+
+test("Relatório técnico: metadado atual alterado depois do publish não faz a 'Versão atual' ser chamada de documento publicado (fechamento técnico Fase 3, 3ª rodada, item 2)", async ({ page }) => {
+  test.skip(!process.env.DATABASE_URL, "precisa de DATABASE_URL no ambiente pra montar o cenário real deste teste.");
+  if (!process.env.DATABASE_URL) return;
+
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  let reportId: string | null = null;
+  let storageKey: string | null = null;
+  try {
+    const row = await findRealInterpretationForTenantA(client);
+    test.skip(!row, "nenhuma interpretação real no tenant A agora.");
+    if (!row) return;
+
+    // Publica um snapshot íntegro pra ESTA MESMA interpretação (revisão técnica igual à atual) -- é
+    // exatamente o cenário em que o bug antigo rotulava "Situação: Publicado" na aba "Versão atual" só
+    // porque `interpretation_id` batia, mesmo sem prova nenhuma de que contexto/marca exibidos ao vivo
+    // sejam idênticos ao documento oficial congelado.
+    const result = await publishTestSnapshot(client, row, {});
+    reportId = result.reportId; storageKey = result.storageKey;
+
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    await page.goto(`/relatorios/talhao/${row.analysis_id}`, { waitUntil: "networkidle" });
+
+    // "Versão atual" NUNCA pode ser rotulada "Publicado" -- só a aba "Versão publicada" (com hash
+    // verificado) pode ser chamada de documento oficial.
+    const headerMetaText = await page.locator(".report-header-meta").textContent();
+    expect(headerMetaText).not.toContain("Publicado");
+    expect(headerMetaText).toContain("Rascunho (revisão igual à publicada)");
+
+    // A coincidência de revisão é informada separadamente, sem afirmar que a tela atual é o documento
+    // oficial -- a nota precisa deixar isso explícito, não só omitir a palavra "Publicado".
+    const toolbarText = await page.locator(".report-toolbar.no-print").allTextContents();
+    expect(toolbarText.join(" ")).toMatch(/não garante que esta tela.*seja idêntica ao documento oficial/i);
+  } finally {
+    await cleanupTestSnapshot(client, reportId, storageKey);
+    await client.end();
+  }
+});
+
+test("Relatório técnico: snapshot ilegível não permite que a 'Versão atual' seja rotulada como versão publicada (fechamento técnico Fase 3, 3ª rodada, item 2)", async ({ page }) => {
+  test.skip(!process.env.DATABASE_URL, "precisa de DATABASE_URL no ambiente pra montar o cenário real deste teste.");
+  if (!process.env.DATABASE_URL) return;
+
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  let reportId: string | null = null;
+  try {
+    const row = await findRealInterpretationForTenantA(client);
+    test.skip(!row, "nenhuma interpretação real no tenant A agora.");
+    if (!row) return;
+
+    // Simula um snapshot ilegível/não verificável: insere a linha em `reports` apontando pra uma chave de
+    // storage que nunca foi escrita (nenhum `writeFile`) -- `getPublishedReportSnapshot` cai no `catch`
+    // (arquivo não encontrado) e devolve `readError` preenchido, `hashVerified: null`, `snapshot: null`.
+    const missingStorageKey = `reports/${row.tenant_id}/${row.id}/rev-${row.revision}-nao-existe-${Date.now()}.json`;
+    const fakeHash = createHash("sha256").update("conteudo-que-nunca-foi-gravado").digest("hex");
+    const inserted = await client.query(
+      `INSERT INTO reports (tenant_id, interpretation_id, revision, storage_key, sha256, published_at, published_by)
+       VALUES ($1,$2,$3,$4,$5, now(), $6) RETURNING id`,
+      [row.tenant_id, row.id, row.revision, missingStorageKey, fakeHash, row.user_id],
+    );
+    reportId = inserted.rows[0].id as string;
+
+    await login(page, TENANT_A_EMAIL, TENANT_A_PASSWORD);
+    await page.goto(`/relatorios/talhao/${row.analysis_id}`, { waitUntil: "networkidle" });
+
+    // A nota de aviso confirma que a tela sabe que o snapshot não pôde ser lido...
+    const toolbarText = await page.locator(".report-toolbar.no-print").allTextContents();
+    expect(toolbarText.join(" ")).toMatch(/não pôde ser lido/i);
+    // ...e, mesmo assim (ou por causa disso), a "Versão atual" jamais herda o rótulo de documento
+    // publicado.
+    const headerMetaText = await page.locator(".report-header-meta").textContent();
+    expect(headerMetaText).not.toContain("Publicado");
+  } finally {
+    await cleanupTestSnapshot(client, reportId, null);
+    await client.end();
+  }
+});

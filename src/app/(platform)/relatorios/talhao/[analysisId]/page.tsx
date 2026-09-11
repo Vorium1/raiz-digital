@@ -55,12 +55,17 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
   const requestedView = query.versao === "publicada" && canShowPublishedView ? "publicada" : "atual";
   const viewingPublished = requestedView === "publicada";
-  // Bug real encontrado nesta rodada: `data.isShowingPublishedVersion` (repositório) só compara se o
-  // `reports.interpretation_id` bate com a interpretação atual -- nunca checou integridade. Sozinho, ele
-  // fazia a tela rotular "Situação: Publicado" mesmo quando a integridade tinha acabado de falhar (caindo
-  // de volta pra "atual" só por causa do hash). Nunca usar o valor cru do repositório pra decidir rótulo/
-  // impressão -- só esta versão corrigida, que também exige integridade real.
-  const isShowingPublishedVersion = data.isShowingPublishedVersion && !integrityFailed;
+  // Fechamento técnico (3ª rodada), item 2 -- `data.isShowingPublishedVersion` (repositório) só compara se
+  // `reports.interpretation_id` bate com a interpretação mais recente. Isso NUNCA prova que a "versão
+  // atual" é idêntica ao documento oficial: agora que o snapshot v2 também congela contexto (cliente/
+  // propriedade/talhão/safra/marca), a revisão técnica pode bater e mesmo assim o talhão ter sido
+  // renomeado, a propriedade reatribuída ou a marca trocada depois do publish. Por isso
+  // `sameRevisionAsPublished` é só um FATO informativo (a revisão técnica bate) -- nunca um motivo pra
+  // rotular a "versão atual" como "Publicado". Só a aba "Versão publicada", com hash verificado
+  // (`viewingPublished` + integridade OK), pode levar esse rótulo. Também exige `canShowPublishedView`
+  // (hash verificado): se o snapshot está ilegível (`readError`) ou não verificável, este fato nem é
+  // afirmado.
+  const sameRevisionAsPublished = data.isShowingPublishedVersion && canShowPublishedView;
 
   // Item 2 (2ª rodada): a partir da versão 2 do snapshot, o publish congela também cliente/propriedade/
   // talhão/safra/cultivar/sistema/textura/meta produtiva/laboratório e a marca (branding) -- "Versão
@@ -121,19 +126,28 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Mostrando o snapshot IMUTÁVEL publicado em {new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR")} por {publishedInfo!.report.publishedByName ?? "—"} — revisão #{publishedInfo!.report.revision}. Integridade do arquivo: hash verificado, conteúdo íntegro.{contextUnavailable ? " Este snapshot é de um formato anterior, sem contexto/marca congelados — esses campos aparecem como não capturados abaixo." : " Cliente, propriedade, talhão, safra e marca também vêm congelados deste snapshot, nunca do dado atual."} Seções que nunca fizeram parte do snapshot (pontos/mapa/narrativa/prescrição/comparação de insumo) aparecem como nota.</span></div>
         ) : !canShowPublishedView && publishedInfo?.readError ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}), mas o snapshot não pôde ser lido de volta agora ({publishedInfo.readError}) — mostrando o dado atual, que pode não ser idêntico ao publicado.</span></div>
-        ) : !isShowingPublishedVersion ? (
+        ) : !sameRevisionAsPublished ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Esta tela mostra o dado ATUAL por padrão — use "Versão publicada" acima para ver exatamente o que foi publicado.</span></div>
         ) : (
-          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Publicado em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"} — revisão #{publishedReport.interpretationRevision} (versão atual e publicada coincidem).</span></div>
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A revisão técnica atual (#{interpretation?.revision}) é a mesma que foi publicada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"} — mas isso não garante que esta tela (dado atual) seja idêntica ao documento oficial: cliente, propriedade, talhão e marca podem ter mudado desde o publish. Para ver exatamente o que foi publicado, use "Versão publicada" acima.</span></div>
         )}
 
         <article className="report-doc">
           <header className="report-header">
             <ReportBrand branding={displayBranding} />
             <div className="report-header-meta">
-              <span>Gerado em</span><strong>{new Date().toLocaleString("pt-BR")}</strong>
+              {/* Fechamento técnico (3ª rodada), item 1: "Gerado em" na versão publicada usa EXCLUSIVAMENTE
+                  a data congelada no publish (`reports.published_at`, gravada uma única vez no INSERT e
+                  nunca alterada depois) -- nunca `new Date()`. Reabrir o mesmo documento publicado amanhã,
+                  ou daqui a um ano, mostra exatamente a mesma data. A "versão atual" continua usando a data
+                  de agora, porque é literalmente o dado calculado agora, não um documento congelado. */}
+              <span>Gerado em</span><strong>{viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{contextUnavailable ? "—" : displayContext.code}</strong>
-              <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : isShowingPublishedVersion ? "Publicado" : "Rascunho (mais recente que o publicado)"}</strong>
+              {/* Item 2: "Situação" nunca chama a "versão atual" de "Publicado" -- só a aba "Versão
+                  publicada", com hash verificado, pode levar esse rótulo. Quando a revisão técnica atual
+                  coincide com a publicada, isso é informado separadamente ("revisão igual à publicada"),
+                  sem afirmar que o documento em tela é o oficial. */}
+              <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : sameRevisionAsPublished ? "Rascunho (revisão igual à publicada)" : "Rascunho (mais recente que o publicado)"}</strong>
             </div>
           </header>
 

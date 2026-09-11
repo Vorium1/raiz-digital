@@ -188,6 +188,79 @@ npm run test:handoff              → todos os cenários aprovados (inclui test:
 npx playwright test <Fases 1-3>   → ver resultado consolidado na seção "Testes executados" abaixo
 ```
 
+## Terceiro fechamento técnico (patch pequeno de consistência documental, mesma branch, sem merge)
+
+Revisão final antes de encerrar a Fase 3. O diretor encontrou duas inconsistências que sobraram do
+segundo fechamento: a data mostrada em "Versão publicada" ainda não era reprodutível, e a "Situação" da
+"Versão atual" podia dizer "Publicado" só por coincidência de revisão técnica, mesmo sem prova nenhuma de
+que o conteúdo exibido fosse igual ao documento oficial. Nenhuma fórmula agronômica alterada, nenhuma
+regra homologada, nenhuma migração executada, nenhum merge/deploy.
+
+### 1. Data do documento publicado
+
+`/relatorios/talhao/[analysisId]` mostrava "Gerado em" usando `new Date()` mesmo na "Versão publicada" —
+abrir o mesmo documento oficial em momentos diferentes mostrava horários diferentes, o que contradiz a
+própria ideia de documento imutável.
+
+Corrigido: quando `viewingPublished === true`, "Gerado em" usa exclusivamente
+`publishedInfo.report.publishedAt` — o valor de `reports.published_at`, gravado uma única vez no `INSERT`
+do publish e nunca alterado depois (nenhuma rotina no código escreve nesse campo de novo). A "Versão
+atual" continua usando a data de agora, porque é literalmente o dado calculado no momento da requisição,
+não um documento congelado.
+
+**Teste novo**: abre a mesma "Versão publicada" duas vezes, com um intervalo real de 1,5s entre as
+chamadas (tempo suficiente pra `new Date()` mudar de segundo se a correção não tivesse sido aplicada), e
+prova que o texto de "Gerado em" é idêntico nas duas leituras.
+
+### 2. Não confundir "versão atual" com documento publicado
+
+Achado do diretor: `isShowingPublishedVersion` (o booleano que decidia se a "Situação" mostrava
+"Publicado") comparava só `reports.interpretation_id` com a interpretação mais recente. Isso nunca provou
+que a "versão atual" fosse idêntica ao documento oficial — desde o segundo fechamento, o snapshot v2
+também congela contexto (cliente/propriedade/talhão/safra/marca), então a revisão técnica pode bater e
+mesmo assim o talhão ter sido renomeado, a propriedade reatribuída ou a marca trocada depois do publish.
+A tela rotulava "Situação: Publicado" na aba "Versão atual" só pela coincidência de revisão — exatamente
+o tipo de confusão que o diretor pediu pra eliminar.
+
+Regra aplicada, como pedido:
+
+- `viewingPublished && snapshot íntegro` (hash verificado) → único caso rotulado como documento oficial
+  ("Publicado (snapshot imutável)").
+- "Versão atual" → sempre rotulada como versão de trabalho ("Rascunho..."), nunca "Publicado", em
+  **nenhuma** circunstância.
+- Quando a revisão técnica atual é a mesma da publicação, isso é informado **separadamente** — a
+  "Situação" mostra "Rascunho (revisão igual à publicada)" e a nota abaixo do cabeçalho explica, por
+  extenso, que isso não garante que o conteúdo exibido seja idêntico ao documento oficial (cliente,
+  propriedade, talhão e marca podem ter mudado desde o publish) — sem nunca confundir com o snapshot
+  oficial.
+- Se o snapshot está ilegível (`readError`) ou não verificável (hash não conferido), a "versão atual"
+  jamais herda o rótulo de documento publicado — o novo `sameRevisionAsPublished` exige
+  `canShowPublishedView` (hash efetivamente verificado), não só a comparação crua de `interpretation_id`.
+
+Implementação: `src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx` — variável renomeada de
+`isShowingPublishedVersion` para `sameRevisionAsPublished` (`data.isShowingPublishedVersion &&
+canShowPublishedView`), usada só pra decidir qual nota informativa mostrar, nunca pra rotular a "versão
+atual" como oficial. O botão "Exportar PDF" não precisou de mudança: já ficava disponível normalmente na
+"versão atual" (que agora nunca se apresenta como o documento oficial, então imprimi-la não é mais
+ambíguo) e já ficava oculto quando a integridade da "versão publicada" falhava (regra do segundo
+fechamento, mantida).
+
+**Testes novos**:
+- publica um snapshot íntegro pra MESMA interpretação atual (revisão técnica igual) e prova que a "versão
+  atual" nunca mostra "Publicado", mostra "Rascunho (revisão igual à publicada)", e a nota explica por
+  que isso não é o documento oficial;
+- insere uma linha em `reports` apontando pra uma chave de storage que nunca foi gravada (simula
+  snapshot ilegível) e prova que a "versão atual" continua sem o rótulo "Publicado" mesmo nesse caso.
+
+### Testes executados nesta rodada
+
+```
+npm run typecheck                → sem erros
+npm run build                     → build de produção completo, sem erros
+npm run test:handoff              → todos os cenários aprovados
+npx playwright test <Fases 1-3>   → ver resultado consolidado na seção "Testes executados" abaixo
+```
+
 ---
 
 ## Preparação — o que existe de verdade (antes de desenhar qualquer tela)
@@ -386,7 +459,7 @@ npm run test:handoff                                                            
                                                                                    9 cenários novos)
 npx playwright test e2e/field-overview-and-priorities.spec.ts \
   e2e/fase2-map-workspace-and-comparisons.spec.ts \
-  e2e/fase3-cockpit-and-reports.spec.ts                                        → 22 passed, 1 skipped, 0 failed
+  e2e/fase3-cockpit-and-reports.spec.ts                                        → 25 passed, 1 skipped, 0 failed
                                                                                    (skip: estado da URL de
                                                                                    satélite/parâmetro em mapas
                                                                                    depende de dado que não
@@ -394,17 +467,20 @@ npx playwright test e2e/field-overview-and-priorities.spec.ts \
                                                                                    execução -- não é falha)
 ```
 
-Os 10 testes e2e novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`, 6 da entrega original + 1 do
-1º fechamento técnico + 3 do 2º fechamento técnico) cobrem: agrupamento da fila por análise (Bloco A), as
-6 categorias reais do cockpit (Bloco B), pré-seleção de comparativo pela URL sem disparar comparação
-sozinha (Bloco C — encontrou e provou a correção do bug real do Strict Mode), permissão real de aprovação
-por role (Bloco D), organização por destinatário + ausência de IA no resumo ao produtor (Bloco E),
-identificação de rascunho/publicado (Bloco F), recuperação real do snapshot publicado com hash válido,
-bloqueio real por hash divergente (adulteração pós-publicação — encontrou e provou a correção do bug real
-de `isShowingPublishedVersion` não checar integridade), e congelamento real de contexto (metadado
-sintético publicado nunca vaza pra "Versão atual" nem o dado atual vaza pra "Versão publicada"). Todos
-descobrem dado real em tempo de execução (nunca id fixo) e pulam com `test.skip` quando o dado atual do
-banco não sustenta o cenário, em vez de fingir sucesso.
+Os 13 testes e2e novos e focados (`e2e/fase3-cockpit-and-reports.spec.ts`, 6 da entrega original + 1 do
+1º fechamento técnico + 3 do 2º fechamento técnico + 3 do 3º fechamento técnico) cobrem: agrupamento da
+fila por análise (Bloco A), as 6 categorias reais do cockpit (Bloco B), pré-seleção de comparativo pela
+URL sem disparar comparação sozinha (Bloco C — encontrou e provou a correção do bug real do Strict Mode),
+permissão real de aprovação por role (Bloco D), organização por destinatário + ausência de IA no resumo
+ao produtor (Bloco E), identificação de rascunho/publicado (Bloco F), recuperação real do snapshot
+publicado com hash válido, bloqueio real por hash divergente (adulteração pós-publicação — encontrou e
+provou a correção do bug real de `isShowingPublishedVersion` não checar integridade), congelamento real
+de contexto (metadado sintético publicado nunca vaza pra "Versão atual" nem o dado atual vaza pra "Versão
+publicada"), data congelada em "Gerado em" da versão publicada (reabrir não muda o horário mostrado), e a
+distinção final entre "versão atual" e documento oficial (revisão igual à publicada nunca é rotulada
+"Publicado", nem quando o snapshot está ilegível). Todos descobrem dado real em tempo de execução (nunca
+id fixo) e pulam com `test.skip` quando o dado atual do banco não sustenta o cenário, em vez de fingir
+sucesso.
 
 Um teste **pré-existente** da Fase 2 (`Solo e Fertilidade: mostra o valor observado real`) quebrou de
 forma intermitente ao rodar em paralelo com os testes desta Fase (dependia da ordem de exibição do
