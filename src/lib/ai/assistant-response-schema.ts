@@ -52,6 +52,25 @@ export type AssistantStructuredResponse = {
 };
 
 /**
+ * Fase 4E, Bloco 3 — garantia ESTRUTURAL (não uma convenção que depende de cada provider se comportar):
+ * `cards` (legado, `href` computado inteiramente pelo PRÓPRIO provider, sem passar pela validação
+ * server-side que `AssistantAction`/`suggested_actions` têm) só sobrevive até o client quando o provider é
+ * o determinístico local (`isRealLanguageModel === false`). Qualquer provider marcado como modelo de
+ * linguagem real tem `cards` zerado incondicionalmente aqui -- não importa o que ele tenha devolvido (um
+ * `href` externo tipo `https://...`, uma rota interna não permitida, ou qualquer outro valor): nunca chega
+ * ao navegador. Chamado em `src/app/api/assistant/route.ts` antes de montar `ClientAssistantResponse` --
+ * o ÚNICO lugar autorizado a decidir isso, pra nenhum outro ponto do código precisar lembrar da regra.
+ *
+ * `suggested_actions`/`ResolvedAssistantAction` (Bloco 4) continua sendo o ÚNICO mecanismo que um futuro
+ * provider generativo pode influenciar, porque toda ação passa por `validateAssistantActions` (formato +
+ * posse/tenant/role no banco) antes de virar link -- `cards` nunca teve esse gate, por isso a garantia
+ * aqui precisa ser categórica (zero cards), não uma tentativa de "sanitizar" o href.
+ */
+export function sanitizeLegacyCards(result: { isRealLanguageModel: boolean; cards: AssistantCard[] }): AssistantCard[] {
+  return result.isRealLanguageModel ? [] : result.cards;
+}
+
+/**
  * Regra explícita e determinística (não heurística textual), exatamente como pedido:
  * - resposta apenas operacional/factual (sem hipótese) -> revisão não necessária;
  * - qualquer hipótese agronômica -> revisão necessária;

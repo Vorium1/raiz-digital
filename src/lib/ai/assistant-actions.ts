@@ -54,6 +54,16 @@ async function existsForTenant(client: PoolClient, table: string, tenantId: stri
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Fase 4E, Bloco 2 -- confere que `id` (em `table`) pertence de verdade a `parentId` (via `parentColumn`),
+ * dentro do MESMO tenant. `table`/`parentColumn` nunca vêm de entrada externa -- só dos 3 pares fixos
+ * chamados em `verifyOwnership` (mesma lógica de allowlist interna de `existsForTenant`, acima).
+ */
+async function belongsTo(client: PoolClient, table: string, tenantId: string, id: string, parentColumn: string, parentId: string): Promise<boolean> {
+  const result = await client.query(`SELECT 1 FROM ${table} WHERE tenant_id = $1::uuid AND id = $2::uuid AND ${parentColumn} = $3::uuid LIMIT 1`, [tenantId, id, parentId]);
+  return (result.rowCount ?? 0) > 0;
+}
+
 const COMPARISON_MODE_TABLE: Record<"fields" | "seasons" | "points" | "properties", string> = {
   fields: "fields",
   seasons: "crop_seasons",
@@ -85,9 +95,24 @@ async function verifyOwnership(tenantId: string, userId: string, action: Assista
         if (action.propertyId) checks.push(existsForTenant(client, "properties", tenantId, action.propertyId));
         if (action.fieldId) checks.push(existsForTenant(client, "fields", tenantId, action.fieldId));
         if (action.seasonId) checks.push(existsForTenant(client, "crop_seasons", tenantId, action.seasonId));
-        if (!checks.length) return true; // só filtros de estado (interpretationState/reviewState), sem id -- nada pra conferir
-        const results = await Promise.all(checks);
-        return results.every(Boolean);
+        if (checks.length) {
+          const results = await Promise.all(checks);
+          if (!results.every(Boolean)) return false; // algum id não existe/não é deste tenant
+        }
+        // Fase 4E, Bloco 2 -- isolamento de tenant sozinho não captura uma combinação HIERARQUICAMENTE
+        // inconsistente dentro do MESMO tenant (ex.: `propertyId` de uma fazenda + `fieldId` de OUTRA
+        // fazenda do mesmo tenant -- os dois passam nos checks acima isoladamente). Confere os 3 pares
+        // adjacentes só quando AMBOS os lados do par foram informados -- nunca inventa um nível
+        // intermediário ausente pra completar a cadeia (ex.: só `clientId`+`fieldId`, sem `propertyId`,
+        // não tenta validar a relação entre os dois -- a relação POSSÍVEL de validar aqui é só a
+        // adjacente). Qualquer par informado que não bate -> ação rejeitada, nunca "corrigida" silenciosamente.
+        const hierarchyChecks: Promise<boolean>[] = [];
+        if (action.propertyId && action.clientId) hierarchyChecks.push(belongsTo(client, "properties", tenantId, action.propertyId, "client_id", action.clientId));
+        if (action.fieldId && action.propertyId) hierarchyChecks.push(belongsTo(client, "fields", tenantId, action.fieldId, "property_id", action.propertyId));
+        if (action.seasonId && action.fieldId) hierarchyChecks.push(belongsTo(client, "crop_seasons", tenantId, action.seasonId, "field_id", action.fieldId));
+        if (!hierarchyChecks.length) return true;
+        const hierarchyResults = await Promise.all(hierarchyChecks);
+        return hierarchyResults.every(Boolean);
       }
     }
   });

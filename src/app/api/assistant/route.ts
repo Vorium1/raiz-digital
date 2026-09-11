@@ -6,6 +6,8 @@ import { buildEvidenceManifest } from "@/lib/ai/assistant-evidence-manifest";
 import { validateAssistantActions } from "@/lib/ai/assistant-actions";
 import type { ResolvedAssistantAction } from "@/lib/ai/assistant-actions-schema";
 import { recordOperationalAssistantGeneration } from "@/lib/repositories/ai-generations";
+import { withQueryCounting } from "@/lib/db-query-count";
+import { sanitizeLegacyCards } from "@/lib/ai/assistant-response-schema";
 
 const PROMPT_VERSION = "local-intent-v3-actions";
 
@@ -35,10 +37,21 @@ export async function POST(request: Request) {
   const screenState = parseAssistantScreenState(body.screenState);
   const screenContext = parsedContext === INVALID_SCREEN_CONTEXT ? undefined : parsedContext;
 
+  // Fase 4E, Bloco 1 -- `x-debug-query-count: 1` (nunca enviado pelo client real, só pelos testes de
+  // medição) mede quantas consultas ESTE caminho pesado (Evidence Package completo) realmente executa,
+  // pra comparar contra o caminho leve de `/api/assistant/context` (`resolveContextLabelLight`) com números
+  // reais -- nunca afeta o contrato normal da resposta.
+  const debugQueryCount = request.headers.get("x-debug-query-count") === "1";
+  let evidenceQueryCount = 0;
   const evidence: AssistantEvidenceResult =
     parsedContext === INVALID_SCREEN_CONTEXT
       ? { found: false, kind: "invalid", entityIds: {} }
-      : await buildAssistantEvidence(session.tenantId, session.userId, parsedContext, screenState);
+      : await (async () => {
+          if (!debugQueryCount) return buildAssistantEvidence(session.tenantId, session.userId, parsedContext, screenState);
+          const { result, queryCount } = await withQueryCounting(() => buildAssistantEvidence(session.tenantId, session.userId, parsedContext, screenState));
+          evidenceQueryCount = queryCount;
+          return result;
+        })();
 
   const provider = resolveOperationalAssistantProvider();
   const result = await provider.ask({ question, tenantId: session.tenantId, userId: session.userId, role: session.role, screenContext, screenState, evidence });
@@ -49,7 +62,10 @@ export async function POST(request: Request) {
   // real -- é isso, e só isso, que chega ao client.
   const resolvedActions = await validateAssistantActions({ tenantId: session.tenantId, userId: session.userId, role: session.role }, result.suggested_actions);
 
-  const clientResponse: ClientAssistantResponse = { ...result, suggested_actions: resolvedActions };
+  // Fase 4E, Bloco 3 -- `cards` (legado) só sobrevive quando o provider NÃO é um modelo de linguagem real.
+  // Garantia categórica (não uma limpeza de href): um futuro provider generativo tem `cards` zerado
+  // incondicionalmente, não importa o que ele tenha devolvido.
+  const clientResponse: ClientAssistantResponse = { ...result, cards: sanitizeLegacyCards(result), suggested_actions: resolvedActions };
 
   // Pré-ajuste 1 (fechamento final da Fase 4A): o manifesto precisa distinguir Dashboard real de contexto
   // inválido -- `screenContext ?? {type:"dashboard"}` registraria uma tentativa inválida como se tivesse
@@ -77,5 +93,5 @@ export async function POST(request: Request) {
     status: result.requires_professional_review ? "PENDING_REVIEW" : "APPROVED",
   });
 
-  return Response.json(clientResponse);
+  return Response.json({ ...clientResponse, ...(debugQueryCount ? { _debugEvidenceQueryCount: evidenceQueryCount } : {}) });
 }

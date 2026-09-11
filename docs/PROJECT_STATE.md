@@ -4080,3 +4080,30 @@ resumo aqui, detalhe nos dois arquivos.
   skipped honestos / 0 failed) e `sidebar-responsiveness` sem regressão.
 - **Pendente**: Bloco 7 (provedor de LLM real) aguarda autorização explícita -- nada conectado ainda
   (Claude/OpenAI/Gemini), nenhum RAG, nenhuma ação de banco, nenhuma recomendação autônoma.
+
+### Fase 4E — Gate Pré-LLM + Harness de Avaliação
+
+Documentação completa em `docs/RAIZ_2.0_FASE4E_PRE_LLM.md`. Última etapa antes de qualquer LLM real:
+
+- Cabeçalho contextual do painel virou leve (`resolveContextLabelLight`) -- deixou de montar o Evidence
+  Package inteiro só pra extrair um rótulo (medido: dashboard caiu de >10 consultas pra 0; talhão de 12
+  pra 5). Achado de bug na própria instrumentação de medição (pool de conexões reciclando o wrapper de
+  contagem), corrigido.
+- `filter_intelligence` ganhou validação de coerência HIERÁRQUICA entre os ids (propriedade pertence ao
+  cliente, talhão pertence à propriedade, safra pertence ao talhão) -- isolamento de tenant sozinho não
+  capturava uma combinação inconsistente dentro do mesmo tenant.
+- `cards` legado virou garantia estrutural de código: nenhum provider `isRealLanguageModel:true` consegue
+  fazer um `href` chegar ao navegador, testado com cenários adversariais antes de existir LLM real.
+- Harness de benchmark reproduzível (`src/lib/ai/benchmark/`, rota dev-only
+  `/api/dev/assistant-benchmark`): 39 cenários em 13 categorias, 15 critérios verificáveis, scorecard em 7
+  eixos. Rodado de verdade contra o provider local (35/39, 4 achados reais documentados: 2 respostas de
+  recusa honesta sem `missing_information` populado, `technical_references` nunca narrado mesmo quando a
+  evidência tem fonte real).
+- Provider CANDIDATO Gemini (`gemini-operational-assistant-provider.ts`, reaproveitando a infraestrutura
+  Gemini já existente nesta base -- nunca recriada) implementado e testado só dentro do benchmark. Achado
+  real: a `GEMINI_API_KEY` gratuita já configurada esgotou a cota antes de completar os 39 cenários (só
+  10/39 com resposta real) -- decisão de custo/plano que o diretor precisa considerar antes de aprovar uso
+  em volume. `resolveOperationalAssistantProvider()` continua devolvendo só o local -- nenhum LLM real
+  conectado à aplicação.
+- **Pendente**: decisão do diretor sobre Bloco 7 (se/quando/onde conectar um provider generativo real),
+  usando os critérios objetivos documentados no arquivo de entrega.

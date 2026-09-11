@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { computeRequiresProfessionalReview, describeNdviFieldCoexistence } from "../src/lib/ai/assistant-response-schema.ts";
+import { computeRequiresProfessionalReview, describeNdviFieldCoexistence, sanitizeLegacyCards } from "../src/lib/ai/assistant-response-schema.ts";
 
 // Fase 4A, Bloco 3 -- regra explícita (não heurística textual) de quando a resposta do Assistente RAIZ
 // exige revisão profissional, e a correção do diretor sobre NDVI não ter geometria espacial suficiente
@@ -45,4 +45,27 @@ const noteWithoutParam = describeNdviFieldCoexistence({ hasNdviData: true, hasLo
 assert.match(noteWithoutParam.note, /pontos classificados como baixos/i);
 assert.doesNotMatch(noteWithoutParam.note, /para undefined/i);
 
-console.log("assistant-response-schema: 5 cenários aprovados (revisão profissional é regra de código, nunca do provider; NDVI agregado nunca produz afirmação de coincidência espacial)");
+// 6. Fase 4E, Bloco 3 -- teste ADVERSARIAL, escrito ANTES de existir qualquer provider generativo real:
+// um provider marcado `isRealLanguageModel: true` nunca pode fazer um `href` de card chegar ao client,
+// não importa o que ele tenha devolvido -- nem um `href` externo, nem uma rota interna não permitida.
+const maliciousExternal = sanitizeLegacyCards({ isRealLanguageModel: true, cards: [{ title: "Clique aqui", description: "x", href: "https://phishing.exemplo.com/roubar-sessao" }] });
+assert.deepEqual(maliciousExternal, []);
+
+const maliciousInternalRoute = sanitizeLegacyCards({ isRealLanguageModel: true, cards: [{ title: "x", description: "x", href: "/rota-nao-permitida" }] });
+assert.deepEqual(maliciousInternalRoute, []);
+
+// Mesmo um card com aparência inofensiva (rota real, formato válido) -- a regra é categórica, não um
+// filtro de "parece malicioso": QUALQUER card de um provider generativo é zerado, sempre.
+const innocentLookingFromGenerativeProvider = sanitizeLegacyCards({ isRealLanguageModel: true, cards: [{ title: "Ver análise", description: "x", href: "/analises/11111111-1111-4111-8111-111111111111" }] });
+assert.deepEqual(innocentLookingFromGenerativeProvider, []);
+
+// Sem cards nenhum -- continua vazio, não quebra.
+assert.deepEqual(sanitizeLegacyCards({ isRealLanguageModel: true, cards: [] }), []);
+
+// 7. O provider local determinístico (isRealLanguageModel: false) continua funcionando normalmente --
+// esta garantia nunca quebra o mecanismo legado que já existia antes da Fase 4E.
+const localCards = [{ title: "Ver relatório", description: "x", href: "/relatorios/talhao/22222222-2222-4222-8222-222222222222" }];
+assert.deepEqual(sanitizeLegacyCards({ isRealLanguageModel: false, cards: localCards }), localCards);
+assert.deepEqual(sanitizeLegacyCards({ isRealLanguageModel: false, cards: [] }), []);
+
+console.log("assistant-response-schema: 11 cenários aprovados (revisão profissional é regra de código, nunca do provider; NDVI agregado nunca produz afirmação de coincidência espacial; cards legados nunca sobrevivem a um provider isRealLanguageModel:true, nem card malicioso nem card de aparência inofensiva)");
