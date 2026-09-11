@@ -30,7 +30,10 @@ import { QUEUE_BUCKET_META } from "@/domain/interpretation-status";
  * etapa -- exatamente o esperado com hipóteses vazias.
  */
 
-const PROMPT_VERSION = "local-intent-v2-structured";
+// Fase 4F, item 1 -- v3: `missing_information` passou a ser preenchido nas respostas de recusa honesta
+// (comparar safra sem segunda safra, propriedade não identificada por nome) e `technical_references` passou
+// a ser narrado a partir de `AgronomicEvidencePackage.technicalSources` (antes sempre `[]`).
+const PROMPT_VERSION = "local-intent-v3-grounded";
 
 const SUGGESTED_QUESTIONS = [
   "Quais talhões têm pontos pendentes?",
@@ -51,7 +54,7 @@ function normalize(text: string) {
  * só anexa uma ação quando ela corresponde a uma funcionalidade que JÁ EXISTE de verdade na RAIZ (mapa,
  * comparativos, relatório, talhão, fila de inteligência) -- nunca uma ação especulativa.
  */
-type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards"> & { actions?: AssistantAction[] };
+type PartialResponse = Pick<AssistantStructuredResponse, "summary" | "facts" | "attention_points" | "missing_information" | "cards"> & { actions?: AssistantAction[]; technical_references?: AssistantStructuredResponse["technical_references"] };
 
 function empty(summary: string, cards: AssistantCard[] = [], missingInformation: string[] = []): PartialResponse {
   return { summary, facts: [], attention_points: [], missing_information: missingInformation, cards };
@@ -90,18 +93,26 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
   // Bloco 5 -- dentro de uma análise, narra regra técnica usada e confiabilidade (ambas já presentes em
   // `AgronomicEvidencePackage.ruleUsed`/`.confidence`, Fase 3, nunca consumidas por nenhuma resposta em
   // texto antes) e pontos de atenção reais (parâmetros não interpretáveis, com o motivo real do motor).
-  if (request.screenContext?.type === "analysis" && request.evidence?.found && request.evidence.kind === "analysis" && /(regra|confiabilidade|ponto.*atenc|atenc.*ponto)/.test(q)) {
+  if (request.screenContext?.type === "analysis" && request.evidence?.found && request.evidence.kind === "analysis" && /(regra|confiabilidade|ponto.*atenc|atenc.*ponto|fonte|public)/.test(q)) {
     const evidence = request.evidence.evidence as AgronomicEvidencePackage;
     const facts: PartialResponse["facts"] = [];
     if (evidence.confidence) facts.push({ label: "Confiabilidade da interpretação", value: `${evidence.confidence.score}/100 (${evidence.confidence.level})`, source: "database" });
     const ruleName = evidence.ruleUsed?.cropProfileCode ?? evidence.ruleUsed?.cropProfileName;
     if (ruleName) facts.push({ label: "Regra técnica usada", value: `${ruleName}${evidence.ruleUsed?.version ? ` v${evidence.ruleUsed.version}` : ""}`, source: "database" });
     const attentionPoints = evidence.classifications.filter((c) => !c.interpretable).map((c) => ({ label: `${c.sampleCode} · ${c.parameterCode}`, reason: c.reason ?? "Não interpretável" }));
-    if (!facts.length && !attentionPoints.length) return empty("Ainda não há regra técnica, confiabilidade ou pontos de atenção calculados para esta análise.");
+    // Fase 4F, item 1 -- Evidence Package de análise já carrega `technicalSources` reais (`AgronomicEvidencePackage`,
+    // Fase 3) desde antes da Fase 4, mas nenhuma resposta em texto nunca os narrava -- `technical_references`
+    // ficava sempre `[]` mesmo quando havia fonte real disponível. Nunca inventa: só as fontes que já estão
+    // no Evidence Package, exatamente como vieram (título/instituição reais).
+    const technicalReferences: PartialResponse["technical_references"] = evidence.technicalSources.map((s) => ({ title: s.title, institution: s.institution }));
+    if (!facts.length && !attentionPoints.length && !technicalReferences.length) {
+      return empty("Ainda não há regra técnica, confiabilidade, pontos de atenção ou fontes técnicas registradas para esta análise.", [], ["Esta análise ainda não tem regra técnica, confiabilidade, pontos de atenção ou fontes técnicas calculadas/registradas."]);
+    }
     return {
       summary: evidence.confidence ? `Confiabilidade desta interpretação: ${evidence.confidence.score}/100 (${evidence.confidence.level}).` : "Esta análise ainda não tem confiabilidade calculada.",
       facts,
       attention_points: attentionPoints,
+      technical_references: technicalReferences,
       missing_information: [],
       cards: [],
     };
@@ -242,7 +253,10 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
         };
       }
       const comparison = await compareLatestTwoSeasons(tenantId, request.screenContext.id, userId);
-      if (!comparison) return empty("Este talhão ainda não tem duas safras para comparar.");
+      // Fase 4F, item 1 -- isto é uma resposta de DADO INSUFICIENTE (a pergunta não pôde ser respondida por
+      // falta de uma segunda safra), não uma resposta factual completa -- precisa aparecer em
+      // `missing_information` (seção visual própria do painel, Bloco 5), não só implícita no `summary`.
+      if (!comparison) return empty("Este talhão ainda não tem duas safras para comparar.", [], ["Não há uma segunda safra registrada para este talhão -- cadastre mais uma safra pra poder comparar."]);
       return {
         summary: `Comparando ${comparison.latest.seasonLabel} (${comparison.latest.currentCrop ?? "cultura não informada"}) com ${comparison.previous.seasonLabel} (${comparison.previous.currentCrop ?? "cultura não informada"}).`,
         facts: [
@@ -276,7 +290,9 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
         if (evidence) return summarizePropertyEvidence(evidence);
       }
     }
-    return empty("Não identifiquei a propriedade. Diga o nome dela ou abra a propriedade e pergunte de novo.");
+    // Fase 4F, item 1 -- mesmo princípio: dado insuficiente pra responder, precisa aparecer em
+    // `missing_information`, não só no `summary`.
+    return empty("Não identifiquei a propriedade. Diga o nome dela ou abra a propriedade e pergunte de novo.", [], ["Nenhuma propriedade foi identificada a partir do nome citado na pergunta -- diga o nome exato ou abra a propriedade e pergunte de novo."]);
   }
 
   if (/pendenc/.test(q)) {
@@ -367,7 +383,7 @@ export const localIntentAssistantProvider: OperationalAssistantProvider = {
       patterns: [],
       hypotheses: [],
       missing_information: partial.missing_information,
-      technical_references: [],
+      technical_references: partial.technical_references ?? [],
       suggested_actions: actions,
       requires_professional_review: false,
       cards: partial.cards,

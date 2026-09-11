@@ -9,6 +9,12 @@ import type { OperationalAssistantProvider, OperationalAssistantResponse } from 
  * o mesmo `OperationalAssistantRequest` reconstruído a partir de um `BenchmarkScenario`.
  */
 
+/** Fase 4F, item 7 -- "Benchmark V2": grounding expandido pra todos os campos gerados, 7 critérios novos,
+ *  10 cenários adversariais novos. Sobe sempre que o CONJUNTO de cenários/critérios muda -- usado no nome
+ *  do artefato de cada execução (item 9), pra nunca confundir um resultado real com o de uma versão
+ *  anterior do benchmark. */
+export const BENCHMARK_VERSION = "v2-grounding";
+
 export type ScenarioCategory =
   | "operacao-dashboard"
   | "talhao"
@@ -41,7 +47,15 @@ export type CriterionName =
   | "must_acknowledge_ambiguity"
   | "must_not_exceed_evidence_scope"
   | "must_match_schema"
-  | "must_have_verifiable_facts";
+  | "must_have_verifiable_facts"
+  // Fase 4F, item 7 -- Benchmark V2: grounding checado em TODOS os campos gerados, não só `facts`.
+  | "must_not_invent_pattern"
+  | "must_not_invent_technical_source"
+  | "must_not_invent_entity"
+  | "must_not_invent_numeric_claim_in_summary"
+  | "must_only_reference_catalog_items"
+  | "hypothesis_must_reference_real_evidence"
+  | "deterministic_attention_must_come_from_catalog";
 
 export type BenchmarkScenario = {
   id: string;

@@ -4107,3 +4107,33 @@ Documentação completa em `docs/RAIZ_2.0_FASE4E_PRE_LLM.md`. Última etapa ante
   conectado à aplicação.
 - **Pendente**: decisão do diretor sobre Bloco 7 (se/quando/onde conectar um provider generativo real),
   usando os critérios objetivos documentados no arquivo de entrega.
+
+### Fase 4F — Grounding Gate + Benchmark V2
+
+Documentação completa em `docs/RAIZ_2.0_FASE4F_GROUNDING_GATE.md`. Fecha a última lacuna antes do Bloco 7:
+
+- Provider local corrigido pros 4 gaps reais achados na Fase 4E (`missing_information` estruturado em 2
+  respostas de recusa honesta; `technical_references` narrado a partir do Evidence Package de análise) --
+  **49/49** no benchmark atualizado (39 originais + 10 cenários adversariais novos).
+- Violação real do contrato arquitetural corrigida: o provider candidato Gemini pedia `facts`/
+  `attention_points`/`patterns`/`technical_references` PRONTOS ao modelo, quando o schema já documentava
+  que `patterns` só pode existir por código determinístico. Novo Evidence Catalog
+  (`assistant-evidence-catalog.ts`): servidor monta um catálogo citável com `ref` estável; o modelo só cita
+  refs, nunca escreve valor/descrição/fonte; servidor materializa. Hipóteses passaram a exigir
+  `supportingEvidenceRefs` resolvidos contra o catálogo -- sem ref válido, a hipótese é descartada.
+- `summary` (único campo verdadeiramente livre) ganhou um grounding gate (`assistant-grounding-gate.ts`) --
+  detecta uuid/número/entidade fora da evidência, coincidência espacial, causalidade, URL, recomendação
+  fora de escopo -- e um wrapper (`grounded-operational-assistant-provider.ts`) que descarta a resposta
+  inteira e usa o local como fallback quando reprova (nunca "conserta" com outro texto gerativo).
+- Benchmark V2: 7 critérios novos de grounding, aplicados universalmente a todo cenário, cobrindo
+  `summary`/`attention_points`/`patterns`/`hypotheses`/`technical_references`/`suggested_actions` -- não só
+  `facts` como antes.
+- Cada execução real do benchmark agora grava um artefato em disco com nome único (`artifact-store.ts`,
+  `.benchmark-runs/`, gitignored) -- nunca sobrescreve uma execução anterior (corrige o achado real da
+  Fase 4E, onde a primeira rodada real contra o Gemini foi perdida por sobrescrita).
+- Gemini (candidato): rodado um subconjunto pequeno pós-validação -- 1 cenário completou com resposta real
+  antes de esgotar a cota gratuita de novo, e passou integralmente em todos os critérios (incluindo os 7
+  novos), prova real de que o Evidence Catalog funciona ponta a ponta com um modelo generativo real.
+  `resolveOperationalAssistantProvider()` continua devolvendo só o local.
+- **Pendente**: decisão do diretor sobre Bloco 7 -- rodada completa do Gemini fica pendente de cota
+  suficiente (mecanismo já pronto pra isso a qualquer momento via `/api/dev/assistant-benchmark`).

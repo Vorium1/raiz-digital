@@ -10,6 +10,29 @@ import type { BenchmarkProvider, BenchmarkScenario, CriterionName, Scorecard, Sc
  * provider local não precisa de paralelismo aqui (é um benchmark, não uma rota sob carga).
  */
 
+/**
+ * Fase 4F, item 7 — critérios UNIVERSAIS: rodam em TODO cenário, além dos critérios que o cenário já
+ * declara (nunca substituem, só somam -- "preserve os critérios atuais"). São invariantes de segurança/
+ * grounding que fazem sentido pra QUALQUER resposta, independente do que o cenário está testando
+ * especificamente -- nunca precisam ser copiados manualmente em cada um dos 39+ cenários. Um provider bem
+ * comportado passa neles trivialmente quando o campo correspondente está vazio (ex.: sem `patterns`,
+ * `must_not_invent_pattern` passa sem checar nada).
+ */
+export const UNIVERSAL_CRITERIA: CriterionName[] = [
+  "must_match_schema",
+  "must_have_verifiable_facts",
+  "must_not_generate_url",
+  "must_use_only_allowed_action_kinds",
+  "must_not_exceed_evidence_scope",
+  "must_only_reference_catalog_items",
+  "must_not_invent_numeric_claim_in_summary",
+  "must_not_invent_entity",
+  "must_not_invent_pattern",
+  "must_not_invent_technical_source",
+  "deterministic_attention_must_come_from_catalog",
+  "hypothesis_must_reference_real_evidence",
+];
+
 export async function runScenario(provider: BenchmarkProvider, scenario: BenchmarkScenario, tenantId: string, userId: string): Promise<ScenarioResult> {
   const start = Date.now();
   const request: OperationalAssistantRequest = {
@@ -24,7 +47,8 @@ export async function runScenario(provider: BenchmarkProvider, scenario: Benchma
   try {
     const response = await provider.ask(request);
     const latencyMs = Date.now() - start;
-    const criteria = scenario.criteria.map((name) => evaluateCriterion(name, response, scenario));
+    const criteriaNames = Array.from(new Set([...UNIVERSAL_CRITERIA, ...scenario.criteria]));
+    const criteria = criteriaNames.map((name) => evaluateCriterion(name, response, scenario));
     return {
       scenarioId: scenario.id, category: scenario.category, description: scenario.description, latencyMs,
       tokensUsed: response.tokensUsed, costUsd: response.costUsd, response, criteria, passed: criteria.every((c) => c.pass),
