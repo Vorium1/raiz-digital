@@ -83,15 +83,16 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
      * - SHAPEFILE_REAL_*: geometria executada em campo importada de fonte espacial auditada;
      * - ESTIMADO_*: aproximação/legado, nunca conta como origem rastreável.
      *
-     * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. O texto da UI usa
-     * esse termo de propósito para não prometer uma qualidade que o metadado não prova.
+     * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. `confirmedCount`
+     * é mantido como alias de compatibilidade para componentes antigos e tem exatamente o mesmo valor.
      */
     const gpsQualityResult = await client.query(
       `SELECT count(*)::int AS total,
               count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "browserGpsCount",
               count(*) FILTER (WHERE sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "shapefileRealCount",
               count(*) FILTER (WHERE sp.gps_source LIKE 'ESTIMADO_%' OR sp.gps_source IS NULL)::int AS "estimatedCount",
-              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "verifiedCount"
+              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "verifiedCount",
+              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "confirmedCount"
        FROM sample_points sp
        JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
        WHERE sp.tenant_id = $1::uuid AND co.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
@@ -119,6 +120,7 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       gpsQuality: gpsQualityResult.rows[0] as {
         total: number;
         verifiedCount: number;
+        confirmedCount: number;
         browserGpsCount: number;
         shapefileRealCount: number;
         estimatedCount: number;
