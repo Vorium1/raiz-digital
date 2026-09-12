@@ -35,6 +35,47 @@ export type MapLayerResult = {
   reportId: string | null;
 };
 
+export type FieldSoilMapContext = {
+  collectionOrderId: string;
+  collectionOrderCode: string;
+  seasonLabel: string;
+  depthFromCm: number;
+  depthToCm: number;
+};
+
+/**
+ * Resolve a ordem de coleta mais recente do talhão que realmente possui resultado laboratorial.
+ * É usada pelo painel Satélite quando ele não recebeu uma ordem explícita da tela. Nunca escolhe uma
+ * ordem vazia só por ser mais nova e nunca atravessa tenant/RLS.
+ */
+export async function getLatestFieldSoilMapContext(input: {
+  tenantId: string;
+  userId?: string;
+  fieldId: string;
+}): Promise<FieldSoilMapContext | null> {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query<FieldSoilMapContext>(
+      `SELECT co.id::text AS "collectionOrderId", co.code AS "collectionOrderCode",
+              cs.season_label AS "seasonLabel", co.depth_from_cm::float8 AS "depthFromCm",
+              co.depth_to_cm::float8 AS "depthToCm"
+       FROM collection_orders co
+       JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
+       WHERE co.tenant_id = $1::uuid AND cs.field_id = $2::uuid
+         AND EXISTS (
+           SELECT 1
+           FROM sample_points sp
+           JOIN lab_samples ls ON ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
+           JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+           WHERE sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
+         )
+       ORDER BY co.created_at DESC
+       LIMIT 1`,
+      [input.tenantId, input.fieldId],
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
 /**
  * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos
  * reais (PostGIS) cruzados com a classificação já homologada da última
