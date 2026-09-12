@@ -65,6 +65,7 @@ export type NdviSceneResult = {
   stddevNdvi: number | null;
   /** Compatibilidade de banco/API: representa % mascarado/sem dado válido dentro do talhão. */
   cloudCoverPct: number | null;
+  /** Quantidade de pixels que realmente participaram do cálculo, excluindo `noDataCount`. */
   pixelCount: number;
   histogram: NdviHistogramBucket[];
   sceneId: string | null;
@@ -142,14 +143,27 @@ function toHistogram(bins: Array<{ lowEdge: number; highEdge: number; count: num
     .map((bin) => ({ ndvi: (bin.lowEdge + bin.highEdge) / 2, pixelCount: bin.count }));
 }
 
+/**
+ * Na Statistical API, `sampleCount` é o total amostrado e `noDataCount` é um SUBCONJUNTO desse total,
+ * não um conjunto adicional. Esta função existe separada para deixar a semântica testável e impedir
+ * regressão para `sampleCount + noDataCount`, que subestimaria a fração mascarada.
+ */
+export function summarizePixelValidity(sampleCount: number, noDataCount: number) {
+  const total = Math.max(0, Math.trunc(sampleCount));
+  const invalid = Math.min(total, Math.max(0, Math.trunc(noDataCount)));
+  const valid = total - invalid;
+  return {
+    total,
+    invalid,
+    valid,
+    maskedPixelPct: total > 0 ? (invalid / total) * 100 : null,
+  };
+}
+
 function toSceneResult(entry: StatisticsEntry, fallbackDate: string): NdviSceneResult | null {
   const stats = entry.outputs?.default?.bands?.B0?.stats;
-  const sampleCount = stats?.sampleCount ?? 0;
-  if (!stats || sampleCount <= 0 || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
-
-  const noDataCount = stats.noDataCount ?? 0;
-  const totalPixels = sampleCount + noDataCount;
-  const maskedPixelPct = totalPixels > 0 ? (noDataCount / totalPixels) * 100 : null;
+  const validity = summarizePixelValidity(stats?.sampleCount ?? 0, stats?.noDataCount ?? 0);
+  if (!stats || validity.valid <= 0 || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
 
   return {
     capturedAt: (entry.interval?.from ?? fallbackDate).slice(0, 10),
@@ -157,8 +171,8 @@ function toSceneResult(entry: StatisticsEntry, fallbackDate: string): NdviSceneR
     minNdvi: stats.min,
     maxNdvi: stats.max,
     stddevNdvi: stats.stDev ?? null,
-    cloudCoverPct: maskedPixelPct,
-    pixelCount: sampleCount,
+    cloudCoverPct: validity.maskedPixelPct,
+    pixelCount: validity.valid,
     histogram: toHistogram(entry.outputs?.default?.bands?.B0?.histogram?.bins),
     sceneId: null,
   };
