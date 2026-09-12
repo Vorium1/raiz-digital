@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
-import { RealFieldMap, type MapImageOverlay } from "@/components/real-field-map";
+import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/real-field-map";
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
+import { classificationColor } from "@/lib/classification-colors";
 
 type Snapshot = {
   id: string;
@@ -19,6 +20,13 @@ type Snapshot = {
 };
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
+type SoilLayerResponse = {
+  fieldBoundary: Geometry;
+  points: MapPoint[];
+  availableParameters: string[];
+  analysisId: string | null;
+  reportId: string | null;
+};
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
 export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
@@ -60,10 +68,20 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
 
 /**
  * Centro de inteligência Sentinel-2 do talhão. Combina raster NDVI espacial real, distribuição de
- * vigor, qualidade, série temporal e variabilidade. A pessoa pode navegar entre aquisições que já
- * pertencem ao histórico auditado do talhão; o backend não aceita datas arbitrárias.
+ * vigor, qualidade, série temporal e variabilidade. Quando existe uma ordem de coleta selecionada,
+ * também permite sobrepor os pontos laboratoriais reais ao raster para inspeção espacial lado a lado.
+ * A sobreposição NÃO calcula correlação, não atribui causa e não transforma coincidência espacial em
+ * diagnóstico: é uma ferramenta visual de investigação para o agrônomo responsável.
  */
-export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZoneColor?: (color: string | null) => void }) {
+export function FieldNdviPanel({
+  fieldId,
+  collectionOrderId,
+  onZoneColor,
+}: {
+  fieldId: string;
+  collectionOrderId?: string | null;
+  onZoneColor?: (color: string | null) => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [latest, setLatest] = useState<Snapshot | null>(null);
@@ -78,6 +96,11 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
   const [rasterLoading, setRasterLoading] = useState(false);
   const [rasterError, setRasterError] = useState<string | null>(null);
   const [rasterOverlay, setRasterOverlay] = useState<MapImageOverlay | null>(null);
+  const [soilParameter, setSoilParameter] = useState("");
+  const [soilAvailableParameters, setSoilAvailableParameters] = useState<string[]>([]);
+  const [soilPoints, setSoilPoints] = useState<MapPoint[]>([]);
+  const [soilLoading, setSoilLoading] = useState(false);
+  const [soilError, setSoilError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +176,42 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
     };
   }, [fieldId, selectedRasterDate, fieldBoundary]);
 
+  useEffect(() => {
+    setSoilParameter("");
+    setSoilAvailableParameters([]);
+    setSoilPoints([]);
+    setSoilError(null);
+  }, [collectionOrderId]);
+
+  useEffect(() => {
+    if (!collectionOrderId) {
+      setSoilLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSoilLoading(true);
+    setSoilError(null);
+    const query = soilParameter ? `?parameter=${encodeURIComponent(soilParameter)}` : "";
+    void fetch(`/api/collection-orders/${collectionOrderId}/map-layer${query}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Não foi possível carregar a camada de solo (HTTP ${response.status}).`);
+        return response.json() as Promise<SoilLayerResponse>;
+      })
+      .then((layer) => {
+        if (controller.signal.aborted) return;
+        setSoilAvailableParameters(layer.availableParameters ?? []);
+        setSoilPoints(soilParameter ? (layer.points ?? []) : []);
+        setSoilLoading(false);
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setSoilPoints([]);
+        setSoilLoading(false);
+        setSoilError(caught instanceof Error ? caught.message : "Falha ao carregar a camada de solo.");
+      });
+    return () => controller.abort();
+  }, [collectionOrderId, soilParameter]);
+
   async function handleFetchSatellite() {
     setFetching(true);
     setError(null);
@@ -193,9 +252,22 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
     [history, latest, selectedRasterDate],
   );
   const rasterLegend = useMemo(
-    () => ZONE_ORDER.map((zone) => ({ label: VIGOR_ZONE_LABELS[zone], color: NDVI_ZONE_COLOR[zone] })),
+    () => ZONE_ORDER.map((zone) => ({ label: `NDVI · ${VIGOR_ZONE_LABELS[zone]}`, color: NDVI_ZONE_COLOR[zone] })),
     [],
   );
+  const soilColorFor = useMemo(() => (point: MapPoint) => {
+    if (!point.interpretable) return { stroke: "#F4F5F7", fill: "#9AA79F", fillOpacity: point.value != null ? 0.9 : 0.35 };
+    const color = classificationColor(point.classification ?? null);
+    return { stroke: "#F4F5F7", fill: color, fillOpacity: 0.95 };
+  }, []);
+  const soilLegend = useMemo(() => {
+    if (!soilParameter) return [];
+    const present = Array.from(new Set(soilPoints.map((point) => point.classification).filter(Boolean) as string[]));
+    const entries = present.map((classification) => ({ label: `${soilParameter} · ${classification}`, color: classificationColor(classification) }));
+    if (soilPoints.some((point) => !point.interpretable)) entries.push({ label: `${soilParameter} · sem faixa/classificação`, color: "#9AA79F" });
+    return entries;
+  }, [soilParameter, soilPoints]);
+  const mapLegend = soilParameter ? [...rasterLegend, ...soilLegend] : rasterLegend;
 
   if (loading) return <div className="ndvi-panel card"><p className="ndvi-panel-meta"><Icon name="clock" size={14} /> Carregando vigor por satélite…</p></div>;
 
@@ -242,6 +314,21 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
                   </label>
                 )}
               </div>
+
+              {collectionOrderId && soilAvailableParameters.length > 0 && (
+                <div className="field-overview-parameter-toolbar">
+                  <label><span>Solo × satélite</span>
+                    <select value={soilParameter} onChange={(event) => setSoilParameter(event.target.value)}>
+                      <option value="">Sem sobreposição de solo</option>
+                      {soilAvailableParameters.map((code) => <option key={code} value={code}>{code}</option>)}
+                    </select>
+                  </label>
+                  <span className="field-overview-depth-context"><Icon name="layers" size={13}/>{soilParameter ? `Pontos laboratoriais de ${soilParameter} sobre o raster` : "Escolha um parâmetro para cruzamento visual"}</span>
+                </div>
+              )}
+              {soilParameter && <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>Cruzamento visual apenas: o fundo mostra NDVI da aquisição escolhida e os círculos mostram resultados do solo nas coordenadas de coleta. Coincidência espacial não prova relação causal e não gera prescrição automática.</p>}
+              {soilLoading && collectionOrderId && <p className="ndvi-panel-meta"><Icon name="clock" size={14}/>Carregando evidência de solo…</p>}
+              {soilError && <p className="ndvi-panel-error"><Icon name="warning" size={14}/>{soilError}</p>}
               {selectedRasterSnapshot && (
                 <p className="ndvi-panel-meta">
                   Visualizando {formatDateOnly(selectedRasterSnapshot.capturedAt)} · NDVI médio {selectedRasterSnapshot.meanNdvi.toFixed(2)}
@@ -252,10 +339,11 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
               {rasterError && <p className="ndvi-panel-error"><Icon name="warning" size={14}/>{rasterError}</p>}
               <RealFieldMap
                 boundary={fieldBoundary}
-                points={[]}
-                height={380}
-                legend={rasterLegend}
-                hint={rasterOverlay ? `Raster NDVI · ${formatDateOnly(selectedRasterDate)}` : "Imagem-base real do talhão; raster NDVI aguardando disponibilidade"}
+                points={soilParameter ? soilPoints : []}
+                height={420}
+                colorFor={soilParameter ? soilColorFor : undefined}
+                legend={mapLegend}
+                hint={soilParameter ? `Fundo: NDVI ${formatDateOnly(selectedRasterDate)} · pontos: ${soilParameter}` : rasterOverlay ? `Raster NDVI · ${formatDateOnly(selectedRasterDate)}` : "Imagem-base real do talhão; raster NDVI aguardando disponibilidade"}
                 imageOverlay={rasterOverlay}
               />
             </div>
