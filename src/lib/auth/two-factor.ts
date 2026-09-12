@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { query } from "@/lib/db";
+import { getPool, query } from "@/lib/db";
 import { generateBackupCodes, generateTotpSecret, hashBackupCode, totpAuthUri, verifyTotpCode } from "@/lib/auth/totp";
 
 const PENDING_LOGIN_TTL_MINUTES = 10;
@@ -41,23 +41,35 @@ export async function confirmTwoFactorSetup(input: { userId: string; code: strin
   const matchedCounter = verifyTotpCode(secret, input.code);
   if (matchedCounter === null) throw new TwoFactorError("Código inválido. Confira o horário do dispositivo e tente novamente.", 422);
 
-  // A condição `two_factor_enabled = false` faz apenas uma confirmação concorrente vencer. Sem isso, dois
-  // POST simultâneos poderiam gerar dois conjuntos diferentes de códigos de backup para a mesma ativação.
-  const enabled = await query(
-    "UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid AND two_factor_enabled = false",
-    [input.userId, matchedCounter],
-  );
-  if ((enabled.rowCount ?? 0) === 0) {
-    throw new TwoFactorError("A verificação em duas etapas já foi ativada. Atualize a página.", 409);
-  }
-
   const codes = generateBackupCodes();
-  await query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
-  await query(
-    `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
-    [input.userId, codes.map(hashBackupCode)],
-  );
-  return { backupCodes: codes };
+  const codeHashes = codes.map(hashBackupCode);
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    // Só uma confirmação concorrente pode mudar false -> true. A criação dos códigos de backup fica na
+    // mesma transação: se qualquer INSERT falhar, o ROLLBACK também desfaz a ativação do 2FA, evitando uma
+    // conta marcada como protegida mas sem o conjunto de recuperação que a tela acabou de prometer.
+    const enabled = await client.query(
+      "UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid AND two_factor_enabled = false",
+      [input.userId, matchedCounter],
+    );
+    if ((enabled.rowCount ?? 0) === 0) {
+      throw new TwoFactorError("A verificação em duas etapas já foi ativada. Atualize a página.", 409);
+    }
+
+    await client.query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
+    await client.query(
+      `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
+      [input.userId, codeHashes],
+    );
+    await client.query("COMMIT");
+    return { backupCodes: codes };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function disableTwoFactor(userId: string) {
