@@ -1,14 +1,8 @@
 /**
  * Classificação de vigor vegetativo a partir de NDVI (Normalized Difference Vegetation Index),
- * aprovado pelo diretor como ferramenta de apoio -- ele mesmo enquadrou como "não é exatamente
- * preciso, mas já dá uma ajuda grande a entender as faixas de produtividade". Por isso este motor
- * NUNCA converte NDVI em número de produtividade (isso seria dado fabricado, contra a regra do
- * projeto) -- só classifica em faixas de vigor qualitativas, a mesma disciplina já usada no alerta
- * climático (orientação de manejo, nunca estimativa numérica inventada).
- *
- * Faixas usadas abaixo são as bandas de interpretação de NDVI mais citadas na literatura de
- * sensoriamento remoto agrícola -- não são específicas de nenhuma cultura ou fase fenológica, por
- * isso ficam como uma leitura geral de vigor, a ser contextualizada pelo agrônomo responsável.
+ * aprovado pelo diretor como ferramenta de apoio. Este motor NUNCA converte NDVI em produtividade:
+ * só classifica vigor qualitativo e sinais temporais operacionais, que precisam ser contextualizados
+ * pelo agrônomo responsável com cultura, fenologia, manejo e clima.
  *
  * Zero import de propósito, mesma disciplina dos outros motores agronômicos -- roda em qualquer
  * runtime (Next.js ou script standalone) sem depender de alias de path.
@@ -101,6 +95,10 @@ export function classifyNdviObservationQuality(point: Pick<NdviHistoryPoint, "cl
   return "BAIXA";
 }
 
+function isComparableQuality(quality: NdviObservationQuality): boolean {
+  return quality === "ALTA" || quality === "MODERADA";
+}
+
 export type NdviTemporalDirection = "ALTA" | "QUEDA" | "ESTAVEL" | "SEM_BASELINE";
 
 export type NdviTemporalAnalysis = {
@@ -134,13 +132,13 @@ function round3(value: number): number {
 }
 
 /**
- * Compara a leitura mais recente com a última leitura COMPARÁVEL e, quando há histórico suficiente,
- * com a mediana de até cinco aquisições anteriores de qualidade não-baixa. Leituras com >25% da área
- * sem pixel válido são preservadas no histórico, mas não entram no baseline; se a leitura atual tiver
- * qualidade baixa, ela também não pode disparar `hasRelevantTemporalChange`.
+ * Compara a leitura mais recente com a última aquisição COMPARÁVEL e, quando há histórico suficiente,
+ * com a mediana de até cinco aquisições anteriores de qualidade alta/moderada. Leituras de qualidade
+ * baixa OU indeterminada permanecem no histórico para inspeção, mas não entram no baseline. A leitura
+ * atual também só pode disparar `hasRelevantTemporalChange` quando sua qualidade é alta/moderada.
  *
- * O limiar absoluto de 0,12 continua sendo somente um sinal OPERACIONAL conservador para priorização
- * de inspeção; não é limiar de deficiência, não conhece cultura/fenologia e nunca autoriza prescrição.
+ * O limiar absoluto de 0,12 é somente um sinal OPERACIONAL conservador para priorização de inspeção;
+ * não é limiar de deficiência, não conhece cultura/fenologia e nunca autoriza prescrição.
  */
 export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTemporalAnalysis {
   const ordered = history
@@ -166,14 +164,16 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
 
   const latest = ordered[ordered.length - 1];
   const latestQuality = classifyNdviObservationQuality(latest);
-  const comparablePrior = ordered.slice(0, -1).filter((point) => classifyNdviObservationQuality(point) !== "BAIXA");
+  const comparablePrior = ordered
+    .slice(0, -1)
+    .filter((point) => isComparableQuality(classifyNdviObservationQuality(point)));
   const previous = comparablePrior.at(-1) ?? null;
   const prior = comparablePrior.slice(-MAX_BASELINE_POINTS);
   const baselineMedian = prior.length >= MIN_BASELINE_POINTS ? median(prior.map((point) => point.meanNdvi)) : null;
   const deltaFromPrevious = previous ? round3(latest.meanNdvi - previous.meanNdvi) : null;
   const deltaFromBaseline = baselineMedian == null ? null : round3(latest.meanNdvi - baselineMedian);
   const rawRelevantChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= TEMPORAL_CHANGE_THRESHOLD;
-  const hasRelevantTemporalChange = latestQuality !== "BAIXA" && rawRelevantChange;
+  const hasRelevantTemporalChange = isComparableQuality(latestQuality) && rawRelevantChange;
 
   let direction: NdviTemporalDirection = "SEM_BASELINE";
   if (deltaFromBaseline != null) {
@@ -190,6 +190,8 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
   if (latestQuality === "BAIXA") {
     const masked = latest.cloudCoverPct == null ? "mais de 25%" : `${Math.round(latest.cloudCoverPct)}%`;
     note = `A leitura atual tem qualidade baixa (${masked} da área sem pixel válido). Ela permanece disponível para inspeção visual, mas não dispara sinal temporal acionável; use uma aquisição de melhor qualidade antes de concluir tendência.`;
+  } else if (latestQuality === "INDETERMINADA") {
+    note = "A leitura atual não tem informação suficiente de qualidade espacial para validar um sinal temporal. Ela permanece visível, mas não dispara alerta de alta/queda até que exista uma aquisição com qualidade mensurável.";
   } else if (baselineMedian != null && deltaFromBaseline != null) {
     if (hasRelevantTemporalChange) {
       const verb = deltaFromBaseline > 0 ? "acima" : "abaixo";
