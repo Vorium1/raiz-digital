@@ -1,12 +1,29 @@
-import { computeZoneBreakdownPct, detectWithinFieldVariability } from "@/domain/ndvi-engine";
+import {
+  analyzeNdviTemporalHistory,
+  classifyNdviObservationQuality,
+  computeZoneBreakdownPct,
+  detectWithinFieldVariability,
+} from "@/domain/ndvi-engine";
 import { getPlatformSession } from "@/lib/auth/session";
 import { getFieldBoundaryGeoJson, getLatestNdviSnapshot, listNdviHistoryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
 import { copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const HISTORY_LOOKBACK_DAYS = 120;
+const MAX_SCENES_PER_REFRESH = 18;
 
-/** Leitura de vigor por satélite não é feita a cada carregamento de tela -- só quando alguém pede
- * explicitamente (POST), já que é uma chamada a serviço externo. GET só lê o que já foi salvo. */
+function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
+  return {
+    variability: latest ? detectWithinFieldVariability(latest.zoneBreakdownPct ?? {}) : null,
+    quality: latest ? classifyNdviObservationQuality(latest) : "INDETERMINADA",
+    temporal: analyzeNdviTemporalHistory(history),
+  };
+}
+
+/**
+ * GET nunca chama o provedor externo: só lê os snapshots já persistidos e calcula inteligência
+ * determinística sobre eles. Isso mantém a tela rápida, auditável e sem consumo de quota por render.
+ */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
@@ -16,10 +33,15 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
   ]);
-  const variability = latest ? detectWithinFieldVariability(latest.zoneBreakdownPct ?? {}) : null;
-  return Response.json({ latest, history, variability });
+  return Response.json({ latest, history, ...intelligencePayload(latest, history) });
 }
 
+/**
+ * POST atualiza o histórico do talhão em uma única consulta Statistical API de 120 dias. O provedor
+ * devolve uma entrada diária válida; persistimos no máximo as 18 mais recentes por atualização para
+ * limitar escrita/auditoria. O banco usa upsert por talhão+data+fonte, então repetir a atualização é
+ * idempotente e nunca cria duas leituras para a mesma aquisição diária.
+ */
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
@@ -31,11 +53,11 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
   const toDate = new Date();
   const fromDate = new Date(toDate);
-  fromDate.setDate(fromDate.getDate() - 30);
+  fromDate.setDate(fromDate.getDate() - HISTORY_LOOKBACK_DAYS);
 
-  let scene;
+  let scenes;
   try {
-    scene = await copernicusNdviProvider.fetchFieldNdvi({
+    scenes = await copernicusNdviProvider.fetchFieldNdviSeries({
       fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
       fromDate: fromDate.toISOString().slice(0, 10),
       toDate: toDate.toISOString().slice(0, 10),
@@ -45,26 +67,44 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: message }, { status: 502 });
   }
 
-  if (!scene) {
-    return Response.json({ error: "Nenhuma cena Sentinel-2 com nuvem aceitável nos últimos 30 dias para este talhão." }, { status: 404 });
+  if (scenes.length === 0) {
+    return Response.json({ error: `Nenhuma cena Sentinel-2 válida nos últimos ${HISTORY_LOOKBACK_DAYS} dias para este talhão.` }, { status: 404 });
   }
 
-  const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
-  const saved = await saveNdviSnapshot({
-    tenantId: session.tenantId,
-    userId: session.userId,
-    fieldId,
-    capturedAt: scene.capturedAt,
-    source: "SENTINEL_2",
-    providerSceneId: scene.sceneId,
-    cloudCoverPct: scene.cloudCoverPct,
-    pixelCount: scene.pixelCount,
-    meanNdvi: scene.meanNdvi,
-    minNdvi: scene.minNdvi,
-    maxNdvi: scene.maxNdvi,
-    stddevNdvi: scene.stddevNdvi,
-    zoneBreakdownPct,
-  });
+  const selectedScenes = scenes.slice(-MAX_SCENES_PER_REFRESH);
+  for (const scene of selectedScenes) {
+    const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
+    await saveNdviSnapshot({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      fieldId,
+      capturedAt: scene.capturedAt,
+      source: "SENTINEL_2",
+      providerSceneId: scene.sceneId,
+      cloudCoverPct: scene.cloudCoverPct,
+      pixelCount: scene.pixelCount,
+      meanNdvi: scene.meanNdvi,
+      minNdvi: scene.minNdvi,
+      maxNdvi: scene.maxNdvi,
+      stddevNdvi: scene.stddevNdvi,
+      zoneBreakdownPct,
+    });
+  }
 
-  return Response.json({ snapshot: saved, variability: detectWithinFieldVariability(zoneBreakdownPct) }, { status: 201 });
+  const [latest, history] = await Promise.all([
+    getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
+    listNdviHistoryForField(session.tenantId, fieldId, session.userId),
+  ]);
+
+  return Response.json(
+    {
+      snapshot: latest,
+      latest,
+      history,
+      importedCount: selectedScenes.length,
+      requestedWindowDays: HISTORY_LOOKBACK_DAYS,
+      ...intelligencePayload(latest, history),
+    },
+    { status: 201 },
+  );
 }
