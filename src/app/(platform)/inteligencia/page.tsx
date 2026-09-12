@@ -16,14 +16,32 @@ export const metadata = { title: "Inteligência Agronômica" };
 const STATUS_META = interpretationStatusMeta;
 
 function nextActionFor(bucket: QueueBucket, analysisId: string): { label: string; href: string } {
-  if (bucket === "BLOQUEADA") return { label: "Resolver o impedimento", href: `/analises/${analysisId}` };
-  if (bucket === "APROVADA") return { label: "Ver interpretação aprovada", href: `/analises/${analysisId}` };
-  return { label: "Revisar e decidir (aprovar ou devolver)", href: `/analises/${analysisId}` };
+  if (bucket === "BLOQUEADA") return { label: "Resolver bloqueio", href: `/analises/${analysisId}` };
+  if (bucket === "APROVADA") return { label: "Abrir recomendação e entrega", href: `/analises/${analysisId}` };
+  if (bucket === "REVISAO_EM_ANDAMENTO") return { label: "Concluir revisão técnica", href: `/analises/${analysisId}` };
+  return { label: "Validar interpretação", href: `/analises/${analysisId}` };
+}
+
+function coverageText(item: any) {
+  const classified = Number(item.classifiedCount ?? 0);
+  const pending = Number(item.pendingTargetCount ?? 0);
+  const auxiliary = Number(item.auxiliaryCount ?? 0);
+  const targetTotal = classified + pending;
+
+  if (item.bucket === "BLOQUEADA") {
+    const reason = item.notInterpretableReason ? ` · ${item.notInterpretableReason}` : "";
+    return `Sem cobertura técnica utilizável${targetTotal ? ` · 0/${targetTotal} resultados-alvo` : ""}${reason}`;
+  }
+
+  const coverage = targetTotal > 0 ? `${classified}/${targetTotal} resultados-alvo classificados` : "sem parâmetro-alvo";
+  const pendingText = pending > 0 ? ` · ${pending} com pendência técnica` : " · cobertura técnica completa";
+  const auxiliaryText = auxiliary > 0 ? ` · ${auxiliary} auxiliares` : "";
+  return `Cobertura técnica: ${coverage}${pendingText}${auxiliaryText}`;
 }
 
 export default async function AgronomicIntelligenceHubPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   if (!isDatabaseMode()) {
-    return <><Topbar eyebrow="Inteligência · demonstração" title="Inteligência Agronômica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplos ilustrativos.</span></div><PageIntro title="Fila de trabalho técnico" description="Situações que precisam de investigação ou revisão — uma linha por análise, sempre com a revisão mais recente."/>
+    return <><Topbar eyebrow="Inteligência · demonstração" title="Inteligência Agronômica"/><div className="content-wrap"><div className="demo-banner"><Icon name="warning" size={14}/><span>Modo demonstração ativo — exemplos ilustrativos.</span></div><PageIntro title="Fila de decisões técnicas" description="O que precisa de validação, correção ou aprovação — uma linha por análise, sempre com a revisão mais recente."/>
       <section className="card"><div className="report-table-wrap"><table className="report-table">
         <thead><tr><th>Análise</th><th>Cliente / talhão</th><th>Safra / cultura</th><th>Base técnica</th><th>Confiabilidade</th><th>Status</th><th>Calculado em</th></tr></thead>
         <tbody>{demoInterpretationsLog.map((item) => {
@@ -53,8 +71,6 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
     getIntelligenceFilterOptions(session.tenantId, session.userId),
   ]);
 
-  // Bloco A: cada linha já é a revisão ATUAL da análise (getIntelligenceQueue agrupa por analysisId) --
-  // aqui só classifica em um dos 4 grupos reais (nunca inventa um 5º) e aplica os 2 filtros derivados.
   const withBucket = rows.map((row: any) => ({ ...row, bucket: interpretationQueueBucket(row) as QueueBucket }));
   const filtered = withBucket.filter((row) => {
     if (params.interpretationState === "BLOQUEADA" && row.bucket !== "BLOQUEADA") return false;
@@ -66,11 +82,20 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
   const counts: Record<QueueBucket, number> = { BLOQUEADA: 0, AGUARDANDO_REVISAO: 0, REVISAO_EM_ANDAMENTO: 0, APROVADA: 0 };
   for (const row of withBucket) counts[row.bucket as QueueBucket]++;
 
+  const portfolio = withBucket.reduce((acc, item: any) => {
+    acc.classified += Number(item.classifiedCount ?? 0);
+    acc.pending += Number(item.pendingTargetCount ?? 0);
+    acc.auxiliary += Number(item.auxiliaryCount ?? 0);
+    return acc;
+  }, { classified: 0, pending: 0, auxiliary: 0 });
+  const portfolioTargetTotal = portfolio.classified + portfolio.pending;
+  const portfolioCoverage = portfolioTargetTotal > 0 ? Math.round((portfolio.classified / portfolioTargetTotal) * 100) : 0;
+
   return (
     <>
       <Topbar eyebrow="Inteligência" title="Inteligência Agronômica"><AssistantEntryButton label="Pergunte sobre a fila"/></Topbar>
       <div className="content-wrap">
-        <PageIntro title="Fila de trabalho técnico" description="Situações que precisam de investigação ou revisão — uma linha por análise, sempre com sua revisão mais recente. Versões anteriores continuam acessíveis dentro de cada item, nunca listadas como problemas separados."/>
+        <PageIntro title="Central de decisões técnicas" description="Priorize o que bloqueia uma decisão, valide interpretações e avance até recomendação e entrega. Dados auxiliares aparecem como contexto — nunca como falha artificial de cobertura."/>
 
         <div className="intelligence-bucket-summary">
           {(Object.keys(QUEUE_BUCKET_META) as QueueBucket[]).map((bucket) => (
@@ -79,6 +104,13 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
             </div>
           ))}
         </div>
+
+        {withBucket.length > 0 && (
+          <div className="demo-banner" style={{ marginTop: 12 }}>
+            <Icon name="sparkles" size={14}/>
+            <span><strong>Cobertura técnica da fila: {portfolioCoverage}%</strong> · {portfolio.classified}/{portfolioTargetTotal} resultados-alvo classificados{portfolio.pending > 0 ? ` · ${portfolio.pending} pendentes de cobertura técnica` : " · sem pendências de cobertura"}{portfolio.auxiliary > 0 ? ` · ${portfolio.auxiliary} dados auxiliares preservados como contexto` : ""}.</span>
+          </div>
+        )}
 
         <IntelligenceQueueFilters options={filterOptions}/>
 
@@ -99,18 +131,7 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
                       <StatusBadge tone={bucketMeta.tone}>{bucketMeta.label}</StatusBadge>
                       {item.revisionCount > 1 && <small className="intelligence-queue-revcount"><Icon name="history" size={11}/>{item.revisionCount} versões</small>}
                     </div>
-                    <div className="intelligence-queue-conclusion">
-                      {(() => {
-                        // "Interpretação parcial" só considera parâmetros que SÃO alvo de classificação
-                        // (classifiedCount + pendingTargetCount) -- um dado auxiliar (CLAY, SMP, H_AL...)
-                        // nunca entra nessa conta, nunca faz a análise parecer "faltando cobertura" por
-                        // existir (achado real, auditoria 2026-09-11, item 2).
-                        const targetTotal = item.classifiedCount + item.pendingTargetCount;
-                        if (item.bucket === "BLOQUEADA") return `0 de ${targetTotal} resultados interpretados — ${item.notInterpretableReason}`;
-                        if (item.classifiedCount < targetTotal) return `Interpretação parcial — ${item.classifiedCount}/${targetTotal} resultados cobertos${item.cropProfileName ? ` · ${item.cropProfileName}` : ""}`;
-                        return item.cropProfileName ? `Base técnica: ${item.cropProfileName}` : "—";
-                      })()}
-                    </div>
+                    <div className="intelligence-queue-conclusion">{coverageText(item)}</div>
                     <div className="intelligence-queue-meta">
                       <span>{formatRelativeOrDate(item.createdAt)}</span>
                       {responsible && <span className="intelligence-queue-responsible"><Icon name="users" size={11}/>{responsible}</span>}
@@ -120,7 +141,7 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
                 );
               })}
             </div>
-          ) : <EmptyState icon="leaf" title={withBucket.length ? "Nenhum item corresponde aos filtros" : "Nenhuma interpretação calculada ainda"} description={withBucket.length ? "Ajuste ou limpe os filtros acima." : "Rode o motor determinístico numa análise para começar o registro."} action={{ href: "/analises", label: "Ver análises" }}/>}
+          ) : <EmptyState icon="leaf" title={withBucket.length ? "Nenhum item corresponde aos filtros" : "Nenhuma interpretação calculada ainda"} description={withBucket.length ? "Ajuste ou limpe os filtros acima." : "Rode o motor determinístico numa análise para começar o registro."} action={{ href: "/analises", label: "Ver análises" }}/>} 
         </section>
       </div>
     </>
