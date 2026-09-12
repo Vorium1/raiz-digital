@@ -65,11 +65,6 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       [tenantId, fieldId],
     );
 
-    // NDVI é lido por talhão inteiro (field_ndvi_snapshots não tem crop_season_id -- a leitura de
-    // satélite não sabe de safra, só de contorno/data). Achado real numa revisão independente: nada aqui
-    // tenta adivinhar a qual safra uma leitura "pertenceria" comparando datas -- isso seria inventar uma
-    // associação que o dado não garante. Por isso este histórico é sempre de TODO o talhão, e a tela
-    // precisa rotular isso explicitamente como histórico, nunca como "desta safra".
     const ndviResult = await client.query(
       `SELECT id::text, captured_at::text AS "capturedAt", source, cloud_cover_pct::float8 AS "cloudCoverPct",
               pixel_count AS "pixelCount", mean_ndvi::float8 AS "meanNdvi", min_ndvi::float8 AS "minNdvi", max_ndvi::float8 AS "maxNdvi",
@@ -78,14 +73,25 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       [tenantId, fieldId],
     );
 
-    // Qualidade/origem geográfica real do talhão -- % de pontos coletados com GPS confirmado em campo
-    // (gps_source contém 'BROWSER_GPS') vs. estimados/planejados. Mesmo critério já usado no relatório de
-    // coleta (item H da auditoria) -- nunca chamar de "real"/"medido" o que não teve captura de GPS real.
-    // Deliberadamente agregado de TODAS as safras do talhão (não só a selecionada): é uma característica
-    // física acumulada do talhão, não um dado específico de uma safra -- a tela precisa deixar isso
-    // explícito, não fingir que é "desta safra".
+    /**
+     * Qualidade/origem espacial do talhão.
+     *
+     * Antes esta métrica só reconhecia `BROWSER_GPS`, então um ponto real importado de shapefile/GPS
+     * auditado apareceria como 0% confirmado no Talhão 360° — exatamente o oposto do dado real. A métrica
+     * agora separa as origens em vez de usar um LIKE único:
+     * - BROWSER_GPS: captura direta pelo navegador/dispositivo;
+     * - SHAPEFILE_REAL_*: geometria executada em campo importada de fonte espacial auditada;
+     * - ESTIMADO_*: aproximação/legado, nunca conta como origem rastreável.
+     *
+     * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. O texto da UI usa
+     * esse termo de propósito para não prometer uma qualidade que o metadado não prova.
+     */
     const gpsQualityResult = await client.query(
-      `SELECT count(*)::int AS total, count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "confirmedCount"
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "browserGpsCount",
+              count(*) FILTER (WHERE sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "shapefileRealCount",
+              count(*) FILTER (WHERE sp.gps_source LIKE 'ESTIMADO_%' OR sp.gps_source IS NULL)::int AS "estimatedCount",
+              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "verifiedCount"
        FROM sample_points sp
        JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
        WHERE sp.tenant_id = $1::uuid AND co.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
@@ -93,10 +99,6 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       [tenantId, fieldId],
     );
 
-    // "cropSeasonId" adicionado -- achado real numa revisão independente: a aba Decisões e a Linha do
-    // Tempo do Talhão 360° mostravam relatórios de QUALQUER safra do talhão, mesmo com uma safra
-    // específica selecionada no filtro. Diferente do NDVI/GPS abaixo, aqui existe um vínculo real e seguro
-    // com a safra (via analyses.crop_season_id) -- não é uma associação inventada por data.
     const reportsResult = await client.query(
       `SELECT r.id::text, r.revision, r.published_at::text AS "publishedAt", i.analysis_id::text AS "analysisId", a.code AS "analysisCode", a.crop_season_id::text AS "cropSeasonId"
        FROM reports r
@@ -114,7 +116,13 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       analyses: analysesResult.rows,
       yieldHistory: yieldResult.rows,
       ndviSnapshots: ndviResult.rows,
-      gpsQuality: gpsQualityResult.rows[0] as { total: number; confirmedCount: number },
+      gpsQuality: gpsQualityResult.rows[0] as {
+        total: number;
+        verifiedCount: number;
+        browserGpsCount: number;
+        shapefileRealCount: number;
+        estimatedCount: number;
+      },
       reports: reportsResult.rows,
     };
   });
