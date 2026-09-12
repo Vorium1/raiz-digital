@@ -1,28 +1,17 @@
 /**
- * NDVI real por satélite (Sentinel-2) via Copernicus Data Space Ecosystem -- item 4 do checklist do
- * diretor (2026-09-08), aprovado por ele como ferramenta de apoio, não como número de produtividade.
- * Fonte é gratuita (tier grátis do Copernicus Data Space Ecosystem, sucessor oficial do antigo
- * Copernicus Open Access Hub), a mesma preferência por self-serve/gratuito já usada no resto do
- * projeto (clima via INMET/CPTEC, por exemplo).
+ * NDVI real por satélite (Sentinel-2) via Copernicus Data Space Ecosystem.
  *
- * Usa a Statistical API do Sentinel Hub (a mesma API, hospedada agora sob o domínio da Copernicus
- * Data Space Ecosystem) -- ela já devolve estatística agregada (média/mín/máx/desvio padrão) e um
- * histograma de NDVI por polígono e intervalo de datas, sem a aplicação precisar baixar nem
- * processar imagem/raster bruto. Igual ao `gemini-lab-extraction-provider.ts`: a IA/API externa aqui
- * só devolve NÚMERO MEDIDO (reflectância das bandas do satélite) -- a classificação em faixa de
- * vigor é sempre feita depois, de forma determinística, por `src/domain/ndvi-engine.ts`.
- *
- * A máscara usa SCL (Scene Classification Layer) do Sentinel-2 L2A. Classes de nuvem, cirrus,
- * sombra, neve/gelo, pixel defeituoso e não classificado são excluídas do cálculo; só pixels SCL 4
- * (vegetação), 5 (não vegetado) e 6 (água) entram no NDVI. Isso é mais seguro do que usar apenas
- * `dataMask`, que indica validade/cobertura mas não é, sozinho, uma máscara de nuvens.
+ * Statistical API: série temporal e estatísticas agregadas do talhão.
+ * Process API: visualização PNG espacial da aquisição, recortada pela geometria real do talhão.
+ * A interpretação de vigor continua determinística em `src/domain/ndvi-engine.ts`; o provedor externo
+ * só entrega reflectância medida / imagem derivada dessas bandas, nunca produtividade ou prescrição.
  */
 
 const TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token";
 const STATISTICS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics";
+const PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process";
+const CRS84 = "http://www.opengis.net/def/crs/OGC/1.3/CRS84";
 
-// NDVI = (B08 - B04) / (B08 + B04). SCL garante que nuvem/sombra/pixel defeituoso não contamine
-// média, extremos e histograma do talhão.
 const NDVI_EVALSCRIPT = `//VERSION=3
 function setup() {
   return {
@@ -39,9 +28,29 @@ function evaluatePixel(sample) {
   return { default: [ndvi], dataMask: [clear ? 1 : 0] };
 }`;
 
-// A Statistical API valida o TIPO JSON de lowEdge/highEdge contra o tipo do binWidth -- um número
-// inteiro (`-1`) e um float (`0.2`) são tratados como tipos diferentes e a API recusa com 400. JSON.stringify
-// nunca escreve ".0" pra um float de valor inteiro, então reescrevemos só esses limites serializados.
+/**
+ * Visualização categórica com as MESMAS faixas do motor determinístico. O quarto canal é alpha:
+ * pixels fora do talhão, sem dado, nuvem, cirrus, sombra, neve/gelo e classes inválidas ficam
+ * transparentes. A imagem serve para leitura espacial, não para criar uma nova classificação.
+ */
+const NDVI_MAP_EVALSCRIPT = `//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["B04", "B08", "SCL", "dataMask"] }],
+    output: { id: "default", bands: 4, sampleType: "AUTO" },
+  };
+}
+function evaluatePixel(sample) {
+  let clear = sample.dataMask === 1 && (sample.SCL === 4 || sample.SCL === 5 || sample.SCL === 6);
+  if (!clear) return [0, 0, 0, 0];
+  let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04 + 1e-9);
+  if (ndvi < 0.2) return [0.604, 0.518, 0.408, 1];
+  if (ndvi < 0.4) return [0.851, 0.396, 0.353, 1];
+  if (ndvi < 0.6) return [0.847, 0.600, 0.263, 1];
+  if (ndvi < 0.8) return [0.561, 0.749, 0.420, 1];
+  return [0.161, 0.588, 0.435, 1];
+}`;
+
 function toFloatJson(body: string): string {
   return body.replace('"lowEdge":-1,"highEdge":1', '"lowEdge":-1.0,"highEdge":1.0');
 }
@@ -54,26 +63,35 @@ export type NdviSceneResult = {
   minNdvi: number;
   maxNdvi: number;
   stddevNdvi: number | null;
-  /** Nome mantido por compatibilidade com banco/API. Representa % de pixels mascarados/sem dado válido dentro do talhão. */
+  /** Compatibilidade de banco/API: representa % mascarado/sem dado válido dentro do talhão. */
   cloudCoverPct: number | null;
+  /** Quantidade de pixels que realmente participaram do cálculo, excluindo `noDataCount`. */
   pixelCount: number;
   histogram: NdviHistogramBucket[];
   sceneId: string | null;
 };
 
+export type FieldGeometry = { type: string; coordinates: unknown };
+
 export type FetchFieldNdviInput = {
-  fieldBoundaryGeoJson: { type: string; coordinates: unknown };
+  fieldBoundaryGeoJson: FieldGeometry;
   fromDate: string;
   toDate: string;
   maxCloudCoverPct?: number;
 };
 
-/** Contrato pequeno pra permitir trocar a fonte de satélite sem tocar no restante da aplicação. */
+export type NdviMapResult = {
+  bytes: ArrayBuffer;
+  bbox: [number, number, number, number];
+  width: number;
+  height: number;
+  capturedAt: string;
+};
+
 export interface SatelliteNdviProvider {
-  /** `null` quando não há cena válida no intervalo -- nunca inventa leitura. */
   fetchFieldNdvi(input: FetchFieldNdviInput): Promise<NdviSceneResult | null>;
-  /** Série diária válida do intervalo, em ordem cronológica. */
   fetchFieldNdviSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[]>;
+  fetchFieldNdviMap(input: { fieldBoundaryGeoJson: FieldGeometry; capturedAt: string; maxCloudCoverPct?: number }): Promise<NdviMapResult>;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -125,14 +143,27 @@ function toHistogram(bins: Array<{ lowEdge: number; highEdge: number; count: num
     .map((bin) => ({ ndvi: (bin.lowEdge + bin.highEdge) / 2, pixelCount: bin.count }));
 }
 
+/**
+ * Na Statistical API, `sampleCount` é o total amostrado e `noDataCount` é um SUBCONJUNTO desse total,
+ * não um conjunto adicional. Esta função existe separada para deixar a semântica testável e impedir
+ * regressão para `sampleCount + noDataCount`, que subestimaria a fração mascarada.
+ */
+export function summarizePixelValidity(sampleCount: number, noDataCount: number) {
+  const total = Math.max(0, Math.trunc(sampleCount));
+  const invalid = Math.min(total, Math.max(0, Math.trunc(noDataCount)));
+  const valid = total - invalid;
+  return {
+    total,
+    invalid,
+    valid,
+    maskedPixelPct: total > 0 ? (invalid / total) * 100 : null,
+  };
+}
+
 function toSceneResult(entry: StatisticsEntry, fallbackDate: string): NdviSceneResult | null {
   const stats = entry.outputs?.default?.bands?.B0?.stats;
-  const sampleCount = stats?.sampleCount ?? 0;
-  if (!stats || sampleCount <= 0 || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
-
-  const noDataCount = stats.noDataCount ?? 0;
-  const totalPixels = sampleCount + noDataCount;
-  const maskedPixelPct = totalPixels > 0 ? (noDataCount / totalPixels) * 100 : null;
+  const validity = summarizePixelValidity(stats?.sampleCount ?? 0, stats?.noDataCount ?? 0);
+  if (!stats || validity.valid <= 0 || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
 
   return {
     capturedAt: (entry.interval?.from ?? fallbackDate).slice(0, 10),
@@ -140,25 +171,65 @@ function toSceneResult(entry: StatisticsEntry, fallbackDate: string): NdviSceneR
     minNdvi: stats.min,
     maxNdvi: stats.max,
     stddevNdvi: stats.stDev ?? null,
-    cloudCoverPct: maskedPixelPct,
-    pixelCount: sampleCount,
+    cloudCoverPct: validity.maskedPixelPct,
+    pixelCount: validity.valid,
     histogram: toHistogram(entry.outputs?.default?.bands?.B0?.histogram?.bins),
     sceneId: null,
   };
 }
 
+function collectPositions(value: unknown, positions: Array<[number, number]>) {
+  if (!Array.isArray(value)) return;
+  if (value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number") {
+    positions.push([value[0], value[1]]);
+    return;
+  }
+  for (const item of value) collectPositions(item, positions);
+}
+
+export function fieldGeometryBbox(geometry: FieldGeometry): [number, number, number, number] {
+  const positions: Array<[number, number]> = [];
+  collectPositions(geometry.coordinates, positions);
+  if (positions.length < 3) throw new Error("Geometria do talhão sem coordenadas suficientes para gerar o raster NDVI.");
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const [lon, lat] of positions) {
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    minLon = Math.min(minLon, lon);
+    minLat = Math.min(minLat, lat);
+    maxLon = Math.max(maxLon, lon);
+    maxLat = Math.max(maxLat, lat);
+  }
+  if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite) || minLon >= maxLon || minLat >= maxLat) {
+    throw new Error("Geometria do talhão inválida para gerar o raster NDVI.");
+  }
+  return [minLon, minLat, maxLon, maxLat];
+}
+
+function mapRenderSize(bbox: [number, number, number, number]): { width: number; height: number } {
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+  const midLatRad = ((minLat + maxLat) / 2) * Math.PI / 180;
+  const physicalWidth = Math.max((maxLon - minLon) * Math.cos(midLatRad), 1e-9);
+  const physicalHeight = Math.max(maxLat - minLat, 1e-9);
+  const maxSide = 768;
+  const minSide = 128;
+  if (physicalWidth >= physicalHeight) {
+    return { width: maxSide, height: Math.max(minSide, Math.round(maxSide * physicalHeight / physicalWidth)) };
+  }
+  return { width: Math.max(minSide, Math.round(maxSide * physicalWidth / physicalHeight)), height: maxSide };
+}
+
 async function fetchSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[]> {
   const token = await getAccessToken();
-
-  // resx/resy são interpretados na unidade do CRS dos limites (graus, WGS84), não em metros.
-  // ~0,0001° mantém granularidade próxima da resolução nativa de 10 m das bandas B04/B08.
   const RESOLUTION_DEGREES = 0.0001;
 
   let requestBody = JSON.stringify({
     input: {
       bounds: {
         geometry: input.fieldBoundaryGeoJson,
-        properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
+        properties: { crs: CRS84 },
       },
       data: [
         {
@@ -198,6 +269,53 @@ async function fetchSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[
     .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
 }
 
+async function fetchMap(input: { fieldBoundaryGeoJson: FieldGeometry; capturedAt: string; maxCloudCoverPct?: number }): Promise<NdviMapResult> {
+  const token = await getAccessToken();
+  const bbox = fieldGeometryBbox(input.fieldBoundaryGeoJson);
+  const { width, height } = mapRenderSize(bbox);
+
+  const requestBody = {
+    input: {
+      bounds: {
+        geometry: input.fieldBoundaryGeoJson,
+        properties: { crs: CRS84 },
+      },
+      data: [
+        {
+          type: "sentinel-2-l2a",
+          dataFilter: {
+            timeRange: { from: `${input.capturedAt}T00:00:00Z`, to: `${input.capturedAt}T23:59:59Z` },
+            mosaickingOrder: "leastCC",
+            maxCloudCoverage: input.maxCloudCoverPct ?? 30,
+          },
+        },
+      ],
+    },
+    output: {
+      width,
+      height,
+      responses: [{ identifier: "default", format: { type: "image/png" } }],
+    },
+    evalscript: NDVI_MAP_EVALSCRIPT,
+  };
+
+  const response = await fetch(PROCESS_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(requestBody),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Copernicus (raster NDVI) respondeu ${response.status}: ${body.slice(0, 300)}`);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("image/png")) {
+    throw new Error(`Copernicus (raster NDVI) devolveu formato inesperado: ${contentType || "sem content-type"}.`);
+  }
+
+  return { bytes: await response.arrayBuffer(), bbox, width, height, capturedAt: input.capturedAt };
+}
+
 export const copernicusNdviProvider: SatelliteNdviProvider = {
   async fetchFieldNdviSeries(input) {
     return fetchSeries(input);
@@ -206,5 +324,9 @@ export const copernicusNdviProvider: SatelliteNdviProvider = {
   async fetchFieldNdvi(input) {
     const scenes = await fetchSeries(input);
     return scenes.at(-1) ?? null;
+  },
+
+  async fetchFieldNdviMap(input) {
+    return fetchMap(input);
   },
 };

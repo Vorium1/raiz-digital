@@ -22,18 +22,21 @@ function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnap
 
 /**
  * GET nunca chama o provedor externo: só lê os snapshots já persistidos e calcula inteligência
- * determinística sobre eles. Isso mantém a tela rápida, auditável e sem consumo de quota por render.
+ * determinística sobre eles. A geometria retornada já passa pelo mesmo escopo tenant/RLS e é usada
+ * pelo cliente apenas para sobrepor o PNG NDVI real no mapa do próprio talhão.
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id: fieldId } = await context.params;
 
-  const [latest, history] = await Promise.all([
+  const [latest, history, fieldBoundary] = await Promise.all([
     getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
+    getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
   ]);
-  return Response.json({ latest, history, ...intelligencePayload(latest, history) });
+  if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
+  return Response.json({ latest, history, fieldBoundary, ...intelligencePayload(latest, history) });
 }
 
 /**
@@ -101,6 +104,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       snapshot: latest,
       latest,
       history,
+      fieldBoundary: boundary,
       importedCount: selectedScenes.length,
       requestedWindowDays: HISTORY_LOOKBACK_DAYS,
       ...intelligencePayload(latest, history),

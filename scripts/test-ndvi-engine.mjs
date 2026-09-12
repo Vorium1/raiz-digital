@@ -6,6 +6,7 @@ import {
   computeZoneBreakdownPct,
   detectWithinFieldVariability,
 } from "../src/domain/ndvi-engine.ts";
+import { fieldGeometryBbox, summarizePixelValidity } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -99,4 +100,47 @@ const stableTemporal = analyzeNdviTemporalHistory([
 assert.equal(stableTemporal.direction, "ESTAVEL");
 assert.equal(stableTemporal.hasRelevantTemporalChange, false);
 
-console.log("ndvi-engine: 20 cenários aprovados (vigor, variabilidade, qualidade e inteligência temporal)");
+// 21. Envelope espacial de Polygon preserva ordem GeoJSON lon/lat.
+assert.deepEqual(
+  fieldGeometryBbox({
+    type: "Polygon",
+    coordinates: [[[-52.25, -28.22], [-52.20, -28.22], [-52.20, -28.18], [-52.25, -28.18], [-52.25, -28.22]]],
+  }),
+  [-52.25, -28.22, -52.20, -28.18],
+);
+
+// 22. MultiPolygon também consolida o envelope sem depender de CRS inventado.
+assert.deepEqual(
+  fieldGeometryBbox({
+    type: "MultiPolygon",
+    coordinates: [
+      [[[-52.30, -28.30], [-52.28, -28.30], [-52.28, -28.28], [-52.30, -28.30]]],
+      [[[-52.20, -28.20], [-52.18, -28.20], [-52.18, -28.18], [-52.20, -28.20]]],
+    ],
+  }),
+  [-52.30, -28.30, -52.18, -28.18],
+);
+
+// 23. Geometria sem extensão espacial útil falha fechado.
+assert.throws(
+  () => fieldGeometryBbox({ type: "Polygon", coordinates: [[[1, 1], [1, 1], [1, 1]]] }),
+  /Geometria do talhão inválida/,
+);
+
+// 24. Statistical API: noDataCount é subconjunto de sampleCount, não soma adicional.
+assert.deepEqual(summarizePixelValidity(810, 428), {
+  total: 810,
+  invalid: 428,
+  valid: 382,
+  maskedPixelPct: (428 / 810) * 100,
+});
+
+// 25. Contagem inválida nunca ultrapassa o total e leitura 100% mascarada resulta em zero válido.
+assert.deepEqual(summarizePixelValidity(100, 150), {
+  total: 100,
+  invalid: 100,
+  valid: 0,
+  maskedPixelPct: 100,
+});
+
+console.log("ndvi-engine: 25 cenários aprovados (vigor, temporal, qualidade, pixels válidos e envelope espacial)");
