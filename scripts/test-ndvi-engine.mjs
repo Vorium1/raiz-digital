@@ -6,7 +6,7 @@ import {
   computeZoneBreakdownPct,
   detectWithinFieldVariability,
 } from "../src/domain/ndvi-engine.ts";
-import { fieldGeometryBbox } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import { fieldGeometryBbox, summarizePixelValidity } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -127,4 +127,20 @@ assert.throws(
   /Geometria do talhão inválida/,
 );
 
-console.log("ndvi-engine: 23 cenários aprovados (vigor, temporal, qualidade e envelope espacial do raster)");
+// 24. Statistical API: noDataCount é subconjunto de sampleCount, não soma adicional.
+assert.deepEqual(summarizePixelValidity(810, 428), {
+  total: 810,
+  invalid: 428,
+  valid: 382,
+  maskedPixelPct: (428 / 810) * 100,
+});
+
+// 25. Contagem inválida nunca ultrapassa o total e leitura 100% mascarada resulta em zero válido.
+assert.deepEqual(summarizePixelValidity(100, 150), {
+  total: 100,
+  invalid: 100,
+  valid: 0,
+  maskedPixelPct: 100,
+});
+
+console.log("ndvi-engine: 25 cenários aprovados (vigor, temporal, qualidade, pixels válidos e envelope espacial)");
