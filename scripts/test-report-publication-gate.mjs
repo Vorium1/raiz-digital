@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { evaluateReportPublicationGate } from "../src/lib/repositories/report-publication-gate.ts";
+import { evaluateReportPublicationGate } from "../src/domain/report-publication-gate.ts";
 
 const missing = evaluateReportPublicationGate({ interpretationExists: false, interpretationStatus: null, prescriptionId: null, prescriptionStatus: null });
 assert.equal(missing.allowed, false);
