@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { getPool, query } from "@/lib/db";
+import { getPool } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 
 const TOKEN_TTL_MINUTES = 30;
@@ -14,32 +14,50 @@ export async function createPasswordResetToken(userId: string): Promise<string |
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000);
+  const client = await getPool().connect();
 
-  // Limita reenvio por conta antes de invalidar o link anterior. Assim uma sequência de requisições não
-  // gera spam e também não mata, a cada clique, o único link que acabou de chegar ao usuário.
-  const created = await query<{ id: string }>(
-    `WITH recent AS (
-       SELECT 1
-       FROM password_reset_tokens
-       WHERE user_id = $1::uuid
-         AND created_at > now() - ($4::int * interval '1 second')
-       LIMIT 1
-     ), invalidated AS (
-       UPDATE password_reset_tokens
-       SET used_at = now()
-       WHERE user_id = $1::uuid
-         AND used_at IS NULL
-         AND NOT EXISTS (SELECT 1 FROM recent)
-       RETURNING id
-     )
-     INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
-     SELECT $1::uuid, $2, $3
-     WHERE NOT EXISTS (SELECT 1 FROM recent)
-     RETURNING id::text`,
-    [userId, tokenHash, expiresAt, REQUEST_COOLDOWN_SECONDS],
-  );
+  try {
+    await client.query("BEGIN");
+    // O lock na própria conta serializa dois pedidos simultâneos. Sem isso, duas requisições que chegassem
+    // no mesmo instante poderiam ambas observar "nenhum token recente" e criar dois links válidos.
+    const user = await client.query<{ id: string }>(
+      "SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE",
+      [userId],
+    );
+    if (!user.rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
 
-  return created.rows[0] ? token : null;
+    const recent = await client.query(
+      `SELECT 1 FROM password_reset_tokens
+       WHERE user_id = $1::uuid
+         AND created_at > now() - ($2::int * interval '1 second')
+       LIMIT 1`,
+      [userId, REQUEST_COOLDOWN_SECONDS],
+    );
+    if (recent.rows[0]) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    // Um novo pedido válido invalida links anteriores ainda abertos antes de criar o próximo.
+    await client.query(
+      "UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1::uuid AND used_at IS NULL",
+      [userId],
+    );
+    await client.query(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1::uuid, $2, $3)",
+      [userId, tokenHash, expiresAt],
+    );
+    await client.query("COMMIT");
+    return token;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function consumePasswordResetToken(token: string, newPassword: string) {
@@ -67,15 +85,15 @@ export async function consumePasswordResetToken(token: string, newPassword: stri
        RETURNING user_id::text`,
       [tokenHash],
     );
-    const userId = claimed.rows[0]?.user_id;
-    if (!userId) throw new Error("Link de redefinição inválido ou expirado. Peça um novo.");
+    const claimedUserId = claimed.rows[0]?.user_id;
+    if (!claimedUserId) throw new Error("Link de redefinição inválido ou expirado. Peça um novo.");
 
-    await client.query("UPDATE users SET password_hash = $1 WHERE id = $2::uuid", [newHash, userId]);
-    await client.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1::uuid AND revoked_at IS NULL", [userId]);
-    // Qualquer outro link criado em corrida ou ainda válido perde utilidade após a troca de senha.
+    await client.query("UPDATE users SET password_hash = $1 WHERE id = $2::uuid", [newHash, claimedUserId]);
+    await client.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1::uuid AND revoked_at IS NULL", [claimedUserId]);
+    // Qualquer outro link criado antes da troca perde utilidade no mesmo commit da nova senha.
     await client.query(
       "UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1::uuid AND used_at IS NULL",
-      [userId],
+      [claimedUserId],
     );
 
     await client.query("COMMIT");
