@@ -4,19 +4,34 @@ import pg from "pg";
 /**
  * Importação SEGURA da geometria real Cabeda 01/02 depois da conversão dos shapefiles para GeoJSON.
  *
- * Os pacotes originais `CABEDA 01.rar` e `CABEDA 02.rar` não trazem `.prj`. Por isso este script NUNCA
- * tenta adivinhar CRS e NUNCA lê coordenada projetada como se fosse latitude/longitude. Primeiro o CRS de
- * origem precisa ser confirmado e a conversão para EPSG:4326 precisa ser feita por ferramenta GIS.
+ * Os pacotes originais `CABEDA 01.rar` e `CABEDA 02.rar` não trazem `.prj`, portanto o DATUM original
+ * não está declarado. A auditoria dos arquivos reais feita em 2026-09-12 confirmou, porém, que as
+ * coordenadas dos layers `contorno`, `amostras` e `amostrasreal` já estão em longitude/latitude decimal
+ * compatível com GPS, com atributos `grade_gps`/`marca_gps` repetindo os mesmos pares lon/lat.
  *
- * Exemplo (somente depois de confirmar o CRS de origem):
+ * Por isso existem dois modos aceitos, sempre explícitos:
+ *
+ * 1) fonte com datum realmente confirmado:
+ *    CABEDA_SOURCE_CRS_CONFIRMED=EPSG:4326
+ *
+ * 2) fonte GPS lon/lat com datum não declarado no shapefile:
+ *    CABEDA_SOURCE_CRS_CONFIRMED=GEOGRAPHIC_LONLAT_GPS
+ *    CABEDA_SOURCE_DATUM_UNDECLARED_ACK=true
+ *
+ * No segundo caso NÃO ocorre reprojeção numérica. A RAIZ preserva no audit trail que o datum de origem
+ * não veio declarado e apenas registra os pares lon/lat no SRID 4326 operacional da plataforma. Isso é
+ * melhor que inventar um EPSG de origem e mantém a incerteza documental explícita.
+ *
+ * Exemplo:
  *   CABEDA_GEO_AREA=01 \
- *   CABEDA_BOUNDARY_GEOJSON=/caminho/area01-contorno-4326.geojson \
- *   CABEDA_POINTS_GEOJSON=/caminho/area01-amostrasreal-4326.geojson \
- *   CABEDA_POINT_CODE_PROPERTY=CODIGO \
- *   CABEDA_SOURCE_CRS_CONFIRMED=EPSG:4326 \
+ *   CABEDA_BOUNDARY_GEOJSON=/caminho/CABEDA_01_contorno_lonlat.geojson \
+ *   CABEDA_POINTS_GEOJSON=/caminho/CABEDA_01_amostrasreal_lonlat.geojson \
+ *   CABEDA_POINT_CODE_PROPERTY=label \
+ *   CABEDA_SOURCE_CRS_CONFIRMED=GEOGRAPHIC_LONLAT_GPS \
+ *   CABEDA_SOURCE_DATUM_UNDECLARED_ACK=true \
  *   node scripts/import-cabeda-real-geometry.mjs
  *
- * O padrão é DRY-RUN (ROLLBACK). Para gravar no banco:
+ * O padrão é DRY-RUN (ROLLBACK). Para gravar no banco DEV:
  *   CABEDA_GEO_APPLY=true ...
  *
  * Nunca usar este script para Área 03 sem um pacote espacial próprio da Área 03.
@@ -30,9 +45,18 @@ const AREA_CONFIG = {
 const areaCode = process.env.CABEDA_GEO_AREA?.trim();
 const config = areaCode ? AREA_CONFIG[areaCode] : undefined;
 if (!config) throw new Error("CABEDA_GEO_AREA deve ser 01 ou 02.");
-if (process.env.CABEDA_SOURCE_CRS_CONFIRMED?.trim().toUpperCase() !== "EPSG:4326") {
-  throw new Error("CRS não confirmado. Converta a fonte real para EPSG:4326 e defina CABEDA_SOURCE_CRS_CONFIRMED=EPSG:4326. Nunca adivinhe o CRS.");
+
+const sourceCrsMode = process.env.CABEDA_SOURCE_CRS_CONFIRMED?.trim().toUpperCase();
+const datumUndeclaredAck = process.env.CABEDA_SOURCE_DATUM_UNDECLARED_ACK === "true";
+const exact4326 = sourceCrsMode === "EPSG:4326";
+const gpsLonLatUndeclared = sourceCrsMode === "GEOGRAPHIC_LONLAT_GPS" && datumUndeclaredAck;
+if (!exact4326 && !gpsLonLatUndeclared) {
+  throw new Error(
+    "Origem espacial não validada. Use CABEDA_SOURCE_CRS_CONFIRMED=EPSG:4326 quando o datum estiver documentalmente confirmado; ou GEOGRAPHIC_LONLAT_GPS junto com CABEDA_SOURCE_DATUM_UNDECLARED_ACK=true para os arquivos Cabeda auditados em lon/lat GPS sem .prj.",
+  );
 }
+const sourceCrsAudit = exact4326 ? "EPSG:4326" : "GEOGRAPHIC_LONLAT_GPS_DATUM_UNDECLARED";
+const sourceDatumAudit = exact4326 ? "WGS84/EPSG:4326_CONFIRMED" : "UNDECLARED_IN_SOURCE";
 
 const boundaryPath = process.env.CABEDA_BOUNDARY_GEOJSON?.trim();
 const pointsPath = process.env.CABEDA_POINTS_GEOJSON?.trim();
@@ -42,7 +66,7 @@ if (!boundaryPath || !pointsPath || !codeProperty) {
 }
 
 const apply = process.env.CABEDA_GEO_APPLY === "true";
-const tolerancePct = Number(process.env.CABEDA_AREA_TOLERANCE_PCT ?? "25");
+const tolerancePct = Number(process.env.CABEDA_AREA_TOLERANCE_PCT ?? "5");
 if (!Number.isFinite(tolerancePct) || tolerancePct <= 0 || tolerancePct > 100) throw new Error("CABEDA_AREA_TOLERANCE_PCT inválido.");
 
 const TENANT_ID = process.env.CABEDA_TENANT_ID?.trim() || "dc3854e1-8721-4041-ba9c-1e8c1657202f";
@@ -107,15 +131,15 @@ try {
     [boundaryJson],
   );
   const geo = geometryCheck.rows[0];
-  if (!geo?.valid || geo?.empty) throw new Error("Contorno real inválido/vazio após leitura em EPSG:4326.");
+  if (!geo?.valid || geo?.empty) throw new Error("Contorno real inválido/vazio após leitura como longitude/latitude.");
   const areaHa = Number(geo.areaHa);
   const areaDiffPct = Math.abs(areaHa - config.expectedAreaHa) / config.expectedAreaHa * 100;
   if (areaDiffPct > tolerancePct) {
     throw new Error(`Área geométrica ${areaHa.toFixed(3)} ha diverge ${areaDiffPct.toFixed(1)}% da área cadastrada ${config.expectedAreaHa} ha (limite ${tolerancePct}%). Revisão humana necessária.`);
   }
-  // Guarda simples contra eixo trocado/CRS errado: o dado confirmado como 4326 precisa cair no sul do Brasil.
+  // Guarda contra eixo trocado/CRS projetado: o material auditado precisa cair no sul do Brasil.
   if (Number(geo.xmin) < -60 || Number(geo.xmax) > -45 || Number(geo.ymin) < -35 || Number(geo.ymax) > -20) {
-    throw new Error(`Contorno fora da janela geográfica esperada para RS/SC (${geo.xmin},${geo.ymin})-(${geo.xmax},${geo.ymax}). Verifique CRS/eixos.`);
+    throw new Error(`Contorno fora da janela geográfica esperada para RS/SC (${geo.xmin},${geo.ymin})-(${geo.xmax},${geo.ymax}). Verifique origem/eixos.`);
   }
 
   const fieldResult = await client.query(
@@ -172,6 +196,7 @@ try {
 
   console.table(points.map((p) => ({ area: areaCode, ponto: p.code, lat: p.lat, lon: p.lon, dentro: p.covered, distancia_m: p.distanceMeters.toFixed(2) })));
   console.log(`Área geométrica: ${areaHa.toFixed(3)} ha | cadastrada: ${config.expectedAreaHa.toFixed(3)} ha | diferença: ${areaDiffPct.toFixed(1)}%`);
+  console.log(`Origem espacial auditada: ${sourceCrsAudit} | datum da fonte: ${sourceDatumAudit} | reprojeção numérica: NÃO`);
 
   if (apply) {
     await client.query(
@@ -183,21 +208,25 @@ try {
     for (const point of points) {
       const existing = currentByCode.get(point.code);
       const afterWkt = `POINT(${point.lon} ${point.lat})`;
+      const gpsSource = exact4326 ? "SHAPEFILE_REAL_EPSG4326" : "SHAPEFILE_REAL_GPS_LONLAT";
+      const originNote = exact4326
+        ? `[RAIZ 2026-09-12] Geometria real importada de ${config.sourcePackage}/amostrasreal; EPSG:4326 documentalmente confirmado.`
+        : `[RAIZ 2026-09-12] Geometria real importada de ${config.sourcePackage}/amostrasreal; coordenadas GPS lon/lat validadas, datum não declarado no pacote (.prj ausente), sem reprojeção numérica.`;
       await client.query(
         `UPDATE sample_points
          SET position=ST_SetSRID(ST_GeomFromGeoJSON($4),4326)::geometry(Point,4326),
-             gps_source='SHAPEFILE_REAL_CONFIRMADO',
-             notes=concat_ws(E'\n', nullif(notes,''), $5)
+             gps_source=$5,
+             notes=concat_ws(E'\n', nullif(notes,''), $6)
          WHERE tenant_id=$1::uuid AND collection_order_id=$2::uuid AND code=$3`,
-        [TENANT_ID, orderId, point.code, JSON.stringify(point.geometry), `[RAIZ 2026-09-12] Geometria real importada de ${config.sourcePackage}/amostrasreal; CRS convertido e confirmado em EPSG:4326.`],
+        [TENANT_ID, orderId, point.code, JSON.stringify(point.geometry), gpsSource, originNote],
       );
       await client.query(
         `INSERT INTO audit_events (tenant_id,actor_user_id,actor_type,action,entity_type,entity_id,before_data,after_data,metadata)
          VALUES ($1::uuid,$2::uuid,'USER','SAMPLE_POINT_REAL_GEOMETRY_IMPORTED','sample_point',$3::uuid,$4::jsonb,$5::jsonb,$6::jsonb)`,
         [TENANT_ID, ACTOR_USER_ID, existing.id,
           JSON.stringify({ positionWkt: existing.beforePosition, gpsSource: existing.gpsSource }),
-          JSON.stringify({ positionWkt: afterWkt, gpsSource: "SHAPEFILE_REAL_CONFIRMADO" }),
-          JSON.stringify({ sourcePackage: config.sourcePackage, sourceLayer: "amostrasreal", crs: "EPSG:4326", codeProperty })],
+          JSON.stringify({ positionWkt: afterWkt, gpsSource }),
+          JSON.stringify({ sourcePackage: config.sourcePackage, sourceLayer: "amostrasreal", sourceCrs: sourceCrsAudit, sourceDatum: sourceDatumAudit, targetSrid: 4326, reprojectionApplied: false, codeProperty })],
       );
     }
 
@@ -207,7 +236,7 @@ try {
       [TENANT_ID, ACTOR_USER_ID, field.id,
         JSON.stringify({ boundaryWkt: field.beforeBoundary, areaHaRegistered: field.areaHa }),
         JSON.stringify({ geometryAreaHa: areaHa }),
-        JSON.stringify({ sourcePackage: config.sourcePackage, sourceLayer: "contorno", crs: "EPSG:4326", expectedAreaHa: config.expectedAreaHa, differencePct: areaDiffPct })],
+        JSON.stringify({ sourcePackage: config.sourcePackage, sourceLayer: "contorno", sourceCrs: sourceCrsAudit, sourceDatum: sourceDatumAudit, targetSrid: 4326, reprojectionApplied: false, expectedAreaHa: config.expectedAreaHa, differencePct: areaDiffPct })],
     );
 
     await client.query("COMMIT");
