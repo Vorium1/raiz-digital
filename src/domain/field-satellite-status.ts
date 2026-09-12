@@ -63,6 +63,18 @@ export function computeFieldSatelliteStatus(fieldId: string, snapshots: Snapshot
     };
   }
 
+  if (quality === "INDETERMINADA") {
+    return {
+      badge: "QUALIDADE INDETERMINADA",
+      tone: "waiting",
+      heading: `Sentinel-2 de ${date} ainda não pode sustentar tendência`,
+      detail: `${temporal.note} NDVI médio observado: ${ndvi}.`,
+      href,
+      latestCapturedAt: temporal.latestCapturedAt,
+      latestMeanNdvi: temporal.latestMeanNdvi,
+    };
+  }
+
   if (temporal.hasRelevantTemporalChange) {
     const movement = temporal.direction === "QUEDA" ? "queda" : "alta";
     return {
