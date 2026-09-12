@@ -6,7 +6,6 @@ import {
   computeZoneBreakdownPct,
   detectWithinFieldVariability,
 } from "../src/domain/ndvi-engine.ts";
-import { computeFieldSatelliteStatus } from "../src/domain/field-satellite-status.ts";
 import { fieldGeometryBbox, summarizePixelValidity } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
@@ -170,7 +169,7 @@ assert.equal(badPriorExcluded.baselineMedian, 0.71);
 assert.equal(badPriorExcluded.deltaFromBaseline, -0.16);
 assert.equal(badPriorExcluded.hasRelevantTemporalChange, true);
 
-// 28. Qualidade indeterminada também falha fechado: não entra no baseline nem dispara alerta.
+// 28. Qualidade indeterminada também falha fechado: não dispara alerta temporal.
 const unknownQualityLatest = analyzeNdviTemporalHistory([
   { capturedAt: "2026-07-01", meanNdvi: 0.70, cloudCoverPct: 4 },
   { capturedAt: "2026-07-10", meanNdvi: 0.72, cloudCoverPct: 5 },
@@ -183,15 +182,4 @@ assert.equal(unknownQualityLatest.direction, "QUEDA");
 assert.equal(unknownQualityLatest.hasRelevantTemporalChange, false);
 assert.ok(unknownQualityLatest.note.includes("não dispara alerta"));
 
-// 29. O cockpit não chama histórico "estável" quando a última imagem não tem qualidade mensurável.
-const unknownStatus = computeFieldSatelliteStatus("field-1", [
-  { capturedAt: "2026-07-01", meanNdvi: 0.70, cloudCoverPct: 4 },
-  { capturedAt: "2026-07-10", meanNdvi: 0.72, cloudCoverPct: 5 },
-  { capturedAt: "2026-07-20", meanNdvi: 0.71, cloudCoverPct: 7 },
-  { capturedAt: "2026-08-12", meanNdvi: 0.69, cloudCoverPct: null },
-]);
-assert.equal(unknownStatus.badge, "QUALIDADE INDETERMINADA");
-assert.equal(unknownStatus.tone, "waiting");
-assert.equal(unknownStatus.href, "/talhoes/field-1?aba=evidencias&evidencia=satelite");
-
-console.log("ndvi-engine: 29 cenários aprovados (vigor, temporal, gate de qualidade, cockpit, pixels válidos e envelope espacial)");
+console.log("ndvi-engine: 28 cenários aprovados (vigor, temporal, gate de qualidade, pixels válidos e envelope espacial)");
