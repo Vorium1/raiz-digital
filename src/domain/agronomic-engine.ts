@@ -275,7 +275,7 @@ function classifyValue(value: number, bands: SufficiencyBand[]): string | null {
   for (const band of bands) {
     const min = band.min ?? -Infinity;
     if (band.max == null) {
-      if (value > min) return band.label; // faixa mais alta: estritamente maior que o mínimo
+      if (value > min) return band.label;
     } else if (value >= min && value <= band.max) {
       return band.label;
     }
@@ -321,13 +321,6 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
     return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Método "${result.method}" não está entre os métodos aceitos para ${result.parameterCode} neste perfil.`, code: "METHOD_NOT_SUPPORTED" };
   }
 
-  // Compatibilidade de UNIDADE -- posição fixa no pipeline (parâmetro -> tipo de amostra -> profundidade
-  // -> método -> UNIDADE -> condição -> faixa de suficiência), achado real da auditoria 2026-09-11:
-  // `CropProfileParameterDef.unitExpected` existia mas nunca era conferido contra `result.unit` -- a regra
-  // já documentada no topo deste arquivo ("nunca mistura faixas técnicas... de unidades incompatíveis")
-  // não era imposta de verdade. Comparação sempre EXATA (nunca frouxa) -- qualquer tradução de unidade
-  // (ex.: "mg/L" -> "mg/dm³") tem que acontecer na ingestão/normalização, nunca aqui.
-  // `unitExpected` ausente/vazio = sem restrição declarada (mesmo padrão de `analyticalMethodAllowed`).
   const unitMatches = methodMatches.filter((param) => !param.unitExpected || param.unitExpected === result.unit);
   if (unitMatches.length === 0) {
     return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Unidade "${result.unit}" não é compatível com a unidade homologada ("${methodMatches[0].unitExpected}") para ${result.parameterCode} neste perfil.`, code: "UNIT_NOT_SUPPORTED" };
@@ -337,13 +330,8 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
   if (unitMatches.length === 1 && !unitMatches[0].conditionParameterCode) {
     matched = unitMatches[0];
   } else {
-    // Múltiplas faixas para o mesmo parâmetro/profundidade/método/unidade: precisam
-    // de uma condição (ex.: classe de argila para P, classe de CTC para K)
-    // para escolher a certa -- nunca pega a primeira arbitrariamente.
     const conditioned = unitMatches.filter((param) => param.conditionParameterCode);
     if (conditioned.length === 0) {
-      // Nenhuma tem condição declarada mas há mais de uma -- cadastro
-      // ambíguo (curador precisa revisar), não decide sozinho.
       return { ...base, classificationRole: "TARGET", interpretable: false, reason: `${result.parameterCode} tem mais de uma faixa homologada para a mesma profundidade/método/unidade, sem condição para escolher entre elas -- revisão de cadastro necessária.`, code: "NO_CONDITION_MATCH" };
     }
     const conditionParamCode = conditioned[0].conditionParameterCode!;
@@ -374,14 +362,6 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
   return { ...base, classificationRole: "TARGET", interpretable: true, classification, matchedParameter: { id: matched.id, criticality: matched.criticality } };
 }
 
-/**
- * Interpreta um parâmetro DERIVADO (ver `derivedParameterCode`): busca as
- * entradas exigidas na mesma amostra (respeitando profundidade, mas não
- * método analítico por entrada -- limitação conhecida, cada entrada pode
- * ter método diferente e o motor hoje não valida isso separadamente),
- * calcula o valor com a função registrada e classifica o resultado. Nunca
- * inventa uma entrada ausente -- se faltar qualquer uma, não interpreta.
- */
 function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: string, sampleResults: LabResultInput[]): ParameterInterpretation {
   const base = { sampleCode, parameterCode: param.parameterCode, classificationRole: "TARGET" as const };
   const fn = DERIVED_PARAMETER_FUNCTIONS[param.derivedParameterCode!];
@@ -434,13 +414,17 @@ export function runAgronomicEngine(input: EngineInput): EngineResult {
 
   const interpretableCount = interpretation.filter((item) => item.interpretable).length;
   const total = interpretation.length;
+  // Dado AUXILIAR pode ser essencial como condição/insumo, mas não é uma pendência de cobertura. Antes
+  // desta correção ele era corretamente excluído da UI/completude, porém ainda entrava em `warnings` e
+  // `not_interpretable_reason` via `pendencies`, fazendo relatório/auditoria voltar a tratá-lo como falha.
   const pendencies = Array.from(
-    new Set(interpretation.filter((item): item is Extract<ParameterInterpretation, { interpretable: false }> => !item.interpretable).map((item) => item.reason)),
+    new Set(
+      interpretation
+        .filter((item): item is Extract<ParameterInterpretation, { interpretable: false; classificationRole: "TARGET" }> => !item.interpretable && item.classificationRole === "TARGET")
+        .map((item) => item.reason),
+    ),
   );
 
-  // Completude conta só entre os resultados que SÃO alvo de classificação (`classificationRole:
-  // "TARGET"`) -- um dado auxiliar (nunca terá faixa própria, por desenho) não pode contar como
-  // "faltando" e derrubar a nota de completude artificialmente (achado real, auditoria 2026-09-11).
   const targetTotal = interpretation.filter((item) => item.classificationRole === "TARGET").length;
   const completeness = targetTotal === 0 ? 0 : Math.round((interpretableCount / targetTotal) * 100);
   const dimensions = [
