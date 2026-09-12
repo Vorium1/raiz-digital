@@ -8,6 +8,7 @@ import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getIntelligenceQueue, getIntelligenceFilterOptions } from "@/lib/repositories/interpretations";
 import { getDecisionDeliveryStatuses, type DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
+import { getExecutiveDecisionMetrics } from "@/lib/repositories/executive-decision-metrics";
 import { demoInterpretationsLog } from "@/lib/demo-data";
 import { interpretationStatusMeta, interpretationQueueBucket, QUEUE_BUCKET_META, type QueueBucket } from "@/domain/interpretation-status";
 import { formatRelativeOrDate } from "@/domain/analysis-ui";
@@ -80,11 +81,14 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
 
   const params = await searchParams;
   const session = await requirePlatformSession();
-  const [rows, filterOptions] = await Promise.all([
+  const [rows, filterOptions, decisionMetrics] = await Promise.all([
     getIntelligenceQueue(session.tenantId, {
       clientId: params.clientId, propertyId: params.propertyId, fieldId: params.fieldId, seasonId: params.seasonId,
     }, session.userId),
     getIntelligenceFilterOptions(session.tenantId, session.userId),
+    getExecutiveDecisionMetrics(session.tenantId, {
+      clientId: params.clientId, propertyId: params.propertyId, fieldId: params.fieldId, seasonId: params.seasonId,
+    }, session.userId),
   ]);
   const deliveryRows = await getDecisionDeliveryStatuses(session.tenantId, rows.map((row: any) => row.analysisId), session.userId);
   const deliveryByAnalysis = new Map(deliveryRows.map((row) => [row.analysisId, row]));
@@ -110,6 +114,15 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
   const portfolioCoverage = portfolioTargetTotal > 0 ? Math.round((portfolio.classified / portfolioTargetTotal) * 100) : 0;
   const deliveredCount = deliveryRows.filter((row) => row.reportCount > 0).length;
   const prescriptionReviewCount = deliveryRows.filter((row) => row.prescriptionStatus === "PENDING_REVIEW").length;
+  const deliveryRate = decisionMetrics.totalAnalyses > 0 ? Math.round((decisionMetrics.deliveredAnalyses / decisionMetrics.totalAnalyses) * 100) : 0;
+
+  const executiveMetrics = [
+    { label: "Interpretações aprovadas", value: decisionMetrics.approvedInterpretations, detail: "base técnica validada", icon: "shield" },
+    { label: "Recomendações em revisão", value: decisionMetrics.recommendationsInReview, detail: "aguardando responsável técnico", icon: "clock" },
+    { label: "Prontas para publicação", value: decisionMetrics.readyForPublication, detail: "recomendação aprovada", icon: "upload" },
+    { label: "Decisões entregues", value: decisionMetrics.deliveredAnalyses, detail: `${deliveryRate}% das análises no filtro`, icon: "check" },
+    { label: "Tempo médio até entrega", value: decisionMetrics.avgDaysToDelivery == null ? "—" : `${Number(decisionMetrics.avgDaysToDelivery).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} dias`, detail: "da criação à publicação", icon: "calendar" },
+  ] as const;
 
   return (
     <>
@@ -131,6 +144,33 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
             <span><strong>Cobertura técnica da fila: {portfolioCoverage}%</strong> · {portfolio.classified}/{portfolioTargetTotal} resultados-alvo classificados{portfolio.pending > 0 ? ` · ${portfolio.pending} pendentes de cobertura técnica` : " · sem pendências de cobertura"}{portfolio.auxiliary > 0 ? ` · ${portfolio.auxiliary} dados auxiliares preservados como contexto` : ""} · {prescriptionReviewCount} recomendação(ões) em revisão · {deliveredCount} entrega(s) publicada(s).</span>
           </div>
         )}
+
+        <section className="card" style={{ marginTop: 16, marginBottom: 18 }}>
+          <div className="field-ops-section-head compact">
+            <div><span className="eyebrow">VALOR ENTREGUE · CICLO DA DECISÃO</span><h2>Do laudo à decisão publicada</h2></div>
+            <Link href="/relatorios">Abrir entregas <Icon name="arrow" size={15}/></Link>
+          </div>
+          <div className="executive-metric-grid">
+            {executiveMetrics.map((metric) => (
+              <div className="executive-metric" key={metric.label}>
+                <Icon name={metric.icon} size={17}/>
+                <div><strong>{metric.value}</strong><span>{metric.label}</span><small>{metric.detail}</small></div>
+              </div>
+            ))}
+          </div>
+          <div className="dashboard-teasers" style={{ marginTop: 14 }}>
+            <Link href="/inteligencia" className="dashboard-teaser">
+              <Icon name="sparkles" size={20}/>
+              <div><strong>{decisionMetrics.readyForRecommendation} pronta(s) para recomendação</strong><small>interpretação já aprovada, ainda sem recomendação assistida</small></div>
+              <Icon name="arrow" size={16}/>
+            </Link>
+            <Link href="/relatorios" className="dashboard-teaser">
+              <Icon name="check" size={20}/>
+              <div><strong>{decisionMetrics.deliveredAnalyses} decisão(ões) já entregue(s)</strong><small>{decisionMetrics.readyForPublication} aguardando apenas publicação da entrega</small></div>
+              <Icon name="arrow" size={16}/>
+            </Link>
+          </div>
+        </section>
 
         <IntelligenceQueueFilters options={filterOptions}/>
 
