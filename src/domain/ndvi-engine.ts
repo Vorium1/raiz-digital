@@ -94,3 +94,141 @@ export function detectWithinFieldVariability(breakdown: ZoneBreakdownPct): Varia
   }
   return { hasSignificantVariability: false, note: "Sem variabilidade interna relevante detectada nesta imagem." };
 }
+
+export type NdviObservationQuality = "ALTA" | "MODERADA" | "BAIXA" | "INDETERMINADA";
+
+export const NDVI_QUALITY_LABELS: Record<NdviObservationQuality, string> = {
+  ALTA: "Qualidade alta",
+  MODERADA: "Qualidade moderada",
+  BAIXA: "Qualidade baixa",
+  INDETERMINADA: "Qualidade não determinada",
+};
+
+export type NdviHistoryPoint = {
+  capturedAt: string;
+  meanNdvi: number;
+  cloudCoverPct?: number | null;
+  pixelCount?: number | null;
+};
+
+/**
+ * Qualidade operacional da observação com base na fração sem pixel válido DENTRO do talhão.
+ * `cloudCoverPct` é o nome histórico da coluna; no pipeline atual ele representa a fração mascarada
+ * pelo provedor (nuvem/sombra/pixel inválido), e não uma medição meteorológica de nebulosidade.
+ * Os cortes 10%/25% são somente um gate de qualidade de produto para triagem visual; não têm valor de
+ * diagnóstico agronômico e não alteram a classificação determinística do NDVI.
+ */
+export function classifyNdviObservationQuality(point: Pick<NdviHistoryPoint, "cloudCoverPct">): NdviObservationQuality {
+  const invalidPct = point.cloudCoverPct;
+  if (invalidPct == null || !Number.isFinite(invalidPct)) return "INDETERMINADA";
+  if (invalidPct <= 10) return "ALTA";
+  if (invalidPct <= 25) return "MODERADA";
+  return "BAIXA";
+}
+
+export type NdviTemporalDirection = "ALTA" | "QUEDA" | "ESTAVEL" | "SEM_BASELINE";
+
+export type NdviTemporalAnalysis = {
+  direction: NdviTemporalDirection;
+  latestCapturedAt: string | null;
+  latestMeanNdvi: number | null;
+  latestQuality: NdviObservationQuality;
+  previousCapturedAt: string | null;
+  previousMeanNdvi: number | null;
+  deltaFromPrevious: number | null;
+  baselineMedian: number | null;
+  deltaFromBaseline: number | null;
+  baselineCount: number;
+  hasRelevantTemporalChange: boolean;
+  note: string;
+};
+
+const TEMPORAL_CHANGE_THRESHOLD = 0.12;
+const MIN_BASELINE_POINTS = 3;
+const MAX_BASELINE_POINTS = 5;
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * Compara a leitura mais recente com a anterior e, quando há histórico suficiente, com a mediana das
+ * até cinco leituras anteriores. O limiar absoluto de 0,12 é um sinal OPERACIONAL conservador para
+ * priorização de inspeção; não é limiar agronômico de deficiência e não considera cultura/fenologia.
+ * Portanto a função nunca atribui causa, produtividade ou prescrição.
+ */
+export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTemporalAnalysis {
+  const ordered = history
+    .filter((point) => Number.isFinite(point.meanNdvi) && Boolean(point.capturedAt))
+    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+
+  if (ordered.length === 0) {
+    return {
+      direction: "SEM_BASELINE",
+      latestCapturedAt: null,
+      latestMeanNdvi: null,
+      latestQuality: "INDETERMINADA",
+      previousCapturedAt: null,
+      previousMeanNdvi: null,
+      deltaFromPrevious: null,
+      baselineMedian: null,
+      deltaFromBaseline: null,
+      baselineCount: 0,
+      hasRelevantTemporalChange: false,
+      note: "Sem leituras suficientes para análise temporal.",
+    };
+  }
+
+  const latest = ordered[ordered.length - 1];
+  const previous = ordered.length > 1 ? ordered[ordered.length - 2] : null;
+  const prior = ordered.slice(0, -1).slice(-MAX_BASELINE_POINTS);
+  const baselineMedian = prior.length >= MIN_BASELINE_POINTS ? median(prior.map((point) => point.meanNdvi)) : null;
+  const deltaFromPrevious = previous ? round3(latest.meanNdvi - previous.meanNdvi) : null;
+  const deltaFromBaseline = baselineMedian == null ? null : round3(latest.meanNdvi - baselineMedian);
+  const hasRelevantTemporalChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= TEMPORAL_CHANGE_THRESHOLD;
+
+  let direction: NdviTemporalDirection = "SEM_BASELINE";
+  if (deltaFromBaseline != null) {
+    if (deltaFromBaseline >= TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
+    else if (deltaFromBaseline <= -TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
+    else direction = "ESTAVEL";
+  } else if (deltaFromPrevious != null) {
+    if (deltaFromPrevious >= TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
+    else if (deltaFromPrevious <= -TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
+    else direction = "ESTAVEL";
+  }
+
+  let note = "Histórico ainda curto para comparar a leitura atual com uma linha de base do próprio talhão.";
+  if (baselineMedian != null && deltaFromBaseline != null) {
+    if (hasRelevantTemporalChange) {
+      const verb = deltaFromBaseline > 0 ? "acima" : "abaixo";
+      note = `A leitura atual está ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI ${verb} da mediana das ${prior.length} leituras anteriores. É um sinal temporal para investigação, não uma causa agronômica: estágio da cultura, manejo, clima e qualidade da imagem precisam ser conferidos antes de qualquer conclusão.`;
+    } else {
+      note = `A leitura atual permanece próxima da mediana das ${prior.length} leituras anteriores (diferença de ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI).`;
+    }
+  } else if (previous && deltaFromPrevious != null) {
+    note = `Comparação disponível apenas com a leitura anterior: variação de ${deltaFromPrevious >= 0 ? "+" : ""}${deltaFromPrevious.toFixed(2)} ponto de NDVI. Ainda não há linha de base suficiente para sinal temporal robusto.`;
+  }
+
+  return {
+    direction,
+    latestCapturedAt: latest.capturedAt,
+    latestMeanNdvi: latest.meanNdvi,
+    latestQuality: classifyNdviObservationQuality(latest),
+    previousCapturedAt: previous?.capturedAt ?? null,
+    previousMeanNdvi: previous?.meanNdvi ?? null,
+    deltaFromPrevious,
+    baselineMedian: baselineMedian == null ? null : round3(baselineMedian),
+    deltaFromBaseline,
+    baselineCount: prior.length,
+    hasRelevantTemporalChange,
+    note,
+  };
+}
