@@ -6,17 +6,19 @@ import { PrintButton } from "@/components/print-button";
 import { PublishReportButton } from "@/components/publish-report-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
+import { PremiumDecisionSummary } from "@/components/premium-decision-summary";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldAnalysisReportData, getPublishedReportSnapshot, type PublishedReportContext, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import { getLatestAgronomicNarrative, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
 import { getInputComparisonForAnalysis } from "@/lib/repositories/catalog";
 import { getTenantBranding, type TenantBranding } from "@/lib/repositories/tenant-branding";
+import { getReportPublicationReadiness } from "@/lib/repositories/report-publication-gate";
 import { analysisDisplayStatus } from "@/domain/analysis-ui";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
-export const metadata = { title: "Relatório de análise por talhão" };
+export const metadata = { title: "Relatório técnico de decisão agronômica" };
 
 type StructuredInterpretation = { sampleCode: string; parameterCode: string; interpretable: boolean; classification?: string; reason?: string };
 type StructuredFact = { sampleCode: string; parameterCode: string; value: number; unit: string; method: string; source?: string };
@@ -32,77 +34,58 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
     getLatestAgronomicPrescription(session.tenantId, analysisId, session.userId),
     getInputComparisonForAnalysis(session.tenantId, analysisId, session.userId),
     getTenantBranding(session.tenantId),
-    // Fechamento técnico Fase 3 (item 2): lê de volta o snapshot IMUTÁVEL gravado no publish -- nunca
-    // reconstrói a "versão publicada" a partir do dado atual.
     getPublishedReportSnapshot(session.tenantId, analysisId, session.userId),
   ]);
   if (!data) notFound();
   const { analysis, points, results, interpretation, publishedReport } = data;
-  // Fase 3, Bloco F: usa a MESMA correção já aplicada na tela de análise (Fase 1) -- "Pronta para
-  // interpretar" mentiria aqui quando o motor já rodou e não achou nada interpretável. Esse relatório
-  // divergia da tela de origem antes desta correção (achado real desta rodada).
+  const publicationReadiness = interpretation
+    ? await getReportPublicationReadiness(session.tenantId, interpretation.id, session.userId)
+    : null;
   const meta = analysisDisplayStatus({ status: analysis.status, latestInterpretationStatus: interpretation?.status ?? null, notInterpretableReason: interpretation?.notInterpretableReason ?? null });
   const liveStructured = interpretation?.structuredOutput as StructuredOutput | null;
   const collectedCount = points.filter((point: any) => point.collectedAt).length;
 
-  // Fechamento técnico (2ª rodada), item 1 -- FAIL CLOSED: "Versão publicada" só pode ser mostrada quando
-  // o snapshot foi lido E o hash recalculado bateu com o gravado (`hashVerified === true`). Um hash
-  // divergente nunca vira fallback silencioso pro dado atual disfarçado de publicado -- vira um bloqueio
-  // explícito (`integrityFailed` abaixo), sempre visível, nunca escondido atrás da aba "Versão atual".
-  // `publishedInfo` estreita o tipo union uma única vez (found === true).
   const publishedInfo = publishedSnapshot.found ? publishedSnapshot : null;
   const integrityFailed = publishedInfo != null && publishedInfo.hashVerified === false;
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
   const requestedView = query.versao === "publicada" && canShowPublishedView ? "publicada" : "atual";
   const viewingPublished = requestedView === "publicada";
-  // Fechamento técnico (3ª rodada), item 2 -- `data.isShowingPublishedVersion` (repositório) só compara se
-  // `reports.interpretation_id` bate com a interpretação mais recente. Isso NUNCA prova que a "versão
-  // atual" é idêntica ao documento oficial: agora que o snapshot v2 também congela contexto (cliente/
-  // propriedade/talhão/safra/marca), a revisão técnica pode bater e mesmo assim o talhão ter sido
-  // renomeado, a propriedade reatribuída ou a marca trocada depois do publish. Por isso
-  // `sameRevisionAsPublished` é só um FATO informativo (a revisão técnica bate) -- nunca um motivo pra
-  // rotular a "versão atual" como "Publicado". Só a aba "Versão publicada", com hash verificado
-  // (`viewingPublished` + integridade OK), pode levar esse rótulo. Também exige `canShowPublishedView`
-  // (hash verificado): se o snapshot está ilegível (`readError`) ou não verificável, este fato nem é
-  // afirmado.
   const sameRevisionAsPublished = data.isShowingPublishedVersion && canShowPublishedView;
 
-  // Item 2 (2ª rodada): a partir da versão 2 do snapshot, o publish congela também cliente/propriedade/
-  // talhão/safra/cultivar/sistema/textura/meta produtiva/laboratório e a marca (branding) -- "Versão
-  // publicada" usa EXCLUSIVAMENTE esses campos congelados, nunca o dado atual dessas entidades (que pode
-  // ter mudado depois: talhão renomeado, propriedade reatribuída, marca trocada etc.). Snapshots antigos
-  // (versão 1 implícita, sem `publishedContext`) não têm esse congelamento -- nesse caso o contexto fica
-  // marcado como não capturado, nunca preenchido com o dado atual como se fosse imutável.
   const publishedSnapshotV2 = viewingPublished && (publishedInfo?.snapshot as ReportSnapshotV2 | undefined)?.reportSnapshotVersion === 2 ? (publishedInfo!.snapshot as ReportSnapshotV2) : null;
   const hasFrozenContext = publishedSnapshotV2 != null;
   const displayContext: PublishedReportContext | typeof analysis = hasFrozenContext ? publishedSnapshotV2!.publishedContext : analysis;
   const displayBranding: TenantBranding = hasFrozenContext ? publishedSnapshotV2!.brandingSnapshot : branding;
-  const contextUnavailable = viewingPublished && !hasFrozenContext; // só ocorre com snapshot legado v1
+  const contextUnavailable = viewingPublished && !hasFrozenContext;
 
   const snapshotOutput = viewingPublished ? (publishedInfo?.snapshot?.structuredOutput as StructuredOutput | undefined) : undefined;
   const displayFacts: StructuredFact[] = viewingPublished ? (snapshotOutput?.facts ?? []) : results;
   const displayInterpretation: StructuredInterpretation[] = viewingPublished ? (snapshotOutput?.interpretation ?? []) : (liveStructured?.interpretation ?? []);
   const displayConfidence = viewingPublished ? snapshotOutput?.confidence : liveStructured?.confidence;
+  const reportSampleCount = viewingPublished
+    ? new Set(displayInterpretation.map((row) => row.sampleCode)).size
+    : points.length;
 
   return (
     <>
-      <Topbar eyebrow="Relatórios" title="Análise por talhão">
+      <Topbar eyebrow="Relatórios" title="Decisão agronômica">
         <Link href="/relatorios" className="button ghost no-print">Voltar</Link>
       </Topbar>
       <div className="content-wrap">
         <div className="report-toolbar no-print">
-          <span className="report-empty-note">Documento gerado a partir de dados reais persistidos — nenhum valor estimado.</span>
+          <span className="report-empty-note">Entrega técnica construída com dados persistidos, regras homologadas e revisão profissional.</span>
           <div style={{ display: "flex", gap: 10 }}>
-            {interpretation && interpretation.status === "APPROVED" && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id}/>}
-            {/* Fail closed também na impressão: nunca oferece "imprimir" enquanto a integridade da versão
-                publicada solicitada falhou -- evita que alguém gere um PDF rotulado como oficial a partir
-                de conteúdo que não bateu no hash. */}
+            {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id}/>}
             {!(query.versao === "publicada" && integrityFailed) && <PrintButton/>}
           </div>
         </div>
 
-        {/* Fase 3, fechamento técnico (item 2 da 1ª rodada): alternância real Versão atual / Versão
-            publicada -- só habilitada quando existe publish com snapshot lido E íntegro. */}
+        {interpretation?.status === "APPROVED" && publicationReadiness && !publicationReadiness.allowed && (
+          <div className="report-toolbar no-print">
+            <span className="report-empty-note"><Icon name="shield" size={12}/> <strong>Entrega oficial bloqueada:</strong> {publicationReadiness.reason}</span>
+          </div>
+        )}
+
         {publishedReport && (
           <div className="report-version-toggle no-print">
             <Link href={`?`} className={!viewingPublished ? "active" : ""}>Versão atual</Link>
@@ -112,8 +95,6 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           </div>
         )}
 
-        {/* Fechamento técnico (2ª rodada), item 1: violação de integridade é a condição de MAIOR
-            prioridade -- aparece sempre que existir, mesmo na aba "Versão atual", nunca escondida. */}
         {integrityFailed && (
           <div className="report-toolbar no-print report-integrity-error">
             <span><Icon name="warning" size={14}/> <strong>Falha de integridade na versão publicada (revisão #{publishedReport?.interpretationRevision}).</strong> O hash do arquivo lido não bate com o hash gravado no momento do publish ({publishedInfo?.report.sha256.slice(0, 12)}…) — o conteúdo pode ter sido adulterado ou corrompido. Por segurança, o conteúdo NÃO é mostrado como versão oficial e não pode ser impresso como tal. Mostrando apenas a versão atual (rascunho) abaixo.</span>
@@ -123,40 +104,31 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
         {!publishedReport ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Rascunho — nenhuma versão deste relatório foi publicada ainda. O conteúdo abaixo reflete o dado calculado mais recente e pode mudar.</span></div>
         ) : integrityFailed ? null : viewingPublished ? (
-          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Mostrando o snapshot IMUTÁVEL publicado em {new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR")} por {publishedInfo!.report.publishedByName ?? "—"} — revisão #{publishedInfo!.report.revision}. Integridade do arquivo: hash verificado, conteúdo íntegro.{contextUnavailable ? " Este snapshot é de um formato anterior, sem contexto/marca congelados — esses campos aparecem como não capturados abaixo." : " Cliente, propriedade, talhão, safra e marca também vêm congelados deste snapshot, nunca do dado atual."} Seções que nunca fizeram parte do snapshot (pontos/mapa/narrativa/prescrição/comparação de insumo) aparecem como nota.</span></div>
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Mostrando o snapshot IMUTÁVEL publicado em {new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR")} por {publishedInfo!.report.publishedByName ?? "—"} — revisão #{publishedInfo!.report.revision}. Integridade do arquivo: hash verificado, conteúdo íntegro.{contextUnavailable ? " Este snapshot é de um formato anterior, sem contexto/marca congelados — esses campos aparecem como não capturados abaixo." : " Cliente, propriedade, talhão, safra e marca também vêm congelados deste snapshot, nunca do dado atual."} Conteúdos que não faziam parte deste formato de snapshot permanecem explicitamente indisponíveis.</span></div>
         ) : !canShowPublishedView && publishedInfo?.readError ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}), mas o snapshot não pôde ser lido de volta agora ({publishedInfo.readError}) — mostrando o dado atual, que pode não ser idêntico ao publicado.</span></div>
         ) : !sameRevisionAsPublished ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Esta tela mostra o dado ATUAL por padrão — use "Versão publicada" acima para ver exatamente o que foi publicado.</span></div>
         ) : (
-          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A revisão técnica atual (#{interpretation?.revision}) é a mesma que foi publicada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"} — mas isso não garante que esta tela (dado atual) seja idêntica ao documento oficial: cliente, propriedade, talhão e marca podem ter mudado desde o publish. Para ver exatamente o que foi publicado, use "Versão publicada" acima.</span></div>
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A revisão técnica atual (#{interpretation?.revision}) é a mesma que foi publicada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"}. Para consultar a entrega oficial congelada e verificar sua integridade, use "Versão publicada".</span></div>
         )}
 
         <article className="report-doc">
           <header className="report-header">
             <ReportBrand branding={displayBranding} />
             <div className="report-header-meta">
-              {/* Fechamento técnico (3ª rodada), item 1: "Gerado em" na versão publicada usa EXCLUSIVAMENTE
-                  a data congelada no publish (`reports.published_at`, gravada uma única vez no INSERT e
-                  nunca alterada depois) -- nunca `new Date()`. Reabrir o mesmo documento publicado amanhã,
-                  ou daqui a um ano, mostra exatamente a mesma data. A "versão atual" continua usando a data
-                  de agora, porque é literalmente o dado calculado agora, não um documento congelado. */}
               <span>Gerado em</span><strong>{viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{contextUnavailable ? "—" : displayContext.code}</strong>
-              {/* Item 2: "Situação" nunca chama a "versão atual" de "Publicado" -- só a aba "Versão
-                  publicada", com hash verificado, pode levar esse rótulo. Quando a revisão técnica atual
-                  coincide com a publicada, isso é informado separadamente ("revisão igual à publicada"),
-                  sem afirmar que o documento em tela é o oficial. */}
               <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : sameRevisionAsPublished ? "Rascunho (revisão igual à publicada)" : "Rascunho (mais recente que o publicado)"}</strong>
             </div>
           </header>
 
-          <h1 className="report-title">Relatório de análise por talhão</h1>
+          <h1 className="report-title">Relatório Técnico de Decisão Agronômica</h1>
           <p className="report-subtitle">{contextUnavailable ? "Contexto não capturado neste snapshot (formato anterior)" : `${displayContext.clientName} · ${displayContext.propertyName} · ${displayContext.fieldName}`}</p>
 
           <div className="report-meta-grid">
             {contextUnavailable ? (
-              <div className="report-empty-note" style={{ gridColumn: "1/-1" }}>Este snapshot publicado é de um formato anterior à versão 2 (que passou a congelar cliente/propriedade/talhão/safra/cultivar/sistema/textura/meta produtiva/laboratório) — nenhum desses campos foi capturado no publish, e por isso não são mostrados aqui como se fossem do documento oficial.</div>
+              <div className="report-empty-note" style={{ gridColumn: "1/-1" }}>Este snapshot publicado é de um formato anterior à versão 2. Contexto e marca não foram capturados naquele formato e, por isso, não são preenchidos com informação atual como se fossem imutáveis.</div>
             ) : (
               <>
                 <div><span>Cliente</span><strong>{displayContext.clientName}</strong></div>
@@ -170,19 +142,29 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
                 <div><span>Laboratório</span><strong>{displayContext.laboratoryName || "Não identificado"}</strong></div>
                 <div><span>Período</span><strong>{new Date(displayContext.createdAt).toLocaleDateString("pt-BR")} – {new Date(displayContext.updatedAt).toLocaleDateString("pt-BR")}</strong></div>
                 <div><span>Status</span><strong>{viewingPublished ? <StatusBadge tone="success">Publicado</StatusBadge> : <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>}</strong></div>
-                {/* Mesmo rótulo "Confiabilidade do laudo" usado no detalhe da análise -- os dois vêm da mesma
-                    fonte (analyses.confidence_score), mas o nome agora deixa explícito do que se trata (não é
-                    a mesma coisa que a confiabilidade da interpretação agronômica, mostrada só na tela de
-                    detalhe). Achado real confirmado na auditoria, item D. */}
                 <div><span>Confiabilidade do laudo</span><strong>{displayContext.confidenceScore != null ? `${Math.round(Number(displayContext.confidenceScore))}/100 (${displayContext.confidenceLevel})` : "—"}</strong></div>
               </>
             )}
             {displayConfidence && <div><span>Confiabilidade da interpretação{viewingPublished ? " (no publish)" : ""}</span><strong>{displayConfidence.score}/100 ({displayConfidence.level})</strong></div>}
           </div>
 
+          <PremiumDecisionSummary
+            rows={displayInterpretation}
+            sampleCount={reportSampleCount}
+            interpretationStatus={viewingPublished ? "APPROVED" : interpretation?.status ?? null}
+            prescriptionStatus={viewingPublished ? null : prescription?.status ?? null}
+            reportPublished={Boolean(publishedReport)}
+            viewingPublished={viewingPublished}
+            confidence={displayConfidence ?? null}
+            narrativeSummary={viewingPublished ? null : narrative?.responsePayload?.narrative?.summary ?? null}
+            prescriptionSummary={viewingPublished ? null : prescription?.responsePayload?.prescription?.summary ?? null}
+            managementPractices={viewingPublished ? [] : prescription?.responsePayload?.prescription?.managementPractices ?? []}
+            missingInformation={viewingPublished ? [] : prescription?.responsePayload?.prescription?.missingInformation ?? []}
+          />
+
           {viewingPublished ? (
             <section className="report-section">
-              <h2>Pontos de amostragem <span className="report-empty-note">(não fazia parte do snapshot publicado — coordenadas/GPS não são versionados nesta instância; ver &quot;Versão atual&quot;)</span></h2>
+              <h2>Pontos de amostragem <span className="report-empty-note">(não faziam parte deste formato de snapshot publicado — ver versão atual)</span></h2>
             </section>
           ) : (
             <section className="report-section">
@@ -200,13 +182,13 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
 
           {!viewingPublished && points.length > 0 && (
             <section className="report-section no-print">
-              <h2>Mapa real <span className="report-empty-note">(só na tela — no PDF, ver coordenadas na tabela de pontos de amostragem acima)</span></h2>
+              <h2>Mapa do talhão e pontos <span className="report-empty-note">(visualização interativa; coordenadas constam na tabela acima)</span></h2>
               <RealFieldMap boundary={analysis.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, gpsSource: null, notes: null, labResultCount: 0 }))} height={340}/>
             </section>
           )}
 
           <section className="report-section">
-            <h2>Parâmetros laboratoriais{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
+            <h2>Resultados laboratoriais{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
             {displayFacts.length ? (
               <div className="report-table-wrap"><table className="report-table">
                 <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Método</th></tr></thead>
@@ -231,18 +213,17 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
 
           {viewingPublished ? (
             <>
-              <section className="report-section"><h2>Síntese assistida por IA <span className="report-empty-note">(não fazia parte do snapshot publicado)</span></h2></section>
-              <section className="report-section"><h2>Prescrição assistida por IA <span className="report-empty-note">(não fazia parte do snapshot publicado)</span></h2></section>
-              <section className="report-section"><h2>Insumo: recomendado × usado <span className="report-empty-note">(não fazia parte do snapshot publicado)</span></h2></section>
+              <section className="report-section"><h2>Síntese técnica RAIZ <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
+              <section className="report-section"><h2>Recomendação Assistida RAIZ <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
+              <section className="report-section"><h2>Aderência: recomendado × aplicado <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
             </>
           ) : (
             <>
               {narrative && (
                 <section className="report-section narrative-report-section">
-                  <h2>Síntese assistida por IA</h2>
+                  <h2>Síntese técnica RAIZ</h2>
                   <p className="report-empty-note" style={{ marginBottom: 10 }}>
-                    {narrative.responsePayload.isRealLanguageModel ? `Gerado por ${narrative.provider}.` : "Gerado por motor de texto local (sem custo) — reformata os fatos e a classificação já calculados, não é um modelo de linguagem real ainda."}
-                    {" "}Status: {narrative.status === "APPROVED" ? "aprovada por revisão profissional." : "aguardando ou pendente de revisão profissional — não é conclusão definitiva."}
+                    A RAIZ organiza os fatos calculados e a classificação homologada em linguagem técnica legível. {narrative.status === "APPROVED" ? "Síntese aprovada por revisão profissional." : "Síntese ainda sujeita à revisão profissional; não é conclusão definitiva."}
                   </p>
                   <p style={{ fontSize: 12, fontWeight: 600 }}>{narrative.responsePayload.narrative.summary}</p>
                   {narrative.responsePayload.narrative.observations.length > 0 && <ul style={{ fontSize: 11, paddingLeft: 18 }}>{narrative.responsePayload.narrative.observations.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>}
@@ -251,10 +232,9 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
 
               {prescription && (
                 <section className="report-section narrative-report-section">
-                  <h2>Prescrição assistida por IA</h2>
+                  <h2>Recomendação Assistida RAIZ</h2>
                   <p className="report-empty-note" style={{ marginBottom: 10 }}>
-                    Gerado por {prescription.provider} ({prescription.model}).{" "}
-                    {prescription.status === "APPROVED" ? "Aprovada por revisão profissional — recomendação oficial." : "Aguardando ou pendente de revisão profissional — sugestão de IA, não é recomendação oficial ainda."}
+                    Gerada a partir das evidências disponíveis e da interpretação aprovada. {prescription.status === "APPROVED" ? "Aprovada pelo responsável técnico — recomendação oficial." : "Ainda em fluxo de revisão profissional — não é recomendação oficial."}
                   </p>
                   <p style={{ fontSize: 12, fontWeight: 600 }}>{prescription.responsePayload.prescription.summary}</p>
                   {prescription.responsePayload.prescription.diagnosis.length > 0 && (
@@ -265,26 +245,31 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
                       ))}</tbody>
                     </table></div>
                   )}
-                  {prescription.responsePayload.prescription.recommendations.length > 0 && (
+                  {prescription.responsePayload.prescription.recommendations.length > 0 ? (
                     <div className="report-table-wrap" style={{ marginTop: 12 }}><table className="report-table">
                       <thead><tr><th>Insumo</th><th>Dose</th><th>Justificativa</th></tr></thead>
                       <tbody>{prescription.responsePayload.prescription.recommendations.map((item: any, index: number) => (
                         <tr key={index}><td>{item.inputType}</td><td>{item.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {item.unit}</td><td style={{ fontSize: 10 }}>{item.rationale}</td></tr>
                       ))}</tbody>
                     </table></div>
+                  ) : (
+                    <div className="agro-message danger" style={{ marginTop: 12 }}><Icon name="shield" size={13}/><span><strong>Sem dose inventada.</strong> As evidências disponíveis não sustentaram uma dose numérica nesta geração; a lacuna foi preservada para revisão técnica.</span></div>
                   )}
                   {prescription.responsePayload.prescription.managementPractices.length > 0 && (
-                    <ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 10 }}>{prescription.responsePayload.prescription.managementPractices.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>
+                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Práticas de manejo priorizadas</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{prescription.responsePayload.prescription.managementPractices.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
+                  )}
+                  {prescription.responsePayload.prescription.missingInformation.length > 0 && (
+                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Informações ainda necessárias para fechar a decisão</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{prescription.responsePayload.prescription.missingInformation.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
                   )}
                   {prescription.responsePayload.prescription.sources.length > 0 && (
-                    <p className="report-empty-note" style={{ marginTop: 10 }}>Fontes: {prescription.responsePayload.prescription.sources.map((source: any) => source.title).join("; ")}</p>
+                    <p className="report-empty-note" style={{ marginTop: 10 }}>Base técnica: {prescription.responsePayload.prescription.sources.map((source: any) => `${source.title}${source.institution ? ` — ${source.institution}` : ""}`).join("; ")}</p>
                   )}
                 </section>
               )}
 
               {comparison.length > 0 && (
                 <section className="report-section">
-                  <h2>Insumo: recomendado × usado</h2>
+                  <h2>Aderência: recomendado × aplicado</h2>
                   <div className="report-table-wrap"><table className="report-table">
                     <thead><tr><th>Insumo</th><th>Recomendado</th><th>Aplicado</th><th>Situação</th></tr></thead>
                     <tbody>{comparison.map((row: any) => (
@@ -303,7 +288,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
 
           {displayInterpretation.some((item) => !item.interpretable) && (
             <section className="report-section">
-              <h2>Pendências{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
+              <h2>Pendências técnicas{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
               <ul className="report-pendencies">
                 {Array.from(new Set(displayInterpretation.filter((item) => !item.interpretable).map((item) => item.reason))).map((reason, index) => <li key={index}><Icon name="warning" size={12}/> {reason}</li>)}
               </ul>
