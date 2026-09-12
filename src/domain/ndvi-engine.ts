@@ -7,14 +7,11 @@
  * climático (orientação de manejo, nunca estimativa numérica inventada).
  *
  * Faixas usadas abaixo são as bandas de interpretação de NDVI mais citadas na literatura de
- * sensoriamento remoto agrícola (a mesma escala geral usada por USGS/EROS e pela maioria das
- * plataformas de agricultura de precisão que oferecem NDVI) -- não são específicas de nenhuma
- * cultura ou fase fenológica, por isso ficam como uma leitura geral de vigor, a ser cruzada pelo
- * agrônomo responsável com o estágio da cultura antes de virar recomendação.
+ * sensoriamento remoto agrícola -- não são específicas de nenhuma cultura ou fase fenológica, por
+ * isso ficam como uma leitura geral de vigor, a ser contextualizada pelo agrônomo responsável.
  *
- * Zero import de propósito, mesma disciplina dos outros motores agronômicos (phosphorus-engine.ts,
- * fertilizer-dose-engine.ts) -- roda em qualquer runtime (Next.js ou script standalone) sem
- * depender de alias de path.
+ * Zero import de propósito, mesma disciplina dos outros motores agronômicos -- roda em qualquer
+ * runtime (Next.js ou script standalone) sem depender de alias de path.
  */
 
 export type VigorZone = "SEM_VEGETACAO" | "BAIXO" | "MODERADO" | "ALTO" | "MUITO_ALTO";
@@ -27,7 +24,6 @@ export const VIGOR_ZONE_LABELS: Record<VigorZone, string> = {
   MUITO_ALTO: "Vigor muito alto",
 };
 
-/** Classifica um valor pontual de NDVI (-1 a 1) em uma faixa de vigor. */
 export function classifyNdviValue(ndvi: number): VigorZone {
   if (ndvi < 0.2) return "SEM_VEGETACAO";
   if (ndvi < 0.4) return "BAIXO";
@@ -38,12 +34,6 @@ export function classifyNdviValue(ndvi: number): VigorZone {
 
 export type ZoneBreakdownPct = Partial<Record<VigorZone, number>>;
 
-/**
- * A partir de um histograma de NDVI por pixel (devolvido pelo provedor de satélite), calcula o
- * percentual de área do talhão em cada faixa de vigor. `histogram` é uma lista de {ndvi, pixelCount}
- * -- o provedor real (Sentinel Hub Statistical API) já devolve os dados agregados nesse formato,
- * então este motor nunca processa pixel bruto.
- */
 export function computeZoneBreakdownPct(histogram: Array<{ ndvi: number; pixelCount: number }>): ZoneBreakdownPct {
   const totalPixels = histogram.reduce((sum, bucket) => sum + bucket.pixelCount, 0);
   if (totalPixels === 0) return {};
@@ -55,10 +45,7 @@ export function computeZoneBreakdownPct(histogram: Array<{ ndvi: number; pixelCo
     ALTO: 0,
     MUITO_ALTO: 0,
   };
-  for (const bucket of histogram) {
-    const zone = classifyNdviValue(bucket.ndvi);
-    pixelsByZone[zone] += bucket.pixelCount;
-  }
+  for (const bucket of histogram) pixelsByZone[classifyNdviValue(bucket.ndvi)] += bucket.pixelCount;
 
   const breakdown: ZoneBreakdownPct = {};
   for (const zone of Object.keys(pixelsByZone) as VigorZone[]) {
@@ -68,20 +55,9 @@ export function computeZoneBreakdownPct(histogram: Array<{ ndvi: number; pixelCo
   return breakdown;
 }
 
-export type VariabilityFlag = {
-  hasSignificantVariability: boolean;
-  note: string;
-};
-
+export type VariabilityFlag = { hasSignificantVariability: boolean; note: string };
 const VARIABILITY_THRESHOLD_PCT = 20;
 
-/**
- * Sinaliza (nunca calcula número novo) quando o talhão tem variabilidade interna relevante --
- * parcelas relevantes tanto em vigor baixo quanto em vigor alto/muito alto ao mesmo tempo. Isso é
- * uma pista de que pode haver mais de uma zona de manejo dentro do mesmo talhão (ex.: parte com
- * restrição de solo, parte não) -- a decisão de investigar ou não fica com o agrônomo responsável,
- * este motor só aponta o padrão, nunca diz a causa nem recomenda uma dose diferenciada.
- */
 export function detectWithinFieldVariability(breakdown: ZoneBreakdownPct): VariabilityFlag {
   const lowPct = (breakdown.SEM_VEGETACAO ?? 0) + (breakdown.BAIXO ?? 0);
   const highPct = (breakdown.ALTO ?? 0) + (breakdown.MUITO_ALTO ?? 0);
@@ -112,11 +88,10 @@ export type NdviHistoryPoint = {
 };
 
 /**
- * Qualidade operacional da observação com base na fração sem pixel válido DENTRO do talhão.
- * `cloudCoverPct` é o nome histórico da coluna; no pipeline atual ele representa a fração mascarada
- * pelo provedor (nuvem/sombra/pixel inválido), e não uma medição meteorológica de nebulosidade.
- * Os cortes 10%/25% são somente um gate de qualidade de produto para triagem visual; não têm valor de
- * diagnóstico agronômico e não alteram a classificação determinística do NDVI.
+ * Qualidade operacional com base na fração sem pixel válido DENTRO do talhão. `cloudCoverPct` é o
+ * nome histórico da coluna; no pipeline atual significa fração mascarada (nuvem/sombra/pixel
+ * inválido), não nebulosidade meteorológica. Os cortes 10%/25% são um gate de produto para triagem
+ * visual, não limiares agronômicos.
  */
 export function classifyNdviObservationQuality(point: Pick<NdviHistoryPoint, "cloudCoverPct">): NdviObservationQuality {
   const invalidPct = point.cloudCoverPct;
@@ -159,10 +134,13 @@ function round3(value: number): number {
 }
 
 /**
- * Compara a leitura mais recente com a anterior e, quando há histórico suficiente, com a mediana das
- * até cinco leituras anteriores. O limiar absoluto de 0,12 é um sinal OPERACIONAL conservador para
- * priorização de inspeção; não é limiar agronômico de deficiência e não considera cultura/fenologia.
- * Portanto a função nunca atribui causa, produtividade ou prescrição.
+ * Compara a leitura mais recente com a última leitura COMPARÁVEL e, quando há histórico suficiente,
+ * com a mediana de até cinco aquisições anteriores de qualidade não-baixa. Leituras com >25% da área
+ * sem pixel válido são preservadas no histórico, mas não entram no baseline; se a leitura atual tiver
+ * qualidade baixa, ela também não pode disparar `hasRelevantTemporalChange`.
+ *
+ * O limiar absoluto de 0,12 continua sendo somente um sinal OPERACIONAL conservador para priorização
+ * de inspeção; não é limiar de deficiência, não conhece cultura/fenologia e nunca autoriza prescrição.
  */
 export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTemporalAnalysis {
   const ordered = history
@@ -187,12 +165,15 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
   }
 
   const latest = ordered[ordered.length - 1];
-  const previous = ordered.length > 1 ? ordered[ordered.length - 2] : null;
-  const prior = ordered.slice(0, -1).slice(-MAX_BASELINE_POINTS);
+  const latestQuality = classifyNdviObservationQuality(latest);
+  const comparablePrior = ordered.slice(0, -1).filter((point) => classifyNdviObservationQuality(point) !== "BAIXA");
+  const previous = comparablePrior.at(-1) ?? null;
+  const prior = comparablePrior.slice(-MAX_BASELINE_POINTS);
   const baselineMedian = prior.length >= MIN_BASELINE_POINTS ? median(prior.map((point) => point.meanNdvi)) : null;
   const deltaFromPrevious = previous ? round3(latest.meanNdvi - previous.meanNdvi) : null;
   const deltaFromBaseline = baselineMedian == null ? null : round3(latest.meanNdvi - baselineMedian);
-  const hasRelevantTemporalChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= TEMPORAL_CHANGE_THRESHOLD;
+  const rawRelevantChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= TEMPORAL_CHANGE_THRESHOLD;
+  const hasRelevantTemporalChange = latestQuality !== "BAIXA" && rawRelevantChange;
 
   let direction: NdviTemporalDirection = "SEM_BASELINE";
   if (deltaFromBaseline != null) {
@@ -206,22 +187,25 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
   }
 
   let note = "Histórico ainda curto para comparar a leitura atual com uma linha de base do próprio talhão.";
-  if (baselineMedian != null && deltaFromBaseline != null) {
+  if (latestQuality === "BAIXA") {
+    const masked = latest.cloudCoverPct == null ? "mais de 25%" : `${Math.round(latest.cloudCoverPct)}%`;
+    note = `A leitura atual tem qualidade baixa (${masked} da área sem pixel válido). Ela permanece disponível para inspeção visual, mas não dispara sinal temporal acionável; use uma aquisição de melhor qualidade antes de concluir tendência.`;
+  } else if (baselineMedian != null && deltaFromBaseline != null) {
     if (hasRelevantTemporalChange) {
       const verb = deltaFromBaseline > 0 ? "acima" : "abaixo";
-      note = `A leitura atual está ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI ${verb} da mediana das ${prior.length} leituras anteriores. É um sinal temporal para investigação, não uma causa agronômica: estágio da cultura, manejo, clima e qualidade da imagem precisam ser conferidos antes de qualquer conclusão.`;
+      note = `A leitura atual está ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI ${verb} da mediana das ${prior.length} aquisições anteriores comparáveis. É um sinal temporal para investigação, não uma causa agronômica: estágio da cultura, manejo e clima precisam ser conferidos antes de qualquer conclusão.`;
     } else {
-      note = `A leitura atual permanece próxima da mediana das ${prior.length} leituras anteriores (diferença de ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI).`;
+      note = `A leitura atual permanece próxima da mediana das ${prior.length} aquisições anteriores comparáveis (diferença de ${Math.abs(deltaFromBaseline).toFixed(2)} ponto de NDVI).`;
     }
   } else if (previous && deltaFromPrevious != null) {
-    note = `Comparação disponível apenas com a leitura anterior: variação de ${deltaFromPrevious >= 0 ? "+" : ""}${deltaFromPrevious.toFixed(2)} ponto de NDVI. Ainda não há linha de base suficiente para sinal temporal robusto.`;
+    note = `Comparação disponível apenas com a última aquisição comparável: variação de ${deltaFromPrevious >= 0 ? "+" : ""}${deltaFromPrevious.toFixed(2)} ponto de NDVI. Ainda não há linha de base suficiente para sinal temporal robusto.`;
   }
 
   return {
     direction,
     latestCapturedAt: latest.capturedAt,
     latestMeanNdvi: latest.meanNdvi,
-    latestQuality: classifyNdviObservationQuality(latest),
+    latestQuality,
     previousCapturedAt: previous?.capturedAt ?? null,
     previousMeanNdvi: previous?.meanNdvi ?? null,
     deltaFromPrevious,
