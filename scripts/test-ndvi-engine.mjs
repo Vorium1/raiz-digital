@@ -143,4 +143,30 @@ assert.deepEqual(summarizePixelValidity(100, 150), {
   maskedPixelPct: 100,
 });
 
-console.log("ndvi-engine: 25 cenários aprovados (vigor, temporal, qualidade, pixels válidos e envelope espacial)");
+// 26. Uma imagem atual ruim pode parecer uma queda enorme, mas NÃO vira alerta temporal acionável.
+const lowQualityLatest = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.72, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-10", meanNdvi: 0.73, cloudCoverPct: 5 },
+  { capturedAt: "2026-07-20", meanNdvi: 0.71, cloudCoverPct: 7 },
+  { capturedAt: "2026-08-01", meanNdvi: 0.70, cloudCoverPct: 6 },
+  { capturedAt: "2026-08-12", meanNdvi: 0.31, cloudCoverPct: 42 },
+]);
+assert.equal(lowQualityLatest.latestQuality, "BAIXA");
+assert.equal(lowQualityLatest.direction, "QUEDA");
+assert.equal(lowQualityLatest.hasRelevantTemporalChange, false);
+assert.ok(lowQualityLatest.note.includes("não dispara sinal temporal acionável"));
+
+// 27. Uma aquisição histórica ruim é preservada, mas não contamina a mediana do baseline.
+const badPriorExcluded = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.70, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-08", meanNdvi: 0.20, cloudCoverPct: 40 },
+  { capturedAt: "2026-07-15", meanNdvi: 0.72, cloudCoverPct: 8 },
+  { capturedAt: "2026-07-22", meanNdvi: 0.71, cloudCoverPct: 9 },
+  { capturedAt: "2026-08-05", meanNdvi: 0.55, cloudCoverPct: 7 },
+]);
+assert.equal(badPriorExcluded.baselineCount, 3);
+assert.equal(badPriorExcluded.baselineMedian, 0.71);
+assert.equal(badPriorExcluded.deltaFromBaseline, -0.16);
+assert.equal(badPriorExcluded.hasRelevantTemporalChange, true);
+
+console.log("ndvi-engine: 27 cenários aprovados (vigor, temporal, gate de qualidade, pixels válidos e envelope espacial)");
