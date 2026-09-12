@@ -1,33 +1,60 @@
 import type { FieldOverview } from "@/lib/repositories/field-overview";
+import {
+  analyzeNdviTemporalHistory,
+  classifyNdviObservationQuality,
+  NDVI_QUALITY_LABELS,
+  type NdviTemporalDirection,
+} from "./ndvi-engine.ts";
 
 type SeasonOrder = FieldOverview["orders"][number];
 type SeasonAnalysis = FieldOverview["analyses"][number];
 type SeasonReport = FieldOverview["reports"][number];
+type NdviSnapshot = FieldOverview["ndviSnapshots"][number];
+
+export type FieldOverviewSatelliteStatus = {
+  label: string;
+  tone: "success" | "review" | "waiting";
+  direction: NdviTemporalDirection | "SEM_DADO";
+  href: string;
+};
 
 /**
- * Síntese estruturada da Visão Geral do Talhão 360° (Fase 2, Bloco C): "o que está disponível", "o que
- * exige atenção" e "próxima ação". Cada item é derivado de contagens e estados REAIS já carregados --
- * nenhuma frase genérica de preenchimento, nenhum diagnóstico, responsável ou prazo inventado. A "próxima
- * ação" segue sempre a mesma cadeia determinística do fluxo operacional real (safra -> coleta -> laudo ->
- * revisão -> publicação), nunca uma sugestão da IA.
+ * Síntese estruturada da Visão Geral do Talhão 360°. Cada item é derivado de contagens e estados
+ * REAIS já carregados. A camada de satélite só acrescenta sinais operacionais comprováveis:
+ * qualidade da observação e mudança do NDVI em relação ao histórico do próprio talhão. Ela nunca
+ * transforma NDVI em produtividade, nunca atribui causa agronômica e nunca toma o lugar do fluxo
+ * laudo -> interpretação -> revisão -> relatório.
  */
 export type FieldOverviewSynthesis = {
   available: string[];
   attention: string[];
   nextAction: { label: string; href: string } | null;
+  satelliteStatus: FieldOverviewSatelliteStatus;
 };
 
+function formatDateOnly(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return value;
+}
+
+function signedNdvi(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
 export function computeFieldOverviewSynthesis(input: {
+  fieldId: string;
   hasSeason: boolean;
   seasonOrders: SeasonOrder[];
   seasonAnalyses: SeasonAnalysis[];
   seasonReports: SeasonReport[];
-  latestNdviCapturedAt: string | null;
+  ndviSnapshots: NdviSnapshot[];
   gpsPct: number | null;
 }): FieldOverviewSynthesis {
-  const { hasSeason, seasonOrders, seasonAnalyses, seasonReports, latestNdviCapturedAt, gpsPct } = input;
+  const { fieldId, hasSeason, seasonOrders, seasonAnalyses, seasonReports, ndviSnapshots, gpsPct } = input;
   const available: string[] = [];
   const attention: string[] = [];
+  const satelliteHref = `/talhoes/${fieldId}?aba=evidencias&evidencia=satelite`;
 
   const totalPlanned = seasonOrders.reduce((sum, o) => sum + o.plannedPoints, 0);
   const totalCollected = seasonOrders.reduce((sum, o) => sum + o.collectedPoints, 0);
@@ -51,14 +78,60 @@ export function computeFieldOverviewSynthesis(input: {
 
   if (seasonReports.length > 0) available.push(`${seasonReports.length} ${seasonReports.length === 1 ? "relatório publicado" : "relatórios publicados"} nesta safra.`);
 
-  if (latestNdviCapturedAt) available.push(`Última leitura de satélite (histórico do talhão): ${new Date(latestNdviCapturedAt).toLocaleDateString("pt-BR")}.`);
-  else attention.push("Nenhuma leitura de satélite registrada ainda para este talhão.");
+  const temporal = analyzeNdviTemporalHistory(ndviSnapshots.map((snapshot) => ({
+    capturedAt: snapshot.capturedAt,
+    meanNdvi: snapshot.meanNdvi,
+    cloudCoverPct: snapshot.cloudCoverPct,
+    pixelCount: snapshot.pixelCount,
+  })));
+  const latestNdvi = ndviSnapshots[0] ?? null;
 
-  if (gpsPct != null) {
-    if (gpsPct < 100) attention.push(`Apenas ${gpsPct}% dos pontos coletados (histórico do talhão) têm GPS confirmado em campo — os demais usam a posição planejada.`);
+  let satelliteStatus: FieldOverviewSatelliteStatus;
+  if (!latestNdvi) {
+    satelliteStatus = { label: "Sem leitura", tone: "waiting", direction: "SEM_DADO", href: satelliteHref };
+    attention.push("Nenhuma leitura de satélite registrada ainda para este talhão.");
+  } else {
+    const latestQuality = classifyNdviObservationQuality(latestNdvi);
+    available.push(
+      `${ndviSnapshots.length} ${ndviSnapshots.length === 1 ? "aquisição Sentinel-2 registrada" : "aquisições Sentinel-2 registradas"}; ` +
+      `última em ${formatDateOnly(latestNdvi.capturedAt)}, NDVI médio ${latestNdvi.meanNdvi.toFixed(2)} (${NDVI_QUALITY_LABELS[latestQuality].toLowerCase()}).`,
+    );
+
+    if (latestQuality === "BAIXA") {
+      const masked = latestNdvi.cloudCoverPct == null ? "uma fração relevante" : `${Math.round(latestNdvi.cloudCoverPct)}%`;
+      attention.push(`A última aquisição Sentinel-2 tem ${masked} da área sem pixel válido; prefira uma aquisição de melhor qualidade antes de interpretar o padrão espacial.`);
+    }
+
+    if (temporal.hasRelevantTemporalChange && temporal.deltaFromBaseline != null) {
+      const relation = temporal.deltaFromBaseline < 0 ? "abaixo" : "acima";
+      attention.push(
+        `Sinal temporal de satélite: a leitura atual está ${Math.abs(temporal.deltaFromBaseline).toFixed(2)} ponto de NDVI ${relation} da mediana das ${temporal.baselineCount} aquisições anteriores. ` +
+        "Isso prioriza investigação; não identifica causa, deficiência ou produtividade.",
+      );
+    }
+
+    if (temporal.hasRelevantTemporalChange) {
+      satelliteStatus = {
+        label: temporal.direction === "QUEDA" ? `Queda ${signedNdvi(temporal.deltaFromBaseline ?? temporal.deltaFromPrevious ?? 0)}` : `Alta ${signedNdvi(temporal.deltaFromBaseline ?? temporal.deltaFromPrevious ?? 0)}`,
+        tone: "review",
+        direction: temporal.direction,
+        href: satelliteHref,
+      };
+    } else if (latestQuality === "BAIXA") {
+      satelliteStatus = { label: "Qualidade baixa", tone: "waiting", direction: temporal.direction, href: satelliteHref };
+    } else if (temporal.baselineMedian != null) {
+      satelliteStatus = { label: "Histórico estável", tone: "success", direction: temporal.direction, href: satelliteHref };
+    } else {
+      satelliteStatus = { label: "Histórico em formação", tone: "waiting", direction: temporal.direction, href: satelliteHref };
+    }
   }
 
-  // Próxima ação: cadeia real do fluxo operacional, sempre a primeira etapa real ainda não concluída.
+  if (gpsPct != null && gpsPct < 100) {
+    attention.push(`Apenas ${gpsPct}% dos pontos coletados (histórico do talhão) têm GPS confirmado em campo — os demais usam a posição planejada.`);
+  }
+
+  // Próxima ação principal: cadeia real do fluxo operacional. Satélite só vira próxima ação quando o
+  // fluxo agronômico principal não tem pendência, para nunca competir com coleta/laudo/revisão.
   let nextAction: FieldOverviewSynthesis["nextAction"] = null;
   if (!hasSeason) {
     nextAction = { label: "Cadastrar uma safra para este talhão", href: "/clientes" };
@@ -78,8 +151,10 @@ export function computeFieldOverviewSynthesis(input: {
     else {
       const approvedWithoutReport = seasonAnalyses.find((a) => a.latestInterpretationStatus === "APPROVED" && !seasonReports.some((r) => r.analysisId === a.id));
       if (approvedWithoutReport) nextAction = { label: "Publicar o relatório da interpretação aprovada", href: `/analises/${approvedWithoutReport.id}` };
+      else if (!latestNdvi) nextAction = { label: "Buscar histórico Sentinel-2 deste talhão", href: satelliteHref };
+      else if (temporal.hasRelevantTemporalChange) nextAction = { label: "Revisar o sinal temporal no Satélite", href: satelliteHref };
     }
   }
 
-  return { available, attention, nextAction };
+  return { available, attention, nextAction, satelliteStatus };
 }
