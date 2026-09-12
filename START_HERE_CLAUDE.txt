@@ -1,13 +1,22 @@
-RAIZ DIGITAL — INÍCIO DO HANDOFF
+RAIZ DIGITAL — INÍCIO DO HANDOFF ATUAL
 
 1) Abra e leia CLAUDE.md.
-2) Leia docs/MASTER_HANDOFF_CLAUDE.md e docs/PROJECT_STATE.md.
-3) Não comece reescrevendo o projeto.
-4) A v0.4 é a última baseline consolidada.
-5) O diretório atual contém o início interrompido da v0.5.
-6) Faça auditoria, instale dependências, rode testes/typecheck/build, suba Postgres/PostGIS e valide RLS antes de avançar.
-7) Depois feche a v0.5 conforme docs/ROADMAP_PRODUCT.md.
+2) Leia primeiro docs/CURRENT_STATE_2026-09-12.md. Ele prevalece sobre handoffs antigos em caso de conflito.
+3) Consulte docs/PROJECT_STATE.md e demais documentos como histórico, não como estado mais recente.
+4) Não recomece o projeto, não troque a stack e não redesenhe a arquitetura consolidada.
+5) `main` é produção e não deve receber merge sem aprovação explícita do responsável do produto após Preview.
+6) `develop` é a baseline de desenvolvimento/homologação.
+7) Antes de qualquer alteração: confira branch/HEAD, rode typecheck, `test:handoff` e build.
+8) Preserve a governança: motor determinístico é autoridade de cálculo/classificação; IA só trabalha sobre evidência; recomendação e publicação exigem gates e revisão profissional.
+9) Nunca invente faixa, método, datum, coordenada, dose, fonte ou dado ausente para “fazer a tela funcionar”.
+10) Nunca commite pacotes brutos, GeoJSON, shapefiles ou coordenadas exatas de clientes.
+
+Prioridade atual:
+- fechar o golden case Cabeda em DEV;
+- manter CABEDA 01/02 com georreferenciamento real auditado e Área 03 sem geometria inferida;
+- concluir o fluxo laudo → interpretação → aprovação → Recomendação Assistida RAIZ → revisão → decisão oficial;
+- avançar experiência espacial/satélite e polimento comercial somente com dado real/rastreável.
 
 Mensagem sugerida ao Claude:
 
-"Abra o projeto RAIZ Digital recebido e leia CLAUDE.md antes de qualquer alteração. Faça primeiro a auditoria obrigatória descrita no handoff. Não recomece, não troque a stack e não redesenhe o produto. Corrija o que falhar, valide a baseline e o snapshot v0.5, e só então avance a v0.5. Trabalhe em commits pequenos, rode testes e atualize PROJECT_STATE.md."
+"Abra a RAIZ Digital e leia CLAUDE.md + docs/CURRENT_STATE_2026-09-12.md antes de qualquer alteração. Não recomece o projeto e não altere main. Audite a baseline de develop, rode typecheck/test:handoff/build e continue do estado atual. Preserve os gates técnicos, a rastreabilidade e a regra de nunca inventar dado agronômico ou espacial. Priorize Cabeda golden case, entrega oficial e valor percebido do produto."
