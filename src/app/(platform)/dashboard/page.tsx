@@ -8,6 +8,7 @@ import { analyses, dashboardMetrics, samplePoints, tasks } from "@/lib/demo-data
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getDashboardSnapshot, getExecutiveDashboard, getDashboardFilterOptions, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
+import { getActivationSnapshot, type ActivationSnapshot } from "@/lib/repositories/activation";
 import { listAnalyses } from "@/lib/repositories/analyses";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-ui";
@@ -21,13 +22,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const params = await searchParams;
     const session = await requirePlatformSession();
     const filters = { clientId: params.clientId, propertyId: params.propertyId, cropSeasonId: params.cropSeasonId };
-    const [snapshot, recent, executive, filterOptions, alerts, portfolioFields] = await Promise.all([
+    const [snapshot, recent, executive, filterOptions, alerts, portfolioFields, activation] = await Promise.all([
       getDashboardSnapshot(session.tenantId, session.userId, filters.clientId ?? null),
       listAnalyses(session.tenantId, session.userId, filters.clientId ?? null),
       getExecutiveDashboard(session.tenantId, filters, session.userId),
       getDashboardFilterOptions(session.tenantId, session.userId),
       listOperationalAlerts(session.tenantId, session.userId),
       getPortfolioFieldSummaries(session.tenantId, filters, session.userId),
+      getActivationSnapshot(session.tenantId, session.userId),
     ]);
 
     const GROUPABLE_CATEGORIES = new Set(["Aviso climático da safra"]);
@@ -57,6 +59,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         criticalAlertCount={alerts.filter((alert) => alert.criticality === "ALTA").length}
         priorities={priorities}
         portfolioFields={portfolioFields}
+        activation={activation}
       />
     );
   }
@@ -75,6 +78,7 @@ function DatabaseDashboard({
   criticalAlertCount,
   priorities,
   portfolioFields,
+  activation,
 }: {
   sessionName: string;
   snapshot: any;
@@ -85,10 +89,10 @@ function DatabaseDashboard({
   criticalAlertCount: number;
   priorities: any[];
   portfolioFields: any[];
+  activation: ActivationSnapshot;
 }) {
   const firstName = sessionName.trim().split(/\s+/)[0] || "equipe";
   const priority = snapshot.awaitingReview + snapshot.inconsistent;
-  const approvedFields = portfolioFields.filter((field) => field.evaluationStatus === "APROVADO").length;
 
   const metrics = [
     { label: "Análises ativas", value: snapshot.activeAnalyses, detail: `${snapshot.inconsistent} com inconsistência`, icon: "flask" },
@@ -125,13 +129,13 @@ function DatabaseDashboard({
       </section>
 
       <DashboardActivationJourney
-        clients={snapshot.clients}
-        properties={executive.properties}
-        fields={executive.fields}
-        seasons={executive.seasonsInProgress}
-        totalPoints={executive.totalPoints}
-        labsProcessed={executive.labsProcessed}
-        approvedFields={approvedFields}
+        clients={activation.clients}
+        properties={activation.properties}
+        fields={activation.fields}
+        seasons={activation.seasons}
+        totalPoints={activation.totalPoints}
+        labsProcessed={activation.labsProcessed}
+        approvedFields={activation.approvedFields}
       />
 
       {priorities.length > 0 && (
