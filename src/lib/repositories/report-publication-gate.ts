@@ -16,9 +16,12 @@ type GateInput = {
 };
 
 export class ReportPublicationGateError extends Error {
-  constructor(message: string, public status = 409) {
+  status: number;
+
+  constructor(message: string, status = 409) {
     super(message);
     this.name = "ReportPublicationGateError";
+    this.status = status;
   }
 }
 
