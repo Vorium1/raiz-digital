@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { DashboardFilters } from "@/components/dashboard-filters";
+import { DecisionPortfolioFunnelCard } from "@/components/decision-portfolio-funnel";
 import { analyses, dashboardMetrics, samplePoints, tasks } from "@/lib/demo-data";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -20,33 +21,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const params = await searchParams;
     const session = await requirePlatformSession();
     const filters = { clientId: params.clientId, propertyId: params.propertyId, cropSeasonId: params.cropSeasonId };
-    // getDashboardSnapshot e listAnalyses agora recebem o mesmo filtro de cliente que o painel executivo --
-    // antes só o painel executivo respeitava o filtro selecionado, e o resto da tela (hero, indicadores,
-    // fluxo de análises) continuava mostrando a carteira inteira sem avisar (bug real confirmado na
-    // auditoria, item A). listOperationalAlerts continua global de propósito (central de alertas cobre a
-    // carteira toda) -- por isso o teaser abaixo diz isso explicitamente.
     const [snapshot, recent, executive, filterOptions, alerts, portfolioFields] = await Promise.all([
       getDashboardSnapshot(session.tenantId, session.userId, filters.clientId ?? null),
       listAnalyses(session.tenantId, session.userId, filters.clientId ?? null),
       getExecutiveDashboard(session.tenantId, filters, session.userId),
       getDashboardFilterOptions(session.tenantId, session.userId),
       listOperationalAlerts(session.tenantId, session.userId),
-      // Mapa da carteira (Etapa 4, item C): mesmo filtro de cliente/propriedade/safra do resto da tela --
-      // consulta agregada única (getPortfolioFieldSummaries), nunca uma consulta por talhão.
       getPortfolioFieldSummaries(session.tenantId, filters, session.userId),
     ]);
-    // "Prioridades acionáveis" (RAIZ 2.0, Etapa 4): as 8 mais urgentes, ordenadas por criticidade real
-    // (ALTA > MEDIA > BAIXA) e, dentro da mesma criticidade, pela data mais antiga primeiro (o que está
-    // esperando há mais tempo sobe). Mesma fonte de dado da Central de Alertas -- nenhuma prioridade
-    // inventada, só uma leitura priorizada do que já existe.
-    //
-    // Antes de ordenar: agrupa alertas do MESMO evento numa linha só, preservando fonte/validade (a
-    // descrição não muda) e juntando as áreas afetadas -- pedido explícito do briefing ("agrupe alertas
-    // repetidos quando houver identidade confiável do evento"). Restrito de propósito a categorias onde UM
-    // evento real dispara vários alertas iguais por natureza (hoje só "Aviso climático da safra", que é o
-    // mesmo aviso oficial repetido por talhão) -- agrupar por "mesmo título" de forma genérica quebrou em
-    // teste real: "2 de 3 pontos pendentes" de ordens DIFERENTES por coincidência têm o mesmo título, mas
-    // são eventos reais distintos (ordens de coleta diferentes) que não podem ser fundidos numa linha só.
     const GROUPABLE_CATEGORIES = new Set(["Aviso climático da safra"]);
     const grouped = new Map<string, typeof alerts[number] & { affectedAreas: string[] }>();
     for (const alert of alerts) {
@@ -62,14 +44,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       if (a.date && b.date) return new Date(a.date).getTime() - new Date(b.date).getTime();
       return a.date ? -1 : b.date ? 1 : 0;
     }).slice(0, 8);
-    return <DatabaseDashboard sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} priorities={priorities} portfolioFields={portfolioFields} />;
+    return <DatabaseDashboard tenantId={session.tenantId} userId={session.userId} filters={filters} sessionName={session.name} snapshot={snapshot} recent={recent.slice(0,4)} executive={executive} filterOptions={filterOptions} alertCount={alerts.length} criticalAlertCount={alerts.filter((a)=>a.criticality==="ALTA").length} priorities={priorities} portfolioFields={portfolioFields} />;
   }
   return <DemoDashboard/>;
 }
 
 const PRIORITY_TONE: Record<string, "danger" | "review" | "waiting"> = { ALTA: "danger", MEDIA: "review", BAIXA: "waiting" };
 
-function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount, priorities, portfolioFields }: { sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number; priorities: any[]; portfolioFields: any[] }) {
+function DatabaseDashboard({ tenantId, userId, filters, sessionName, snapshot, recent, executive, filterOptions, alertCount, criticalAlertCount, priorities, portfolioFields }: { tenantId: string; userId: string; filters: { clientId?: string; propertyId?: string; cropSeasonId?: string }; sessionName: string; snapshot: any; recent: any[]; executive: any; filterOptions: any; alertCount: number; criticalAlertCount: number; priorities: any[]; portfolioFields: any[] }) {
   const firstName = sessionName.trim().split(/\s+/)[0] || "equipe";
   const priority = snapshot.awaitingReview + snapshot.inconsistent;
   const metrics = [
@@ -99,10 +81,8 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
         <div className="live-system-card"><span><i/>DADOS REAIS</span><strong>{snapshot.clients}</strong><small>clientes isolados nesta empresa</small><dl><div><dt>Revisões</dt><dd>{snapshot.awaitingReview}</dd></div><div><dt>Inconsistências</dt><dd>{snapshot.inconsistent}</dd></div><div><dt>Coletas</dt><dd>{snapshot.collectedPoints}</dd></div></dl></div>
       </section>
 
-      {/* "Prioridades acionáveis" (RAIZ 2.0, Fase 1, Etapa 4): responde "o que exige atenção, onde, por
-          quê e qual a próxima ação" -- mesma fonte de dado da Central de Alertas (por isso global/toda a
-          carteira, igual ao teaser abaixo), só que aqui já mostrada como lista priorizada em vez de só um
-          contador. Cada linha é clicável direto pro destino real (não pro índice genérico de alertas). */}
+      <DecisionPortfolioFunnelCard tenantId={tenantId} userId={userId} filters={filters}/>
+
       {priorities.length > 0 && (
         <section className="card" style={{ marginBottom: 18 }}>
           <div className="field-ops-section-head compact"><div><span className="eyebrow">PRIORIDADES ACIONÁVEIS · TODA A CARTEIRA</span><h2>O que precisa de atenção agora</h2></div><Link href="/alertas">Ver todas <Icon name="arrow" size={15}/></Link></div>
@@ -126,9 +106,6 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
         </section>
       )}
 
-      {/* Mapa da carteira (Etapa 4, item C) -- respeita o mesmo filtro de cliente/propriedade/safra do
-          resto da tela (getPortfolioFieldSummaries recebe os mesmos `filters`). Cor vem sempre do status
-          real de avaliação calculado no banco, nunca de uma criticidade inventada aqui. */}
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="field-ops-section-head compact"><div><span className="eyebrow">MAPA DA CARTEIRA</span><h2>{portfolioFields.length} talhão(ões) no filtro atual</h2></div></div>
         {portfolioFields.length > 0 ? <PortfolioMap fields={portfolioFields}/> : <div className="chart-empty">Nenhum talhão cadastrado neste filtro ainda.</div>}
@@ -141,9 +118,6 @@ function DatabaseDashboard({ sessionName, snapshot, recent, executive, filterOpt
           {executiveMetrics.map((metric) => <div className="executive-metric" key={metric.label}><Icon name={metric.icon} size={17}/><div><strong>{metric.value}</strong><span>{metric.label}</span></div></div>)}
         </div>
         <div className="dashboard-teasers">
-          {/* Central de alertas é intencionalmente global (cobre a carteira toda, não só o cliente
-              filtrado acima) -- por isso diz isso explicitamente, em vez de parecer só mais um número
-              filtrado igual aos outros (item A/Etapa 4: informação global precisa estar identificada). */}
           <Link href="/alertas" className="dashboard-teaser">
             <Icon name="warning" size={20}/>
             <div><strong>{alertCount} alerta(s) ativo(s)</strong><small>{criticalAlertCount} de criticidade alta · toda a carteira</small></div>
