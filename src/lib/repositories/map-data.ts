@@ -35,12 +35,52 @@ export type MapLayerResult = {
   reportId: string | null;
 };
 
+export type FieldSoilMapContext = {
+  collectionOrderId: string;
+  collectionOrderCode: string;
+  seasonLabel: string;
+  depthFromCm: number;
+  depthToCm: number;
+};
+
 /**
- * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos
- * reais (PostGIS) cruzados com a classificação já homologada da última
- * interpretação, quando existir, para o parâmetro escolhido. Sem parâmetro
- * selecionado, ou sem interpretação, os pontos aparecem só com status de
- * coleta -- nunca com uma classificação inventada.
+ * Resolve a ordem de coleta mais recente do talhão que realmente possui resultado laboratorial.
+ * É usada pelo painel Satélite quando ele não recebeu uma ordem explícita da tela. Nunca escolhe uma
+ * ordem vazia só por ser mais nova e nunca atravessa tenant/RLS.
+ */
+export async function getLatestFieldSoilMapContext(input: {
+  tenantId: string;
+  userId?: string;
+  fieldId: string;
+}): Promise<FieldSoilMapContext | null> {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query<FieldSoilMapContext>(
+      `SELECT co.id::text AS "collectionOrderId", co.code AS "collectionOrderCode",
+              cs.season_label AS "seasonLabel", co.depth_from_cm::float8 AS "depthFromCm",
+              co.depth_to_cm::float8 AS "depthToCm"
+       FROM collection_orders co
+       JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
+       WHERE co.tenant_id = $1::uuid AND cs.field_id = $2::uuid
+         AND EXISTS (
+           SELECT 1
+           FROM sample_points sp
+           JOIN lab_samples ls ON ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
+           JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+           WHERE sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
+         )
+       ORDER BY co.created_at DESC
+       LIMIT 1`,
+      [input.tenantId, input.fieldId],
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+/**
+ * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos reais (PostGIS) cruzados
+ * com a classificação já homologada da última interpretação, quando existir. A posição renderizada
+ * privilegia `observed_position` quando existe; só cai para a posição planejada quando não há captura
+ * observada. As duas continuam separadas no payload para auditoria.
  */
 export async function getFieldMapLayer(input: { tenantId: string; userId?: string; collectionOrderId: string; parameterCode: string | null }): Promise<MapLayerResult | null> {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -67,7 +107,9 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
     const availableParameters = paramsResult.rows.map((row) => row.code);
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, sp.sequence, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+      `SELECT sp.id::text, sp.code, sp.sequence,
+              ST_Y(COALESCE(sp.observed_position, sp.position))::float8 AS latitude,
+              ST_X(COALESCE(sp.observed_position, sp.position))::float8 AS longitude,
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position) END AS "observedLatitude",
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position) END AS "observedLongitude",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
