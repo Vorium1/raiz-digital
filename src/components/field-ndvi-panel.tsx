@@ -27,6 +27,13 @@ type SoilLayerResponse = {
   analysisId: string | null;
   reportId: string | null;
 };
+type SoilMapContext = {
+  collectionOrderId: string;
+  collectionOrderCode: string;
+  seasonLabel: string;
+  depthFromCm: number;
+  depthToCm: number;
+};
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
 export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
@@ -68,10 +75,10 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
 
 /**
  * Centro de inteligência Sentinel-2 do talhão. Combina raster NDVI espacial real, distribuição de
- * vigor, qualidade, série temporal e variabilidade. Quando existe uma ordem de coleta selecionada,
- * também permite sobrepor os pontos laboratoriais reais ao raster para inspeção espacial lado a lado.
- * A sobreposição NÃO calcula correlação, não atribui causa e não transforma coincidência espacial em
- * diagnóstico: é uma ferramenta visual de investigação para o agrônomo responsável.
+ * vigor, qualidade, série temporal e variabilidade. Também permite sobrepor pontos laboratoriais
+ * reais ao raster para inspeção espacial lado a lado. Se a tela não fornecer uma ordem de coleta,
+ * o backend resolve a ordem mais recente do próprio talhão que realmente possua resultados de laudo.
+ * A sobreposição não calcula correlação, não atribui causa e não produz prescrição automática.
  */
 export function FieldNdviPanel({
   fieldId,
@@ -96,11 +103,14 @@ export function FieldNdviPanel({
   const [rasterLoading, setRasterLoading] = useState(false);
   const [rasterError, setRasterError] = useState<string | null>(null);
   const [rasterOverlay, setRasterOverlay] = useState<MapImageOverlay | null>(null);
+  const [fallbackSoilContext, setFallbackSoilContext] = useState<SoilMapContext | null>(null);
   const [soilParameter, setSoilParameter] = useState("");
   const [soilAvailableParameters, setSoilAvailableParameters] = useState<string[]>([]);
   const [soilPoints, setSoilPoints] = useState<MapPoint[]>([]);
   const [soilLoading, setSoilLoading] = useState(false);
   const [soilError, setSoilError] = useState<string | null>(null);
+
+  const effectiveCollectionOrderId = collectionOrderId ?? fallbackSoilContext?.collectionOrderId ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -177,14 +187,34 @@ export function FieldNdviPanel({
   }, [fieldId, selectedRasterDate, fieldBoundary]);
 
   useEffect(() => {
+    if (collectionOrderId) {
+      setFallbackSoilContext(null);
+      return;
+    }
+    const controller = new AbortController();
+    void fetch(`/api/fields/${fieldId}/soil-map-context`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Não foi possível resolver a coleta de solo (HTTP ${response.status}).`);
+        return response.json() as Promise<{ context: SoilMapContext | null }>;
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setFallbackSoilContext(payload.context ?? null);
+      })
+      .catch((caught) => {
+        if (!controller.signal.aborted) setSoilError(caught instanceof Error ? caught.message : "Falha ao resolver a coleta de solo.");
+      });
+    return () => controller.abort();
+  }, [fieldId, collectionOrderId]);
+
+  useEffect(() => {
     setSoilParameter("");
     setSoilAvailableParameters([]);
     setSoilPoints([]);
     setSoilError(null);
-  }, [collectionOrderId]);
+  }, [effectiveCollectionOrderId]);
 
   useEffect(() => {
-    if (!collectionOrderId) {
+    if (!effectiveCollectionOrderId) {
       setSoilLoading(false);
       return;
     }
@@ -192,7 +222,7 @@ export function FieldNdviPanel({
     setSoilLoading(true);
     setSoilError(null);
     const query = soilParameter ? `?parameter=${encodeURIComponent(soilParameter)}` : "";
-    void fetch(`/api/collection-orders/${collectionOrderId}/map-layer${query}`, { cache: "no-store", signal: controller.signal })
+    void fetch(`/api/collection-orders/${effectiveCollectionOrderId}/map-layer${query}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Não foi possível carregar a camada de solo (HTTP ${response.status}).`);
         return response.json() as Promise<SoilLayerResponse>;
@@ -210,7 +240,7 @@ export function FieldNdviPanel({
         setSoilError(caught instanceof Error ? caught.message : "Falha ao carregar a camada de solo.");
       });
     return () => controller.abort();
-  }, [collectionOrderId, soilParameter]);
+  }, [effectiveCollectionOrderId, soilParameter]);
 
   async function handleFetchSatellite() {
     setFetching(true);
@@ -315,7 +345,7 @@ export function FieldNdviPanel({
                 )}
               </div>
 
-              {collectionOrderId && soilAvailableParameters.length > 0 && (
+              {effectiveCollectionOrderId && soilAvailableParameters.length > 0 && (
                 <div className="field-overview-parameter-toolbar">
                   <label><span>Solo × satélite</span>
                     <select value={soilParameter} onChange={(event) => setSoilParameter(event.target.value)}>
@@ -324,10 +354,11 @@ export function FieldNdviPanel({
                     </select>
                   </label>
                   <span className="field-overview-depth-context"><Icon name="layers" size={13}/>{soilParameter ? `Pontos laboratoriais de ${soilParameter} sobre o raster` : "Escolha um parâmetro para cruzamento visual"}</span>
+                  {fallbackSoilContext && !collectionOrderId && <span className="field-overview-depth-context">{fallbackSoilContext.collectionOrderCode} · {fallbackSoilContext.seasonLabel} · {fallbackSoilContext.depthFromCm}–{fallbackSoilContext.depthToCm} cm</span>}
                 </div>
               )}
               {soilParameter && <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>Cruzamento visual apenas: o fundo mostra NDVI da aquisição escolhida e os círculos mostram resultados do solo nas coordenadas de coleta. Coincidência espacial não prova relação causal e não gera prescrição automática.</p>}
-              {soilLoading && collectionOrderId && <p className="ndvi-panel-meta"><Icon name="clock" size={14}/>Carregando evidência de solo…</p>}
+              {soilLoading && effectiveCollectionOrderId && <p className="ndvi-panel-meta"><Icon name="clock" size={14}/>Carregando evidência de solo…</p>}
               {soilError && <p className="ndvi-panel-error"><Icon name="warning" size={14}/>{soilError}</p>}
               {selectedRasterSnapshot && (
                 <p className="ndvi-panel-meta">
