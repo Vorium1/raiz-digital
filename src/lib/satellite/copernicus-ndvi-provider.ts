@@ -12,24 +12,21 @@
  * só devolve NÚMERO MEDIDO (reflectância das bandas do satélite) -- a classificação em faixa de
  * vigor é sempre feita depois, de forma determinística, por `src/domain/ndvi-engine.ts`.
  *
- * Testado de ponta a ponta com credencial real do diretor (2026-09-09) contra o talhão real "Área 01"
- * do Cabeda -- 3 cenas reais recentes, com variação espacial real dentro do talhão (ex.: NDVI mín 0,22
- * / máx 0,89 no mesmo dia). Três ajustes reais precisaram de correção durante esse teste, todos batendo
- * em erro 400 real da API antes de acertar: `sampleType: "FLOAT32"` explícito na saída (senão a API
- * assume um tipo incompatível com histograma de valor contínuo), `binWidth` em vez de `nBins` no
- * histograma (mesmo motivo), e os limites do histograma (`lowEdge`/`highEdge`) precisam serializar como
- * float no JSON (`-1.0`, não `-1`) -- ver função `toFloatJson` abaixo.
+ * A máscara usa SCL (Scene Classification Layer) do Sentinel-2 L2A. Classes de nuvem, cirrus,
+ * sombra, neve/gelo, pixel defeituoso e não classificado são excluídas do cálculo; só pixels SCL 4
+ * (vegetação), 5 (não vegetado) e 6 (água) entram no NDVI. Isso é mais seguro do que usar apenas
+ * `dataMask`, que indica validade/cobertura mas não é, sozinho, uma máscara de nuvens.
  */
 
 const TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token";
 const STATISTICS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics";
 
-// NDVI = (B08 - B04) / (B08 + B04). dataMask exclui pixel de nuvem/sombra (já filtrado pelo Sentinel
-// Hub a partir do SCL da cena L2A) do cálculo de média/histograma.
+// NDVI = (B08 - B04) / (B08 + B04). SCL garante que nuvem/sombra/pixel defeituoso não contamine
+// média, extremos e histograma do talhão.
 const NDVI_EVALSCRIPT = `//VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["B04", "B08", "dataMask"] }],
+    input: [{ bands: ["B04", "B08", "SCL", "dataMask"] }],
     output: [
       { id: "default", bands: 1, sampleType: "FLOAT32" },
       { id: "dataMask", bands: 1 },
@@ -38,14 +35,13 @@ function setup() {
 }
 function evaluatePixel(sample) {
   let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04 + 1e-9);
-  return { default: [ndvi], dataMask: [sample.dataMask] };
+  let clear = sample.dataMask === 1 && (sample.SCL === 4 || sample.SCL === 5 || sample.SCL === 6);
+  return { default: [ndvi], dataMask: [clear ? 1 : 0] };
 }`;
 
 // A Statistical API valida o TIPO JSON de lowEdge/highEdge contra o tipo do binWidth -- um número
-// inteiro (`-1`) e um float (`0.2`) são tratados como tipos diferentes e a API recusa com 400 ("edge
-// value types don't match bin width value type"), mesmo sendo o mesmo valor numérico. JSON.stringify
-// nunca escreve ".0" pra um float de valor inteiro, então o único jeito confiável é reescrever o texto
-// depois de serializar.
+// inteiro (`-1`) e um float (`0.2`) são tratados como tipos diferentes e a API recusa com 400. JSON.stringify
+// nunca escreve ".0" pra um float de valor inteiro, então reescrevemos só esses limites serializados.
 function toFloatJson(body: string): string {
   return body.replace('"lowEdge":-1,"highEdge":1', '"lowEdge":-1.0,"highEdge":1.0');
 }
@@ -58,6 +54,7 @@ export type NdviSceneResult = {
   minNdvi: number;
   maxNdvi: number;
   stddevNdvi: number | null;
+  /** Nome mantido por compatibilidade com banco/API. Representa % de pixels mascarados/sem dado válido dentro do talhão. */
   cloudCoverPct: number | null;
   pixelCount: number;
   histogram: NdviHistogramBucket[];
@@ -71,10 +68,12 @@ export type FetchFieldNdviInput = {
   maxCloudCoverPct?: number;
 };
 
-/** Contrato do provedor -- deliberadamente pequeno, pra permitir trocar de fonte de satélite no futuro sem tocar no resto da aplicação (mesmo padrão do `PaymentProvider` em `src/domain/billing.ts`). */
+/** Contrato pequeno pra permitir trocar a fonte de satélite sem tocar no restante da aplicação. */
 export interface SatelliteNdviProvider {
-  /** `null` quando não há nenhuma cena com nuvem aceitável no intervalo pedido -- nunca inventa leitura. */
+  /** `null` quando não há cena válida no intervalo -- nunca inventa leitura. */
   fetchFieldNdvi(input: FetchFieldNdviInput): Promise<NdviSceneResult | null>;
+  /** Série diária válida do intervalo, em ordem cronológica. */
+  fetchFieldNdviSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[]>;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -103,21 +102,21 @@ async function getAccessToken(): Promise<string> {
   return payload.access_token;
 }
 
-type StatisticsApiResponse = {
-  data?: Array<{
-    interval?: { from?: string; to?: string };
-    outputs?: {
-      default?: {
-        bands?: {
-          B0?: {
-            stats?: { mean?: number; min?: number; max?: number; stDev?: number; sampleCount?: number; noDataCount?: number };
-            histogram?: { bins?: Array<{ lowEdge: number; highEdge: number; count: number }> };
-          };
+type StatisticsEntry = {
+  interval?: { from?: string; to?: string };
+  outputs?: {
+    default?: {
+      bands?: {
+        B0?: {
+          stats?: { mean?: number; min?: number; max?: number; stDev?: number; sampleCount?: number; noDataCount?: number };
+          histogram?: { bins?: Array<{ lowEdge: number; highEdge: number; count: number }> };
         };
       };
     };
-  }>;
+  };
 };
+
+type StatisticsApiResponse = { data?: StatisticsEntry[] };
 
 function toHistogram(bins: Array<{ lowEdge: number; highEdge: number; count: number }> | undefined): NdviHistogramBucket[] {
   if (!bins) return [];
@@ -126,83 +125,86 @@ function toHistogram(bins: Array<{ lowEdge: number; highEdge: number; count: num
     .map((bin) => ({ ndvi: (bin.lowEdge + bin.highEdge) / 2, pixelCount: bin.count }));
 }
 
-export const copernicusNdviProvider: SatelliteNdviProvider = {
-  async fetchFieldNdvi(input) {
-    const token = await getAccessToken();
+function toSceneResult(entry: StatisticsEntry, fallbackDate: string): NdviSceneResult | null {
+  const stats = entry.outputs?.default?.bands?.B0?.stats;
+  const sampleCount = stats?.sampleCount ?? 0;
+  if (!stats || sampleCount <= 0 || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
 
-    // resx/resy são interpretados na MESMA unidade do CRS dos limites (graus, já que bounds.properties.crs
-    // é WGS84) -- não em metros, mesmo a fonte sendo Sentinel-2 a 10m. Passar `10` aqui (achado testando
-    // com credencial real) pede um pixel de 10 GRAUS, maior que o talhão inteiro, e a API devolve 1 pixel
-    // só pro campo inteiro -- inutilizando a detecção de variabilidade interna. ~0,0001° ≈ 11m no equador,
-    // perto o bastante da resolução nativa da banda (10m) pra manter a granularidade real dentro do talhão.
-    const RESOLUTION_DEGREES = 0.0001;
+  const noDataCount = stats.noDataCount ?? 0;
+  const totalPixels = sampleCount + noDataCount;
+  const maskedPixelPct = totalPixels > 0 ? (noDataCount / totalPixels) * 100 : null;
 
-    let requestBody = JSON.stringify({
-      input: {
-        bounds: {
-          geometry: input.fieldBoundaryGeoJson,
-          properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
+  return {
+    capturedAt: (entry.interval?.from ?? fallbackDate).slice(0, 10),
+    meanNdvi: stats.mean,
+    minNdvi: stats.min,
+    maxNdvi: stats.max,
+    stddevNdvi: stats.stDev ?? null,
+    cloudCoverPct: maskedPixelPct,
+    pixelCount: sampleCount,
+    histogram: toHistogram(entry.outputs?.default?.bands?.B0?.histogram?.bins),
+    sceneId: null,
+  };
+}
+
+async function fetchSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[]> {
+  const token = await getAccessToken();
+
+  // resx/resy são interpretados na unidade do CRS dos limites (graus, WGS84), não em metros.
+  // ~0,0001° mantém granularidade próxima da resolução nativa de 10 m das bandas B04/B08.
+  const RESOLUTION_DEGREES = 0.0001;
+
+  let requestBody = JSON.stringify({
+    input: {
+      bounds: {
+        geometry: input.fieldBoundaryGeoJson,
+        properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
+      },
+      data: [
+        {
+          type: "sentinel-2-l2a",
+          dataFilter: { maxCloudCoverage: input.maxCloudCoverPct ?? 30 },
         },
-        data: [
-          {
-            type: "sentinel-2-l2a",
-            dataFilter: { maxCloudCoverage: input.maxCloudCoverPct ?? 30 },
-          },
-        ],
-      },
-      aggregation: {
-        timeRange: { from: `${input.fromDate}T00:00:00Z`, to: `${input.toDate}T23:59:59Z` },
-        aggregationInterval: { of: "P1D" },
-        evalscript: NDVI_EVALSCRIPT,
-        resx: RESOLUTION_DEGREES,
-        resy: RESOLUTION_DEGREES,
-      },
-      // `binWidth` (não `nBins`) -- a Statistical API exige isso pra histograma de banda de saída float
-      // (NDVI é contínuo entre -1 e 1); `nBins` é só pra banda de saída inteira. Achado batendo num erro
-      // 400 real da API ("sampleType FLOAT32 mis-matched with corresponding histogram of type integer").
-      // 0,2 de largura bate exatamente com as faixas de vigor de `src/domain/ndvi-engine.ts`.
-      calculations: {
-        default: { histograms: { default: { binWidth: 0.2, lowEdge: -1, highEdge: 1 } } },
-      },
-    });
-    requestBody = toFloatJson(requestBody);
+      ],
+    },
+    aggregation: {
+      timeRange: { from: `${input.fromDate}T00:00:00Z`, to: `${input.toDate}T23:59:59Z` },
+      aggregationInterval: { of: "P1D" },
+      evalscript: NDVI_EVALSCRIPT,
+      resx: RESOLUTION_DEGREES,
+      resy: RESOLUTION_DEGREES,
+    },
+    calculations: {
+      default: { histograms: { default: { binWidth: 0.2, lowEdge: -1, highEdge: 1 } } },
+    },
+  });
+  requestBody = toFloatJson(requestBody);
 
-    const response = await fetch(STATISTICS_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: requestBody,
-    });
+  const response = await fetch(STATISTICS_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: requestBody,
+  });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Copernicus (estatística) respondeu ${response.status}: ${body.slice(0, 300)}`);
-    }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Copernicus (estatística) respondeu ${response.status}: ${body.slice(0, 300)}`);
+  }
 
-    const payload = (await response.json()) as StatisticsApiResponse;
-    // A API devolve uma entrada por dia com cena disponível dentro do intervalo -- pega a mais
-    // recente com dado válido (sampleCount > 0); dias sem passagem de satélite ou 100% nuvem não
-    // aparecem, ou aparecem com sampleCount 0.
-    const scenes = (payload.data ?? []).filter((entry) => (entry.outputs?.default?.bands?.B0?.stats?.sampleCount ?? 0) > 0);
-    if (scenes.length === 0) return null;
+  const payload = (await response.json()) as StatisticsApiResponse;
+  return (payload.data ?? [])
+    .map((entry) => toSceneResult(entry, input.toDate))
+    .filter((scene): scene is NdviSceneResult => scene !== null)
+    .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+}
 
-    const latest = scenes[scenes.length - 1];
-    const stats = latest.outputs?.default?.bands?.B0?.stats;
-    if (!stats || stats.mean === undefined || stats.min === undefined || stats.max === undefined) return null;
+export const copernicusNdviProvider: SatelliteNdviProvider = {
+  async fetchFieldNdviSeries(input) {
+    return fetchSeries(input);
+  },
 
-    const sampleCount = stats.sampleCount ?? 0;
-    const noDataCount = stats.noDataCount ?? 0;
-    const cloudCoverPct = sampleCount + noDataCount > 0 ? (noDataCount / (sampleCount + noDataCount)) * 100 : null;
-
-    return {
-      capturedAt: (latest.interval?.from ?? input.toDate).slice(0, 10),
-      meanNdvi: stats.mean,
-      minNdvi: stats.min,
-      maxNdvi: stats.max,
-      stddevNdvi: stats.stDev ?? null,
-      cloudCoverPct,
-      pixelCount: sampleCount,
-      histogram: toHistogram(latest.outputs?.default?.bands?.B0?.histogram?.bins),
-      sceneId: null,
-    };
+  async fetchFieldNdvi(input) {
+    const scenes = await fetchSeries(input);
+    return scenes.at(-1) ?? null;
   },
 };
