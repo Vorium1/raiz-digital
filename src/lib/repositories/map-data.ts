@@ -77,11 +77,10 @@ export async function getLatestFieldSoilMapContext(input: {
 }
 
 /**
- * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos
- * reais (PostGIS) cruzados com a classificação já homologada da última
- * interpretação, quando existir, para o parâmetro escolhido. Sem parâmetro
- * selecionado, ou sem interpretação, os pontos aparecem só com status de
- * coleta -- nunca com uma classificação inventada.
+ * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos reais (PostGIS) cruzados
+ * com a classificação já homologada da última interpretação, quando existir. A posição renderizada
+ * privilegia `observed_position` quando existe; só cai para a posição planejada quando não há captura
+ * observada. As duas continuam separadas no payload para auditoria.
  */
 export async function getFieldMapLayer(input: { tenantId: string; userId?: string; collectionOrderId: string; parameterCode: string | null }): Promise<MapLayerResult | null> {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -108,7 +107,9 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
     const availableParameters = paramsResult.rows.map((row) => row.code);
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, sp.sequence, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+      `SELECT sp.id::text, sp.code, sp.sequence,
+              ST_Y(COALESCE(sp.observed_position, sp.position))::float8 AS latitude,
+              ST_X(COALESCE(sp.observed_position, sp.position))::float8 AS longitude,
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position) END AS "observedLatitude",
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position) END AS "observedLongitude",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
