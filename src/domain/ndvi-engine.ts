@@ -1,20 +1,12 @@
 /**
- * Classificação de vigor vegetativo a partir de NDVI (Normalized Difference Vegetation Index),
- * aprovado pelo diretor como ferramenta de apoio -- ele mesmo enquadrou como "não é exatamente
- * preciso, mas já dá uma ajuda grande a entender as faixas de produtividade". Por isso este motor
- * NUNCA converte NDVI em número de produtividade (isso seria dado fabricado, contra a regra do
- * projeto) -- só classifica em faixas de vigor qualitativas, a mesma disciplina já usada no alerta
- * climático (orientação de manejo, nunca estimativa numérica inventada).
+ * Classificação de vigor vegetativo a partir de NDVI (Normalized Difference Vegetation Index).
  *
- * Faixas usadas abaixo são as bandas de interpretação de NDVI mais citadas na literatura de
- * sensoriamento remoto agrícola (a mesma escala geral usada por USGS/EROS e pela maioria das
- * plataformas de agricultura de precisão que oferecem NDVI) -- não são específicas de nenhuma
- * cultura ou fase fenológica, por isso ficam como uma leitura geral de vigor, a ser cruzada pelo
- * agrônomo responsável com o estágio da cultura antes de virar recomendação.
+ * Regra de produto: NDVI é evidência de vigor/refletância, nunca produtividade. Este módulo só produz
+ * leituras determinísticas a partir de valores medidos pelo provedor de satélite: faixa de vigor,
+ * distribuição espacial agregada, variabilidade interna e comparação temporal descritiva. Não atribui
+ * causa agronômica, não estima sacas/ha e não prescreve manejo.
  *
- * Zero import de propósito, mesma disciplina dos outros motores agronômicos (phosphorus-engine.ts,
- * fertilizer-dose-engine.ts) -- roda em qualquer runtime (Next.js ou script standalone) sem
- * depender de alias de path.
+ * Zero import de propósito: roda em qualquer runtime (Next.js ou script standalone).
  */
 
 export type VigorZone = "SEM_VEGETACAO" | "BAIXO" | "MODERADO" | "ALTO" | "MUITO_ALTO";
@@ -39,10 +31,8 @@ export function classifyNdviValue(ndvi: number): VigorZone {
 export type ZoneBreakdownPct = Partial<Record<VigorZone, number>>;
 
 /**
- * A partir de um histograma de NDVI por pixel (devolvido pelo provedor de satélite), calcula o
- * percentual de área do talhão em cada faixa de vigor. `histogram` é uma lista de {ndvi, pixelCount}
- * -- o provedor real (Sentinel Hub Statistical API) já devolve os dados agregados nesse formato,
- * então este motor nunca processa pixel bruto.
+ * A partir de um histograma de NDVI por pixel, calcula o percentual de área do talhão em cada faixa.
+ * O provedor já entrega o histograma agregado; este motor não inventa nem interpola pixel ausente.
  */
 export function computeZoneBreakdownPct(histogram: Array<{ ndvi: number; pixelCount: number }>): ZoneBreakdownPct {
   const totalPixels = histogram.reduce((sum, bucket) => sum + bucket.pixelCount, 0);
@@ -76,11 +66,8 @@ export type VariabilityFlag = {
 const VARIABILITY_THRESHOLD_PCT = 20;
 
 /**
- * Sinaliza (nunca calcula número novo) quando o talhão tem variabilidade interna relevante --
- * parcelas relevantes tanto em vigor baixo quanto em vigor alto/muito alto ao mesmo tempo. Isso é
- * uma pista de que pode haver mais de uma zona de manejo dentro do mesmo talhão (ex.: parte com
- * restrição de solo, parte não) -- a decisão de investigar ou não fica com o agrônomo responsável,
- * este motor só aponta o padrão, nunca diz a causa nem recomenda uma dose diferenciada.
+ * Sinaliza quando o talhão tem parcelas relevantes em vigor baixo e alto ao mesmo tempo. É somente uma
+ * pista de heterogeneidade espacial; não afirma causa e não recomenda dose diferenciada.
  */
 export function detectWithinFieldVariability(breakdown: ZoneBreakdownPct): VariabilityFlag {
   const lowPct = (breakdown.SEM_VEGETACAO ?? 0) + (breakdown.BAIXO ?? 0);
@@ -89,8 +76,106 @@ export function detectWithinFieldVariability(breakdown: ZoneBreakdownPct): Varia
   if (lowPct >= VARIABILITY_THRESHOLD_PCT && highPct >= VARIABILITY_THRESHOLD_PCT) {
     return {
       hasSignificantVariability: true,
-      note: `O talhão tem ${lowPct.toFixed(0)}% da área em vigor baixo/sem vegetação e ${highPct.toFixed(0)}% em vigor alto/muito alto na mesma imagem -- variabilidade interna real, pode valer a pena o agrônomo responsável avaliar se faz sentido dividir o talhão em zonas de manejo.`,
+      note: `O talhão tem ${lowPct.toFixed(0)}% da área em vigor baixo/sem vegetação e ${highPct.toFixed(0)}% em vigor alto/muito alto na mesma imagem — variabilidade interna medida; o agrônomo pode avaliar se vale investigar zonas de manejo.`,
     };
   }
   return { hasSignificantVariability: false, note: "Sem variabilidade interna relevante detectada nesta imagem." };
+}
+
+export type NdviTemporalSnapshot = {
+  capturedAt: string;
+  meanNdvi: number;
+  cloudCoverPct?: number | null;
+};
+
+export type NdviTemporalDirection = "INCREASE" | "DECREASE" | "UNCHANGED";
+
+export type NdviTemporalComparison =
+  | {
+      hasComparison: false;
+      reason: "INSUFFICIENT_HISTORY";
+      note: string;
+    }
+  | {
+      hasComparison: true;
+      previousAt: string;
+      latestAt: string;
+      daysBetween: number;
+      previousMeanNdvi: number;
+      latestMeanNdvi: number;
+      deltaMeanNdvi: number;
+      direction: NdviTemporalDirection;
+      previousZone: VigorZone;
+      latestZone: VigorZone;
+      zoneChanged: boolean;
+      previousNoDataPct: number | null;
+      latestNoDataPct: number | null;
+      note: string;
+    };
+
+function validTemporalSnapshot(snapshot: NdviTemporalSnapshot) {
+  return Number.isFinite(snapshot.meanNdvi) && Number.isFinite(new Date(snapshot.capturedAt).getTime());
+}
+
+/**
+ * Compara as duas aquisições válidas MAIS RECENTES em datas diferentes.
+ *
+ * Importante: não existe limiar agronômico de “anomalia” aqui. O motor devolve o delta medido, intervalo,
+ * mudança (ou não) de faixa e qualidade/no-data das duas cenas. Assim a RAIZ ganha um sinal temporal útil
+ * sem transformar uma diferença de NDVI em diagnóstico de doença, fertilidade ou produtividade.
+ */
+export function compareLatestNdviSnapshots(history: NdviTemporalSnapshot[]): NdviTemporalComparison {
+  const byDate = [...history]
+    .filter(validTemporalSnapshot)
+    .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+
+  // Mantém uma aquisição por instante/data textual. Se o mesmo snapshot foi lido duas vezes do banco/API,
+  // ele não pode virar sua própria referência temporal.
+  const distinct: NdviTemporalSnapshot[] = [];
+  for (const snapshot of byDate) {
+    const previous = distinct[distinct.length - 1];
+    if (previous?.capturedAt === snapshot.capturedAt) distinct[distinct.length - 1] = snapshot;
+    else distinct.push(snapshot);
+  }
+
+  if (distinct.length < 2) {
+    return {
+      hasComparison: false,
+      reason: "INSUFFICIENT_HISTORY",
+      note: "São necessárias pelo menos duas aquisições válidas em datas diferentes para comparar a evolução temporal do vigor.",
+    };
+  }
+
+  const previous = distinct[distinct.length - 2];
+  const latest = distinct[distinct.length - 1];
+  const previousTime = new Date(previous.capturedAt).getTime();
+  const latestTime = new Date(latest.capturedAt).getTime();
+  const daysBetween = Math.max(0, Math.round((latestTime - previousTime) / 86_400_000));
+  const delta = latest.meanNdvi - previous.meanNdvi;
+  const roundedDelta = Math.round(delta * 1000) / 1000;
+  const direction: NdviTemporalDirection = roundedDelta > 0 ? "INCREASE" : roundedDelta < 0 ? "DECREASE" : "UNCHANGED";
+  const previousZone = classifyNdviValue(previous.meanNdvi);
+  const latestZone = classifyNdviValue(latest.meanNdvi);
+  const signedDelta = `${roundedDelta > 0 ? "+" : ""}${roundedDelta.toFixed(3)}`;
+  const movement = direction === "INCREASE" ? "subiu" : direction === "DECREASE" ? "caiu" : "permaneceu estável na precisão exibida";
+  const zoneText = previousZone === latestZone
+    ? `A faixa permaneceu em ${VIGOR_ZONE_LABELS[latestZone].toLowerCase()}.`
+    : `A faixa mudou de ${VIGOR_ZONE_LABELS[previousZone].toLowerCase()} para ${VIGOR_ZONE_LABELS[latestZone].toLowerCase()}.`;
+
+  return {
+    hasComparison: true,
+    previousAt: previous.capturedAt,
+    latestAt: latest.capturedAt,
+    daysBetween,
+    previousMeanNdvi: previous.meanNdvi,
+    latestMeanNdvi: latest.meanNdvi,
+    deltaMeanNdvi: roundedDelta,
+    direction,
+    previousZone,
+    latestZone,
+    zoneChanged: previousZone !== latestZone,
+    previousNoDataPct: previous.cloudCoverPct ?? null,
+    latestNoDataPct: latest.cloudCoverPct ?? null,
+    note: `O NDVI médio ${movement} de ${previous.meanNdvi.toFixed(2)} para ${latest.meanNdvi.toFixed(2)} (${signedDelta}) em ${daysBetween} dia${daysBetween === 1 ? "" : "s"}. ${zoneText} Sinal temporal descritivo: não identifica causa agronômica nem estima produtividade.`,
+  };
 }
