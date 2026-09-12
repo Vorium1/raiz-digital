@@ -1,5 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { publishFieldAnalysisReport, ReportError } from "@/lib/repositories/reports";
+import { assertReportPublicationReady, ReportPublicationGateError } from "@/lib/repositories/report-publication-gate";
 
 const publishRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
@@ -10,9 +11,13 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
 
   try {
+    // A entrega oficial não pode pular o plano de manejo: interpretação e recomendação precisam estar
+    // aprovadas, e a recomendação deve pertencer à mesma revisão que será publicada.
+    await assertReportPublicationReady(session.tenantId, id, session.userId);
     const report = await publishFieldAnalysisReport({ tenantId: session.tenantId, userId: session.userId, interpretationId: id });
     return Response.json({ report }, { status: 201 });
   } catch (error) {
+    if (error instanceof ReportPublicationGateError) return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof ReportError) return Response.json({ error: error.message }, { status: error.status });
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível publicar o relatório." }, { status: 422 });
   }
