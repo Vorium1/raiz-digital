@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
+import { RealFieldMap, type MapImageOverlay } from "@/components/real-field-map";
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
 
@@ -17,6 +18,8 @@ type Snapshot = {
   zoneBreakdownPct: Partial<Record<VigorZone, number>>;
 };
 
+type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
+
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
 export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
   SEM_VEGETACAO: "#9a8468",
@@ -28,7 +31,6 @@ export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
 const CHART_MIN = 0;
 const CHART_MAX = 1;
 
-/** Cor representativa do talhão inteiro -- aproximação agregada, nunca substituto de raster. */
 export function dominantZoneColor(breakdown: Partial<Record<VigorZone, number>> | undefined): string | null {
   if (!breakdown) return null;
   let best: VigorZone | null = null;
@@ -40,21 +42,38 @@ export function dominantZoneColor(breakdown: Partial<Record<VigorZone, number>> 
   return best ? NDVI_ZONE_COLOR[best] : null;
 }
 
+function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null {
+  if (!raw) return null;
+  const values = raw.split(",").map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) return null;
+  const [minLon, minLat, maxLon, maxLat] = values;
+  if (minLon >= maxLon || minLat >= maxLat) return null;
+  return [[minLat, minLon], [maxLat, maxLon]];
+}
+
 /**
- * Painel de vigor vegetativo por Sentinel-2. Trabalha só com estatística medida e inteligência
- * determinística: histórico, qualidade da observação, comparação temporal e variabilidade interna.
- * Nunca estima produtividade, nunca atribui causa e nunca inventa raster inexistente.
+ * Centro de inteligência Sentinel-2 do talhão. Combina:
+ * - raster NDVI espacial real, recortado no limite do talhão;
+ * - distribuição de vigor da mesma aquisição;
+ * - qualidade da observação, série temporal e variabilidade interna.
+ *
+ * Nada aqui estima produtividade ou atribui causa. O raster é visualização das bandas medidas e os
+ * sinais temporais são triagem operacional para o agrônomo responsável.
  */
 export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZoneColor?: (color: string | null) => void }) {
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [latest, setLatest] = useState<Snapshot | null>(null);
   const [history, setHistory] = useState<Snapshot[]>([]);
+  const [fieldBoundary, setFieldBoundary] = useState<Geometry | null>(null);
   const [variabilityNote, setVariabilityNote] = useState<string | null>(null);
   const [quality, setQuality] = useState<NdviObservationQuality>("INDETERMINADA");
   const [temporal, setTemporal] = useState<NdviTemporalAnalysis | null>(null);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rasterLoading, setRasterLoading] = useState(false);
+  const [rasterError, setRasterError] = useState<string | null>(null);
+  const [rasterOverlay, setRasterOverlay] = useState<MapImageOverlay | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,8 +84,14 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
       const res = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
       if (cancelled) return;
+      if (!res.ok) {
+        setError(payload.error ?? "Não foi possível carregar os dados de satélite deste talhão.");
+        setLoading(false);
+        return;
+      }
       setLatest(payload.latest ?? null);
       setHistory(payload.history ?? []);
+      setFieldBoundary(payload.fieldBoundary ?? null);
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
@@ -76,6 +101,51 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldId]);
+
+  useEffect(() => {
+    if (!latest?.capturedAt || !fieldBoundary) {
+      setRasterOverlay(null);
+      setRasterError(null);
+      setRasterLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setRasterLoading(true);
+    setRasterError(null);
+    setRasterOverlay(null);
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(latest.capturedAt.slice(0, 10))}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? `Mapa NDVI indisponível (HTTP ${response.status}).`);
+        }
+        const bounds = parseRasterBounds(response.headers.get("x-raiz-ndvi-bbox"));
+        if (!bounds) throw new Error("O raster NDVI foi recebido sem envelope geográfico válido.");
+        const blob = await response.blob();
+        if (!blob.type.includes("image/png")) throw new Error("O raster NDVI retornou em formato inesperado.");
+        objectUrl = URL.createObjectURL(blob);
+        if (controller.signal.aborted) return;
+        setRasterOverlay({ url: objectUrl, bounds, opacity: 0.78 });
+      } catch (caught) {
+        if (controller.signal.aborted) return;
+        setRasterError(caught instanceof Error ? caught.message : "Não foi possível carregar o mapa NDVI espacial.");
+      } finally {
+        if (!controller.signal.aborted) setRasterLoading(false);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fieldId, latest?.capturedAt, fieldBoundary]);
 
   async function handleFetchSatellite() {
     setFetching(true);
@@ -90,6 +160,7 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
       }
       setLatest(payload.latest ?? payload.snapshot ?? null);
       setHistory(payload.history ?? []);
+      setFieldBoundary(payload.fieldBoundary ?? fieldBoundary);
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
@@ -108,19 +179,23 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
     () => [...history].sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime()),
     [history],
   );
+  const rasterLegend = useMemo(
+    () => ZONE_ORDER.map((zone) => ({ label: VIGOR_ZONE_LABELS[zone], color: NDVI_ZONE_COLOR[zone] })),
+    [],
+  );
 
   if (loading) return <div className="ndvi-panel card"><p className="ndvi-panel-meta"><Icon name="clock" size={14} /> Carregando vigor por satélite…</p></div>;
 
   return (
     <div className="ndvi-panel card">
       <div className="ndvi-panel-head">
-        <span className="eyebrow">INTELIGÊNCIA TEMPORAL · SENTINEL-2</span>
+        <span className="eyebrow">INTELIGÊNCIA ESPACIAL + TEMPORAL · SENTINEL-2</span>
         <button type="button" className="button ghost small" onClick={handleFetchSatellite} disabled={fetching}>
           <Icon name="history" size={14} />
           {fetching ? "Buscando série…" : latest ? "Atualizar 120 dias" : "Buscar histórico"}
         </button>
       </div>
-      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa pixels Sentinel-2 L2A válidos e mascara nuvem/sombra antes do cálculo. Esta instância ainda guarda apenas estatísticas agregadas por aquisição — não armazena raster/tile, então não desenha um mapa pixel a pixel que não existe.</p>
+      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa abaixo é um raster NDVI real servido sob demanda; não é interpolação do laboratório e não representa produtividade.</p>
 
       {error && <p className="ndvi-panel-error"><Icon name="warning" size={14} />{error}</p>}
       {refreshNote && <p className="ndvi-panel-meta"><Icon name="check" size={14} />{refreshNote}</p>}
@@ -132,10 +207,27 @@ export function FieldNdviPanel({ fieldId, onZoneColor }: { fieldId: string; onZo
       {latest && (
         <>
           <p className="ndvi-panel-meta">
-            Imagem de {new Date(latest.capturedAt).toLocaleDateString("pt-BR")} · NDVI médio {latest.meanNdvi.toFixed(2)}
+            Aquisição de {new Date(latest.capturedAt).toLocaleDateString("pt-BR")} · NDVI médio {latest.meanNdvi.toFixed(2)}
             {latest.cloudCoverPct != null ? ` · ${Math.round(latest.cloudCoverPct)}% da área sem pixel válido` : ""}
             {` · ${NDVI_QUALITY_LABELS[quality]}`}
           </p>
+
+          {fieldBoundary && (
+            <div className="ndvi-history">
+              <div className="field-ops-section-head compact"><div><span className="eyebrow">MAPA NDVI REAL</span><h2>Vigor dentro do limite do talhão</h2></div></div>
+              {rasterLoading && <p className="ndvi-panel-meta"><Icon name="clock" size={14}/>Carregando raster Sentinel-2 da aquisição…</p>}
+              {rasterError && <p className="ndvi-panel-error"><Icon name="warning" size={14}/>{rasterError}</p>}
+              <RealFieldMap
+                boundary={fieldBoundary}
+                points={[]}
+                height={380}
+                legend={rasterLegend}
+                hint={rasterOverlay ? `Raster NDVI · ${new Date(latest.capturedAt).toLocaleDateString("pt-BR")}` : "Imagem-base real do talhão; raster NDVI aguardando disponibilidade"}
+                imageOverlay={rasterOverlay}
+              />
+            </div>
+          )}
+
           <div className="ndvi-zone-bar">
             {ZONE_ORDER.filter((zone) => (latest.zoneBreakdownPct[zone] ?? 0) > 0).map((zone) => (
               <div key={zone} style={{ width: `${latest.zoneBreakdownPct[zone]}%`, background: NDVI_ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${latest.zoneBreakdownPct[zone]}%`} />
