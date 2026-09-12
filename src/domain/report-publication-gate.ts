@@ -4,6 +4,7 @@ export type ReportPublicationReadiness = {
   interpretationStatus: string | null;
   prescriptionStatus: string | null;
   prescriptionId: string | null;
+  alreadyPublished: boolean;
 };
 
 export type ReportPublicationGateInput = {
@@ -11,12 +12,23 @@ export type ReportPublicationGateInput = {
   interpretationStatus: string | null;
   prescriptionId: string | null;
   prescriptionStatus: string | null;
+  reportExists: boolean;
 };
 
 /** Regra pura da entrega oficial, sem banco e sem dependências de runtime. */
 export function evaluateReportPublicationGate(input: ReportPublicationGateInput): ReportPublicationReadiness {
   if (!input.interpretationExists) {
-    return { allowed: false, reason: "Interpretação não encontrada.", interpretationStatus: null, prescriptionStatus: null, prescriptionId: null };
+    return { allowed: false, reason: "Interpretação não encontrada.", interpretationStatus: null, prescriptionStatus: null, prescriptionId: null, alreadyPublished: false };
+  }
+  if (input.reportExists) {
+    return {
+      allowed: false,
+      reason: "Esta revisão já possui uma decisão oficial publicada. A versão imutável existente deve ser preservada; uma nova entrega exige uma nova revisão técnica.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+      alreadyPublished: true,
+    };
   }
   if (input.interpretationStatus !== "APPROVED") {
     return {
@@ -25,6 +37,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
+      alreadyPublished: false,
     };
   }
   if (!input.prescriptionId) {
@@ -34,6 +47,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: null,
       prescriptionId: null,
+      alreadyPublished: false,
     };
   }
   if (input.prescriptionStatus !== "APPROVED") {
@@ -47,6 +61,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
+      alreadyPublished: false,
     };
   }
   return {
@@ -55,5 +70,6 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
     interpretationStatus: input.interpretationStatus,
     prescriptionStatus: input.prescriptionStatus,
     prescriptionId: input.prescriptionId,
+    alreadyPublished: false,
   };
 }
