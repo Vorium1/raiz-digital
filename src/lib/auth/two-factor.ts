@@ -32,14 +32,26 @@ export async function startTwoFactorSetup(input: { userId: string; email: string
 }
 
 export async function confirmTwoFactorSetup(input: { userId: string; code: string }) {
-  const result = await query<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = $1::uuid", [input.userId]);
+  const result = await query<{ totp_secret: string | null }>(
+    "SELECT totp_secret FROM users WHERE id = $1::uuid AND two_factor_enabled = false",
+    [input.userId],
+  );
   const secret = result.rows[0]?.totp_secret;
-  if (!secret) throw new TwoFactorError("Nenhuma configuração de 2FA em andamento. Inicie novamente.", 409);
+  if (!secret) throw new TwoFactorError("Nenhuma configuração de 2FA pendente. Inicie novamente.", 409);
   const matchedCounter = verifyTotpCode(secret, input.code);
   if (matchedCounter === null) throw new TwoFactorError("Código inválido. Confira o horário do dispositivo e tente novamente.", 422);
 
+  // A condição `two_factor_enabled = false` faz apenas uma confirmação concorrente vencer. Sem isso, dois
+  // POST simultâneos poderiam gerar dois conjuntos diferentes de códigos de backup para a mesma ativação.
+  const enabled = await query(
+    "UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid AND two_factor_enabled = false",
+    [input.userId, matchedCounter],
+  );
+  if ((enabled.rowCount ?? 0) === 0) {
+    throw new TwoFactorError("A verificação em duas etapas já foi ativada. Atualize a página.", 409);
+  }
+
   const codes = generateBackupCodes();
-  await query("UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid", [input.userId, matchedCounter]);
   await query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
   await query(
     `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
