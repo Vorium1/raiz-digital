@@ -100,7 +100,16 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
                       {item.revisionCount > 1 && <small className="intelligence-queue-revcount"><Icon name="history" size={11}/>{item.revisionCount} versões</small>}
                     </div>
                     <div className="intelligence-queue-conclusion">
-                      {item.bucket === "BLOQUEADA" ? item.notInterpretableReason : (item.cropProfileName ? `Base técnica: ${item.cropProfileName}` : "—")}
+                      {(() => {
+                        // "Interpretação parcial" só considera parâmetros que SÃO alvo de classificação
+                        // (classifiedCount + pendingTargetCount) -- um dado auxiliar (CLAY, SMP, H_AL...)
+                        // nunca entra nessa conta, nunca faz a análise parecer "faltando cobertura" por
+                        // existir (achado real, auditoria 2026-09-11, item 2).
+                        const targetTotal = item.classifiedCount + item.pendingTargetCount;
+                        if (item.bucket === "BLOQUEADA") return `0 de ${targetTotal} resultados interpretados — ${item.notInterpretableReason}`;
+                        if (item.classifiedCount < targetTotal) return `Interpretação parcial — ${item.classifiedCount}/${targetTotal} resultados cobertos${item.cropProfileName ? ` · ${item.cropProfileName}` : ""}`;
+                        return item.cropProfileName ? `Base técnica: ${item.cropProfileName}` : "—";
+                      })()}
                     </div>
                     <div className="intelligence-queue-meta">
                       <span>{formatRelativeOrDate(item.createdAt)}</span>

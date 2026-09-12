@@ -13,8 +13,8 @@ import { computeParameterPredominance } from "@/domain/parameter-predominance";
 import { classificationColor } from "@/lib/classification-colors";
 
 type ParameterInterpretation =
-  | { sampleCode: string; parameterCode: string; interpretable: true; classification: string; matchedParameter: { id: string; criticality: string | null } }
-  | { sampleCode: string; parameterCode: string; interpretable: false; reason: string; code: string };
+  | { sampleCode: string; parameterCode: string; classificationRole?: "TARGET" | "AUXILIARY"; interpretable: true; classification: string; matchedParameter: { id: string; criticality: string | null } }
+  | { sampleCode: string; parameterCode: string; classificationRole?: "TARGET" | "AUXILIARY"; interpretable: false; reason: string; code: string };
 
 type Fact = { sampleCode: string; parameterCode: string; value: number; unit: string; method: string; source?: "MEASURED" | "CALCULATED" };
 
@@ -55,6 +55,7 @@ export function AgronomicIntelligencePanel({
   const [selectedParameter, setSelectedParameter] = useState("");
   const [showSatellite, setShowSatellite] = useState(false);
   const [ndviDate, setNdviDate] = useState<string | null>(null);
+  const [showAllImpediments, setShowAllImpediments] = useState(false);
 
   async function load() {
     const response = await fetch(`/api/analyses/${analysisId}/interpretation`);
@@ -150,6 +151,58 @@ export function AgronomicIntelligencePanel({
   const facts = latest.structuredOutput?.facts ?? [];
   const interpretation = latest.structuredOutput?.interpretation ?? [];
 
+  // Fechamento técnico (auditoria Cabeda, 2026-09-11, revisão): a tela mostrava só `notInterpretableReason`
+  // (`pendencies[0]`, sempre o mesmo -- normalmente o parâmetro que vem primeiro em ordem alfabética),
+  // nunca o retrato real: quantos dos resultados desta análise foram de fato cobertos, e o motivo de CADA
+  // um dos que não foram. Os dados já existiam em `structuredOutput.interpretation` (uma linha por
+  // ponto×parâmetro) -- só nunca tinham sido agregados/mostrados.
+  //
+  // Revisão (item 2): "resultado não interpretado" deixou de ser uma categoria só -- agora são 3 reais,
+  // vindas do `classificationRole` que o motor grava (`?? "TARGET"` trata revisão antiga, calculada antes
+  // deste campo existir, do mesmo jeito que sempre foi tratada):
+  //   - CLASSIFICADO: interpretable === true (sempre TARGET, por construção do motor).
+  //   - AGUARDANDO HOMOLOGAÇÃO/COBERTURA: TARGET, mas não interpretable (parâmetro que DEVERIA classificar,
+  //     mas falta homologação/método/unidade/condição/etc.) -- uma pendência real.
+  //   - AUXILIAR: classificationRole === "AUXILIARY" -- dado auxiliar/insumo de cálculo que NUNCA teria
+  //     faixa própria por desenho da fonte técnica (ex.: CLAY só condição de P) -- nunca uma pendência,
+  //     nunca mostrado como impedimento. "Interpretação parcial" só compara classificados contra o total
+  //     de alvos reais (classificados + aguardando) -- um dado auxiliar nunca faz a cobertura parecer
+  //     menor do que é.
+  const roleOf = (item: ParameterInterpretation) => item.classificationRole ?? "TARGET";
+  const classifiedResultCount = interpretation.filter((item) => item.interpretable).length;
+  const pendingResultCount = interpretation.filter((item) => !item.interpretable && roleOf(item) === "TARGET").length;
+  const auxiliaryResultCount = interpretation.filter((item) => roleOf(item) === "AUXILIARY").length;
+  const targetTotalCount = classifiedResultCount + pendingResultCount;
+
+  const parameterCodeSummary = (() => {
+    const byCode = new Map<string, { role: "TARGET" | "AUXILIARY"; anyInterpretable: boolean }>();
+    for (const item of interpretation) {
+      const role = roleOf(item);
+      const existing = byCode.get(item.parameterCode);
+      if (existing) existing.anyInterpretable = existing.anyInterpretable || item.interpretable;
+      else byCode.set(item.parameterCode, { role, anyInterpretable: item.interpretable });
+    }
+    return byCode;
+  })();
+  const classifiedParamCodes = [...parameterCodeSummary.entries()].filter(([, v]) => v.role === "TARGET" && v.anyInterpretable).map(([code]) => code).sort();
+  const pendingParamCodes = [...parameterCodeSummary.entries()].filter(([, v]) => v.role === "TARGET" && !v.anyInterpretable).map(([code]) => code).sort();
+  const auxiliaryParamCodes = [...parameterCodeSummary.entries()].filter(([, v]) => v.role === "AUXILIARY").map(([code]) => code).sort();
+
+  const impedimentGroups = (() => {
+    const groups = new Map<string, { code: string; parameterCode: string; reason: string; count: number }>();
+    for (const item of interpretation) {
+      // Item 2: um dado AUXILIAR nunca entra na lista de impedimentos -- não é um erro nem uma pendência.
+      if (item.interpretable || roleOf(item) === "AUXILIARY") continue;
+      const key = `${item.code}::${item.parameterCode}`;
+      const existing = groups.get(key);
+      if (existing) existing.count += 1;
+      else groups.set(key, { code: item.code, parameterCode: item.parameterCode, reason: item.reason, count: 1 });
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count);
+  })();
+  const globalImpedimentGroups = impedimentGroups.filter((g) => g.code === "NO_CROP_PROFILE");
+  const parameterImpedimentGroups = impedimentGroups.filter((g) => g.code !== "NO_CROP_PROFILE");
+
   return (
     <div className="cockpit">
       {message && <div className={`agro-message ${message.tone}`} style={{ gridColumn: "1 / -1" }}><Icon name={message.tone === "success" ? "check" : "warning"} size={15}/><span>{message.text}</span></div>}
@@ -228,7 +281,54 @@ export function AgronomicIntelligencePanel({
             {latest.structuredOutput?.confidence && <div className="agro-stat"><span>Confiabilidade da interpretação</span><strong>{latest.structuredOutput.confidence.score}/100</strong><small>{latest.structuredOutput.confidence.level}</small></div>}
             <div className="agro-stat"><span>Base técnica</span><strong>{latest.structuredOutput?.trace.cropProfileCode ?? "—"}</strong><small>{latest.structuredOutput?.trace.cropProfileVersion ? `v${latest.structuredOutput.trace.cropProfileVersion}` : "sem cultura vinculada"}</small></div>
           </div>
-          {latest.notInterpretableReason && <div className="agro-message danger"><Icon name="warning" size={15}/><span>{latest.notInterpretableReason}</span></div>}
+          {(classifiedResultCount + pendingResultCount + auxiliaryResultCount) > 0 && (
+            <>
+              <div className={`agro-message ${classifiedResultCount === 0 && targetTotalCount > 0 ? "danger" : classifiedResultCount < targetTotalCount ? "waiting" : "success"}`}>
+                <Icon name={classifiedResultCount === 0 && targetTotalCount > 0 ? "warning" : classifiedResultCount < targetTotalCount ? "clock" : "check"} size={15}/>
+                <span>
+                  {targetTotalCount === 0
+                    ? "Nenhum parâmetro-alvo de classificação nesta análise."
+                    : classifiedResultCount === 0
+                      ? `0 de ${targetTotalCount} resultados interpretados.`
+                      : classifiedResultCount < targetTotalCount
+                        ? `Interpretação parcial — ${classifiedResultCount}/${targetTotalCount} resultados cobertos.`
+                        : `${classifiedResultCount}/${targetTotalCount} resultados interpretados.`}
+                  {globalImpedimentGroups.length > 0 && ` ${globalImpedimentGroups[0].reason}`}
+                </span>
+              </div>
+              {/* Item 2 do fechamento técnico (auditoria Cabeda): 3 categorias reais, nunca só
+                  "interpretável/não" -- um dado auxiliar nunca é mostrado como erro/pendência. */}
+              <div className="agro-role-summary">
+                <span className="agro-role-chip agro-role-classified">{classifiedParamCodes.length} parâmetro{classifiedParamCodes.length === 1 ? "" : "s"} classificado{classifiedParamCodes.length === 1 ? "" : "s"} ({classifiedResultCount} resultado{classifiedResultCount === 1 ? "" : "s"})</span>
+                <span className="agro-role-chip agro-role-pending">{pendingParamCodes.length} aguardando homologação ({pendingResultCount} resultado{pendingResultCount === 1 ? "" : "s"})</span>
+                <span className="agro-role-chip agro-role-auxiliary">{auxiliaryParamCodes.length} dado{auxiliaryParamCodes.length === 1 ? "" : "s"} auxiliar{auxiliaryParamCodes.length === 1 ? "" : "es"} ({auxiliaryResultCount} resultado{auxiliaryResultCount === 1 ? "" : "s"})</span>
+              </div>
+              {auxiliaryParamCodes.length > 0 && (
+                <p className="agro-auxiliary-note">
+                  Dado auxiliar (insumo/contexto de cálculo, nunca alvo de classificação estática nesta metodologia): {auxiliaryParamCodes.join(", ")}. Não é pendência.
+                </p>
+              )}
+            </>
+          )}
+          {impedimentGroups.length > 0 && (
+            <div className="agro-impediments">
+              <button type="button" className="button ghost small" onClick={() => setShowAllImpediments((v) => !v)}>
+                {showAllImpediments ? "Ocultar impedimentos" : "Ver todos os impedimentos"} ({impedimentGroups.reduce((sum, g) => sum + g.count, 0)})
+              </button>
+              {showAllImpediments && (
+                <ul className="agro-impediments-list">
+                  {globalImpedimentGroups.length > 0 && (
+                    <li className="agro-impediment-global"><strong>Impedimento global</strong> — {globalImpedimentGroups[0].reason}</li>
+                  )}
+                  {parameterImpedimentGroups.map((g) => (
+                    <li key={`${g.code}::${g.parameterCode}`}>
+                      <span className="agro-impediment-count">{g.count}×</span> <code>{g.code}</code> — <strong>{g.parameterCode}</strong>: {g.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {interpretation.length > 0 && (
             <div className="agro-table-wrap"><table className="agro-table">
               <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Resultado</th><th>Classificação</th></tr></thead>
@@ -237,7 +337,7 @@ export function AgronomicIntelligencePanel({
                 return (
                   <tr key={index}>
                     <td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{fact ? `${fact.value} ${fact.unit}` : "—"}</td>
-                    <td>{item.interpretable ? <ClassificationBadge label={item.classification}/> : <StatusBadge tone="waiting"><span title={item.reason}>Não interpretável</span></StatusBadge>}</td>
+                    <td>{item.interpretable ? <ClassificationBadge label={item.classification}/> : roleOf(item) === "AUXILIARY" ? <StatusBadge tone="info"><span title={item.reason}>Auxiliar</span></StatusBadge> : <StatusBadge tone="waiting"><span title={item.reason}>Não interpretável</span></StatusBadge>}</td>
                   </tr>
                 );
               })}</tbody>

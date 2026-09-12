@@ -132,6 +132,20 @@ export type CropProfileDef = {
   semanticVersion: string;
   contentHash: string | null;
   parameters: CropProfileParameterDef[];
+  /**
+   * Códigos de parâmetro que são DADO AUXILIAR nesta cultura/metodologia -- insumo/contexto de cálculo
+   * (ex.: classe de argila usada só como condição de P, índice SMP usado só no cálculo de dose de
+   * calcário), nunca um ALVO de classificação estática. Deliberadamente NUNCA têm linha em
+   * `crop_profile_parameters` -- não são "parâmetro sem homologação", são estruturalmente não-
+   * classificáveis nesta metodologia (achado real, auditoria RAIZ_2.0/Cabeda, 2026-09-11: antes disso,
+   * o motor devolvia `PARAMETER_NOT_IN_PROFILE` pra esses códigos indistintamente do mesmo código usado
+   * pra um parâmetro genuinamente ainda não homologado -- a UI não tinha como diferenciar "isso nunca vai
+   * ter faixa" de "isso só precisa de um agrônomo revisar"). Fica aqui (dado pelo CHAMADOR, nunca
+   * hardcoded dentro do motor) porque é uma decisão por cultura/edição de manual, não uma regra universal
+   * do motor -- outra cultura/metodologia pode ter faixa estática pra pH ou Al, por exemplo. Opcional
+   * (`?? []` no motor) só pra não quebrar todo fixture de teste existente que não conhece este campo.
+   */
+  auxiliaryParameterCodes?: string[];
 };
 
 export type LabResultInput = {
@@ -163,10 +177,22 @@ export type ParameterFact = {
   source?: "MEASURED" | "CALCULATED";
 };
 
+/**
+ * Fase de fechamento técnico (auditoria RAIZ_2.0/Cabeda, 2026-09-11): todo resultado carrega
+ * `classificationRole`, sinalizando estruturalmente se ele É um alvo de classificação nesta
+ * cultura/metodologia ("TARGET" -- pode estar classificado, ou pendente por qualquer motivo real:
+ * homologação, método, profundidade, unidade, condição) ou se é um DADO AUXILIAR que nunca teria faixa
+ * própria por desenho da fonte técnica ("AUXILIARY", sempre `code: "NOT_CLASSIFICATION_TARGET"`). A UI
+ * usa isso pra nunca contar um dado auxiliar como "impedimento"/"erro" -- só um parâmetro TARGET não
+ * interpretado é uma pendência de cobertura de verdade.
+ */
+export type ClassificationRole = "TARGET" | "AUXILIARY";
+
 export type ParameterInterpretation =
   | {
       sampleCode: string;
       parameterCode: string;
+      classificationRole: "TARGET";
       interpretable: true;
       classification: string;
       matchedParameter: { id: string; criticality: "BAIXA" | "MEDIA" | "ALTA" | null };
@@ -176,6 +202,7 @@ export type ParameterInterpretation =
   | {
       sampleCode: string;
       parameterCode: string;
+      classificationRole: "TARGET";
       interpretable: false;
       reason: string;
       code:
@@ -184,6 +211,7 @@ export type ParameterInterpretation =
         | "SAMPLE_TYPE_NOT_COVERED"
         | "AWAITING_HOMOLOGATION"
         | "METHOD_NOT_SUPPORTED"
+        | "UNIT_NOT_SUPPORTED"
         | "DEPTH_UNKNOWN"
         | "DEPTH_NOT_COVERED"
         | "NO_MATCHING_BAND"
@@ -191,6 +219,14 @@ export type ParameterInterpretation =
         | "UNKNOWN_DERIVATION_FUNCTION"
         | "CONDITION_PARAMETER_MISSING"
         | "NO_CONDITION_MATCH";
+    }
+  | {
+      sampleCode: string;
+      parameterCode: string;
+      classificationRole: "AUXILIARY";
+      interpretable: false;
+      reason: string;
+      code: "NOT_CLASSIFICATION_TARGET";
     };
 
 export type EngineConfidence = {
@@ -251,49 +287,69 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
   const base = { sampleCode: result.sampleCode, parameterCode: result.parameterCode };
 
   if (!cropProfile) {
-    return { ...base, interpretable: false, reason: "A safra não tem uma cultura vinculada a um perfil cadastrado.", code: "NO_CROP_PROFILE" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: "A safra não tem uma cultura vinculada a um perfil cadastrado.", code: "NO_CROP_PROFILE" };
+  }
+
+  if ((cropProfile.auxiliaryParameterCodes ?? []).includes(result.parameterCode)) {
+    return {
+      ...base, classificationRole: "AUXILIARY", interpretable: false,
+      reason: `${result.parameterCode} é um dado auxiliar (insumo/contexto de cálculo) nesta metodologia -- não é um alvo de classificação estática, não uma pendência de homologação.`,
+      code: "NOT_CLASSIFICATION_TARGET",
+    };
   }
 
   const codeMatches = cropProfile.parameters.filter((param) => param.parameterCode === result.parameterCode && param.status === "ACTIVE");
   if (codeMatches.length === 0) {
-    return { ...base, interpretable: false, reason: `O perfil "${cropProfile.name}" não tem um parâmetro homologado para ${result.parameterCode}.`, code: "PARAMETER_NOT_IN_PROFILE" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `O perfil "${cropProfile.name}" não tem um parâmetro homologado para ${result.parameterCode}.`, code: "PARAMETER_NOT_IN_PROFILE" };
   }
 
   const candidates = codeMatches.filter((param) => param.sampleType === result.sampleType);
   if (candidates.length === 0) {
-    return { ...base, interpretable: false, reason: `O perfil "${cropProfile.name}" tem faixa homologada para ${result.parameterCode}, mas não para amostra do tipo "${result.sampleType}" -- as faixas cadastradas são de outro tipo de amostra.`, code: "SAMPLE_TYPE_NOT_COVERED" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `O perfil "${cropProfile.name}" tem faixa homologada para ${result.parameterCode}, mas não para amostra do tipo "${result.sampleType}" -- as faixas cadastradas são de outro tipo de amostra.`, code: "SAMPLE_TYPE_NOT_COVERED" };
   }
 
   const depthMatches = candidates.filter((param) => depthCompatible(result.depthFromCm, result.depthToCm, param.depthFromCm, param.depthToCm));
   if (depthMatches.length === 0) {
     if (result.depthFromCm == null || result.depthToCm == null) {
-      return { ...base, interpretable: false, reason: "A profundidade da amostra não está registrada — sem profundidade não é possível escolher a faixa técnica correta.", code: "DEPTH_UNKNOWN" };
+      return { ...base, classificationRole: "TARGET", interpretable: false, reason: "A profundidade da amostra não está registrada — sem profundidade não é possível escolher a faixa técnica correta.", code: "DEPTH_UNKNOWN" };
     }
-    return { ...base, interpretable: false, reason: `Nenhuma faixa homologada cobre a profundidade ${result.depthFromCm}-${result.depthToCm}cm para ${result.parameterCode}.`, code: "DEPTH_NOT_COVERED" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Nenhuma faixa homologada cobre a profundidade ${result.depthFromCm}-${result.depthToCm}cm para ${result.parameterCode}.`, code: "DEPTH_NOT_COVERED" };
   }
 
   const methodMatches = depthMatches.filter((param) => param.analyticalMethodAllowed.length === 0 || param.analyticalMethodAllowed.includes(result.method));
   if (methodMatches.length === 0) {
-    return { ...base, interpretable: false, reason: `Método "${result.method}" não está entre os métodos aceitos para ${result.parameterCode} neste perfil.`, code: "METHOD_NOT_SUPPORTED" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Método "${result.method}" não está entre os métodos aceitos para ${result.parameterCode} neste perfil.`, code: "METHOD_NOT_SUPPORTED" };
+  }
+
+  // Compatibilidade de UNIDADE -- posição fixa no pipeline (parâmetro -> tipo de amostra -> profundidade
+  // -> método -> UNIDADE -> condição -> faixa de suficiência), achado real da auditoria 2026-09-11:
+  // `CropProfileParameterDef.unitExpected` existia mas nunca era conferido contra `result.unit` -- a regra
+  // já documentada no topo deste arquivo ("nunca mistura faixas técnicas... de unidades incompatíveis")
+  // não era imposta de verdade. Comparação sempre EXATA (nunca frouxa) -- qualquer tradução de unidade
+  // (ex.: "mg/L" -> "mg/dm³") tem que acontecer na ingestão/normalização, nunca aqui.
+  // `unitExpected` ausente/vazio = sem restrição declarada (mesmo padrão de `analyticalMethodAllowed`).
+  const unitMatches = methodMatches.filter((param) => !param.unitExpected || param.unitExpected === result.unit);
+  if (unitMatches.length === 0) {
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Unidade "${result.unit}" não é compatível com a unidade homologada ("${methodMatches[0].unitExpected}") para ${result.parameterCode} neste perfil.`, code: "UNIT_NOT_SUPPORTED" };
   }
 
   let matched: CropProfileParameterDef;
-  if (methodMatches.length === 1 && !methodMatches[0].conditionParameterCode) {
-    matched = methodMatches[0];
+  if (unitMatches.length === 1 && !unitMatches[0].conditionParameterCode) {
+    matched = unitMatches[0];
   } else {
-    // Múltiplas faixas para o mesmo parâmetro/profundidade/método: precisam
+    // Múltiplas faixas para o mesmo parâmetro/profundidade/método/unidade: precisam
     // de uma condição (ex.: classe de argila para P, classe de CTC para K)
     // para escolher a certa -- nunca pega a primeira arbitrariamente.
-    const conditioned = methodMatches.filter((param) => param.conditionParameterCode);
+    const conditioned = unitMatches.filter((param) => param.conditionParameterCode);
     if (conditioned.length === 0) {
       // Nenhuma tem condição declarada mas há mais de uma -- cadastro
       // ambíguo (curador precisa revisar), não decide sozinho.
-      return { ...base, interpretable: false, reason: `${result.parameterCode} tem mais de uma faixa homologada para a mesma profundidade/método, sem condição para escolher entre elas -- revisão de cadastro necessária.`, code: "NO_CONDITION_MATCH" };
+      return { ...base, classificationRole: "TARGET", interpretable: false, reason: `${result.parameterCode} tem mais de uma faixa homologada para a mesma profundidade/método/unidade, sem condição para escolher entre elas -- revisão de cadastro necessária.`, code: "NO_CONDITION_MATCH" };
     }
     const conditionParamCode = conditioned[0].conditionParameterCode!;
     const conditionResult = sampleResults.find((r) => r.parameterCode === conditionParamCode);
     if (!conditionResult) {
-      return { ...base, interpretable: false, reason: `A faixa de ${result.parameterCode} depende do valor de ${conditionParamCode} na mesma amostra, mas esse resultado não foi informado.`, code: "CONDITION_PARAMETER_MISSING" };
+      return { ...base, classificationRole: "TARGET", interpretable: false, reason: `A faixa de ${result.parameterCode} depende do valor de ${conditionParamCode} na mesma amostra, mas esse resultado não foi informado.`, code: "CONDITION_PARAMETER_MISSING" };
     }
     const matchingCondition = conditioned.find((param) => {
       const min = param.conditionMin ?? -Infinity;
@@ -301,21 +357,21 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
       return conditionResult.value >= min && conditionResult.value <= max;
     });
     if (!matchingCondition) {
-      return { ...base, interpretable: false, reason: `O valor de ${conditionParamCode} (${conditionResult.value}) não se encaixa em nenhuma classe condicional homologada para ${result.parameterCode}.`, code: "NO_CONDITION_MATCH" };
+      return { ...base, classificationRole: "TARGET", interpretable: false, reason: `O valor de ${conditionParamCode} (${conditionResult.value}) não se encaixa em nenhuma classe condicional homologada para ${result.parameterCode}.`, code: "NO_CONDITION_MATCH" };
     }
     matched = matchingCondition;
   }
 
   if (!matched.sufficiencyRanges || matched.sufficiencyRanges.length === 0) {
-    return { ...base, interpretable: false, reason: `${result.parameterCode} está cadastrado no perfil, mas as faixas de suficiência ainda aguardam homologação técnica.`, code: "AWAITING_HOMOLOGATION" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `${result.parameterCode} está cadastrado no perfil, mas as faixas de suficiência ainda aguardam homologação técnica.`, code: "AWAITING_HOMOLOGATION" };
   }
 
   const classification = classifyValue(result.value, matched.sufficiencyRanges);
   if (!classification) {
-    return { ...base, interpretable: false, reason: `O valor ${result.value} ${result.unit} não se encaixa em nenhuma faixa homologada para ${result.parameterCode}.`, code: "NO_MATCHING_BAND" };
+    return { ...base, classificationRole: "TARGET", interpretable: false, reason: `O valor ${result.value} ${result.unit} não se encaixa em nenhuma faixa homologada para ${result.parameterCode}.`, code: "NO_MATCHING_BAND" };
   }
 
-  return { ...base, interpretable: true, classification, matchedParameter: { id: matched.id, criticality: matched.criticality } };
+  return { ...base, classificationRole: "TARGET", interpretable: true, classification, matchedParameter: { id: matched.id, criticality: matched.criticality } };
 }
 
 /**
@@ -327,7 +383,7 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
  * inventa uma entrada ausente -- se faltar qualquer uma, não interpreta.
  */
 function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: string, sampleResults: LabResultInput[]): ParameterInterpretation {
-  const base = { sampleCode, parameterCode: param.parameterCode };
+  const base = { sampleCode, parameterCode: param.parameterCode, classificationRole: "TARGET" as const };
   const fn = DERIVED_PARAMETER_FUNCTIONS[param.derivedParameterCode!];
   if (!fn) {
     return { ...base, interpretable: false, reason: `${param.parameterCode} está configurado com a função de cálculo "${param.derivedParameterCode}", que não existe no motor -- revisão de cadastro necessária.`, code: "UNKNOWN_DERIVATION_FUNCTION" };
@@ -382,7 +438,11 @@ export function runAgronomicEngine(input: EngineInput): EngineResult {
     new Set(interpretation.filter((item): item is Extract<ParameterInterpretation, { interpretable: false }> => !item.interpretable).map((item) => item.reason)),
   );
 
-  const completeness = total === 0 ? 0 : Math.round((interpretableCount / total) * 100);
+  // Completude conta só entre os resultados que SÃO alvo de classificação (`classificationRole:
+  // "TARGET"`) -- um dado auxiliar (nunca terá faixa própria, por desenho) não pode contar como
+  // "faltando" e derrubar a nota de completude artificialmente (achado real, auditoria 2026-09-11).
+  const targetTotal = interpretation.filter((item) => item.classificationRole === "TARGET").length;
+  const completeness = targetTotal === 0 ? 0 : Math.round((interpretableCount / targetTotal) * 100);
   const dimensions = [
     { key: "completeness", label: "Completude", score: completeness, weight: 0.5 },
     { key: "context", label: "Contexto agronômico", score: input.cropProfile ? 100 : 0, weight: 0.3 },

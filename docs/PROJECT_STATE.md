@@ -4192,3 +4192,39 @@ continua em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`.
   passando depois da correção.
 - Validação final: typecheck, build, `test:handoff` e a suíte e2e inteira do projeto, todos verdes (ver
   `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md` para os números exatos da rodada completa).
+
+## Diagnóstico e correção do pipeline Laudo → Interpretação → Revisão → Recomendação → Relatório (2026-09-11)
+
+Bloqueador comercial real: as 3 análises reais do Rafael Cabeda apareciam bloqueadas em `/inteligencia`
+("O perfil 'Soja' não tem um parâmetro homologado para AL"). Diagnóstico completo e correção documentados em
+`docs/CABEDA_PIPELINE_DIAGNOSTICO_E_CORRECAO.md`. Resumo:
+
+- **Causa raiz** (mais ampla do que o Cabeda): nenhum `crop_profile_parameter` de nenhuma cultura estava
+  `ACTIVE` no banco inteiro (o motor determinístico só considera `status === "ACTIVE"`) + a tela mostrava só
+  `pendencies[0]` (a 1ª pendência, sempre "AL" por ordenação alfabética), escondendo que os outros 15
+  parâmetros do laudo estavam igualmente bloqueados.
+- Homologados 7 parâmetros da Soja (CA, MG, MO, CU, ZN, K, P) para `ACTIVE`, com autorização explícita do
+  diretor -- método/unidade batiam exatamente com o cadastro, faixas já verificadas contra o Manual
+  CQFS-RS/SC 2016 na criação do cadastro.
+- Camada de normalização de método analítico criada (`src/domain/lab-method-normalization.ts`), ligada no
+  importador real (`lab-import.ts`) -- corrige 4 divergências de nomenclatura entre o que um laboratório
+  escreve e o que está homologado (CTC, S, B, MN), na ingestão, nunca dentro do motor.
+- Talhão 3/Fazenda Bela Vista vinculado ao perfil Soja (cultura já conhecida, perfil já existia, só faltava
+  a vinculação).
+- Tela de Inteligência (`agronomic-intelligence-panel.tsx`, `/inteligencia`) agora mostra contagem real
+  ("X/Y resultados interpretados", "Interpretação parcial") e lista de impedimentos agrupada por
+  código/parâmetro, distinguindo impedimento global (sem cultura vinculada) de impedimento por parâmetro.
+- **Gap de governança real encontrado e corrigido**: a rota de prescrição assistida por IA
+  (`/api/analyses/[id]/agronomic-prescription`) não conferia se a interpretação determinística tinha
+  classificado alguma coisa antes de pedir a uma IA pra propor dose -- corrigido com um gate novo (exige
+  `IN_REVIEW`/`APPROVED`).
+- As 3 análises do Cabeda reinterpretadas com sucesso via API real: 56/128, 28/64, 28/64 resultados
+  classificados. Fluxo completo validado até relatório publicado com hash íntegro mostrando dados reais.
+- Teste de aceitação reproduzível: `npm run test:cabeda-acceptance` (`scripts/acceptance-cabeda.mjs`).
+- AL/PH/SMP/H_AL continuam sem faixa (legítimo -- a edição 2016 do manual não usa mais faixa estática pra
+  eles); CTC/S/B/MN continuam `DRAFT` (nomenclatura corrigida, mas homologação continua exigindo decisão de
+  um agrônomo responsável); a falha de geração de prescrição real (502, formato inesperado do provider
+  Gemini) é uma lacuna de infraestrutura pré-existente e separada, não corrigida nesta auditoria.
+- Validação final: typecheck, build, `test:handoff` (25 scripts) e suíte e2e inteira (111 testes: 106
+  passed, 5 skipped honestos, 0 failed -- 1 teste que antes era pulado por falta de dado passou a rodar
+  como efeito colateral positivo desta correção).

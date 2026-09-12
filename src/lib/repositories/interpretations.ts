@@ -1,6 +1,7 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/domain/agronomic-engine";
+import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
 
 export class InterpretationError extends Error {
   constructor(message: string, public status = 400) {
@@ -49,7 +50,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
            FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid`,
           [analysis.cropProfileId],
         );
-        cropProfile = { ...profileRow, parameters: paramsResult.rows };
+        cropProfile = { ...profileRow, parameters: paramsResult.rows, auxiliaryParameterCodes: auxiliaryParameterCodesFor(profileRow.code) };
       }
     }
 
@@ -147,7 +148,19 @@ export async function getIntelligenceQueue(tenantId: string, filters: Intelligen
                 f.id::text AS "fieldId", f.name AS "fieldName",
                 cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
                 cp.name AS "cropProfileName",
-                (SELECT count(*)::int FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = a.id) AS "revisionCount"
+                (SELECT count(*)::int FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = a.id) AS "revisionCount",
+                -- Fechamento técnico (auditoria Cabeda, 2026-09-11, revisão): a fila mostrava só a 1a
+                -- pendência (notInterpretableReason) mesmo quando a análise tinha dezenas/centenas de
+                -- resultados -- nunca dizia quantos foram de fato cobertos. Contagem real a partir do
+                -- mesmo structured_output.interpretation que o motor já grava (nenhum dado novo, só
+                -- agregado), agora separando 3 categorias reais (classificationRole do motor) em vez de só
+                -- "interpretável/não": um dado AUXILIAR (nunca terá faixa própria, por desenho) nunca conta
+                -- como pendência de cobertura -- só um parâmetro TARGET não interpretado conta.
+                -- coalesce(...,'TARGET') trata revisão antiga (calculada antes deste campo existir) como
+                -- TARGET -- mesmo comportamento de antes pra dado histórico, nunca quebra revisão velha.
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE (e->>'interpretable')::boolean) AS "classifiedCount",
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE NOT (e->>'interpretable')::boolean AND coalesce(e->>'classificationRole','TARGET') = 'TARGET') AS "pendingTargetCount",
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE coalesce(e->>'classificationRole','TARGET') = 'AUXILIARY') AS "auxiliaryCount"
          FROM interpretations i
          JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
          JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id

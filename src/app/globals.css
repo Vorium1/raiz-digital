@@ -582,6 +582,19 @@ button { color: inherit; }
 .agro-message { align-items:center; border-radius:10px; display:flex; font-size:12px; gap:8px; padding:10px 14px; }
 .agro-message.success { background:#142a1f; color:#b8e4d4; }
 .agro-message.danger { background:#221311; color:#dca9a5; }
+.agro-message.waiting { background:#241f10; color:#e4cfa0; }
+.agro-impediments { display:flex; flex-direction:column; gap:8px; }
+.agro-impediments-list { display:flex; flex-direction:column; gap:6px; list-style:none; margin:0; padding:0; }
+.agro-impediments-list li { background:var(--surface-2); border:1px solid var(--line); border-radius:8px; font-size:11px; padding:8px 12px; }
+.agro-impediments-list li code { background:var(--surface-3,var(--surface-2)); border-radius:4px; font-size:9px; padding:1px 5px; }
+.agro-impediment-global { border-color:#dca9a5 !important; }
+.agro-impediment-count { color:var(--muted); font-variant-numeric:tabular-nums; }
+.agro-role-summary { display:flex; flex-wrap:wrap; gap:8px; }
+.agro-role-chip { border-radius:14px; font-size:10px; font-weight:600; padding:6px 11px; }
+.agro-role-chip.agro-role-classified { background:#142a1f; color:#b8e4d4; }
+.agro-role-chip.agro-role-pending { background:#241f10; color:#e4cfa0; }
+.agro-role-chip.agro-role-auxiliary { background:var(--surface-2); border:1px solid var(--line); color:var(--muted); }
+.agro-auxiliary-note { color:var(--muted); font-size:10px; line-height:1.5; margin:0; }
 .agro-summary-row { display:grid; gap:10px; grid-template-columns:repeat(4,minmax(0,1fr)); }
 .agro-stat { background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
 .agro-stat span { color:var(--muted); display:block; font-size:9px; letter-spacing:.04em; text-transform:uppercase; }
