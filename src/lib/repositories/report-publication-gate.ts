@@ -8,11 +8,63 @@ export type ReportPublicationReadiness = {
   prescriptionId: string | null;
 };
 
+type GateInput = {
+  interpretationExists: boolean;
+  interpretationStatus: string | null;
+  prescriptionId: string | null;
+  prescriptionStatus: string | null;
+};
+
 export class ReportPublicationGateError extends Error {
   constructor(message: string, public status = 409) {
     super(message);
     this.name = "ReportPublicationGateError";
   }
+}
+
+/** Regra pura do gate, mantida separada da consulta para poder ser testada sem banco. */
+export function evaluateReportPublicationGate(input: GateInput): ReportPublicationReadiness {
+  if (!input.interpretationExists) {
+    return { allowed: false, reason: "Interpretação não encontrada.", interpretationStatus: null, prescriptionStatus: null, prescriptionId: null };
+  }
+  if (input.interpretationStatus !== "APPROVED") {
+    return {
+      allowed: false,
+      reason: "A interpretação precisa estar aprovada pelo responsável técnico antes da entrega oficial.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (!input.prescriptionId) {
+    return {
+      allowed: false,
+      reason: "Gere e aprove a Recomendação Assistida RAIZ antes de publicar o relatório oficial.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: null,
+      prescriptionId: null,
+    };
+  }
+  if (input.prescriptionStatus !== "APPROVED") {
+    return {
+      allowed: false,
+      reason: input.prescriptionStatus === "PENDING_REVIEW"
+        ? "A recomendação está pronta, mas ainda precisa de revisão profissional antes da publicação."
+        : input.prescriptionStatus === "CHANGES_REQUESTED"
+          ? "A recomendação recebeu solicitação de ajuste e precisa de uma nova versão aprovada antes da publicação."
+          : "A recomendação atual não está aprovada; a entrega oficial permanece bloqueada.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  return {
+    allowed: true,
+    reason: null,
+    interpretationStatus: input.interpretationStatus,
+    prescriptionStatus: input.prescriptionStatus,
+    prescriptionId: input.prescriptionId,
+  };
 }
 
 /**
@@ -47,45 +99,12 @@ export async function getReportPublicationReadiness(
       [tenantId, interpretationId],
     );
     const row = result.rows[0];
-    if (!row) return { allowed: false, reason: "Interpretação não encontrada.", interpretationStatus: null, prescriptionStatus: null, prescriptionId: null };
-    if (row.interpretationStatus !== "APPROVED") {
-      return {
-        allowed: false,
-        reason: "A interpretação precisa estar aprovada pelo responsável técnico antes da entrega oficial.",
-        interpretationStatus: row.interpretationStatus,
-        prescriptionStatus: row.prescriptionStatus ?? null,
-        prescriptionId: row.prescriptionId ?? null,
-      };
-    }
-    if (!row.prescriptionId) {
-      return {
-        allowed: false,
-        reason: "Gere e aprove a Recomendação Assistida RAIZ antes de publicar o relatório oficial.",
-        interpretationStatus: row.interpretationStatus,
-        prescriptionStatus: null,
-        prescriptionId: null,
-      };
-    }
-    if (row.prescriptionStatus !== "APPROVED") {
-      return {
-        allowed: false,
-        reason: row.prescriptionStatus === "PENDING_REVIEW"
-          ? "A recomendação está pronta, mas ainda precisa de revisão profissional antes da publicação."
-          : row.prescriptionStatus === "CHANGES_REQUESTED"
-            ? "A recomendação recebeu solicitação de ajuste e precisa de uma nova versão aprovada antes da publicação."
-            : "A recomendação atual não está aprovada; a entrega oficial permanece bloqueada.",
-        interpretationStatus: row.interpretationStatus,
-        prescriptionStatus: row.prescriptionStatus,
-        prescriptionId: row.prescriptionId,
-      };
-    }
-    return {
-      allowed: true,
-      reason: null,
-      interpretationStatus: row.interpretationStatus,
-      prescriptionStatus: row.prescriptionStatus,
-      prescriptionId: row.prescriptionId,
-    };
+    return evaluateReportPublicationGate({
+      interpretationExists: Boolean(row),
+      interpretationStatus: row?.interpretationStatus ?? null,
+      prescriptionId: row?.prescriptionId ?? null,
+      prescriptionStatus: row?.prescriptionStatus ?? null,
+    });
   });
 }
 
