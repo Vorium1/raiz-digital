@@ -3,7 +3,7 @@ import {
   classifyNdviObservationQuality,
   NDVI_QUALITY_LABELS,
   type NdviHistoryPoint,
-} from "./ndvi-engine.ts";
+} from "./ndvi-engine";
 
 export type FieldSatelliteStatusTone = "success" | "review" | "waiting";
 
