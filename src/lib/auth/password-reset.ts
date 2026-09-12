@@ -3,30 +3,43 @@ import { getPool, query } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 
 const TOKEN_TTL_MINUTES = 30;
+const REQUEST_COOLDOWN_SECONDS = 60;
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createPasswordResetToken(userId: string): Promise<string> {
+/** Retorna null quando já houve pedido recente para a mesma conta. */
+export async function createPasswordResetToken(userId: string): Promise<string | null> {
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000);
 
-  // Um novo pedido invalida links anteriores ainda abertos. O CTE executa invalidação + criação como
-  // uma única operação no banco, evitando manter vários links válidos para a mesma conta ao mesmo tempo.
-  await query(
-    `WITH invalidated AS (
+  // Limita reenvio por conta antes de invalidar o link anterior. Assim uma sequência de requisições não
+  // gera spam e também não mata, a cada clique, o único link que acabou de chegar ao usuário.
+  const created = await query<{ id: string }>(
+    `WITH recent AS (
+       SELECT 1
+       FROM password_reset_tokens
+       WHERE user_id = $1::uuid
+         AND created_at > now() - ($4::int * interval '1 second')
+       LIMIT 1
+     ), invalidated AS (
        UPDATE password_reset_tokens
        SET used_at = now()
-       WHERE user_id = $1::uuid AND used_at IS NULL
+       WHERE user_id = $1::uuid
+         AND used_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM recent)
        RETURNING id
      )
      INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
-     VALUES ($1::uuid, $2, $3)`,
-    [userId, tokenHash, expiresAt],
+     SELECT $1::uuid, $2, $3
+     WHERE NOT EXISTS (SELECT 1 FROM recent)
+     RETURNING id::text`,
+    [userId, tokenHash, expiresAt, REQUEST_COOLDOWN_SECONDS],
   );
-  return token;
+
+  return created.rows[0] ? token : null;
 }
 
 export async function consumePasswordResetToken(token: string, newPassword: string) {
