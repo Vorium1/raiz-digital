@@ -7,6 +7,7 @@ import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getIntelligenceQueue, getIntelligenceFilterOptions } from "@/lib/repositories/interpretations";
+import { getDecisionDeliveryStatuses, type DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
 import { demoInterpretationsLog } from "@/lib/demo-data";
 import { interpretationStatusMeta, interpretationQueueBucket, QUEUE_BUCKET_META, type QueueBucket } from "@/domain/interpretation-status";
 import { formatRelativeOrDate } from "@/domain/analysis-ui";
@@ -15,11 +16,16 @@ export const metadata = { title: "Inteligência Agronômica" };
 
 const STATUS_META = interpretationStatusMeta;
 
-function nextActionFor(bucket: QueueBucket, analysisId: string): { label: string; href: string } {
+function nextActionFor(bucket: QueueBucket, analysisId: string, delivery?: DecisionDeliveryStatus): { label: string; href: string } {
   if (bucket === "BLOQUEADA") return { label: "Resolver bloqueio", href: `/analises/${analysisId}` };
-  if (bucket === "APROVADA") return { label: "Abrir recomendação e entrega", href: `/analises/${analysisId}` };
   if (bucket === "REVISAO_EM_ANDAMENTO") return { label: "Concluir revisão técnica", href: `/analises/${analysisId}` };
-  return { label: "Validar interpretação", href: `/analises/${analysisId}` };
+  if (bucket === "AGUARDANDO_REVISAO") return { label: "Validar interpretação", href: `/analises/${analysisId}` };
+  if (!delivery?.prescriptionStatus) return { label: "Gerar recomendação", href: `/analises/${analysisId}` };
+  if (delivery.prescriptionStatus === "PENDING_REVIEW") return { label: "Revisar recomendação", href: `/analises/${analysisId}` };
+  if (delivery.prescriptionStatus === "CHANGES_REQUESTED") return { label: "Gerar nova recomendação", href: `/analises/${analysisId}` };
+  if (delivery.prescriptionStatus === "REJECTED") return { label: "Reavaliar recomendação", href: `/analises/${analysisId}` };
+  if (delivery.reportCount === 0) return { label: "Publicar entrega", href: `/analises/${analysisId}` };
+  return { label: "Abrir decisão entregue", href: `/analises/${analysisId}` };
 }
 
 function coverageText(item: any) {
@@ -37,6 +43,16 @@ function coverageText(item: any) {
   const pendingText = pending > 0 ? ` · ${pending} com pendência técnica` : " · cobertura técnica completa";
   const auxiliaryText = auxiliary > 0 ? ` · ${auxiliary} auxiliares` : "";
   return `Cobertura técnica: ${coverage}${pendingText}${auxiliaryText}`;
+}
+
+function deliveryText(bucket: QueueBucket, delivery?: DecisionDeliveryStatus) {
+  if (bucket !== "APROVADA") return null;
+  if (!delivery?.prescriptionStatus) return "Próxima etapa: recomendação assistida";
+  if (delivery.prescriptionStatus === "PENDING_REVIEW") return "Recomendação gerada · aguardando revisão profissional";
+  if (delivery.prescriptionStatus === "CHANGES_REQUESTED") return "Recomendação devolvida · nova versão necessária";
+  if (delivery.prescriptionStatus === "REJECTED") return "Recomendação rejeitada · decisão precisa ser reavaliada";
+  if (delivery.reportCount === 0) return "Recomendação aprovada · relatório ainda não publicado";
+  return `Entrega concluída · ${delivery.reportCount} relatório${delivery.reportCount === 1 ? "" : "s"} publicado${delivery.reportCount === 1 ? "" : "s"}`;
 }
 
 export default async function AgronomicIntelligenceHubPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -70,6 +86,8 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
     }, session.userId),
     getIntelligenceFilterOptions(session.tenantId, session.userId),
   ]);
+  const deliveryRows = await getDecisionDeliveryStatuses(session.tenantId, rows.map((row: any) => row.analysisId), session.userId);
+  const deliveryByAnalysis = new Map(deliveryRows.map((row) => [row.analysisId, row]));
 
   const withBucket = rows.map((row: any) => ({ ...row, bucket: interpretationQueueBucket(row) as QueueBucket }));
   const filtered = withBucket.filter((row) => {
@@ -90,12 +108,14 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
   }, { classified: 0, pending: 0, auxiliary: 0 });
   const portfolioTargetTotal = portfolio.classified + portfolio.pending;
   const portfolioCoverage = portfolioTargetTotal > 0 ? Math.round((portfolio.classified / portfolioTargetTotal) * 100) : 0;
+  const deliveredCount = deliveryRows.filter((row) => row.reportCount > 0).length;
+  const prescriptionReviewCount = deliveryRows.filter((row) => row.prescriptionStatus === "PENDING_REVIEW").length;
 
   return (
     <>
       <Topbar eyebrow="Inteligência" title="Inteligência Agronômica"><AssistantEntryButton label="Pergunte sobre a fila"/></Topbar>
       <div className="content-wrap">
-        <PageIntro title="Central de decisões técnicas" description="Priorize o que bloqueia uma decisão, valide interpretações e avance até recomendação e entrega. Dados auxiliares aparecem como contexto — nunca como falha artificial de cobertura."/>
+        <PageIntro title="Central de decisões técnicas" description="Priorize o que bloqueia uma decisão, valide interpretações e avance até recomendação e entrega. A RAIZ mostra a jornada completa — não apenas o laudo."/>
 
         <div className="intelligence-bucket-summary">
           {(Object.keys(QUEUE_BUCKET_META) as QueueBucket[]).map((bucket) => (
@@ -108,7 +128,7 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
         {withBucket.length > 0 && (
           <div className="demo-banner" style={{ marginTop: 12 }}>
             <Icon name="sparkles" size={14}/>
-            <span><strong>Cobertura técnica da fila: {portfolioCoverage}%</strong> · {portfolio.classified}/{portfolioTargetTotal} resultados-alvo classificados{portfolio.pending > 0 ? ` · ${portfolio.pending} pendentes de cobertura técnica` : " · sem pendências de cobertura"}{portfolio.auxiliary > 0 ? ` · ${portfolio.auxiliary} dados auxiliares preservados como contexto` : ""}.</span>
+            <span><strong>Cobertura técnica da fila: {portfolioCoverage}%</strong> · {portfolio.classified}/{portfolioTargetTotal} resultados-alvo classificados{portfolio.pending > 0 ? ` · ${portfolio.pending} pendentes de cobertura técnica` : " · sem pendências de cobertura"}{portfolio.auxiliary > 0 ? ` · ${portfolio.auxiliary} dados auxiliares preservados como contexto` : ""} · {prescriptionReviewCount} recomendação(ões) em revisão · {deliveredCount} entrega(s) publicada(s).</span>
           </div>
         )}
 
@@ -119,8 +139,10 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
             <div className="intelligence-queue-list">
               {filtered.map((item) => {
                 const bucketMeta = QUEUE_BUCKET_META[item.bucket as QueueBucket];
-                const action = nextActionFor(item.bucket as QueueBucket, item.analysisId);
+                const delivery = deliveryByAnalysis.get(item.analysisId);
+                const action = nextActionFor(item.bucket as QueueBucket, item.analysisId, delivery);
                 const responsible = item.bucket === "APROVADA" ? item.approvedByName : item.reviewedByName;
+                const deliveryState = deliveryText(item.bucket as QueueBucket, delivery);
                 return (
                   <Link key={item.id} href={`/analises/${item.analysisId}`} className="intelligence-queue-row">
                     <div className="intelligence-queue-context">
@@ -131,7 +153,10 @@ export default async function AgronomicIntelligenceHubPage({ searchParams }: { s
                       <StatusBadge tone={bucketMeta.tone}>{bucketMeta.label}</StatusBadge>
                       {item.revisionCount > 1 && <small className="intelligence-queue-revcount"><Icon name="history" size={11}/>{item.revisionCount} versões</small>}
                     </div>
-                    <div className="intelligence-queue-conclusion">{coverageText(item)}</div>
+                    <div className="intelligence-queue-conclusion">
+                      <span>{coverageText(item)}</span>
+                      {deliveryState && <small style={{ display: "block", marginTop: 3 }}>{deliveryState}</small>}
+                    </div>
                     <div className="intelligence-queue-meta">
                       <span>{formatRelativeOrDate(item.createdAt)}</span>
                       {responsible && <span className="intelligence-queue-responsible"><Icon name="users" size={11}/>{responsible}</span>}
