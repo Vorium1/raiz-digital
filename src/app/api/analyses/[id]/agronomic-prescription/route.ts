@@ -12,12 +12,24 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id } = await context.params;
-  const [latest, history, usage] = await Promise.all([
+  const [latest, history, usage, interpretation] = await Promise.all([
     getLatestAgronomicPrescription(session.tenantId, id, session.userId),
     listAgronomicPrescriptionHistory(session.tenantId, id, session.userId),
     getTenantPrescriptionUsage(session.tenantId),
+    getLatestInterpretation(session.tenantId, id, session.userId),
   ]);
-  return Response.json({ latest, history, usage });
+  const gate = checkPrescriptionGate(interpretation?.status ?? null);
+  return Response.json({
+    latest,
+    history,
+    usage,
+    readiness: {
+      allowed: gate.allowed,
+      reason: gate.allowed ? null : gate.reason,
+      interpretationStatus: interpretation?.status ?? null,
+      interpretationId: interpretation?.id ?? null,
+    },
+  });
 }
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -37,22 +49,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: "Não há resultado de laboratório vinculado a esta análise ainda." }, { status: 409 });
   }
 
-  // Fechamento técnico (auditoria Cabeda, 2026-09-11, item 8, revisado) -- achado real de governança: até
-  // aqui, esta rota só conferia "existe algum lab_result" antes de pedir uma prescrição à IA, nunca se a
-  // interpretação determinística tinha sido REVISADA E APROVADA por um profissional. `buildAgronomic
-  // PrescriptionEvidencePackage` manda pra IA o `numeric_value` cru do laboratório, sem passar pela
-  // classificação/homologação -- ou seja, era possível gerar uma "prescrição assistida" pra um laudo cuja
-  // interpretação nunca rodou, ou rodou e não achou NENHUM parâmetro interpretável, ou tinha classificação
-  // real mas AINDA NÃO passou pela revisão profissional (`IN_REVIEW` -- só o motor rodou, nenhum humano
-  // confirmou ainda). A primeira versão deste gate aceitava `IN_REVIEW` também -- não é a governança
-  // correta: `IN_REVIEW` é "calculado, aguardando revisão", não "aprovado". Fluxo correto:
-  //
-  //   interpretação determinística -> revisão profissional (reviewInterpretation) -> APPROVED
-  //     -> prescrição/recomendação assistida (aqui, só a partir daqui)
-  //     -> revisão/aprovação da prescrição (reviewAgronomicPrescription, já existente)
-  //
-  // Só `APPROVED` passa. `CALCULATED` (zero parâmetro interpretável) e `IN_REVIEW` (interpretável, mas
-  // ainda sem revisão humana) recusam igualmente -- nenhum atalho por trás de "já tem classificação".
+  // Governança obrigatória:
+  // interpretação determinística -> revisão profissional -> APPROVED -> prescrição assistida
+  // -> revisão/aprovação da prescrição. Nenhuma IA pula a decisão humana anterior.
   const interpretation = await getLatestInterpretation(session.tenantId, id, session.userId);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
   if (!gate.allowed) {
