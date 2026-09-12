@@ -17,7 +17,17 @@ function hashPendingToken(token: string) {
 
 export async function startTwoFactorSetup(input: { userId: string; email: string }) {
   const secret = generateTotpSecret();
-  await query("UPDATE users SET totp_secret = $1, two_factor_enabled = false WHERE id = $2::uuid", [secret, input.userId]);
+  // Nunca desativa uma proteção já vigente para iniciar uma rotação. Sem um campo separado para segredo
+  // pendente, sobrescrever `totp_secret` faria a conta ficar sem 2FA entre gerar o QR e confirmar o novo
+  // aparelho. A rotação, por enquanto, exige desativar explicitamente com senha e só então configurar de
+  // novo. O WHERE também protege chamadas diretas ao domínio, não apenas a rota HTTP.
+  const updated = await query(
+    "UPDATE users SET totp_secret = $1 WHERE id = $2::uuid AND two_factor_enabled = false",
+    [secret, input.userId],
+  );
+  if ((updated.rowCount ?? 0) === 0) {
+    throw new TwoFactorError("A verificação em duas etapas já está ativa. Desative-a primeiro para configurar outro autenticador.", 409);
+  }
   return { secret, otpauthUri: totpAuthUri({ secret, accountLabel: input.email }) };
 }
 
@@ -58,9 +68,6 @@ export async function verifyTwoFactorCode(userId: string, code: string) {
 
   const matchedCounter = verifyTotpCode(row.totp_secret, code);
   if (matchedCounter !== null) {
-    // Só aceita se esse passo de 30s ainda não tiver sido usado (impede reaproveitar o mesmo código
-    // dentro da janela de tolerância) e só marca como usado se ainda for o maior contador na hora do
-    // UPDATE — evita que duas tentativas simultâneas com o mesmo código passem as duas.
     const lastCounter = row.totp_last_counter;
     if (lastCounter == null || matchedCounter > lastCounter) {
       const updated = await query(
@@ -71,9 +78,6 @@ export async function verifyTwoFactorCode(userId: string, code: string) {
     }
   }
 
-  // UPDATE ... WHERE used_at IS NULL num único statement (em vez de SELECT e depois UPDATE) para que
-  // duas tentativas simultâneas com o mesmo código de backup não consigam as duas passar pela checagem
-  // antes de qualquer uma marcar o código como usado — só uma linha é afetada, a outra tentativa perde.
   const backupHash = hashBackupCode(code);
   const backup = await query<{ id: string }>(
     "UPDATE totp_backup_codes SET used_at = now() WHERE user_id = $1::uuid AND code_hash = $2 AND used_at IS NULL RETURNING id::text",
