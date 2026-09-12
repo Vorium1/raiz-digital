@@ -16,6 +16,7 @@ export class ReportPublicationGateError extends Error {
 /**
  * Gate da entrega oficial. A recomendação precisa pertencer À MESMA interpretação que será publicada,
  * impedindo que uma prescrição aprovada de uma revisão antiga autorize silenciosamente uma revisão nova.
+ * A mesma revisão também só pode ser publicada uma vez: o snapshot oficial é imutável.
  */
 export async function getReportPublicationReadiness(
   tenantId: string,
@@ -26,7 +27,13 @@ export async function getReportPublicationReadiness(
     const result = await client.query(
       `SELECT i.status::text AS "interpretationStatus",
               prescription.id::text AS "prescriptionId",
-              prescription.status::text AS "prescriptionStatus"
+              prescription.status::text AS "prescriptionStatus",
+              EXISTS (
+                SELECT 1 FROM reports r
+                WHERE r.tenant_id=i.tenant_id
+                  AND r.interpretation_id=i.id
+                  AND r.revision=i.revision
+              ) AS "reportExists"
        FROM interpretations i
        LEFT JOIN LATERAL (
          SELECT ag.id, ag.status
@@ -47,6 +54,7 @@ export async function getReportPublicationReadiness(
       interpretationStatus: row?.interpretationStatus ?? null,
       prescriptionId: row?.prescriptionId ?? null,
       prescriptionStatus: row?.prescriptionStatus ?? null,
+      reportExists: Boolean(row?.reportExists),
     });
   });
 }
