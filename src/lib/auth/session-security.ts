@@ -15,13 +15,14 @@ export async function listOwnActiveSessions(userId: string, currentSessionId: st
     `SELECT
        s.id::text AS id,
        s.tenant_id::text AS "tenantId",
-       t.trade_name AS "tenantName",
+       membership.trade_name AS "tenantName",
        s.user_agent AS "userAgent",
        s.created_at::text AS "createdAt",
        s.expires_at::text AS "expiresAt",
        (s.id = $2::uuid) AS current
      FROM user_sessions s
-     LEFT JOIN tenants t ON t.id = s.tenant_id
+     LEFT JOIN LATERAL app.user_memberships($1::uuid) membership
+       ON membership.tenant_id = s.tenant_id
      WHERE s.user_id = $1::uuid
        AND s.revoked_at IS NULL
        AND s.expires_at > now()
@@ -42,15 +43,4 @@ export async function revokeOwnOtherSessions(userId: string, currentSessionId: s
     [userId, currentSessionId],
   );
   return result.rowCount ?? 0;
-}
-
-export function sessionDeviceLabel(userAgent: string | null) {
-  if (!userAgent) return "Dispositivo não identificado";
-  const value = userAgent.toLowerCase();
-  if (value.includes("android")) return "Android";
-  if (value.includes("iphone") || value.includes("ipad") || value.includes("ios")) return "iPhone / iPad";
-  if (value.includes("windows")) return "Windows";
-  if (value.includes("macintosh") || value.includes("mac os")) return "Mac";
-  if (value.includes("linux")) return "Linux";
-  return "Navegador / dispositivo";
 }
