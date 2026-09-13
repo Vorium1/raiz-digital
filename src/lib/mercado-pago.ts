@@ -16,9 +16,12 @@ export type MercadoPagoPayment = {
 export type InternalPaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELED";
 
 export class MercadoPagoApiError extends Error {
-  constructor(message: string, public status: number | null = null) {
+  status: number | null;
+
+  constructor(message: string, status: number | null = null) {
     super(message);
     this.name = "MercadoPagoApiError";
+    this.status = status;
   }
 }
 
