@@ -24,7 +24,10 @@ O preflight verifica, entre outros pontos:
 - snapshot publicado de relatório em `REPORT_STORAGE_PROVIDER=inline`;
 - retenção do arquivo original do laboratório em `STORAGE_PROVIDER=s3`, com endpoint HTTPS e credenciais completas;
 - coerência do modo do assistente e credenciais necessárias quando híbrido;
-- disponibilidade das integrações Copernicus e Mercado Pago como avisos quando ainda opcionais.
+- disponibilidade das integrações Copernicus e Mercado Pago como avisos quando ainda opcionais;
+- consistência do gate comercial do Mercado Pago: `MERCADO_PAGO_CHECKOUT_ENABLED=true` é bloqueado se Access Token e segredo do webhook não estiverem completos.
+
+**Importante:** credenciais do Mercado Pago e ativação comercial são estados independentes. É válido — e recomendado durante homologação — ter as credenciais configuradas com `MERCADO_PAGO_CHECKOUT_ENABLED=false`. Configurar token/segredo nunca deve, sozinho, expor cobrança aos usuários.
 
 ## 2. Health check
 
@@ -103,9 +106,19 @@ Antes de promover:
 - revisar erros de autenticação, importação, publicação de relatório e integrações externas;
 - nunca registrar tokens, chaves, senha, string completa de banco ou conteúdo sensível de laudo em logs.
 
+A RAIZ também possui o painel interno `/operacao-sistema`, disponível **somente para usuários marcados como curadores globais da plataforma (`is_platform_curator`)**. Ele agrega saúde do banco, falhas de login, eventos/erros de pagamentos, auditoria e prontidão de integrações sem mostrar tokens, e-mails/IPs, payloads ou strings de conexão. Esse painel é complementar e não substitui monitoramento externo, logs do runtime nem o preflight.
+
 ## 7. Dependências externas
 
 Copernicus é necessário para leitura real de NDVI. Mercado Pago só deve ser habilitado depois que token e assinatura de webhook estiverem configurados e validados. O assistente pode permanecer em `local`, sem dependência generativa; ativar `hybrid` exige o provider configurado e os gates já existentes.
+
+Para Mercado Pago, a sequência segura é:
+
+1. configurar `MERCADO_PAGO_ACCESS_TOKEN` e `MERCADO_PAGO_WEBHOOK_SECRET` no Preview/homologação;
+2. manter `MERCADO_PAGO_CHECKOUT_ENABLED=false` enquanto valida webhook/reconciliação;
+3. somente no ambiente autorizado para teste do Checkout Pro, mudar a flag para `true`;
+4. concluir o smoke test financeiro real descrito em `docs/MERCADO_PAGO_HOMOLOGACAO.md`;
+5. decidir separadamente se a flag será habilitada em produção. Isso **não** ativa recorrência, carência ou bloqueio automático.
 
 Falha de uma integração opcional não pode transformar ausência de dado em dado simulado.
 
@@ -120,6 +133,7 @@ A promoção só deve ocorrer quando:
 5. convites e recuperação de senha forem testados com e-mail real;
 6. object storage bruto passar no smoke test real de upload + recuperação/integridade para CSV/XLSX e PDF;
 7. bucket privado, retenção/lifecycle e criptografia forem confirmados no provedor;
-8. validação funcional/agronômica de homologação estiver aprovada.
+8. se Checkout Pro for ser disponibilizado, o fluxo real de homologação do Mercado Pago tiver passado antes de `MERCADO_PAGO_CHECKOUT_ENABLED=true` no ambiente comercial;
+9. validação funcional/agronômica de homologação estiver aprovada.
 
 `main`/produção não deve ser alterado apenas porque o código compila; promoção é uma decisão separada e explícita.
