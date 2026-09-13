@@ -19,6 +19,26 @@ function parseDatabaseUrl(value) {
   }
 }
 
+function evaluateS3(env) {
+  const endpointRaw = clean(env.S3_ENDPOINT);
+  let endpoint = null;
+  try { endpoint = endpointRaw ? new URL(endpointRaw) : null; } catch { endpoint = null; }
+  const bucket = clean(env.S3_BUCKET);
+  const accessKey = clean(env.S3_ACCESS_KEY);
+  const secretKey = clean(env.S3_SECRET_KEY);
+  const region = clean(env.S3_REGION || "auto");
+  const ok = Boolean(
+    endpoint &&
+    endpoint.protocol === "https:" &&
+    (!endpoint.pathname || endpoint.pathname === "/") &&
+    !hasPlaceholder(bucket) &&
+    !hasPlaceholder(accessKey) &&
+    !hasPlaceholder(secretKey) &&
+    !hasPlaceholder(region)
+  );
+  return { ok };
+}
+
 export function evaluateProductionReadiness(env = process.env) {
   const checks = [];
   const failures = [];
@@ -88,14 +108,26 @@ export function evaluateProductionReadiness(env = process.env) {
     fail("email-from", "EMAIL_FROM precisa usar um remetente real no formato Nome <email@dominio>.");
   }
 
-  const reportProvider = clean(env.REPORT_STORAGE_PROVIDER || env.STORAGE_PROVIDER).toLowerCase();
-  if (reportProvider === "inline") pass("report-storage", "Snapshots publicados usam armazenamento durável suportado pela versão atual.");
-  else fail("report-storage", "Defina REPORT_STORAGE_PROVIDER=inline; local não é durável em runtime serverless e outros providers ainda não estão implementados para relatórios.");
+  const s3 = evaluateS3(env);
+  const storageProvider = clean(env.STORAGE_PROVIDER).toLowerCase();
+  if (storageProvider === "s3" && s3.ok) {
+    pass("raw-import-archive", "Arquivos brutos de laboratório usam object storage S3-compatible durável.");
+  } else if (storageProvider === "s3") {
+    fail("raw-import-archive", "STORAGE_PROVIDER=s3 exige endpoint HTTPS, bucket, região e credenciais S3 completas.");
+  } else {
+    fail("raw-import-archive", "STORAGE_PROVIDER precisa ser s3 no ambiente comercial para reter PDF/XLSX/CSV originais fora do filesystem efêmero.");
+  }
 
-  warn(
-    "raw-import-archive",
-    "A versão atual ainda não arquiva o arquivo bruto original em object storage na Vercel. Resultados persistem no banco, mas retenção do PDF/XLSX fonte continua pendente.",
-  );
+  const reportProvider = clean(env.REPORT_STORAGE_PROVIDER || env.STORAGE_PROVIDER).toLowerCase();
+  if (reportProvider === "inline") {
+    pass("report-storage", "Snapshots publicados usam armazenamento inline durável no PostgreSQL.");
+  } else if (reportProvider === "s3" && s3.ok) {
+    pass("report-storage", "Snapshots publicados usam object storage S3-compatible durável.");
+  } else if (reportProvider === "s3") {
+    fail("report-storage", "REPORT_STORAGE_PROVIDER=s3 exige configuração S3 completa e HTTPS.");
+  } else {
+    fail("report-storage", "Use REPORT_STORAGE_PROVIDER=inline ou s3; armazenamento local não é durável em runtime serverless.");
+  }
 
   const assistantMode = clean(env.RAIZ_ASSISTANT_MODE || "local").toLowerCase();
   if (assistantMode === "local") {

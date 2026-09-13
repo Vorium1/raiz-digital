@@ -1,33 +1,35 @@
+import { createHash, createHmac } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
  * Armazenamento da RAIZ.
  *
- * Importações brutas continuam usando filesystem local apenas em desenvolvimento; para produção, um
- * object storage ainda é desejável para preservar o arquivo original de grande porte.
+ * Providers suportados:
+ * - `local`: filesystem local, adequado apenas a desenvolvimento não-serverless;
+ * - `inline`: somente snapshots JSON pequenos de relatório, persistidos dentro de `reports.storage_key`;
+ * - `s3`: object storage S3-compatible (AWS S3, Cloudflare R2, Backblaze B2 e equivalentes com SigV4).
  *
- * RELATÓRIOS têm uma exigência mais rígida: depois de publicados, o snapshot precisa continuar legível e
- * verificável pelo hash. Em ambiente serverless (Vercel) o filesystem local é efêmero e NÃO pode ser a
- * fonte de verdade. Para o MVP comercial adicionamos um provider `inline` específico para snapshots de
- * relatório: o conteúdo é codificado dentro da própria `storage_key` e, portanto, persiste na linha
- * `reports` do PostgreSQL/Neon. Não exige migration nem serviço de objeto adicional e mantém o hash
- * imutável já existente.
+ * Arquivos brutos de laboratório nunca usam `inline`: PDF/XLSX/CSV originais precisam de object storage
+ * durável em produção. Snapshots de relatório podem continuar em `inline` no PostgreSQL ou usar `s3`.
  *
- * Estratégia:
- * - dev/local: `STORAGE_PROVIDER=local` continua gravando em `<repo>/storage`;
- * - produção Vercel sem provider explícito: snapshots de relatório usam `inline` automaticamente;
- * - `STORAGE_PROVIDER=inline`: força o mesmo comportamento em qualquer ambiente;
- * - no futuro, S3/R2/Blob pode substituir `inline` sem mudar a tabela (`storage_key` é opaca).
- *
- * `inline` NÃO é usado para arquivos brutos de laboratório: base64 grande dentro do banco não é adequado
- * para PDFs/XLSX. É deliberadamente limitado a snapshots JSON pequenos de relatórios.
+ * A implementação S3 usa AWS Signature Version 4 diretamente com `node:crypto`, sem SDK adicional. As
+ * credenciais ficam exclusivamente em variáveis de ambiente e nunca entram na chave persistida no banco.
  */
 const LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_ROOT?.trim() || path.join(process.cwd(), "storage");
 const INLINE_REPORT_PREFIX = "inline:v1:";
+const S3_KEY_PREFIX = "s3:v1:";
 const MAX_INLINE_REPORT_BYTES = 1_500_000;
 
 export type StoredFile = { key: string; bytes: number };
+
+type S3Config = {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKey: string;
+  secretKey: string;
+};
 
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(-120);
@@ -41,16 +43,100 @@ function reportProvider() {
   const explicit = process.env.REPORT_STORAGE_PROVIDER?.trim().toLowerCase();
   if (explicit) return explicit;
   const provider = configuredProvider();
-  // Vercel + local seria efêmero. Sem configuração explícita, usa persistência inline no próprio banco.
   if (provider === "local" && process.env.VERCEL) return "inline";
   return provider;
 }
 
-/**
- * Guarda o arquivo bruto enviado pelo usuário. Só `local` está implementado neste módulo. Em produção
- * serverless, retorna `null` em vez de fingir persistência. A UI/importação deve manter a indicação de que
- * o arquivo-fonte bruto não foi arquivado até configurarmos object storage.
- */
+function requireS3Config(): S3Config {
+  const endpoint = process.env.S3_ENDPOINT?.trim().replace(/\/+$/, "") ?? "";
+  const bucket = process.env.S3_BUCKET?.trim() ?? "";
+  const region = process.env.S3_REGION?.trim() || "auto";
+  const accessKey = process.env.S3_ACCESS_KEY?.trim() ?? "";
+  const secretKey = process.env.S3_SECRET_KEY?.trim() ?? "";
+
+  if (!endpoint || !bucket || !accessKey || !secretKey) {
+    throw new Error("Storage S3 incompleto. Configure S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY e S3_SECRET_KEY.");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw new Error("S3_ENDPOINT precisa ser uma URL HTTPS válida.");
+  }
+  if (parsed.protocol !== "https:") throw new Error("S3_ENDPOINT precisa usar HTTPS.");
+  if (parsed.pathname && parsed.pathname !== "/") {
+    throw new Error("S3_ENDPOINT deve apontar para a origem do serviço, sem caminho adicional.");
+  }
+
+  return { endpoint, bucket, region, accessKey, secretKey };
+}
+
+function sha256Hex(value: Buffer | string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function hmac(key: Buffer | string, value: string) {
+  return createHmac("sha256", key).update(value).digest();
+}
+
+function awsEncode(value: string) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function s3ObjectUrl(config: S3Config, objectKey: string) {
+  const encodedKey = objectKey.split("/").map(awsEncode).join("/");
+  return new URL(`${config.endpoint}/${awsEncode(config.bucket)}/${encodedKey}`);
+}
+
+function amzDate(now = new Date()) {
+  return now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+async function s3Request(method: "GET" | "PUT", objectKey: string, body?: Buffer) {
+  const config = requireS3Config();
+  const url = s3ObjectUrl(config, objectKey);
+  const payload = body ?? Buffer.alloc(0);
+  const payloadHash = sha256Hex(payload);
+  const timestamp = amzDate();
+  const dateStamp = timestamp.slice(0, 8);
+  const service = "s3";
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${timestamp}\n`;
+  const canonicalRequest = [method, url.pathname, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+  const scope = `${dateStamp}/${config.region}/${service}/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", timestamp, scope, sha256Hex(canonicalRequest)].join("\n");
+  const kDate = hmac(Buffer.from(`AWS4${config.secretKey}`, "utf8"), dateStamp);
+  const kRegion = hmac(kDate, config.region);
+  const kService = hmac(kRegion, service);
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+  const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      authorization,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": timestamp,
+      ...(method === "PUT" ? { "content-type": "application/octet-stream" } : {}),
+    },
+    body: method === "PUT" ? payload : undefined,
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 240).replace(/\s+/g, " ");
+    throw new Error(`Object storage S3 respondeu HTTP ${response.status}${detail ? `: ${detail}` : ""}.`);
+  }
+  return response;
+}
+
+async function saveS3Object(objectKey: string, buffer: Buffer): Promise<StoredFile> {
+  await s3Request("PUT", objectKey, buffer);
+  return { key: `${S3_KEY_PREFIX}${objectKey}`, bytes: buffer.length };
+}
+
+/** Guarda o arquivo bruto original enviado pelo usuário. */
 export async function saveRawImportFile(input: {
   tenantId: string;
   analysisId: string;
@@ -59,26 +145,25 @@ export async function saveRawImportFile(input: {
   encoding: "utf8" | "base64";
 }): Promise<StoredFile | null> {
   const provider = configuredProvider();
-  if (provider !== "local" || process.env.VERCEL) return null;
-
   const buffer = Buffer.from(input.content, input.encoding);
-  const key = `imports/${input.tenantId}/${input.analysisId}/${Date.now()}-${sanitizeFileName(input.fileName)}`;
-  const fullPath = path.join(LOCAL_STORAGE_ROOT, key);
-  await mkdir(path.dirname(fullPath), { recursive: true });
-  await writeFile(fullPath, buffer);
-  return { key, bytes: buffer.length };
+  const objectKey = `imports/${input.tenantId}/${input.analysisId}/${Date.now()}-${sanitizeFileName(input.fileName)}`;
+
+  if (provider === "s3") return saveS3Object(objectKey, buffer);
+
+  if (provider === "local") {
+    if (process.env.VERCEL) return null;
+    const fullPath = path.join(LOCAL_STORAGE_ROOT, objectKey);
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, buffer);
+    return { key: objectKey, bytes: buffer.length };
+  }
+
+  // `inline` é deliberadamente inválido para PDFs/XLSX/CSV brutos.
+  if (provider === "inline") return null;
+  throw new Error(`STORAGE_PROVIDER "${provider}" não possui persistência de arquivo bruto implementada.`);
 }
 
-/**
- * Persiste o snapshot IMUTÁVEL do relatório.
- *
- * `inline`: devolve uma chave auto-contida; o chamador grava essa chave em `reports.storage_key`, tornando
- * o snapshot durável no PostgreSQL. O limite impede que um payload anormal transforme a coluna em depósito
- * arbitrário de arquivos.
- *
- * Provider desconhecido falha fechado. Publicação de relatório nunca deve prosseguir com uma chave
- * inventada para conteúdo que não foi persistido.
- */
+/** Persiste o snapshot IMUTÁVEL do relatório. */
 export async function saveReportSnapshot(input: { tenantId: string; interpretationId: string; revision: number; content: string }): Promise<StoredFile> {
   const provider = reportProvider();
   const buffer = Buffer.from(input.content, "utf8");
@@ -90,15 +175,17 @@ export async function saveReportSnapshot(input: { tenantId: string; interpretati
     return { key: `${INLINE_REPORT_PREFIX}${buffer.toString("base64")}`, bytes: buffer.length };
   }
 
+  const objectKey = `reports/${input.tenantId}/${input.interpretationId}/rev-${input.revision}.json`;
+  if (provider === "s3") return saveS3Object(objectKey, buffer);
+
   if (provider === "local") {
     if (process.env.VERCEL) {
-      throw new Error("Armazenamento local não é durável na Vercel. Configure REPORT_STORAGE_PROVIDER=inline ou um provider durável antes de publicar.");
+      throw new Error("Armazenamento local não é durável na Vercel. Configure REPORT_STORAGE_PROVIDER=inline ou STORAGE_PROVIDER=s3 antes de publicar.");
     }
-    const key = `reports/${input.tenantId}/${input.interpretationId}/rev-${input.revision}.json`;
-    const fullPath = path.join(LOCAL_STORAGE_ROOT, key);
+    const fullPath = path.join(LOCAL_STORAGE_ROOT, objectKey);
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, buffer);
-    return { key, bytes: buffer.length };
+    return { key: objectKey, bytes: buffer.length };
   }
 
   throw new Error(`STORAGE_PROVIDER/REPORT_STORAGE_PROVIDER "${provider}" não possui persistência de relatório implementada.`);
@@ -111,6 +198,15 @@ export async function readRawStoredFile(key: string): Promise<Buffer> {
     const buffer = Buffer.from(encoded, "base64");
     if (buffer.length > MAX_INLINE_REPORT_BYTES) throw new Error("Snapshot inline excede o limite de segurança.");
     return buffer;
+  }
+
+  if (key.startsWith(S3_KEY_PREFIX)) {
+    const objectKey = key.slice(S3_KEY_PREFIX.length);
+    if (!objectKey || objectKey.startsWith("/") || objectKey.split("/").some((part) => part === "..")) {
+      throw new Error("Chave S3 inválida.");
+    }
+    const response = await s3Request("GET", objectKey);
+    return Buffer.from(await response.arrayBuffer());
   }
 
   const normalized = path.normalize(key);
