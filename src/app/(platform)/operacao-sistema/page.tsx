@@ -26,7 +26,7 @@ export default async function SystemOperationPage() {
   }
 
   const session = await requirePlatformSession();
-  if (session.role !== "SUPER_ADMIN") redirect("/dashboard");
+  if (!session.isPlatformCurator) redirect("/dashboard");
 
   const [snapshot, readiness] = await Promise.all([
     getOperationalStatusSnapshot({ tenantId: session.tenantId, userId: session.userId }),
@@ -48,7 +48,7 @@ export default async function SystemOperationPage() {
     <div className="content-wrap">
       <PageIntro
         title="Observabilidade operacional"
-        description="Sinais mínimos para operar a RAIZ com segurança, sem exibir segredos, payloads de laudo ou conteúdo de clientes. Este painel não substitui monitoramento externo nem o preflight de produção."
+        description="Sinais mínimos para operar a RAIZ com segurança, disponíveis apenas à curadoria global da plataforma, sem exibir segredos, payloads de laudo ou conteúdo de clientes. Este painel não substitui monitoramento externo nem o preflight de produção."
       />
 
       <section className="summary-strip" style={{ marginBottom: 18 }}>
