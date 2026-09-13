@@ -3,14 +3,14 @@ import { evaluateProductionReadiness } from "./check-production-readiness.mjs";
 
 const good = evaluateProductionReadiness({
   DATA_MODE: "database",
-  APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@db.example.neon.tech/raiz?sslmode=require",
-  DATABASE_URL: "postgresql://raiz_admin:admin-password@db.example.neon.tech/raiz?sslmode=require",
+  APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz?sslmode=require",
+  DATABASE_URL: "postgresql://raiz_admin:admin-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz?sslmode=require",
   DATABASE_SSL: "require",
   AUTH_SECRET: "4a52f2d8709ecf43f5d27b8ff36e4375d45d32af",
-  APP_URL: "https://raiz.example.com.br",
+  APP_URL: "https://app.raizdigital.com.br",
   EMAIL_PROVIDER: "resend",
   RESEND_API_KEY: "re_live_configured_key",
-  EMAIL_FROM: "RAIZ Digital <no-reply@raiz.example.com.br>",
+  EMAIL_FROM: "RAIZ Digital <no-reply@raizdigital.com.br>",
   STORAGE_PROVIDER: "local",
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
@@ -44,13 +44,13 @@ for (const required of ["data-mode", "app-database", "least-privilege", "databas
 
 const noAdminRuntime = evaluateProductionReadiness({
   DATA_MODE: "database",
-  APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@db.example.neon.tech/raiz",
+  APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz",
   DATABASE_SSL: "require",
   AUTH_SECRET: "89bd6b04b7ce3f44836a37643c9dde1183bcd237",
-  APP_URL: "https://raiz.example.com.br",
+  APP_URL: "https://app.raizdigital.com.br",
   EMAIL_PROVIDER: "resend",
   RESEND_API_KEY: "re_live_configured_key",
-  EMAIL_FROM: "RAIZ Digital <no-reply@raiz.example.com.br>",
+  EMAIL_FROM: "RAIZ Digital <no-reply@raizdigital.com.br>",
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
 });
