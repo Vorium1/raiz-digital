@@ -3,6 +3,7 @@ import {
   MercadoPagoApiError,
   verifyMercadoPagoWebhookSignature,
 } from "@/lib/mercado-pago";
+import { getMercadoPagoOrder } from "@/lib/mercado-pago-orders";
 import {
   BillingReconciliationError,
   markPaymentEventProcessed,
@@ -10,6 +11,7 @@ import {
   reconcileOfficialMercadoPagoPayment,
   recordMercadoPagoEvent,
 } from "@/lib/repositories/billing";
+import { reconcileOfficialMercadoPagoOrder } from "@/lib/repositories/billing-order-reconciliation";
 
 const MAX_WEBHOOK_BYTES = 128 * 1024;
 
@@ -79,22 +81,33 @@ export async function POST(request: Request) {
     return Response.json({ received: true, duplicate: true });
   }
 
-  // Neste estágio comercial, só pagamentos alteram o ledger interno. Tópicos de assinatura podem chegar
-  // pela mesma aplicação, mas ficam deliberadamente sem efeito até a RAIZ ativar cobrança recorrente.
-  if (type !== "payment") {
+  const isOrder = type === "order" || type === "orders";
+  if (type !== "payment" && !isOrder) {
+    // Tópicos de assinatura/claim podem chegar pela mesma aplicação, mas não alteram o ledger
+    // enquanto a recorrência automática e os respectivos fluxos não forem homologados.
     await markPaymentEventProcessed(event.id);
     return Response.json({ received: true, ignored: true, type });
   }
 
   try {
-    // A notificação só aponta qual recurso mudou. O estado financeiro vem de uma nova consulta autenticada
-    // à API oficial; nunca confiamos em status/valor presentes no POST recebido.
-    const officialPayment = await getMercadoPagoPayment(signedDataId);
-    if (officialPayment.id !== signedDataId) {
-      throw new BillingReconciliationError("ID retornado pelo Mercado Pago diverge do recurso assinado.", "RESOURCE_ID_MISMATCH");
-    }
+    // O POST recebido é apenas um ponteiro autenticado. O estado financeiro vem SEMPRE de uma nova
+    // consulta autenticada ao recurso oficial correspondente.
+    const result = type === "payment"
+      ? await (async () => {
+          const officialPayment = await getMercadoPagoPayment(signedDataId);
+          if (officialPayment.id !== signedDataId) {
+            throw new BillingReconciliationError("ID retornado pelo Mercado Pago diverge do recurso assinado.", "RESOURCE_ID_MISMATCH");
+          }
+          return reconcileOfficialMercadoPagoPayment(officialPayment);
+        })()
+      : await (async () => {
+          const officialOrder = await getMercadoPagoOrder(signedDataId);
+          if (officialOrder.id !== signedDataId) {
+            throw new BillingReconciliationError("ID da Order retornada diverge do recurso assinado.", "RESOURCE_ID_MISMATCH");
+          }
+          return reconcileOfficialMercadoPagoOrder(officialOrder);
+        })();
 
-    const result = await reconcileOfficialMercadoPagoPayment(officialPayment);
     await markPaymentEventProcessed(event.id);
     return Response.json({
       received: true,
@@ -105,10 +118,10 @@ export async function POST(request: Request) {
     const message = safeErrorMessage(error);
 
     if (error instanceof BillingReconciliationError) {
-      // Divergência de valor, moeda, referência ou pagamento duplicado não melhora com retry automático.
-      // Registra para revisão humana, confirma o webhook e mantém a fatura/acesso sem alteração indevida.
+      // Divergências estruturais não melhoram com retry automático. Registramos para revisão humana,
+      // confirmamos o webhook e preservamos a fatura/acesso sem mudança indevida.
       await markPaymentEventProcessed(event.id, `${error.code}: ${message}`);
-      console.warn("mercado_pago_reconciliation_review_required", { providerEventId, code: error.code });
+      console.warn("mercado_pago_reconciliation_review_required", { providerEventId, type, code: error.code });
       return Response.json({ received: true, reviewRequired: true });
     }
 
@@ -117,8 +130,9 @@ export async function POST(request: Request) {
     await markPaymentEventRetryableError(event.id, message).catch(() => undefined);
     console.error("mercado_pago_webhook_retryable_failure", {
       providerEventId,
+      type,
       providerStatus: error instanceof MercadoPagoApiError ? error.status : null,
     });
-    return Response.json({ error: "Falha temporária ao reconciliar o pagamento." }, { status: 503 });
+    return Response.json({ error: "Falha temporária ao reconciliar o evento financeiro." }, { status: 503 });
   }
 }

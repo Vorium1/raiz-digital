@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
+import { InvoiceCheckoutButton } from "@/components/invoice-checkout-button";
 import { PageIntro, StatusBadge } from "@/components/ui";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -51,7 +52,7 @@ export default async function FinancialPage() {
     <div className="content-wrap">
       <PageIntro
         title="Assinatura e faturamento"
-        description="Ledger financeiro real da empresa ativa. Pagamentos do Mercado Pago só atualizam faturas depois de assinatura criptográfica válida e reconciliação com a API oficial."
+        description="Ledger financeiro real da empresa ativa. Faturas pendentes podem abrir o Checkout Pro do Mercado Pago; o pagamento só é reconhecido depois da reconciliação oficial pelo webhook."
       />
 
       <div className={`import-message ${integrationConfigured ? "success" : ""}`} style={{ marginBottom: 18 }}>
@@ -60,7 +61,7 @@ export default async function FinancialPage() {
           <strong>{integrationConfigured ? "Integração preparada para homologação" : "Mercado Pago ainda sem credenciais neste ambiente"}</strong>
           <small>
             {integrationConfigured
-              ? "O webhook está protegido e idempotente. Cobrança automática e bloqueio por inadimplência continuam desligados até o teste comercial final."
+              ? "Checkout manual por fatura e webhook protegido estão disponíveis. Recorrência automática e bloqueio por inadimplência continuam desligados até o teste comercial final."
               : "Configure Access Token e segredo do webhook somente no ambiente seguro. Até lá, nenhuma cobrança é criada e nenhum acesso é alterado."}
           </small>
         </div>
@@ -84,16 +85,26 @@ export default async function FinancialPage() {
         {billing.invoices.length ? (
           <div className="report-table-wrap">
             <table className="data-table">
-              <thead><tr><th>Vencimento</th><th>Carência até</th><th>Valor</th><th>Provedor</th><th>Status</th><th>Conciliação</th></tr></thead>
+              <thead><tr><th>Vencimento</th><th>Valor</th><th>Status</th><th>Conciliação</th><th>Pagamento</th></tr></thead>
               <tbody>{billing.invoices.map((invoice) => {
                 const status = invoiceStatus[invoice.status] ?? { label: invoice.status, tone: "waiting" };
+                const canCheckout = invoice.provider === "MERCADO_PAGO" && invoice.status === "PENDING";
                 return <tr key={invoice.id}>
-                  <td>{formatDate(invoice.dueAt)}</td>
-                  <td>{formatDate(invoice.graceDeadline)}</td>
-                  <td><strong>{formatMoney(invoice.amountCents)}</strong></td>
-                  <td>{invoice.provider === "MERCADO_PAGO" ? "Mercado Pago" : invoice.provider}</td>
+                  <td><strong>{formatDate(invoice.dueAt)}</strong><small>Carência até {formatDate(invoice.graceDeadline)}</small></td>
+                  <td><strong>{formatMoney(invoice.amountCents)}</strong><small>{invoice.provider === "MERCADO_PAGO" ? "Mercado Pago" : invoice.provider}</small></td>
                   <td><StatusBadge tone={status.tone}>{status.label}</StatusBadge></td>
-                  <td>{invoice.providerChargeId ? <span className="success-text">Identificada</span> : <span>Sem payment_id</span>}</td>
+                  <td>
+                    {invoice.providerChargeId
+                      ? <><span className="success-text">Pagamento identificado</span><small>payment_id conciliado</small></>
+                      : invoice.providerOrderId
+                        ? <><span>Checkout criado</span><small>aguardando pagamento</small></>
+                        : <><span>Não iniciado</span><small>sem order/payment</small></>}
+                  </td>
+                  <td>
+                    {canCheckout
+                      ? <InvoiceCheckoutButton invoiceId={invoice.id} enabled={integrationConfigured}/>
+                      : <small>{invoice.status === "PAID" ? "Quitada" : "Sem ação disponível"}</small>}
+                  </td>
                 </tr>;
               })}</tbody>
             </table>
@@ -104,7 +115,7 @@ export default async function FinancialPage() {
       </section>
 
       <p className="report-empty-note" style={{ marginTop: 14 }}>
-        Segurança comercial: neste estágio o webhook pode reconciliar o status de uma fatura, mas não muda o status da empresa nem bloqueia usuários. A política de carência será ativada somente após homologação financeira completa.
+        Segurança comercial: abrir o Checkout Pro não marca uma fatura como paga. A RAIZ só muda o ledger após validar a assinatura do webhook e consultar novamente o recurso no Mercado Pago. Recorrência e bloqueio por inadimplência permanecem fora desta etapa.
       </p>
     </div>
   </>;
