@@ -8,7 +8,7 @@ import { visibleNavigationSections } from "@/lib/navigation";
 
 const PRIMARY_HREFS = ["/dashboard", "/clientes", "/analises"];
 
-export function MobileNavigation({ role }: { role?: string }) {
+export function MobileNavigation({ role, isPlatformCurator }: { role?: string; isPlatformCurator?: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -21,7 +21,7 @@ export function MobileNavigation({ role }: { role?: string }) {
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
-  const sections = visibleNavigationSections(role);
+  const sections = visibleNavigationSections(role, isPlatformCurator);
   const allItems = sections.flatMap((section) => section.items.map((item) => ({ ...item, section: section.label })));
   const primaryItems = PRIMARY_HREFS.map((href) => allItems.find((item) => item.href === href)).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const moreSections = sections.map((section) => ({ ...section, items: section.items.filter((item) => !PRIMARY_HREFS.includes(item.href)) })).filter((section) => section.items.length > 0);
