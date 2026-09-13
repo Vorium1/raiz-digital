@@ -12,6 +12,7 @@ import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 type Member = { id: string; name: string; email: string; role: string; active: boolean; lastLoginAt: string | null };
 type Laboratory = { id: string; name: string; taxId: string | null; active: boolean };
 type AuditEvent = { id: string; action: string; entityType: string; createdAt: string; actorName: string | null };
+type InviteDelivery = "sent" | "logged" | "failed";
 
 const invitableRoles = [
   { value: "TENANT_ADMIN", label: "Administrador" },
@@ -83,7 +84,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
   const [inviteRole, setInviteRole] = useState<string>("VIEWER");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
-  const [inviteResult, setInviteResult] = useState<{ email: string; password: string | null; createdNewUser: boolean } | null>(null);
+  const [inviteResult, setInviteResult] = useState<{ email: string; createdNewUser: boolean; emailDelivery: InviteDelivery } | null>(null);
 
   async function inviteMember() {
     const name = inviteName.trim();
@@ -96,7 +97,8 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
       const response = await fetch("/api/team", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, email, role: inviteRole }) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível convidar o membro.");
-      setInviteResult({ email, password: payload.temporaryPassword, createdNewUser: payload.createdNewUser });
+      const delivery: InviteDelivery = payload.emailDelivery === "sent" || payload.emailDelivery === "logged" ? payload.emailDelivery : "failed";
+      setInviteResult({ email, createdNewUser: Boolean(payload.createdNewUser), emailDelivery: delivery });
       setInviteName("");
       setInviteEmail("");
       router.refresh();
@@ -342,7 +344,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
             {canManageTeam && (
               <div className="team-invite">
                 <h3>Convidar membro</h3>
-                <p>Cria o acesso na hora. Ainda não envia e-mail de verdade — copie a senha temporária e repasse por um canal seguro.</p>
+                <p>Cria o acesso e envia as instruções por e-mail. Contas novas definem a própria senha por um link individual; nenhuma senha temporária é exibida.</p>
                 <div className="team-invite-grid">
                   <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Nome" disabled={inviting} />
                   <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="E-mail" type="email" disabled={inviting} />
@@ -353,11 +355,25 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
                 </div>
                 {inviteError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível convidar</strong><small>{inviteError}</small></div></div>}
                 {inviteResult && (
-                  inviteResult.password ? (
-                    <div className="import-message success"><Icon name="check" /><div><strong>Conta criada para {inviteResult.email}</strong><small>Senha temporária (mostrada só agora, copie e envie por um canal seguro): <code>{inviteResult.password}</code></small></div></div>
-                  ) : (
-                    <div className="import-message"><Icon name="shield" /><div><strong>{inviteResult.email} já tinha conta</strong><small>Vínculo criado com esta empresa; a pessoa continua usando a senha que já tinha.</small></div></div>
-                  )
+                  <div className={`import-message ${inviteResult.emailDelivery === "sent" ? "success" : inviteResult.emailDelivery === "failed" ? "danger" : ""}`}>
+                    <Icon name={inviteResult.emailDelivery === "failed" ? "warning" : inviteResult.emailDelivery === "sent" ? "check" : "shield"} />
+                    <div>
+                      <strong>
+                        {inviteResult.emailDelivery === "sent"
+                          ? inviteResult.createdNewUser ? `Convite enviado para ${inviteResult.email}` : `Acesso liberado e aviso enviado para ${inviteResult.email}`
+                          : inviteResult.emailDelivery === "logged"
+                            ? `Acesso criado para ${inviteResult.email}`
+                            : `Acesso criado, mas o e-mail não foi entregue`}
+                      </strong>
+                      <small>
+                        {inviteResult.emailDelivery === "sent"
+                          ? inviteResult.createdNewUser ? "A pessoa recebeu um link individual para definir a senha. O link expira em 30 minutos." : "A pessoa continua usando a senha que já tinha na RAIZ Digital."
+                          : inviteResult.emailDelivery === "logged"
+                            ? "O ambiente está em modo de desenvolvimento: a mensagem foi registrada no console, sem envio real."
+                            : inviteResult.createdNewUser ? "Peça à pessoa para usar “Esqueci minha senha” na tela de login para receber um novo link quando o provedor estiver disponível." : "O vínculo já está ativo; a pessoa pode entrar com a senha que já utilizava na plataforma."}
+                      </small>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -548,7 +564,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
               {brandingSaved && !brandingError && <div className="import-message success" style={{ marginTop: 14 }}><Icon name="check" /><div><strong>Salvo</strong><small>Os próximos relatórios já saem com essa marca.</small></div></div>}
             </div>
 
-            <div className="empty-state"><Icon name="clock" /><strong>Envio automático de e-mail ainda não existe</strong><small>Por enquanto, o relatório é baixado/impresso e enviado manualmente pela sua empresa.</small></div>
+            <div className="empty-state"><Icon name="file" /><strong>E-mail transacional disponível</strong><small>Convites de equipe e redefinições de senha usam o adaptador de e-mail da RAIZ. Em ambiente comercial, configure o provedor Resend. O envio automático de relatórios ainda é manual.</small></div>
           </>
         )}
 
