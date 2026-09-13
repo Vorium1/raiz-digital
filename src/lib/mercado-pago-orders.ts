@@ -1,3 +1,4 @@
+import { isMercadoPagoBrazilCheckoutUrl } from "@/domain/mercado-pago-checkout";
 import { buildRaizInvoiceExternalReference, MercadoPagoApiError } from "@/lib/mercado-pago";
 
 const MERCADO_PAGO_API = "https://api.mercadopago.com";
@@ -42,15 +43,6 @@ function safeReturnUrl(path: string) {
     return url.toString();
   } catch {
     return undefined;
-  }
-}
-
-export function isMercadoPagoBrazilCheckoutUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "mercadopago.com.br" || url.hostname.endsWith(".mercadopago.com.br"));
-  } catch {
-    return false;
   }
 }
 
