@@ -9,6 +9,17 @@ export type MercadoPagoCheckoutOrder = {
   status: string;
 };
 
+export type MercadoPagoOrder = {
+  id: string;
+  externalReference: string | null;
+  totalAmount: number;
+  totalPaidAmount: number;
+  currency: string | null;
+  status: string;
+  statusDetail: string | null;
+  paymentIds: string[];
+};
+
 function accessToken() {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
   if (!token) throw new MercadoPagoApiError("MERCADO_PAGO_ACCESS_TOKEN não configurado.", 503);
@@ -31,6 +42,15 @@ function safeReturnUrl(path: string) {
     return url.toString();
   } catch {
     return undefined;
+  }
+}
+
+export function isMercadoPagoBrazilCheckoutUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "mercadopago.com.br" || url.hostname.endsWith(".mercadopago.com.br"));
+  } catch {
+    return false;
   }
 }
 
@@ -101,9 +121,7 @@ export async function createMercadoPagoInvoiceCheckout(input: {
     if (!id || !checkoutUrl || returnedReference !== externalReference || !status) {
       throw new MercadoPagoApiError("Resposta de criação do checkout incompleta ou com referência divergente.", 502);
     }
-
-    const checkout = new URL(checkoutUrl);
-    if (checkout.protocol !== "https:" || !checkout.hostname.endsWith("mercadopago.com.br")) {
+    if (!isMercadoPagoBrazilCheckoutUrl(checkoutUrl)) {
       throw new MercadoPagoApiError("Mercado Pago devolveu uma URL de checkout não reconhecida para o Brasil.", 502);
     }
 
@@ -114,6 +132,64 @@ export async function createMercadoPagoInvoiceCheckout(input: {
       throw new MercadoPagoApiError("Timeout criando o checkout no Mercado Pago.", 504);
     }
     throw new MercadoPagoApiError(error instanceof Error ? error.message : "Falha criando checkout no Mercado Pago.", 502);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function getMercadoPagoOrder(orderId: string): Promise<MercadoPagoOrder> {
+  const id = orderId.trim();
+  if (!/^ORD[A-Za-z0-9_-]{5,80}$/.test(id)) throw new MercadoPagoApiError("ID de Order do Mercado Pago inválido.", 400);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`${MERCADO_PAGO_API}/v1/orders/${encodeURIComponent(id)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken()}`, Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok) {
+      const message = typeof payload.message === "string" ? payload.message : "falha sem mensagem";
+      throw new MercadoPagoApiError(`Mercado Pago respondeu ${response.status}: ${message}`, response.status);
+    }
+
+    const transactions = payload.transactions && typeof payload.transactions === "object"
+      ? payload.transactions as { payments?: unknown[] }
+      : {};
+    const paymentIds = Array.isArray(transactions.payments)
+      ? transactions.payments.flatMap((entry) => {
+          if (!entry || typeof entry !== "object") return [];
+          const paymentId = (entry as { id?: unknown }).id;
+          return typeof paymentId === "string" && paymentId ? [paymentId] : [];
+        })
+      : [];
+
+    const totalAmount = Number(payload.total_amount);
+    const totalPaidAmount = Number(payload.total_paid_amount ?? 0);
+    const status = typeof payload.status === "string" ? payload.status : "";
+    if (typeof payload.id !== "string" || payload.id !== id || !Number.isFinite(totalAmount) || !Number.isFinite(totalPaidAmount) || !status) {
+      throw new MercadoPagoApiError("Resposta de Order do Mercado Pago incompleta.", 502);
+    }
+
+    return {
+      id,
+      externalReference: typeof payload.external_reference === "string" ? payload.external_reference : null,
+      totalAmount,
+      totalPaidAmount,
+      currency: typeof payload.currency === "string" ? payload.currency : null,
+      status,
+      statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
+      paymentIds,
+    };
+  } catch (error) {
+    if (error instanceof MercadoPagoApiError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new MercadoPagoApiError("Timeout consultando a Order no Mercado Pago.", 504);
+    }
+    throw new MercadoPagoApiError(error instanceof Error ? error.message : "Falha consultando a Order do Mercado Pago.", 502);
   } finally {
     clearTimeout(timeout);
   }
