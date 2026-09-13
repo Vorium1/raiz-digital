@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { isMercadoPagoBrazilCheckoutUrl } from "../src/domain/mercado-pago-checkout.ts";
 import {
   amountInCents,
   buildRaizInvoiceExternalReference,
@@ -59,4 +60,11 @@ assert.equal(amountInCents(2750), 275000);
 assert.equal(amountInCents(10.99), 1099);
 assert.equal(amountInCents(Number.NaN), null);
 
-console.log("✓ Mercado Pago: assinatura HMAC, referência, valores e status validados");
+assert.equal(isMercadoPagoBrazilCheckoutUrl("https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=1"), true);
+assert.equal(isMercadoPagoBrazilCheckoutUrl("https://mercadopago.com.br/checkout"), true);
+assert.equal(isMercadoPagoBrazilCheckoutUrl("https://sandbox.mercadopago.com.br/checkout"), true);
+assert.equal(isMercadoPagoBrazilCheckoutUrl("https://evilmercadopago.com.br/checkout"), false, "sufixo sem limite de domínio não pode passar");
+assert.equal(isMercadoPagoBrazilCheckoutUrl("http://www.mercadopago.com.br/checkout"), false, "checkout deve usar HTTPS");
+assert.equal(isMercadoPagoBrazilCheckoutUrl("javascript:alert(1)"), false);
+
+console.log("✓ Mercado Pago: assinatura HMAC, referência, valores, status e domínio de checkout validados");
