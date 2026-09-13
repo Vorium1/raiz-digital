@@ -1,12 +1,70 @@
 import { randomBytes } from "node:crypto";
 import { getPlatformSession } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
+import { createPasswordResetToken } from "@/lib/auth/password-reset";
+import { sendEmail } from "@/lib/email";
 import { inviteTeamMember, TeamError } from "@/lib/repositories/team";
 
 const invitableRoles = new Set(["TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH", "COMMERCIAL", "VIEWER"]);
 
-function temporaryPassword() {
-  return randomBytes(9).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).padEnd(12, "7");
+type InviteDelivery = "sent" | "logged" | "failed";
+
+function bootstrapPassword() {
+  // A senha inicial nunca é exibida nem enviada. Ela só impede acesso até a pessoa definir a própria senha
+  // pelo link seguro de convite. O hash continua compatível com o modelo atual de usuários.
+  return randomBytes(24).toString("base64url");
+}
+
+function appUrl() {
+  return (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+}
+
+async function deliverInvite(input: {
+  email: string;
+  name: string;
+  tenantName: string;
+  invitedBy: string;
+  userId: string;
+  createdNewUser: boolean;
+}): Promise<InviteDelivery> {
+  try {
+    if (input.createdNewUser) {
+      const token = await createPasswordResetToken(input.userId);
+      if (!token) return "failed";
+      const link = `${appUrl()}/redefinir-senha?token=${token}`;
+      const delivery = await sendEmail({
+        to: input.email,
+        subject: `Convite para ${input.tenantName} · RAIZ Digital`,
+        text: [
+          `Olá, ${input.name}.`,
+          "",
+          `${input.invitedBy} convidou você para acessar ${input.tenantName} na RAIZ Digital.`,
+          "",
+          "Defina sua senha pelo link abaixo. Ele é individual e válido por 30 minutos:",
+          link,
+          "",
+          "Se o link expirar, use a opção “Esqueci minha senha” na tela de login para gerar um novo.",
+        ].join("\n"),
+      });
+      return delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
+    }
+
+    const delivery = await sendEmail({
+      to: input.email,
+      subject: `Novo acesso a ${input.tenantName} · RAIZ Digital`,
+      text: [
+        `Olá, ${input.name}.`,
+        "",
+        `${input.invitedBy} liberou seu acesso a ${input.tenantName} na RAIZ Digital.`,
+        "",
+        `Entre em ${appUrl()}/login usando seu e-mail e a senha que você já utiliza na plataforma.`,
+      ].join("\n"),
+    });
+    return delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
+  } catch (error) {
+    console.error("team_invite_email_failed", { email: input.email, error });
+    return "failed";
+  }
 }
 
 export async function POST(request: Request) {
@@ -29,9 +87,9 @@ export async function POST(request: Request) {
       return Response.json({ error: "E-mail inválido." }, { status: 400 });
     }
 
-    const password = temporaryPassword();
-    const temporaryPasswordHash = await hashPassword(password);
-
+    // Mantemos um hash de bootstrap apenas para respeitar o schema atual. A credencial em texto puro
+    // nunca sai deste request e nunca é retornada ao administrador.
+    const temporaryPasswordHash = await hashPassword(bootstrapPassword());
     const result = await inviteTeamMember({
       tenantId: session.tenantId,
       userId: session.userId,
@@ -41,10 +99,22 @@ export async function POST(request: Request) {
       temporaryPasswordHash,
     });
 
+    // O vínculo da equipe não é desfeito se o provedor de e-mail estiver indisponível. Isso evita o pior
+    // cenário anterior, em que um erro de entrega faria a interface dizer “falhou” embora a conta já tivesse
+    // sido criada. A resposta distingue claramente criação de acesso e entrega da mensagem.
+    const emailDelivery = await deliverInvite({
+      email,
+      name,
+      tenantName: session.tenantName,
+      invitedBy: session.name,
+      userId: result.userId,
+      createdNewUser: result.createdNewUser,
+    });
+
     return Response.json({
       userId: result.userId,
       createdNewUser: result.createdNewUser,
-      temporaryPassword: result.createdNewUser ? password : null,
+      emailDelivery,
     }, { status: 201 });
   } catch (error) {
     if (error instanceof TeamError) return Response.json({ error: error.message }, { status: error.status });
