@@ -68,7 +68,6 @@ assert.equal(noAdminRuntime.ok, true, "DATABASE_URL administrativo pode ficar fo
 assert.ok(noAdminRuntime.warnings.some((item) => item.name === "migration-database"));
 
 const incompleteObjectStorage = evaluateProductionReadiness({
-  ...good.checks,
   DATA_MODE: "database",
   APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz",
   DATABASE_SSL: "require",
