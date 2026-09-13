@@ -39,8 +39,9 @@
     "test:storage": "node --experimental-strip-types scripts/test-storage.mjs",
     "test:s3-storage": "node --experimental-strip-types scripts/test-s3-object-storage.mjs",
     "test:billing": "node --experimental-strip-types scripts/test-mercado-pago-webhook.mjs",
+    "test:operational-readiness": "node --experimental-strip-types scripts/test-operational-readiness.mjs",
     "test:production-readiness": "node scripts/test-production-readiness.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:auxiliary && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run test:assistant-actions-schema && npm run test:assistant-context-label && npm run test:prescription-gate && npm run test:report-publication-gate && npm run test:storage && npm run test:s3-storage && npm run test:billing && npm run test:production-readiness && npm run check:migrations",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:auxiliary && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run test:assistant-actions-schema && npm run test:assistant-context-label && npm run test:prescription-gate && npm run test:report-publication-gate && npm run test:storage && npm run test:s3-storage && npm run test:billing && npm run test:operational-readiness && npm run test:production-readiness && npm run check:migrations",
     "test:e2e": "playwright test",
     "test:cabeda-acceptance": "node --experimental-strip-types scripts/acceptance-cabeda.mjs"
   },
@@ -58,7 +59,6 @@
     "@playwright/test": "^1.62.1",
     "@types/leaflet": "^1.9.22",
     "@types/node": "22.19.19",
-    "@types/pg": "8.15.5",
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
