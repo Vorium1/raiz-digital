@@ -19,6 +19,17 @@ function parseDatabaseUrl(value) {
   }
 }
 
+function parseHttpsUrl(value) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return null;
+    if (["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function evaluateProductionReadiness(env = process.env) {
   const checks = [];
   const failures = [];
@@ -90,12 +101,23 @@ export function evaluateProductionReadiness(env = process.env) {
 
   const reportProvider = clean(env.REPORT_STORAGE_PROVIDER || env.STORAGE_PROVIDER).toLowerCase();
   if (reportProvider === "inline") pass("report-storage", "Snapshots publicados usam armazenamento durável suportado pela versão atual.");
-  else fail("report-storage", "Defina REPORT_STORAGE_PROVIDER=inline; local não é durável em runtime serverless e outros providers ainda não estão implementados para relatórios.");
+  else fail("report-storage", "Defina REPORT_STORAGE_PROVIDER=inline; o snapshot oficial precisa permanecer independente do filesystem efêmero e do arquivo bruto.");
 
-  warn(
-    "raw-import-archive",
-    "A versão atual ainda não arquiva o arquivo bruto original em object storage na Vercel. Resultados persistem no banco, mas retenção do PDF/XLSX fonte continua pendente.",
-  );
+  const rawProvider = clean(env.STORAGE_PROVIDER).toLowerCase();
+  const s3Endpoint = parseHttpsUrl(clean(env.S3_ENDPOINT));
+  const s3Region = clean(env.S3_REGION);
+  const s3Bucket = clean(env.S3_BUCKET);
+  const s3AccessKey = clean(env.S3_ACCESS_KEY);
+  const s3SecretKey = clean(env.S3_SECRET_KEY);
+  if (rawProvider !== "s3") {
+    fail("raw-import-archive", "STORAGE_PROVIDER precisa ser s3 no ambiente comercial para preservar o arquivo original do laboratório.");
+  } else if (!s3Endpoint) {
+    fail("raw-import-archive", "S3_ENDPOINT precisa ser uma URL HTTPS remota válida.");
+  } else if ([s3Region, s3Bucket, s3AccessKey, s3SecretKey].some(hasPlaceholder)) {
+    fail("raw-import-archive", "S3_REGION, S3_BUCKET, S3_ACCESS_KEY e S3_SECRET_KEY precisam estar configurados sem placeholders.");
+  } else {
+    pass("raw-import-archive", "Arquivo bruto/original tem object storage S3 compatível configurado.");
+  }
 
   const assistantMode = clean(env.RAIZ_ASSISTANT_MODE || "local").toLowerCase();
   if (assistantMode === "local") {

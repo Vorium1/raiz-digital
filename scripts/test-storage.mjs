@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { readRawStoredFile, saveRawImportFile, saveReportSnapshot } from "../src/lib/storage.ts";
+import {
+  readRawStoredFile,
+  saveRawImportFile,
+  saveReportSnapshot,
+  unwrapExtractedLabContent,
+  wrapExtractedLabContent,
+} from "../src/lib/storage.ts";
 
 const previousStorage = process.env.STORAGE_PROVIDER;
 const previousReportStorage = process.env.REPORT_STORAGE_PROVIDER;
@@ -14,11 +20,27 @@ try {
   const stored = await saveReportSnapshot({ tenantId: "tenant", interpretationId: "interpretation", revision: 3, content });
   assert.ok(stored.key.startsWith("inline:v1:"));
   assert.equal(stored.bytes, Buffer.byteLength(content));
+  assert.match(stored.sha256, /^[a-f0-9]{64}$/);
   const readBack = await readRawStoredFile(stored.key);
   assert.equal(readBack.toString("utf8"), content);
 
   const raw = await saveRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" });
   assert.equal(raw, null, "arquivos brutos não devem usar inline");
+
+  const source = {
+    key: "s3:v1:imports/tenant/sources/abc-laudo.pdf",
+    bytes: 123,
+    sha256: "a".repeat(64),
+    fileName: "Laudo Área 01.pdf",
+    sourceType: "PDF_OCR",
+  };
+  const csv = "amostra,parametro,valor\nA1,P,12";
+  const transported = wrapExtractedLabContent(csv, source);
+  const unwrapped = unwrapExtractedLabContent(transported);
+  assert.equal(unwrapped.content, csv);
+  assert.deepEqual(unwrapped.source, source);
+  assert.deepEqual(unwrapExtractedLabContent(csv), { content: csv, source: null });
+  assert.throws(() => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor"), /proveniência/);
 
   process.env.REPORT_STORAGE_PROVIDER = "provider-inexistente";
   await assert.rejects(
@@ -26,7 +48,7 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline durável/reversível + provider desconhecido fail-closed.");
+  console.log("OK — storage: snapshot inline + envelope de proveniência + providers fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;
