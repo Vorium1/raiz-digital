@@ -23,4 +23,19 @@ assert.doesNotMatch(teamRoute, /temporaryPassword\s*:/, "API de convite não pod
 assert.doesNotMatch(settingsTabs, /payload\.temporaryPassword/, "Frontend não pode depender de senha temporária devolvida pela API.");
 assert.match(settingsTabs, /nenhuma senha temporária é exibida/i, "UX precisa declarar o fluxo sem senha temporária.");
 
-console.log("security: token opaco, hash, TTL e convite de equipe aprovados");
+// Contrato de sessões: trocar senha preserva somente a sessão que acabou de reautenticar.
+// A ação manual de encerrar sessões nunca aceita userId/sessionId enviados pelo cliente: usa apenas a sessão autenticada.
+const sessionSource = await readFile(new URL("../src/lib/auth/session.ts", import.meta.url), "utf8");
+const changePasswordRoute = await readFile(new URL("../src/app/api/auth/change-password/route.ts", import.meta.url), "utf8");
+const revokeOthersRoute = await readFile(new URL("../src/app/api/auth/sessions/revoke-others/route.ts", import.meta.url), "utf8");
+const sessionSecuritySource = await readFile(new URL("../src/lib/auth/session-security.ts", import.meta.url), "utf8");
+
+assert.match(sessionSource, /currentSessionId/, "Troca de senha precisa conhecer a sessão atual.");
+assert.match(sessionSource, /UPDATE user_sessions[\s\S]*revoked_at = now\(\)[\s\S]*id <> \$3::uuid/, "Troca de senha deve revogar todas as outras sessões e preservar a atual.");
+assert.match(changePasswordRoute, /currentSessionId:\s*session\.sessionId/, "Rota de troca de senha deve usar o id da sessão autenticada.");
+assert.match(revokeOthersRoute, /revokeOwnOtherSessions\(session\.userId, session\.sessionId\)/, "Revogação manual deve ser sempre escopada ao usuário e sessão autenticados.");
+assert.doesNotMatch(revokeOthersRoute, /request\.json\(/, "Rota de revogação não deve aceitar identidade de sessão enviada pelo cliente.");
+assert.match(sessionSecuritySource, /WHERE s\.user_id = \$1::uuid/, "Listagem de sessões precisa ser escopada ao usuário autenticado.");
+assert.doesNotMatch(sessionSecuritySource, /AS "ipHash"/, "Painel de sessões não deve expor hash de IP ao frontend.");
+
+console.log("security: token opaco, hash, TTL, convite e gestão de sessões aprovados");
