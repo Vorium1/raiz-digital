@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { isMercadoPagoBrazilCheckoutUrl } from "../src/domain/mercado-pago-checkout.ts";
+import {
+  getMercadoPagoCheckoutActivation,
+  isMercadoPagoBrazilCheckoutUrl,
+} from "../src/domain/mercado-pago-checkout.ts";
 import {
   amountInCents,
   buildRaizInvoiceExternalReference,
@@ -67,4 +70,28 @@ assert.equal(isMercadoPagoBrazilCheckoutUrl("https://evilmercadopago.com.br/chec
 assert.equal(isMercadoPagoBrazilCheckoutUrl("http://www.mercadopago.com.br/checkout"), false, "checkout deve usar HTTPS");
 assert.equal(isMercadoPagoBrazilCheckoutUrl("javascript:alert(1)"), false);
 
-console.log("✓ Mercado Pago: assinatura HMAC, referência, valores, status e domínio de checkout validados");
+assert.deepEqual(
+  getMercadoPagoCheckoutActivation({
+    MERCADO_PAGO_ACCESS_TOKEN: "token-teste",
+    MERCADO_PAGO_WEBHOOK_SECRET: "segredo-teste",
+    MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+  }),
+  { credentialsConfigured: true, explicitlyEnabled: false, available: false },
+  "credenciais por si só nunca podem ligar o checkout comercial",
+);
+assert.deepEqual(
+  getMercadoPagoCheckoutActivation({
+    MERCADO_PAGO_ACCESS_TOKEN: "token-teste",
+    MERCADO_PAGO_WEBHOOK_SECRET: "segredo-teste",
+    MERCADO_PAGO_CHECKOUT_ENABLED: "TRUE",
+  }),
+  { credentialsConfigured: true, explicitlyEnabled: true, available: true },
+  "checkout só fica disponível com credenciais e opt-in explícito",
+);
+assert.deepEqual(
+  getMercadoPagoCheckoutActivation({ MERCADO_PAGO_CHECKOUT_ENABLED: "true" }),
+  { credentialsConfigured: false, explicitlyEnabled: true, available: false },
+  "flag sem credenciais deve falhar fechada",
+);
+
+console.log("✓ Mercado Pago: assinatura HMAC, referência, valores, status, domínio e gate comercial validados");

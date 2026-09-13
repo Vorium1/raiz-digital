@@ -1,4 +1,5 @@
 import { getPlatformSession } from "@/lib/auth/session";
+import { getMercadoPagoCheckoutActivation } from "@/domain/mercado-pago-checkout";
 import { createMercadoPagoInvoiceCheckout } from "@/lib/mercado-pago-orders";
 import { MercadoPagoApiError } from "@/lib/mercado-pago";
 import {
@@ -15,6 +16,16 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!BILLING_ROLES.has(session.role)) {
     return Response.json({ error: "Seu perfil não pode iniciar pagamentos da empresa." }, { status: 403 });
+  }
+
+  // Fail-closed: configurar credenciais para homologar webhook não habilita cobrança por acidente.
+  // O checkout só pode criar/reutilizar uma Order depois da ativação explícita no ambiente.
+  const activation = getMercadoPagoCheckoutActivation(process.env);
+  if (!activation.available) {
+    return Response.json(
+      { error: "Checkout comercial ainda não está habilitado neste ambiente." },
+      { status: 503 },
+    );
   }
 
   const { id } = await context.params;

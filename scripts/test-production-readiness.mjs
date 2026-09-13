@@ -10,7 +10,7 @@ const s3 = {
   S3_SECRET_KEY: "secret-key-configured",
 };
 
-const good = evaluateProductionReadiness({
+const safeBase = {
   DATA_MODE: "database",
   APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz?sslmode=require",
   DATABASE_URL: "postgresql://raiz_admin:admin-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz?sslmode=require",
@@ -25,12 +25,37 @@ const good = evaluateProductionReadiness({
   RAIZ_ASSISTANT_MODE: "local",
   COPERNICUS_CLIENT_ID: "copernicus-client",
   COPERNICUS_CLIENT_SECRET: "copernicus-secret",
+};
+
+const good = evaluateProductionReadiness({
+  ...safeBase,
   MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
   MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
 });
 assert.equal(good.ok, true, "Configuração comercial válida não pode ser bloqueada.");
 assert.equal(good.failures.length, 0);
 assert.ok(good.checks.some((item) => item.name === "raw-import-archive" && item.level === "PASS"));
+assert.ok(good.checks.some((item) => item.name === "billing" && item.level === "PASS"));
+assert.ok(good.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"));
+
+const goodWithCheckout = evaluateProductionReadiness({
+  ...safeBase,
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "true",
+});
+assert.equal(goodWithCheckout.ok, true, "Checkout explicitamente habilitado com credenciais completas pode passar o preflight.");
+assert.ok(goodWithCheckout.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"));
+
+const unsafeBillingActivation = evaluateProductionReadiness({
+  ...safeBase,
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "true",
+});
+assert.equal(unsafeBillingActivation.ok, false, "Checkout habilitado sem credenciais completas deve bloquear promoção.");
+assert.ok(unsafeBillingActivation.failures.some((item) => item.name === "billing-checkout"));
 
 const unsafe = evaluateProductionReadiness({
   DATA_MODE: "demo",
@@ -50,6 +75,7 @@ assert.equal(unsafe.ok, false, "Configuração de desenvolvimento não pode pass
 for (const required of ["data-mode", "app-database", "least-privilege", "database-ssl", "auth-secret", "app-url", "email-provider", "email-api-key", "email-from", "report-storage", "raw-import-archive", "assistant-mode"]) {
   assert.ok(unsafe.failures.some((item) => item.name === required), `Preflight deveria bloquear ${required}.`);
 }
+assert.ok(unsafe.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"), "Checkout ausente/desligado deve continuar sendo um estado seguro.");
 
 const noAdminRuntime = evaluateProductionReadiness({
   DATA_MODE: "database",
@@ -63,6 +89,7 @@ const noAdminRuntime = evaluateProductionReadiness({
   ...s3,
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
 });
 assert.equal(noAdminRuntime.ok, true, "DATABASE_URL administrativo pode ficar fora do runtime quando migrations rodam separadamente.");
 assert.ok(noAdminRuntime.warnings.some((item) => item.name === "migration-database"));
@@ -84,8 +111,9 @@ const incompleteObjectStorage = evaluateProductionReadiness({
   S3_SECRET_KEY: "",
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
 });
 assert.equal(incompleteObjectStorage.ok, false);
 assert.ok(incompleteObjectStorage.failures.some((item) => item.name === "raw-import-archive"));
 
-console.log("production-readiness: cenários seguro, inseguro, runtime sem admin e S3 incompleto aprovados");
+console.log("production-readiness: cenários seguro, checkout explícito, ativação inconsistente, runtime sem admin e S3 incompleto aprovados");
