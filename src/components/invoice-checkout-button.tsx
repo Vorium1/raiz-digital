@@ -2,20 +2,12 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/icon";
+import { isMercadoPagoBrazilCheckoutUrl } from "@/domain/mercado-pago-checkout";
 
 type Props = {
   invoiceId: string;
   enabled: boolean;
 };
-
-function isMercadoPagoBrazilCheckoutUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "mercadopago.com.br" || url.hostname.endsWith(".mercadopago.com.br"));
-  } catch {
-    return false;
-  }
-}
 
 export function InvoiceCheckoutButton({ invoiceId, enabled }: Props) {
   const [busy, setBusy] = useState(false);
