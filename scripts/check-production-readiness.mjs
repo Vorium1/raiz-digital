@@ -135,10 +135,22 @@ export function evaluateProductionReadiness(env = process.env) {
     warn("copernicus", "NDVI real por satélite ficará indisponível até configurar as credenciais Copernicus.");
   }
 
-  if (!hasPlaceholder(env.MERCADO_PAGO_ACCESS_TOKEN) && !hasPlaceholder(env.MERCADO_PAGO_WEBHOOK_SECRET)) {
+  const billingConfigured = !hasPlaceholder(env.MERCADO_PAGO_ACCESS_TOKEN)
+    && !hasPlaceholder(env.MERCADO_PAGO_WEBHOOK_SECRET);
+  const checkoutEnabled = clean(env.MERCADO_PAGO_CHECKOUT_ENABLED).toLowerCase() === "true";
+
+  if (billingConfigured) {
     pass("billing", "Credenciais de cobrança estão configuradas.");
   } else {
-    warn("billing", "Mercado Pago não está completo; cobrança automática deve permanecer desativada.");
+    warn("billing", "Mercado Pago não está completo; cobrança deve permanecer desativada.");
+  }
+
+  if (checkoutEnabled && !billingConfigured) {
+    fail("billing-checkout", "MERCADO_PAGO_CHECKOUT_ENABLED=true exige Access Token e segredo do webhook completos; ativação inconsistente foi bloqueada.");
+  } else if (checkoutEnabled) {
+    pass("billing-checkout", "Checkout comercial foi explicitamente habilitado com credenciais completas.");
+  } else {
+    pass("billing-checkout", "Checkout comercial permanece explicitamente desligado; credenciais podem ser homologadas sem expor cobrança aos usuários.");
   }
 
   return { ok: failures.length === 0, checks, failures, warnings };
