@@ -21,7 +21,8 @@ O preflight verifica, entre outros pontos:
 - `AUTH_SECRET` não-placeholder com comprimento mínimo;
 - `APP_URL` público em HTTPS;
 - e-mail transacional real (`EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM`);
-- snapshot publicado de relatório em provider durável suportado (`REPORT_STORAGE_PROVIDER=inline` nesta versão);
+- snapshot publicado de relatório em `REPORT_STORAGE_PROVIDER=inline`;
+- retenção do arquivo original do laboratório em `STORAGE_PROVIDER=s3`, com endpoint HTTPS e credenciais completas;
 - coerência do modo do assistente e credenciais necessárias quando híbrido;
 - disponibilidade das integrações Copernicus e Mercado Pago como avisos quando ainda opcionais.
 
@@ -52,11 +53,34 @@ Antes do primeiro cliente comercial, confirmar manualmente no provedor do Postgr
 
 ## 4. Armazenamento e rastreabilidade
 
-Relatórios publicados têm snapshot imutável e, na Vercel, podem usar `REPORT_STORAGE_PROVIDER=inline`, persistindo o conteúdo junto ao registro de relatório no PostgreSQL.
+Relatórios publicados continuam separados do arquivo bruto: em ambiente serverless, use `REPORT_STORAGE_PROVIDER=inline`, persistindo o snapshot oficial imutável no PostgreSQL/Neon com verificação de hash.
 
-**Pendência conhecida:** arquivos brutos de laboratório (PDF/XLSX/CSV originais) ainda não são arquivados em object storage durável na Vercel. Os dados importados persistem no banco, mas o arquivo-fonte não fica retido pelo módulo atual. Para uma operação que exige cadeia de custódia/auditoria documental completa, isso é bloqueador comercial até existir provider de object storage para importações brutas.
+Para os arquivos originais do laboratório, a versão atual implementa provider S3 compatível via Signature V4, sem dependência externa de SDK. Pode ser usado com AWS S3, Cloudflare R2, MinIO ou serviço compatível. No ambiente comercial configure:
 
-Não configure `STORAGE_PROVIDER=s3` apenas preenchendo variáveis: esta versão ainda não implementa persistência S3 para `saveRawImportFile`.
+```text
+STORAGE_PROVIDER=s3
+S3_ENDPOINT=https://...
+S3_REGION=auto               # ou a região real do provedor
+S3_BUCKET=...
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
+S3_SESSION_TOKEN=...         # somente se o provedor usar credencial temporária
+REPORT_STORAGE_PROVIDER=inline
+```
+
+A cadeia de custódia funciona assim:
+
+- CSV/TXT/XLSX: os bytes originais são arquivados no commit da importação; o SHA-256 registrado representa os bytes do arquivo original, inclusive para XLSX em base64 no transporte web;
+- PDF/foto: o original é arquivado no servidor antes de a transcrição por IA voltar ao navegador; o CSV transcrito carrega apenas um envelope opaco de proveniência;
+- no commit de PDF/foto, o servidor relê o objeto arquivado e confere tenant, tamanho e SHA-256 antes de persistir resultados;
+- a transcrição por IA nunca é tratada como se fosse o documento original;
+- as chaves de objeto são segregadas por tenant e derivadas do SHA-256 + nome sanitizado, evitando sobrescrita silenciosa por colisão de nome.
+
+O bucket deve permanecer **privado**. Confirme no provedor criptografia em repouso, política de retenção/lifecycle e ausência de acesso público. Não coloque credenciais no GitHub, no código nem em logs.
+
+Antes do go-live faça um smoke test no Preview/homologação com o provider real: envie um CSV/XLSX e um PDF, conclua a importação, confirme que o objeto existe no bucket privado e que a leitura de integridade no commit passou. O código cobre o fluxo com testes sem rede; esse teste real é necessário para validar credencial, endpoint, política do bucket e limites do runtime da Vercel.
+
+**Limite operacional:** PDF/foto ainda passa pelo endpoint de extração antes do object storage. Portanto os limites efetivos de payload do runtime Vercel precisam ser confirmados no smoke test; não assumir que o limite lógico de 9 MB do código garante o mesmo teto na infraestrutura. Se arquivos reais excederem o limite do runtime, o próximo passo é upload direto/presigned para o bucket.
 
 ## 5. E-mail e acesso
 
@@ -94,7 +118,8 @@ A promoção só deve ocorrer quando:
 3. backup/PITR e restauração tiverem sido verificados manualmente;
 4. health check responder 200 no preview/homologação conectado ao banco de homologação;
 5. convites e recuperação de senha forem testados com e-mail real;
-6. a pendência de retenção do arquivo bruto estiver resolvida ou formalmente aceita como limitação do lançamento;
-7. validação funcional/agronômica de homologação estiver aprovada.
+6. object storage bruto passar no smoke test real de upload + recuperação/integridade para CSV/XLSX e PDF;
+7. bucket privado, retenção/lifecycle e criptografia forem confirmados no provedor;
+8. validação funcional/agronômica de homologação estiver aprovada.
 
 `main`/produção não deve ser alterado apenas porque o código compila; promoção é uma decisão separada e explícita.
