@@ -110,14 +110,31 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
   return session;
 }
 
-export async function changeOwnPassword(input: { userId: string; currentPassword: string; newPassword: string }) {
+export async function changeOwnPassword(input: { userId: string; currentSessionId: string; currentPassword: string; newPassword: string }) {
   const result = await query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id = $1::uuid", [input.userId]);
   const currentHash = result.rows[0]?.password_hash;
   if (!currentHash || !(await verifyPassword(currentHash, input.currentPassword))) {
     throw new Error("Senha atual incorreta.");
   }
   const newHash = await hashPassword(input.newPassword);
-  await query("UPDATE users SET password_hash = $1 WHERE id = $2::uuid", [newHash, input.userId]);
+
+  // A troca da senha e a revogação das demais sessões acontecem na mesma instrução SQL.
+  // A sessão corrente é preservada para evitar deslogar o usuário que acabou de se autenticar de novo,
+  // mas qualquer token aberto em outro navegador/dispositivo deixa de funcionar imediatamente.
+  await query(
+    `WITH changed AS (
+       UPDATE users
+       SET password_hash = $1
+       WHERE id = $2::uuid
+       RETURNING id
+     )
+     UPDATE user_sessions
+     SET revoked_at = now()
+     WHERE user_id = (SELECT id FROM changed)
+       AND id <> $3::uuid
+       AND revoked_at IS NULL`,
+    [newHash, input.userId, input.currentSessionId],
+  );
 }
 
 export async function requirePlatformSession() {
