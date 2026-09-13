@@ -23,36 +23,38 @@ export type TenantInvoice = {
 
 export async function getTenantBillingSnapshot(tenantId: string, userId: string) {
   return withTenant({ tenantId, userId }, async (client) => {
-    const [subscriptionResult, invoicesResult] = await Promise.all([
-      client.query<TenantSubscription>(
-        `SELECT id::text,
-                status::text,
-                monthly_amount_cents AS "monthlyAmountCents",
-                due_day AS "dueDay",
-                blocked_at::text AS "blockedAt",
-                created_at::text AS "createdAt"
-         FROM subscriptions
-         WHERE tenant_id = $1::uuid
-         LIMIT 1`,
-        [tenantId],
-      ),
-      client.query<TenantInvoice>(
-        `SELECT id::text,
-                provider,
-                provider_charge_id AS "providerChargeId",
-                amount_cents AS "amountCents",
-                due_at::text AS "dueAt",
-                grace_deadline::text AS "graceDeadline",
-                status::text,
-                paid_at::text AS "paidAt",
-                created_at::text AS "createdAt"
-         FROM invoices
-         WHERE tenant_id = $1::uuid
-         ORDER BY due_at DESC, created_at DESC
-         LIMIT 24`,
-        [tenantId],
-      ),
-    ]);
+    // `withTenant` entrega um único PoolClient transacional. Mantemos as duas leituras
+    // sequenciais para não disputar o mesmo socket com Promises concorrentes e para que
+    // o contexto RLS permaneça simples de auditar.
+    const subscriptionResult = await client.query<TenantSubscription>(
+      `SELECT id::text,
+              status::text,
+              monthly_amount_cents AS "monthlyAmountCents",
+              due_day AS "dueDay",
+              blocked_at::text AS "blockedAt",
+              created_at::text AS "createdAt"
+       FROM subscriptions
+       WHERE tenant_id = $1::uuid
+       LIMIT 1`,
+      [tenantId],
+    );
+
+    const invoicesResult = await client.query<TenantInvoice>(
+      `SELECT id::text,
+              provider,
+              provider_charge_id AS "providerChargeId",
+              amount_cents AS "amountCents",
+              due_at::text AS "dueAt",
+              grace_deadline::text AS "graceDeadline",
+              status::text,
+              paid_at::text AS "paidAt",
+              created_at::text AS "createdAt"
+       FROM invoices
+       WHERE tenant_id = $1::uuid
+       ORDER BY due_at DESC, created_at DESC
+       LIMIT 24`,
+      [tenantId],
+    );
 
     return {
       subscription: subscriptionResult.rows[0] ?? null,
