@@ -65,6 +65,7 @@ export const navigationSections: NavSection[] = [
     items: [
       { href: "/biblioteca-tecnica", label: "Biblioteca Técnica", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
       { href: "/configuracoes#equipe", label: "Usuários & Permissões", icon: "users", roles: ["SUPER_ADMIN", "TENANT_ADMIN"] },
+      { href: "/operacao-sistema", label: "Saúde do sistema", icon: "shield", roles: ["SUPER_ADMIN"] },
       { href: "/financeiro", label: "Financeiro", icon: "wallet", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "COMMERCIAL"] },
       { href: "/configuracoes", label: "Configurações", icon: "settings" },
     ],
