@@ -8,6 +8,15 @@ type Props = {
   enabled: boolean;
 };
 
+function isMercadoPagoBrazilCheckoutUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "mercadopago.com.br" || url.hostname.endsWith(".mercadopago.com.br"));
+  } catch {
+    return false;
+  }
+}
+
 export function InvoiceCheckoutButton({ invoiceId, enabled }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -23,11 +32,10 @@ export function InvoiceCheckoutButton({ invoiceId, enabled }: Props) {
         throw new Error(payload.error ?? "Não foi possível abrir o pagamento.");
       }
 
-      const checkout = new URL(payload.checkoutUrl);
-      if (checkout.protocol !== "https:" || !checkout.hostname.endsWith("mercadopago.com.br")) {
+      if (!isMercadoPagoBrazilCheckoutUrl(payload.checkoutUrl)) {
         throw new Error("O endereço de pagamento retornado não pertence ao Mercado Pago Brasil.");
       }
-      window.location.assign(checkout.toString());
+      window.location.assign(payload.checkoutUrl);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível abrir o pagamento.");
       setBusy(false);
