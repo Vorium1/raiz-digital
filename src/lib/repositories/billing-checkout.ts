@@ -57,16 +57,16 @@ export async function saveInvoiceCheckout(input: {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const updated = await client.query<{ providerOrderId: string; checkoutUrl: string }>(
       `UPDATE invoices
-       SET provider_order_id = $4,
-           checkout_url = $5,
+       SET provider_order_id = $3,
+           checkout_url = $4,
            checkout_created_at = COALESCE(checkout_created_at, now())
        WHERE tenant_id = $1::uuid
          AND id = $2::uuid
          AND provider = 'MERCADO_PAGO'
          AND status NOT IN ('PAID','REFUNDED','CANCELED')
-         AND (provider_order_id IS NULL OR provider_order_id = $4)
+         AND (provider_order_id IS NULL OR provider_order_id = $3)
        RETURNING provider_order_id AS "providerOrderId", checkout_url AS "checkoutUrl"`,
-      [input.tenantId, input.invoiceId, input.userId, input.providerOrderId, input.checkoutUrl],
+      [input.tenantId, input.invoiceId, input.providerOrderId, input.checkoutUrl],
     );
     const row = updated.rows[0];
     if (!row) throw new InvoiceCheckoutError("A fatura mudou enquanto o checkout era criado. Atualize a página antes de tentar novamente.", 409);
