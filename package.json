@@ -10,6 +10,7 @@
     "test:domain": "node --experimental-strip-types scripts/test-lab-import.mjs",
     "test:security": "node --experimental-strip-types scripts/test-security.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
+    "check:production-readiness": "node scripts/check-production-readiness.mjs",
     "seed:dev": "node scripts/seed-dev.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:set-app-password": "node scripts/set-app-role-password.mjs",
@@ -36,7 +37,8 @@
     "test:prescription-gate": "node --experimental-strip-types scripts/test-agronomic-prescription-gate.mjs",
     "test:report-publication-gate": "node --experimental-strip-types scripts/test-report-publication-gate.mjs",
     "test:storage": "node --experimental-strip-types scripts/test-storage.mjs",
-    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:auxiliary && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run test:assistant-actions-schema && npm run test:assistant-context-label && npm run test:prescription-gate && npm run test:report-publication-gate && npm run test:storage && npm run check:migrations",
+    "test:production-readiness": "node scripts/test-production-readiness.mjs",
+    "test:handoff": "npm run test:domain && npm run test:security && npm run test:field && npm run test:engine && npm run test:auxiliary && npm run test:liming && npm run test:phosphorus && npm run test:fertilizer-dose && npm run test:ndvi && npm run test:ai-schema && npm run test:prescription-schema && npm run test:research-schema && npm run test:predominance && npm run test:assistant-screen && npm run test:assistant-response-schema && npm run test:assistant-evidence-manifest && npm run test:assistant-actions-schema && npm run test:assistant-context-label && npm run test:prescription-gate && npm run test:report-publication-gate && npm run test:storage && npm run test:production-readiness && npm run check:migrations",
     "test:e2e": "playwright test",
     "test:cabeda-acceptance": "node --experimental-strip-types scripts/acceptance-cabeda.mjs"
   },
