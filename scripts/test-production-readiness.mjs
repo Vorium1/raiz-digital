@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { evaluateProductionReadiness } from "./check-production-readiness.mjs";
 
+const s3 = {
+  STORAGE_PROVIDER: "s3",
+  S3_ENDPOINT: "https://1234567890.r2.cloudflarestorage.com",
+  S3_REGION: "auto",
+  S3_BUCKET: "raiz-private",
+  S3_ACCESS_KEY: "access-key-configured",
+  S3_SECRET_KEY: "secret-key-configured",
+};
+
 const good = evaluateProductionReadiness({
   DATA_MODE: "database",
   APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz?sslmode=require",
@@ -11,7 +20,7 @@ const good = evaluateProductionReadiness({
   EMAIL_PROVIDER: "resend",
   RESEND_API_KEY: "re_live_configured_key",
   EMAIL_FROM: "RAIZ Digital <no-reply@raizdigital.com.br>",
-  STORAGE_PROVIDER: "local",
+  ...s3,
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
   COPERNICUS_CLIENT_ID: "copernicus-client",
@@ -21,7 +30,7 @@ const good = evaluateProductionReadiness({
 });
 assert.equal(good.ok, true, "Configuração comercial válida não pode ser bloqueada.");
 assert.equal(good.failures.length, 0);
-assert.ok(good.warnings.some((item) => item.name === "raw-import-archive"), "Retenção do arquivo bruto precisa continuar visível como dívida operacional.");
+assert.ok(good.checks.some((item) => item.name === "raw-import-archive" && item.level === "PASS"));
 
 const unsafe = evaluateProductionReadiness({
   DATA_MODE: "demo",
@@ -38,7 +47,7 @@ const unsafe = evaluateProductionReadiness({
   RAIZ_ASSISTANT_MODE: "hybrid",
 });
 assert.equal(unsafe.ok, false, "Configuração de desenvolvimento não pode passar como produção.");
-for (const required of ["data-mode", "app-database", "least-privilege", "database-ssl", "auth-secret", "app-url", "email-provider", "email-api-key", "email-from", "report-storage", "assistant-mode"]) {
+for (const required of ["data-mode", "app-database", "least-privilege", "database-ssl", "auth-secret", "app-url", "email-provider", "email-api-key", "email-from", "report-storage", "raw-import-archive", "assistant-mode"]) {
   assert.ok(unsafe.failures.some((item) => item.name === required), `Preflight deveria bloquear ${required}.`);
 }
 
@@ -51,10 +60,33 @@ const noAdminRuntime = evaluateProductionReadiness({
   EMAIL_PROVIDER: "resend",
   RESEND_API_KEY: "re_live_configured_key",
   EMAIL_FROM: "RAIZ Digital <no-reply@raizdigital.com.br>",
+  ...s3,
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
 });
 assert.equal(noAdminRuntime.ok, true, "DATABASE_URL administrativo pode ficar fora do runtime quando migrations rodam separadamente.");
 assert.ok(noAdminRuntime.warnings.some((item) => item.name === "migration-database"));
 
-console.log("production-readiness: cenários seguro, inseguro e runtime sem credencial admin aprovados");
+const incompleteObjectStorage = evaluateProductionReadiness({
+  ...good.checks,
+  DATA_MODE: "database",
+  APP_DATABASE_URL: "postgresql://raiz_app:runtime-password@ep-green-field-123456.sa-east-1.aws.neon.tech/raiz",
+  DATABASE_SSL: "require",
+  AUTH_SECRET: "89bd6b04b7ce3f44836a37643c9dde1183bcd237",
+  APP_URL: "https://app.raizdigital.com.br",
+  EMAIL_PROVIDER: "resend",
+  RESEND_API_KEY: "re_live_configured_key",
+  EMAIL_FROM: "RAIZ Digital <no-reply@raizdigital.com.br>",
+  STORAGE_PROVIDER: "s3",
+  S3_ENDPOINT: "http://localhost:9000",
+  S3_REGION: "auto",
+  S3_BUCKET: "raiz-private",
+  S3_ACCESS_KEY: "access-key-configured",
+  S3_SECRET_KEY: "",
+  REPORT_STORAGE_PROVIDER: "inline",
+  RAIZ_ASSISTANT_MODE: "local",
+});
+assert.equal(incompleteObjectStorage.ok, false);
+assert.ok(incompleteObjectStorage.failures.some((item) => item.name === "raw-import-archive"));
+
+console.log("production-readiness: cenários seguro, inseguro, runtime sem admin e S3 incompleto aprovados");
