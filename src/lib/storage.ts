@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getS3Object, putS3Object } from "@/lib/s3-object-storage";
+import { getS3Object, putS3Object } from "./s3-object-storage.ts";
 
 /**
  * Armazenamento da RAIZ.
