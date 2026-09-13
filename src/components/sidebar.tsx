@@ -7,9 +7,9 @@ import { Icon } from "@/components/icon";
 import { initials, roleLabel } from "@/lib/role-labels";
 import { visibleNavigationSections } from "@/lib/navigation";
 
-type SidebarProps = { tenantName?: string; userName?: string; role?: string; pendingAnalyses?: number };
+type SidebarProps = { tenantName?: string; userName?: string; role?: string; isPlatformCurator?: boolean; pendingAnalyses?: number };
 
-export function Sidebar({ tenantName, userName, role, pendingAnalyses }: SidebarProps) {
+export function Sidebar({ tenantName, userName, role, isPlatformCurator, pendingAnalyses }: SidebarProps) {
   const pathname = usePathname();
 
   const tenantLabel = tenantName ?? "GrãoSul Agrícola";
@@ -17,7 +17,7 @@ export function Sidebar({ tenantName, userName, role, pendingAnalyses }: Sidebar
   const userLabel = userName ?? "Gui Bortoluzzi";
   const userInitials = userName ? initials(userName) || "?" : "GB";
   const roleText = role ? (roleLabel[role] ?? role) : "Administrador";
-  const sections = visibleNavigationSections(role).map((section) => ({ ...section, items: section.items.filter((item) => item.href !== "/configuracoes") }));
+  const sections = visibleNavigationSections(role, isPlatformCurator).map((section) => ({ ...section, items: section.items.filter((item) => item.href !== "/configuracoes") }));
 
   return (
     <aside className="sidebar">

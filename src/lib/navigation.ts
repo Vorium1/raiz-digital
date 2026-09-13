@@ -4,6 +4,8 @@ export type NavItem = {
   icon: "home" | "users" | "map" | "flask" | "file" | "history" | "wallet" | "settings" | "leaf" | "layers" | "location" | "shield" | "sparkles" | "warning" | "upload";
   /** Quando ausente, o item é visível para qualquer perfil autenticado. */
   roles?: string[];
+  /** Recurso global da plataforma, não apenas administrativo dentro de um tenant. */
+  platformCuratorOnly?: boolean;
 };
 
 export type NavSection = { label: string; items: NavItem[] };
@@ -65,14 +67,21 @@ export const navigationSections: NavSection[] = [
     items: [
       { href: "/biblioteca-tecnica", label: "Biblioteca Técnica", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
       { href: "/configuracoes#equipe", label: "Usuários & Permissões", icon: "users", roles: ["SUPER_ADMIN", "TENANT_ADMIN"] },
+      { href: "/operacao-sistema", label: "Saúde do sistema", icon: "shield", platformCuratorOnly: true },
       { href: "/financeiro", label: "Financeiro", icon: "wallet", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "COMMERCIAL"] },
       { href: "/configuracoes", label: "Configurações", icon: "settings" },
     ],
   },
 ];
 
-export function visibleNavigationSections(role: string | undefined): NavSection[] {
+export function visibleNavigationSections(role: string | undefined, isPlatformCurator = false): NavSection[] {
   return navigationSections
-    .map((section) => ({ ...section, items: section.items.filter((item) => !item.roles || (role && item.roles.includes(role))) }))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (item.platformCuratorOnly && !isPlatformCurator) return false;
+        return !item.roles || Boolean(role && item.roles.includes(role));
+      }),
+    }))
     .filter((section) => section.items.length > 0);
 }
