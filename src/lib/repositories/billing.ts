@@ -7,11 +7,15 @@ import {
 } from "@/lib/mercado-pago";
 
 const PROVIDER = "MERCADO_PAGO";
+const MAX_PROCESSING_ERROR_CHARS = 1500;
 
 export class BillingReconciliationError extends Error {
-  constructor(message: string, public code: string) {
+  code: string;
+
+  constructor(message: string, code: string) {
     super(message);
     this.name = "BillingReconciliationError";
+    this.code = code;
   }
 }
 
@@ -44,7 +48,7 @@ export async function markPaymentEventProcessed(eventRowId: string, processingEr
     `UPDATE payment_events
      SET processed_at = now(), processing_error = $2
      WHERE id = $1::uuid`,
-    [eventRowId, processingError],
+    [eventRowId, processingError?.slice(0, MAX_PROCESSING_ERROR_CHARS) ?? null],
   );
 }
 
@@ -53,7 +57,7 @@ export async function markPaymentEventRetryableError(eventRowId: string, process
     `UPDATE payment_events
      SET processing_error = $2
      WHERE id = $1::uuid`,
-    [eventRowId, processingError.slice(0, 1500)],
+    [eventRowId, processingError.slice(0, MAX_PROCESSING_ERROR_CHARS)],
   );
 }
 
