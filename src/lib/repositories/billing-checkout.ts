@@ -36,9 +36,11 @@ export async function getCheckoutableInvoice(input: { tenantId: string; userId: 
     const invoice = result.rows[0];
     if (!invoice) throw new InvoiceCheckoutError("Fatura não encontrada nesta empresa.", 404);
     if (invoice.provider !== "MERCADO_PAGO") throw new InvoiceCheckoutError("Esta fatura não usa Mercado Pago.", 409);
-    if (invoice.status === "PAID") throw new InvoiceCheckoutError("Esta fatura já está paga.", 409);
-    if (invoice.status === "REFUNDED" || invoice.status === "CANCELED") {
-      throw new InvoiceCheckoutError("Esta fatura não aceita novo checkout no estado atual.", 409);
+    if (invoice.status !== "PENDING") {
+      throw new InvoiceCheckoutError(
+        invoice.status === "PAID" ? "Esta fatura já está paga." : "Esta fatura não aceita checkout no estado atual.",
+        409,
+      );
     }
     if (!Number.isInteger(Number(invoice.amountCents)) || Number(invoice.amountCents) <= 0) {
       throw new InvoiceCheckoutError("Fatura sem valor válido para cobrança.", 422);
@@ -63,7 +65,7 @@ export async function saveInvoiceCheckout(input: {
        WHERE tenant_id = $1::uuid
          AND id = $2::uuid
          AND provider = 'MERCADO_PAGO'
-         AND status NOT IN ('PAID','REFUNDED','CANCELED')
+         AND status = 'PENDING'
          AND (provider_order_id IS NULL OR provider_order_id = $3)
        RETURNING provider_order_id AS "providerOrderId", checkout_url AS "checkoutUrl"`,
       [input.tenantId, input.invoiceId, input.providerOrderId, input.checkoutUrl],
