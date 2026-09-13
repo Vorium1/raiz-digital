@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { InvoiceCheckoutButton } from "@/components/invoice-checkout-button";
 import { PageIntro, StatusBadge } from "@/components/ui";
+import { getMercadoPagoCheckoutActivation } from "@/domain/mercado-pago-checkout";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getTenantBillingSnapshot } from "@/lib/repositories/billing-read";
@@ -43,26 +44,33 @@ export default async function FinancialPage() {
   if (!FINANCIAL_ROLES.has(session.role)) redirect("/dashboard");
 
   const billing = await getTenantBillingSnapshot(session.tenantId, session.userId);
-  const integrationConfigured = Boolean(
-    process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim() && process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim(),
-  );
+  const checkoutActivation = getMercadoPagoCheckoutActivation(process.env);
+  const integrationTone = checkoutActivation.available ? "success" : checkoutActivation.credentialsConfigured ? "waiting" : "";
 
   return <>
     <Topbar eyebrow="Administração" title="Financeiro"/>
     <div className="content-wrap">
       <PageIntro
         title="Assinatura e faturamento"
-        description="Ledger financeiro real da empresa ativa. Faturas pendentes podem abrir o Checkout Pro do Mercado Pago; o pagamento só é reconhecido depois da reconciliação oficial pelo webhook."
+        description="Ledger financeiro real da empresa ativa. Faturas pendentes só podem abrir o Checkout Pro quando a cobrança comercial estiver explicitamente habilitada; o pagamento continua sendo reconhecido apenas pela reconciliação oficial do webhook."
       />
 
-      <div className={`import-message ${integrationConfigured ? "success" : ""}`} style={{ marginBottom: 18 }}>
-        <Icon name={integrationConfigured ? "shield" : "warning"}/>
+      <div className={`import-message ${integrationTone}`} style={{ marginBottom: 18 }}>
+        <Icon name={checkoutActivation.available ? "shield" : "warning"}/>
         <div>
-          <strong>{integrationConfigured ? "Integração preparada para homologação" : "Mercado Pago ainda sem credenciais neste ambiente"}</strong>
+          <strong>
+            {checkoutActivation.available
+              ? "Checkout comercial habilitado"
+              : checkoutActivation.credentialsConfigured
+                ? "Mercado Pago configurado, mas checkout comercial desligado"
+                : "Mercado Pago ainda sem credenciais neste ambiente"}
+          </strong>
           <small>
-            {integrationConfigured
-              ? "Checkout manual por fatura e webhook protegido estão disponíveis. Recorrência automática e bloqueio por inadimplência continuam desligados até o teste comercial final."
-              : "Configure Access Token e segredo do webhook somente no ambiente seguro. Até lá, nenhuma cobrança é criada e nenhum acesso é alterado."}
+            {checkoutActivation.available
+              ? "Checkout manual por fatura está ativo. Recorrência automática e bloqueio por inadimplência continuam desligados até uma etapa comercial posterior."
+              : checkoutActivation.credentialsConfigured
+                ? "As credenciais podem ser usadas para homologar webhook sem expor cobrança aos usuários. Ative MERCADO_PAGO_CHECKOUT_ENABLED=true somente depois do teste financeiro real."
+                : "Configure Access Token e segredo do webhook somente no ambiente seguro. Até lá, nenhuma cobrança é criada e nenhum acesso é alterado."}
           </small>
         </div>
       </div>
@@ -102,7 +110,7 @@ export default async function FinancialPage() {
                   </td>
                   <td>
                     {canCheckout
-                      ? <InvoiceCheckoutButton invoiceId={invoice.id} enabled={integrationConfigured}/>
+                      ? <InvoiceCheckoutButton invoiceId={invoice.id} enabled={checkoutActivation.available}/>
                       : <small>{invoice.status === "PAID" ? "Quitada" : "Sem ação disponível"}</small>}
                   </td>
                 </tr>;
@@ -115,7 +123,7 @@ export default async function FinancialPage() {
       </section>
 
       <p className="report-empty-note" style={{ marginTop: 14 }}>
-        Segurança comercial: abrir o Checkout Pro não marca uma fatura como paga. A RAIZ só muda o ledger após validar a assinatura do webhook e consultar novamente o recurso no Mercado Pago. Recorrência e bloqueio por inadimplência permanecem fora desta etapa.
+        Segurança comercial: configurar credenciais não liga cobrança. Abrir o Checkout Pro também não marca uma fatura como paga. A RAIZ só muda o ledger após validar a assinatura do webhook e consultar novamente o recurso no Mercado Pago. Recorrência e bloqueio por inadimplência permanecem fora desta etapa.
       </p>
     </div>
   </>;
