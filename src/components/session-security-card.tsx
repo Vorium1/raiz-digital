@@ -4,12 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
-import { sessionDeviceLabel, type ActiveUserSession } from "@/lib/auth/session-security";
+import type { ActiveUserSession } from "@/lib/auth/session-security";
 
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function sessionDeviceLabel(userAgent: string | null) {
+  if (!userAgent) return "Dispositivo não identificado";
+  const value = userAgent.toLowerCase();
+  if (value.includes("android")) return "Android";
+  if (value.includes("iphone") || value.includes("ipad") || value.includes("ios")) return "iPhone / iPad";
+  if (value.includes("windows")) return "Windows";
+  if (value.includes("macintosh") || value.includes("mac os")) return "Mac";
+  if (value.includes("linux")) return "Linux";
+  return "Navegador / dispositivo";
 }
 
 export function SessionSecurityCard({ sessions }: { sessions: ActiveUserSession[] }) {
