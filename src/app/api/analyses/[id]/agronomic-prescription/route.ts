@@ -58,6 +58,17 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: gate.reason }, { status: 409 });
   }
 
+  // O pacote foi montado em uma transação separada. Se uma nova revisão tiver surgido entre a montagem
+  // da evidência e este gate, falhamos fechados em vez de enviar ao LLM uma revisão antiga enquanto
+  // gravamos a geração vinculada a outra. A prescrição precisa estar ancorada na MESMA revisão aprovada.
+  if (
+    !evidence.deterministicInterpretation ||
+    evidence.deterministicInterpretation.id !== interpretation?.id ||
+    evidence.deterministicInterpretation.status !== "APPROVED"
+  ) {
+    return Response.json({ error: "A revisão determinística mudou durante a preparação da prescrição. Atualize a análise e tente novamente após confirmar a revisão aprovada atual." }, { status: 409 });
+  }
+
   const provider = resolveAgronomicPrescriptionProvider();
 
   let result;
