@@ -13,6 +13,9 @@ export type TenantInvoice = {
   id: string;
   provider: string;
   providerChargeId: string | null;
+  providerOrderId: string | null;
+  checkoutUrl: string | null;
+  checkoutCreatedAt: string | null;
   amountCents: number;
   dueAt: string;
   graceDeadline: string;
@@ -43,6 +46,9 @@ export async function getTenantBillingSnapshot(tenantId: string, userId: string)
       `SELECT id::text,
               provider,
               provider_charge_id AS "providerChargeId",
+              provider_order_id AS "providerOrderId",
+              checkout_url AS "checkoutUrl",
+              checkout_created_at::text AS "checkoutCreatedAt",
               amount_cents AS "amountCents",
               due_at::text AS "dueAt",
               grace_deadline::text AS "graceDeadline",
