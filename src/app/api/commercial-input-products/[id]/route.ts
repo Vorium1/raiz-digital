@@ -9,19 +9,37 @@ import type { NutrientGuarantees } from "@/domain/commercial-input-engine";
 
 const MANAGE_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
+function parseNullableNumber(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new CommercialInputProductError(`${key} precisa ser número ou nulo.`);
+  }
+  return value;
+}
+
+function parseGuarantees(value: unknown): NutrientGuarantees {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new CommercialInputProductError("guaranteesPercent precisa ser um objeto de garantias.");
+  }
+  return value as NutrientGuarantees;
+}
+
 function parsePatch(body: Record<string, unknown>): CommercialInputProductPatch {
   const patch: CommercialInputProductPatch = {};
   if ("code" in body) patch.code = typeof body.code === "string" ? body.code : "";
   if ("name" in body) patch.name = typeof body.name === "string" ? body.name : "";
   if ("kind" in body) patch.kind = body.kind as CommercialInputKind;
-  if ("guaranteesPercent" in body) patch.guaranteesPercent = body.guaranteesPercent && typeof body.guaranteesPercent === "object"
-    ? body.guaranteesPercent as NutrientGuarantees
-    : {};
-  if ("prntPercent" in body) patch.prntPercent = body.prntPercent == null ? null : body.prntPercent as number;
-  if ("pricePerTon" in body) patch.pricePerTon = body.pricePerTon == null ? null : body.pricePerTon as number;
-  if ("minRateKgPerHa" in body) patch.minRateKgPerHa = body.minRateKgPerHa == null ? null : body.minRateKgPerHa as number;
-  if ("maxRateKgPerHa" in body) patch.maxRateKgPerHa = body.maxRateKgPerHa == null ? null : body.maxRateKgPerHa as number;
-  if ("active" in body) patch.active = Boolean(body.active);
+  if ("guaranteesPercent" in body) patch.guaranteesPercent = parseGuarantees(body.guaranteesPercent);
+  if ("prntPercent" in body) patch.prntPercent = parseNullableNumber(body, "prntPercent");
+  if ("pricePerTon" in body) patch.pricePerTon = parseNullableNumber(body, "pricePerTon");
+  if ("minRateKgPerHa" in body) patch.minRateKgPerHa = parseNullableNumber(body, "minRateKgPerHa");
+  if ("maxRateKgPerHa" in body) patch.maxRateKgPerHa = parseNullableNumber(body, "maxRateKgPerHa");
+  if ("active" in body) {
+    if (typeof body.active !== "boolean") throw new CommercialInputProductError("active precisa ser booleano.");
+    patch.active = body.active;
+  }
   return patch;
 }
 
