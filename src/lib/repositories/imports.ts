@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
 import { saveRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
 
 async function promoteRowsToLabResults(
@@ -133,11 +134,12 @@ export async function commitCsvImport(input: {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const importResult = await client.query<{ id: string }>(
       `INSERT INTO analysis_imports
-       (tenant_id, analysis_id, file_name, file_sha256, source_format, status, detected_headers,
+       (tenant_id, analysis_id, file_name, file_sha256, raw_object_key, source_format, status, detected_headers,
         normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::import_status, $7::jsonb, $8, $9, $10, $11, $12::jsonb, $13::uuid)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::import_status, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14::uuid)
        ON CONFLICT (tenant_id, file_sha256, analysis_id)
-       DO UPDATE SET blocker_count = EXCLUDED.blocker_count,
+       DO UPDATE SET raw_object_key = COALESCE(analysis_imports.raw_object_key, EXCLUDED.raw_object_key),
+                     blocker_count = EXCLUDED.blocker_count,
                      warning_count = EXCLUDED.warning_count,
                      confidence_score = EXCLUDED.confidence_score,
                      validation_issues = EXCLUDED.validation_issues
@@ -147,6 +149,7 @@ export async function commitCsvImport(input: {
         input.analysisId,
         originalFileName,
         sourceSha256,
+        stored?.key ?? null,
         sourceFormat,
         persistedStatus,
         JSON.stringify(preview.detectedHeaders),
@@ -212,6 +215,13 @@ export async function commitCsvImport(input: {
       ],
     );
 
+    // Um novo arquivo ou uma proveniência antes ausente pode tornar a confirmação anterior insuficiente.
+    // Recalculamos o resumo usando somente confirmações que batem exatamente import + SHA + object key.
+    const verificationState = await refreshAnalysisSourceHumanVerified(client, {
+      tenantId: input.tenantId,
+      analysisId: input.analysisId,
+    });
+
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
@@ -224,6 +234,7 @@ export async function commitCsvImport(input: {
         sourceFormat,
         sourceArchived: Boolean(stored),
         sourceFileKey: stored?.key ?? null,
+        sourceHumanVerified: verificationState.verified,
         blockers: preview.blockers,
         warnings: preview.warnings,
         promotedSamples: promoted.promotedSamples,

@@ -15,7 +15,8 @@ export class ReportPublicationGateError extends Error {
 
 /**
  * Gate da entrega oficial. A recomendação precisa pertencer À MESMA interpretação que será publicada,
- * impedindo que uma prescrição aprovada de uma revisão antiga autorize silenciosamente uma revisão nova.
+ * a interpretação precisa ser a revisão mais recente, a geração deve continuar compatível com o contexto
+ * atual da safra e, quando a política do tenant exigir, o arquivo bruto precisa estar confirmado.
  */
 export async function getReportPublicationReadiness(
   tenantId: string,
@@ -25,11 +26,28 @@ export async function getReportPublicationReadiness(
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT i.status::text AS "interpretationStatus",
+              (latest_interpretation.id = i.id) AS "interpretationIsLatest",
+              a.source_human_verified AS "sourceHumanVerified",
+              t.require_source_human_verification AS "sourceVerificationRequired",
               prescription.id::text AS "prescriptionId",
-              prescription.status::text AS "prescriptionStatus"
+              prescription.status::text AS "prescriptionStatus",
+              CASE
+                WHEN prescription.id IS NULL THEN false
+                ELSE prescription.created_at >= cs.updated_at
+              END AS "prescriptionCurrent"
        FROM interpretations i
+       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN tenants t ON t.id = i.tenant_id
        LEFT JOIN LATERAL (
-         SELECT ag.id, ag.status
+         SELECT li.id
+         FROM interpretations li
+         WHERE li.tenant_id = i.tenant_id AND li.analysis_id = i.analysis_id
+         ORDER BY li.revision DESC
+         LIMIT 1
+       ) latest_interpretation ON true
+       LEFT JOIN LATERAL (
+         SELECT ag.id, ag.status, ag.created_at
          FROM ai_generations ag
          WHERE ag.tenant_id=i.tenant_id
            AND ag.interpretation_id=i.id
@@ -47,6 +65,10 @@ export async function getReportPublicationReadiness(
       interpretationStatus: row?.interpretationStatus ?? null,
       prescriptionId: row?.prescriptionId ?? null,
       prescriptionStatus: row?.prescriptionStatus ?? null,
+      interpretationIsLatest: row?.interpretationIsLatest ?? false,
+      prescriptionCurrent: row?.prescriptionCurrent ?? false,
+      sourceVerificationRequired: row?.sourceVerificationRequired ?? false,
+      sourceHumanVerified: row?.sourceHumanVerified ?? false,
     });
   });
 }
