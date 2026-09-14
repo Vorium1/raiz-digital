@@ -1,4 +1,4 @@
-import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
+import { evaluatePrescriptionContextFreshness } from "./prescription-context-freshness.ts";
 
 export type OfficialRecommendationSourceKind = "AI" | "UNRESOLVED_AI" | "NON_AI";
 
