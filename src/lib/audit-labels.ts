@@ -25,6 +25,7 @@ export const auditActionLabel: Record<string, string> = {
   COLLECTION_POINTS_IMPORTED: "Pontos de coleta importados",
   SAMPLE_POINT_COLLECTED: "Ponto coletado via GPS",
   LAB_IMPORT_COMMITTED: "Laudo laboratorial importado",
+  AGRONOMIC_RULE_EXECUTED: "Regra agronômica executada",
 };
 
 export const auditEntityLabel: Record<string, string> = {
@@ -36,5 +37,6 @@ export const auditEntityLabel: Record<string, string> = {
   client: "Cliente",
   collection_order: "Ordem de coleta",
   sample_point: "Ponto de coleta",
+  agronomic_rule_execution: "Execução de regra agronômica",
   user: "Usuário",
 };
