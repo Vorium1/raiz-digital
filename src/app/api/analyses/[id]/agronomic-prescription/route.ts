@@ -7,6 +7,7 @@ import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
+import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
@@ -77,15 +78,15 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: gate.reason }, { status: 409 });
   }
 
-  // O pacote foi montado em uma transação separada. Se a revisão determinística OU o contexto da safra
-  // mudou entre a leitura das evidências e este ponto, não enviamos um snapshot antigo ao provedor.
-  if (
-    !evidence.deterministicInterpretation
-    || evidence.deterministicInterpretation.id !== interpretation?.id
-    || evidence.deterministicInterpretation.status !== "APPROVED"
-    || evidence.season.updatedAt !== contextBeforeProvider.updatedAt
-  ) {
-    return Response.json({ error: "As evidências agronômicas mudaram durante a preparação da prescrição. Atualize a análise e gere novamente a partir da revisão e do contexto atuais." }, { status: 409 });
+  const beforeProvider = evaluatePrescriptionSnapshotConsistency({
+    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
+    currentSeasonUpdatedAt: contextBeforeProvider.updatedAt,
+    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
+    currentInterpretationId: interpretation?.id,
+    currentInterpretationStatus: interpretation?.status,
+  });
+  if (!beforeProvider.current) {
+    return Response.json({ error: `${beforeProvider.reason ?? "As evidências agronômicas mudaram."} Atualize a análise e gere novamente a partir do contexto atual.` }, { status: 409 });
   }
 
   const provider = resolveAgronomicPrescriptionProvider();
@@ -104,12 +105,15 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
-  if (
-    evidence.deterministicInterpretation.id !== interpretationAfterProvider?.id
-    || interpretationAfterProvider?.status !== "APPROVED"
-    || evidence.season.updatedAt !== contextAfterProvider.updatedAt
-  ) {
-    return Response.json({ error: "A interpretação ou o contexto da safra mudou enquanto a recomendação era gerada. A resposta antiga foi descartada; gere novamente com as evidências atuais." }, { status: 409 });
+  const afterProvider = evaluatePrescriptionSnapshotConsistency({
+    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
+    currentSeasonUpdatedAt: contextAfterProvider.updatedAt,
+    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
+    currentInterpretationId: interpretationAfterProvider?.id,
+    currentInterpretationStatus: interpretationAfterProvider?.status,
+  });
+  if (!afterProvider.current) {
+    return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
   }
 
   const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);
@@ -117,7 +121,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     tenantId: session.tenantId,
     userId: session.userId,
     analysisId: id,
-    interpretationId: interpretationAfterProvider.id,
+    interpretationId: interpretationAfterProvider?.id ?? null,
     provider: result.provider,
     model: result.model,
     promptVersion: result.promptVersion,
