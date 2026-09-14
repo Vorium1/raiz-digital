@@ -68,7 +68,7 @@ export function SourceVerificationPanel({ analysisId }: { analysisId: string }) 
       </div>
       <div className="review-actions">
         <p className="report-empty-note" style={{ marginTop: 0 }}>
-          Arquivar o original e confirmar o original são etapas diferentes. A confirmação relê o arquivo bruto, confere o SHA-256 registrado e grava quem conferiu e quando; o arquivo original não é alterado.
+          Arquivar o original e confirmar o original são etapas diferentes. Abra o documento, confira visualmente os resultados e só então confirme. A confirmação relê o arquivo bruto, confere o SHA-256 registrado e grava quem conferiu e quando; o arquivo original não é alterado.
         </p>
         {status?.verificationRequired && !status.sourceHumanVerified && (
           <div className="field-ops-inline-warning" style={{ marginBottom: 12 }}><Icon name="warning" size={15}/><span>A política desta empresa exige fonte conferida antes da entrega oficial.</span></div>
@@ -87,6 +87,16 @@ export function SourceVerificationPanel({ analysisId }: { analysisId: string }) 
                 </span>
                 <div className="review-actions" style={{ margin: 0 }}>
                   <StatusBadge tone={item.verified ? "success" : item.archived ? "waiting" : "danger"}>{item.verified ? "Confirmado" : item.archived ? "Aguardando conferência" : "Proveniência incompleta"}</StatusBadge>
+                  {item.archived && (
+                    <a
+                      className="button secondary small"
+                      href={`/api/analyses/${analysisId}/source-verification/${item.id}/file`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Abrir original
+                    </a>
+                  )}
                   {status.canVerify && !item.verified && item.archived && (
                     <button className="button secondary small" disabled={busyImportId !== null} onClick={() => void confirmSource(item.id)}>
                       {busyImportId === item.id ? "Conferindo…" : "Confirmar laudo original"}
