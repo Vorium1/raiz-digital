@@ -58,6 +58,35 @@ export async function getRecommendationContext(input: {
   });
 }
 
+/**
+ * Leitura leve do contexto a partir de uma análise. Evita reconstruir todo o pacote de evidências da IA
+ * só para a interface explicar por que P/K ainda está ou não pronto para dose quantitativa.
+ */
+export async function getRecommendationContextByAnalysis(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+}) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query<RecommendationContextRow>(
+      `SELECT cs.id::text,
+              cs.yield_goal::float8 AS "yieldGoal",
+              cs.yield_goal_unit AS "yieldGoalUnit",
+              cs.technology_level AS "technologyLevel",
+              cs.cultivation_years AS "cultivationYears",
+              cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       LIMIT 1`,
+      [input.tenantId, input.analysisId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new RecommendationContextError("Análise não encontrada.", 404);
+    return mapContext(row);
+  });
+}
+
 export async function updateRecommendationContext(input: {
   tenantId: string;
   userId: string;
