@@ -9,9 +9,11 @@ export class AgronomicRuleExecutionError extends Error {
   }
 }
 
-function assertJsonSerializable(value: unknown, label: string) {
+function serializeJson(value: unknown, label: string): string {
   try {
-    JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) throw new Error("undefined");
+    return serialized;
   } catch {
     throw new AgronomicRuleExecutionError(`${label} não é serializável em JSON.`, 400);
   }
@@ -33,9 +35,10 @@ export async function recordAgronomicRuleExecution(input: {
 }) {
   const decision = evaluateAgronomicRuleAutomation(input.ruleId);
   if (!decision.rule) throw new AgronomicRuleExecutionError(`Regra agronômica desconhecida: ${input.ruleId}`, 400);
-  assertJsonSerializable(input.inputPayload, "Input da execução");
-  assertJsonSerializable(input.outputPayload, "Output da execução");
+  const serializedInput = serializeJson(input.inputPayload, "Input da execução");
+  const serializedOutput = serializeJson(input.outputPayload, "Output da execução");
   const trace = buildRuleTrace(input.ruleId);
+  const serializedTrace = serializeJson(trace, "Rastreabilidade da regra");
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query<{
@@ -64,9 +67,9 @@ export async function recordAgronomicRuleExecution(input: {
         trace.ruleVersion,
         trace.sourceSnapshotId,
         trace.executionStatus,
-        JSON.stringify(trace),
-        JSON.stringify(input.inputPayload),
-        JSON.stringify(input.outputPayload),
+        serializedTrace,
+        serializedInput,
+        serializedOutput,
         input.userId,
       ],
     );
