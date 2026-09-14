@@ -133,7 +133,7 @@ export function evaluateGypsumResponseDiagnostic(
 
   const outsideDomain = blockers.some((blocker) => blocker.startsWith("OUTSIDE_") || blocker === "DIAGNOSTIC_LAYER_NOT_20_40_CM");
   const missingContext = blockers.some((blocker) =>
-    blocker.endsWith("_MISSING") ||
+    blocker.includes("_MISSING") ||
     blocker.includes("MISSING_OR_INVALID") ||
     blocker.includes("NOT_VALIDATED"),
   );
