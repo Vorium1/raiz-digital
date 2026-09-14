@@ -51,11 +51,6 @@ export type PkRuleManifest = {
   sourceLocator: string;
 };
 
-/**
- * Manifestos explícitos das mesmas tabelas já implementadas em `fertilizer-dose-engine.ts`.
- * Elas são as únicas culturas autorizadas a produzir P/K uniforme neste módulo. Cultura sem manifesto
- * falha fechada, mesmo que exista classificação laboratorial.
- */
 export const PK_RULES: Readonly<Record<string, PkRuleManifest>> = Object.freeze({
   SOJA: Object.freeze({
     ruleId: "PK-SOJA-CQFS-2016",
@@ -187,11 +182,6 @@ function nutrientReadiness(
   };
 }
 
-/**
- * Gate para dose UNIFORME de P/K.
- * Uma única amostra representativa pode sustentar a própria análise. Com múltiplos pontos, a RAIZ exige
- * maioria estrita + pelo menos 3 pontos concordantes; 4/8, 2/3 ou simples pluralidade não viram dose.
- */
 export function evaluateUniformPkReadiness(input: {
   cropCode: string | null | undefined;
   interpretation: unknown;
@@ -233,8 +223,8 @@ function isKgPerHa(unit: string) {
   return new Set(["kg/ha", "kgha-1", "kgha1"]).has(normalized);
 }
 
-export type DeterministicPkRecommendationValidation = {
-  allowed: boolean;
+export type DeterministicPkDoseDecision = {
+  ready: boolean;
   blockers: string[];
   expected: null | {
     ruleId: string;
@@ -248,21 +238,15 @@ export type DeterministicPkRecommendationValidation = {
   };
 };
 
-/**
- * Valida no servidor a quantidade proposta contra a tabela determinística. A IA nunca é autoridade de
- * dose. P/K só é promovido se coincidir com o motor, ou cair na faixa que a fonte deixa ao técnico em
- * "Muito Alto".
- */
-export function validateDeterministicPkRecommendation(input: {
+/** Calcula o alvo P/K somente depois de todos os gates de contexto, fonte e representatividade. */
+export function computeDeterministicPkDose(input: {
   cropCode: string | null | undefined;
   interpretation: unknown;
   yieldGoal: number | null | undefined;
   yieldGoalUnit: string | null | undefined;
   cultivationOrderAfterSoilAnalysis: number | null | undefined;
   nutrient: UniformPkTarget;
-  quantity: number;
-  unit: string;
-}): DeterministicPkRecommendationValidation {
+}): DeterministicPkDoseDecision {
   const blockers: string[] = [];
   const context = evaluatePkDoseReadiness({
     yieldGoal: input.yieldGoal,
@@ -275,8 +259,6 @@ export function validateDeterministicPkRecommendation(input: {
   const nutrientState = uniform.nutrients[input.nutrient];
   if (!uniform.ruleReady) blockers.push(...uniform.blockers.filter((code) => code.startsWith("PK_")));
   if (!nutrientState.ready) blockers.push(...nutrientState.blockers);
-  if (!Number.isFinite(input.quantity) || input.quantity < 0) blockers.push("PK_QUANTITY_INVALID");
-  if (!isKgPerHa(input.unit)) blockers.push("PK_UNIT_MUST_BE_KG_PER_HA");
 
   const cropCode = uniform.cropCode;
   const table = cropCode ? DOSE_TABLE_BY_CROP[cropCode] : null;
@@ -286,7 +268,7 @@ export function validateDeterministicPkRecommendation(input: {
   if (!table) blockers.push("PK_DETERMINISTIC_TABLE_NOT_IMPLEMENTED");
 
   if (blockers.length || !uniform.ruleId || !table || !level || !cultivationYear || yieldGoalTonPerHa == null) {
-    return { allowed: false, blockers: [...new Set(blockers)], expected: null };
+    return { ready: false, blockers: [...new Set(blockers)], expected: null };
   }
 
   const result = computeGrainFertilizerDose(table, input.nutrient as Nutrient, level, cultivationYear, yieldGoalTonPerHa);
@@ -294,13 +276,10 @@ export function validateDeterministicPkRecommendation(input: {
   const maximumKgPerHa = result.isDiscretionaryRange
     ? (result.discretionaryRangeMax ?? result.doseKgPerHa)
     : result.doseKgPerHa;
-  const tolerance = 0.11;
-  const quantityMatches = input.quantity >= minimumKgPerHa - tolerance && input.quantity <= maximumKgPerHa + tolerance;
-  if (!quantityMatches) blockers.push("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE");
 
   return {
-    allowed: blockers.length === 0,
-    blockers,
+    ready: true,
+    blockers: [],
     expected: {
       ruleId: uniform.ruleId,
       nutrient: input.nutrient,
@@ -312,4 +291,37 @@ export function validateDeterministicPkRecommendation(input: {
       source: result.source,
     },
   };
+}
+
+export type DeterministicPkRecommendationValidation = {
+  allowed: boolean;
+  blockers: string[];
+  expected: DeterministicPkDoseDecision["expected"];
+};
+
+export function validateDeterministicPkRecommendation(input: {
+  cropCode: string | null | undefined;
+  interpretation: unknown;
+  yieldGoal: number | null | undefined;
+  yieldGoalUnit: string | null | undefined;
+  cultivationOrderAfterSoilAnalysis: number | null | undefined;
+  nutrient: UniformPkTarget;
+  quantity: number;
+  unit: string;
+}): DeterministicPkRecommendationValidation {
+  const dose = computeDeterministicPkDose(input);
+  const blockers = [...dose.blockers];
+  if (!Number.isFinite(input.quantity) || input.quantity < 0) blockers.push("PK_QUANTITY_INVALID");
+  if (!isKgPerHa(input.unit)) blockers.push("PK_UNIT_MUST_BE_KG_PER_HA");
+
+  if (blockers.length || !dose.expected) {
+    return { allowed: false, blockers: [...new Set(blockers)], expected: dose.expected };
+  }
+
+  const tolerance = 0.11;
+  const quantityMatches = input.quantity >= dose.expected.minimumKgPerHa - tolerance
+    && input.quantity <= dose.expected.maximumKgPerHa + tolerance;
+  if (!quantityMatches) blockers.push("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE");
+
+  return { allowed: blockers.length === 0, blockers, expected: dose.expected };
 }
