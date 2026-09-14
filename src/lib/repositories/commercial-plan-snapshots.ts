@@ -116,13 +116,12 @@ export async function saveCommercialPlanSnapshot(input: SaveCommercialPlanSnapsh
 
   const engineInput = engineInputFromRequest(input);
   const sourceTargets = simulation.sourceTargets;
+  // `simulateCommercialPlan` só retorna sucesso depois de validar um produto ativo; por tipo,
+  // SINGLE/LIME congelam exatamente 1 produto e PK_PAIR congela exatamente 2 produtos.
   const productSnapshots = simulation.selectedProducts;
 
   if (sourceTargets.length === 0) {
     throw new CommercialPlanSnapshotError("A simulação não possui alvo oficial rastreável para congelar no histórico.", 422);
-  }
-  if (productSnapshots.length === 0) {
-    throw new CommercialPlanSnapshotError("A simulação não possui produto selecionado para congelar no histórico.", 422);
   }
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
