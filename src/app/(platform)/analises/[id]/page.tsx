@@ -8,6 +8,7 @@ import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { DecisionReadinessCard } from "@/components/decision-readiness-card";
 import { InputApplicationsManager } from "@/components/input-applications-manager";
 import { InputComparisonPanel } from "@/components/input-comparison-panel";
+import { SourceVerificationPanel } from "@/components/source-verification-panel";
 import { analyses, demoInterpretation, demoNarrative } from "@/lib/demo-data";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -41,6 +42,7 @@ function RealAnalysisDetail({ analysis, delivery, canRun, canReview }: { analysi
     <div className="detail-header"><div><div className="breadcrumb"><Link href="/analises">Análises</Link><Icon name="chevron" size={13}/><span>{analysis.code}</span></div><h2>{analysis.clientName}</h2><p>{analysis.propertyName} · {analysis.fieldName} · {Number(analysis.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha · Safra {analysis.seasonLabel}{analysis.laboratoryName ? ` · Laboratório: ${analysis.laboratoryName}` : ""}</p></div><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></div>
     {meta.detail && <div className="agro-message danger" style={{ margin: "0 0 16px" }}><Icon name="warning" size={15}/><span>{meta.detail}</span></div>}
     <DecisionReadinessCard analysisId={analysis.id} analysisStatus={analysis.status} imported={imported} interpretationStatus={analysis.latestInterpretationStatus ?? null} delivery={delivery}/>
+    {imported && <SourceVerificationPanel analysisId={analysis.id}/>} 
     <section id="nucleo-tecnico" className="card interpretation-card"><div className="card-header"><div><span className="eyebrow">INTELIGÊNCIA AGRONÔMICA</span><h2>Núcleo técnico da análise</h2></div>{analysis.confidenceScore != null && <div className="confidence"><b>{Math.round(Number(analysis.confidenceScore))}</b><span>Confiabilidade do laudo<br/><strong>{analysis.confidenceLevel ?? "—"}</strong></span></div>}</div><div className="interpretation-body real-analysis-body">
       <div className="review-grid"><div className="review-summary"><span>Cultura</span><strong>{analysis.currentCrop || "Não informada"}</strong><small>Próxima: {analysis.nextCrop || "não informada"}</small></div><div className="review-summary"><span>Meta produtiva</span><strong>{analysis.yieldGoal ?? "—"} {analysis.yieldGoalUnit ?? ""}</strong><small>Contexto da safra</small></div><div className="review-summary"><span>Coleta</span><strong>{analysis.collectionCode || "Sem ordem vinculada"}</strong><small>Rastreabilidade de campo</small></div><div className="review-summary"><span>Laboratório</span><strong>{analysis.laboratoryName || "Não identificado"}</strong><small>{analysis.importCount} importação(ões)</small></div></div>
       <AgronomicIntelligencePanel analysisId={analysis.id} fieldId={analysis.fieldId ?? null} collectionOrderId={analysis.collectionOrderId ?? null} canRun={canRun} canReview={canReview}/>
