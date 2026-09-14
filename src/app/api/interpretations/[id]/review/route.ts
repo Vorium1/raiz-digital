@@ -1,5 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { InterpretationError, reviewInterpretation } from "@/lib/repositories/interpretations";
+import { InterpretationError } from "@/lib/repositories/interpretations";
+import { reviewInterpretationSafely } from "@/lib/repositories/interpretation-review";
 
 const reviewRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
@@ -12,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const approve = body.approve === true;
-    const updated = await reviewInterpretation({ tenantId: session.tenantId, userId: session.userId, interpretationId: id, approve });
+    const updated = await reviewInterpretationSafely({ tenantId: session.tenantId, userId: session.userId, interpretationId: id, approve });
     return Response.json({ interpretation: updated });
   } catch (error) {
     if (error instanceof InterpretationError) return Response.json({ error: error.message }, { status: error.status });
