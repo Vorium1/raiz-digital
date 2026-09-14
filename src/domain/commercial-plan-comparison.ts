@@ -5,10 +5,15 @@ export type CommercialSnapshotForComparison = {
   simulationMode: CommercialSimulationMode;
   areaHa: number;
   sourceTargets: Array<{
+    recommendationId?: string | null;
     inputType?: string;
     canonicalTarget?: string;
     quantity?: number;
     unit?: string;
+    calculationSource?: string | null;
+    recommendedAt?: string | null;
+    sourceGenerationId?: string | null;
+    freshnessCode?: string | null;
   }>;
   engineOutput?: unknown;
 };
@@ -54,6 +59,11 @@ function sumKnown(values: Array<number | null>): number | null {
     : null;
 }
 
+function normalizedOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized || null;
+}
+
 function normalizedTargetSignature(snapshot: CommercialSnapshotForComparison) {
   return snapshot.sourceTargets
     .map((target) => ({
@@ -62,10 +72,20 @@ function normalizedTargetSignature(snapshot: CommercialSnapshotForComparison) {
         ? Number(target.quantity.toFixed(8))
         : null,
       unit: target.unit?.trim().toLowerCase() || "",
+      recommendationId: normalizedOptionalText(target.recommendationId),
+      calculationSource: normalizedOptionalText(target.calculationSource),
+      recommendedAt: normalizedOptionalText(target.recommendedAt),
+      sourceGenerationId: normalizedOptionalText(target.sourceGenerationId),
+      freshnessCode: normalizedOptionalText(target.freshnessCode),
     }))
-    .sort((a, b) => `${a.target}|${a.unit}|${a.quantity ?? ""}`.localeCompare(`${b.target}|${b.unit}|${b.quantity ?? ""}`));
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 
+/**
+ * Para habilitar delta financeiro, não basta a quantidade coincidir: o snapshot precisa apontar
+ * para a mesma evidência/recomendação agronômica congelada. Isso evita comparar silenciosamente
+ * cenários produzidos por gerações técnicas diferentes que por acaso resultaram no mesmo número.
+ */
 export function haveSameAgronomicBasis(snapshots: CommercialSnapshotForComparison[]) {
   if (snapshots.length < 2) return false;
   const reference = JSON.stringify(normalizedTargetSignature(snapshots[0]));
