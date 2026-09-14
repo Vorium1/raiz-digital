@@ -26,13 +26,40 @@ type Generation = {
 
 type HistoryEntry = { id: string; status: string; createdAt: string; reviewedByName: string | null };
 type Usage = { monthlyLimit: number; usedThisMonth: number };
-type Readiness = { allowed: boolean; reason: string | null; interpretationStatus: string | null; interpretationId: string | null };
+type PkDoseReadiness = {
+  ready: boolean;
+  blockers: string[];
+  normalized: { yieldGoalTonPerHa: number | null; cultivationYear: "PRIMEIRO" | "SEGUNDO" | null };
+};
+type Readiness = {
+  allowed: boolean;
+  reason: string | null;
+  interpretationStatus: string | null;
+  interpretationId: string | null;
+  recommendationContext?: {
+    cropSeasonId: string;
+    yieldGoal: number | null;
+    yieldGoalUnit: string | null;
+    technologyLevel: string | null;
+    cultivationOrderAfterSoilAnalysis: number | null;
+    pkDoseReadiness: PkDoseReadiness;
+  };
+};
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "review" | "waiting" | "danger" }> = {
   PENDING_REVIEW: { label: "Aguardando revisão profissional", tone: "waiting" },
   APPROVED: { label: "Recomendação oficial aprovada", tone: "success" },
   CHANGES_REQUESTED: { label: "Ajuste solicitado", tone: "review" },
   REJECTED: { label: "Rejeitada", tone: "danger" },
+};
+
+const PK_BLOCKER_LABELS: Record<string, string> = {
+  YIELD_GOAL_MISSING: "Informe a meta de produtividade da safra.",
+  YIELD_GOAL_INVALID: "A meta de produtividade precisa ser maior que zero.",
+  YIELD_UNIT_MISSING: "Informe a unidade da meta de produtividade.",
+  YIELD_UNIT_UNSUPPORTED: "A unidade da meta ainda não possui conversão homologada para o motor de P/K.",
+  POST_ANALYSIS_CULTIVATION_ORDER_MISSING: "Informe se esta é a 1ª ou 2ª cultura após a análise de solo.",
+  POST_ANALYSIS_CULTIVATION_ORDER_UNSUPPORTED: "A regra P/K atual está homologada somente para 1º e 2º cultivo após a análise.",
 };
 
 /**
@@ -92,6 +119,8 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
 
   const monthlyLimitReached = Boolean(usage && usage.usedThisMonth >= usage.monthlyLimit);
   const readyToGenerate = readiness?.allowed === true;
+  const recommendationContext = readiness?.recommendationContext;
+  const pkReadiness = recommendationContext?.pkDoseReadiness;
 
   return (
     <section className="narrative-panel">
@@ -103,6 +132,27 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
       <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ só libera esta etapa depois de uma interpretação determinística aprovada. Toda recomendação gerada continua exigindo revisão profissional antes de virar recomendação oficial.</p>
 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
+
+      {recommendationContext && (
+        <div className={`narrative-block ${pkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
+          <h4>{pkReadiness?.ready ? <Icon name="check" size={12}/> : <Icon name="warning" size={12}/>} Contexto para dose de P e K</h4>
+          <p style={{ marginBottom: 8 }}>
+            Meta: <strong>{recommendationContext.yieldGoal ?? "não informada"}{recommendationContext.yieldGoalUnit ? ` ${recommendationContext.yieldGoalUnit}` : ""}</strong>
+            {" · "}cultivo após a análise: <strong>{recommendationContext.cultivationOrderAfterSoilAnalysis ? `${recommendationContext.cultivationOrderAfterSoilAnalysis}º` : "não informado"}</strong>
+            {recommendationContext.technologyLevel ? <> · nível tecnológico: <strong>{recommendationContext.technologyLevel}</strong></> : null}
+          </p>
+          {pkReadiness?.ready ? (
+            <p className="report-empty-note" style={{ margin: 0 }}>Contexto mínimo disponível para o motor determinístico de P/K. O nível tecnológico é apenas contexto de cenário e não altera a dose sozinho.</p>
+          ) : (
+            <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>P/K quantitativo permanece bloqueado até fechar os campos abaixo. Outras recomendações tecnicamente sustentadas podem continuar sendo analisadas.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
+          )}
+        </div>
+      )}
+
+      <div className="narrative-provider-note" style={{ marginBottom: 10 }}>
+        <Icon name="layers" size={13}/>
+        Taxa variável é sob solicitação: não é gerada automaticamente nesta análise. O fluxo espacial exige limite do talhão, coordenadas confiáveis e política técnica homologada.
+      </div>
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
 
