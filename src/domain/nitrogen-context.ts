@@ -13,6 +13,8 @@ export type NitrogenContextFields = {
   effectiveLegumeInoculation?: boolean | null;
   provenLegumeInoculationFailure?: boolean | null;
   numberOfUses?: number | null;
+  /** Metadata de leitura; nunca é aceita como campo mutável pelo repositório. */
+  updatedAt?: string | null;
 };
 
 export type NitrogenReadinessBlocker =
