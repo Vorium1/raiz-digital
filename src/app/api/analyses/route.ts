@@ -1,5 +1,12 @@
+import { isAnalysisDepthId, type AnalysisDepthId } from "@/domain/analysis-depths";
 import { getPlatformSession } from "@/lib/auth/session";
 import { createAnalysis, listAnalyses } from "@/lib/repositories/analyses";
+
+const sourceTypes = new Set(["INTEGRATION", "CSV", "XLSX", "PDF_OCR", "MANUAL"] as const);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
 export async function GET() {
   const session = await getPlatformSession();
@@ -19,10 +26,27 @@ export async function POST(request: Request) {
     cropSeasonId?: string;
     collectionOrderId?: string;
     laboratoryId?: string;
-    sourceType?: "INTEGRATION" | "CSV" | "XLSX" | "PDF_OCR" | "MANUAL";
+    sourceType?: "INTEGRATION" | "CSV" | "XLSX" | "PDF_OCR" | "MANUAL" | null;
+    analysisDepth?: AnalysisDepthId | null;
+    analysisContext?: unknown;
   };
 
   if (!body.cropSeasonId) return Response.json({ error: "Safra/talhão obrigatório." }, { status: 400 });
+  if (body.sourceType != null && !sourceTypes.has(body.sourceType)) {
+    return Response.json({ error: "Tipo de origem do laudo inválido." }, { status: 400 });
+  }
+  if (body.analysisDepth != null && !isAnalysisDepthId(body.analysisDepth)) {
+    return Response.json({ error: "Profundidade de análise inválida." }, { status: 400 });
+  }
+  if (body.analysisContext != null && !isPlainObject(body.analysisContext)) {
+    return Response.json({ error: "Contexto da análise deve ser um objeto." }, { status: 400 });
+  }
+
+  const analysisContext = body.analysisContext && isPlainObject(body.analysisContext) ? body.analysisContext : {};
+  const contextBytes = Buffer.byteLength(JSON.stringify(analysisContext), "utf8");
+  if (contextBytes > 64 * 1024) {
+    return Response.json({ error: "Contexto da análise excede o limite de 64 KB. Vincule documentos em vez de colar conteúdo integral." }, { status: 413 });
+  }
 
   const analysis = await createAnalysis({
     tenantId: session.tenantId,
@@ -31,6 +55,8 @@ export async function POST(request: Request) {
     collectionOrderId: body.collectionOrderId || null,
     laboratoryId: body.laboratoryId || null,
     sourceType: body.sourceType || null,
+    analysisDepth: body.analysisDepth ?? null,
+    analysisContext,
   });
   return Response.json({ analysis }, { status: 201 });
 }
