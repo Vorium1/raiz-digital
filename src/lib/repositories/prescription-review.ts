@@ -12,8 +12,10 @@ import { AiGenerationError } from "@/lib/repositories/ai-generations";
  * uma segunda vez. O índice parcial da migration 026 é a segunda barreira no banco.
  *
  * Antes de uma NOVA aprovação, a prescrição precisa continuar ancorada na revisão determinística mais
- * recente e APPROVED, e o contexto da safra não pode ter mudado depois da geração. Uma repetição da mesma
- * aprovação continua idempotente: não reabre nem promove de novo uma geração já decidida.
+ * recente e APPROVED, e o contexto da safra não pode ter mudado depois da geração. A análise e a safra
+ * ficam sob row lock compartilhado durante essa checagem/promoção, serializando mudanças concorrentes
+ * que poderiam trocar a revisão ou o contexto no meio da aprovação. Uma repetição da mesma aprovação
+ * continua idempotente: não reabre nem promove de novo uma geração já decidida.
  */
 export async function reviewAgronomicPrescriptionSafely(input: {
   tenantId: string;
@@ -72,7 +74,8 @@ export async function reviewAgronomicPrescriptionSafely(input: {
            LIMIT 1
          ) li ON true
          WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
-         LIMIT 1`,
+         LIMIT 1
+         FOR SHARE OF a, cs`,
         [input.tenantId, current.analysisId],
       );
       const state = evidenceState.rows[0];
