@@ -1,13 +1,16 @@
 import { evaluatePkDoseReadiness, type PkDoseReadiness } from "@/domain/recommendation-context";
+import {
+  computeDeterministicPkDose,
+  evaluateUniformPkReadiness,
+  type DeterministicPkDoseDecision,
+  type UniformPkReadiness,
+} from "@/domain/uniform-pk-readiness";
 import { withTenant } from "@/lib/db";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
- *
- * Regra central: a IA NÃO recebe apenas o laudo cru. Ela também recebe a revisão determinística mais
- * recente que o motor já calculou. A rota só permite chegar ao provedor quando essa mesma revisão está
- * APPROVED. Assim o modelo explica/transforma uma decisão já revisada; não cria uma segunda interpretação
- * paralela a partir dos números brutos.
+ * A IA recebe a interpretação determinística aprovada e, para P/K, recebe também o resultado do gate
+ * uniforme e as doses que o próprio motor determinístico calculou. Ela não cria dose paralela.
  */
 export type AgronomicPrescriptionEvidencePackage = {
   tenant: { id: string; name: string };
@@ -22,9 +25,12 @@ export type AgronomicPrescriptionEvidencePackage = {
     livestockTrampleAreaHa: number | null; headlandAreaHa: number | null;
     isFirstYearArea: boolean | null; cultivationYears: number | null;
     cultivationOrderAfterSoilAnalysis: number | null;
+    cropProfileCode: string | null;
     updatedAt: string;
   };
   pkDoseReadiness: PkDoseReadiness;
+  uniformPkReadiness: UniformPkReadiness;
+  deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
   deterministicInterpretation: {
@@ -39,6 +45,12 @@ export type AgronomicPrescriptionEvidencePackage = {
   yieldHistory: Array<{ seasonLabel: string; crop: string; cultivar: string | null; yieldValue: number; yieldUnit: string }>;
   technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null; content: string | null }>;
 };
+
+function interpretationItems(structuredOutput: unknown) {
+  if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
+  const value = (structuredOutput as { interpretation?: unknown }).interpretation;
+  return Array.isArray(value) ? value : [];
+}
 
 export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string, userId: string, analysisId: string): Promise<AgronomicPrescriptionEvidencePackage | null> {
   return withTenant({ tenantId, userId }, async (client) => {
@@ -60,12 +72,14 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               cs.is_first_year_area AS "isFirstYearArea", cs.cultivation_years AS "cultivationYears",
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
               cs.updated_at::text AS "seasonUpdatedAt",
-              cs.technical_region_code AS "regionCode", cs.crop_profile_id::text AS "cropProfileId"
+              cs.technical_region_code AS "regionCode", cs.crop_profile_id::text AS "cropProfileId",
+              cp.code AS "cropProfileCode"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
       [tenantId, analysisId],
     );
@@ -96,7 +110,6 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       [tenantId, base.fieldId],
     );
 
-    // Somente fontes ACTIVE entram. Fontes DRAFT nunca sustentam dose oficial.
     const sourcesResult = base.cropProfileId
       ? await client.query(
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE (crop_profile_id = $1::uuid OR crop_profile_id IS NULL) AND status = 'ACTIVE' ORDER BY title`,
@@ -106,11 +119,32 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id IS NULL AND status = 'ACTIVE' ORDER BY title`,
         );
 
+    const deterministicInterpretation = interpretationResult.rows[0] ?? null;
+    const interpreted = interpretationItems(deterministicInterpretation?.structuredOutput);
     const pkDoseReadiness = evaluatePkDoseReadiness({
       yieldGoal: base.yieldGoal,
       yieldGoalUnit: base.yieldGoalUnit,
       cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
     });
+    const uniformPkReadiness = evaluateUniformPkReadiness({ cropCode: base.cropProfileCode, interpretation: interpreted });
+    const deterministicPkDoses = {
+      P2O5: computeDeterministicPkDose({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "P2O5",
+      }),
+      K2O: computeDeterministicPkDose({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "K2O",
+      }),
+    };
 
     return {
       tenant: { id: tenant.id, name: tenant.name },
@@ -125,12 +159,15 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         livestockTrampleAreaHa: base.livestockTrampleAreaHa, headlandAreaHa: base.headlandAreaHa,
         isFirstYearArea: base.isFirstYearArea, cultivationYears: base.cultivationYears,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        cropProfileCode: base.cropProfileCode ?? null,
         updatedAt: base.seasonUpdatedAt,
       },
       pkDoseReadiness,
+      uniformPkReadiness,
+      deterministicPkDoses,
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
-      deterministicInterpretation: interpretationResult.rows[0] ?? null,
+      deterministicInterpretation,
       results: resultsResult.rows,
       yieldHistory: yieldHistoryResult.rows,
       technicalSources: sourcesResult.rows,
