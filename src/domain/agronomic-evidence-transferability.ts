@@ -186,12 +186,12 @@ export function evaluateAgronomicEvidenceTransfer(
   if (mismatchedOptionalDimensions.length) reasons.push("OPTIONAL_CONTEXT_MISMATCH");
 
   let applicability: EvidenceApplicability;
-  if (profile.evidenceType === "MECHANISTIC") {
-    applicability = "MECHANISTIC_ONLY";
-  } else if (mismatchedCriticalDimensions.length) {
+  if (mismatchedCriticalDimensions.length) {
     applicability = "NOT_COMPARABLE";
   } else if (missingSourceCriticalDimensions.length || missingTargetCriticalDimensions.length) {
     applicability = "INSUFFICIENT_CONTEXT";
+  } else if (profile.evidenceType === "MECHANISTIC") {
+    applicability = "MECHANISTIC_ONLY";
   } else if (missingOptionalDimensions.length || mismatchedOptionalDimensions.length) {
     applicability = "PARTIALLY_COMPARABLE";
   } else if (profile.directCalibration) {
