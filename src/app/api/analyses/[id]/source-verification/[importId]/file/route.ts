@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getPlatformSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db";
 import { readRawStoredFile } from "@/lib/storage";
@@ -18,14 +19,18 @@ function contentType(fileName: string) {
   return "application/octet-stream";
 }
 
+function encodedFileName(fileName: string) {
+  return encodeURIComponent(fileName).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string; importId: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id, importId } = await context.params;
 
   const source = await withTenant({ tenantId: session.tenantId, userId: session.userId }, async (client) => {
-    const result = await client.query<{ fileName: string; rawObjectKey: string | null }>(
-      `SELECT file_name AS "fileName", raw_object_key AS "rawObjectKey"
+    const result = await client.query<{ fileName: string; fileSha256: string; rawObjectKey: string | null }>(
+      `SELECT file_name AS "fileName", file_sha256 AS "fileSha256", raw_object_key AS "rawObjectKey"
        FROM analysis_imports
        WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid AND id = $3::uuid
        LIMIT 1`,
@@ -40,13 +45,18 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
   try {
     const buffer = await readRawStoredFile(source.rawObjectKey);
+    const actualSha256 = createHash("sha256").update(buffer).digest("hex");
+    if (actualSha256.toLowerCase() !== source.fileSha256.toLowerCase()) {
+      return Response.json({ error: "A integridade do arquivo original não confere com o SHA-256 registrado. A abertura foi bloqueada." }, { status: 409 });
+    }
+
     const safeFileName = source.fileName.replace(/[\r\n"\\]/g, "_");
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "content-type": contentType(source.fileName),
         "content-length": String(buffer.length),
-        "content-disposition": `inline; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(source.fileName)}`,
+        "content-disposition": `inline; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName(source.fileName)}`,
         "cache-control": "private, no-store",
         "x-content-type-options": "nosniff",
       },
