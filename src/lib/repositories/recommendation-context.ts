@@ -110,30 +110,39 @@ export async function updateRecommendationContext(input: {
     throw new RecommendationContextError("Ordem de cultivo após a análise deve ser um inteiro maior ou igual a 1.", 400);
   }
 
+  if (input.yieldGoal === undefined && input.yieldGoalUnit === undefined && input.cultivationOrderAfterSoilAnalysis === undefined) {
+    throw new RecommendationContextError("Nenhum campo de contexto de recomendação foi informado.", 400);
+  }
+
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
-    const assignments: string[] = [];
-    const values: unknown[] = [input.tenantId, input.cropSeasonId];
+    const currentResult = await client.query<RecommendationContextRow>(
+      `${SELECT_CONTEXT} FOR UPDATE`,
+      [input.tenantId, input.cropSeasonId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new RecommendationContextError("Safra não encontrada.", 404);
 
-    if (input.yieldGoal !== undefined) {
-      values.push(input.yieldGoal);
-      assignments.push(`yield_goal = $${values.length}::numeric`);
-    }
-    if (input.yieldGoalUnit !== undefined) {
-      values.push(input.yieldGoalUnit?.trim() || null);
-      assignments.push(`yield_goal_unit = $${values.length}::text`);
-    }
-    if (input.cultivationOrderAfterSoilAnalysis !== undefined) {
-      values.push(input.cultivationOrderAfterSoilAnalysis);
-      assignments.push(`cultivation_order_after_soil_analysis = $${values.length}::integer`);
-    }
+    const nextYieldGoal = input.yieldGoal === undefined ? current.yieldGoal : input.yieldGoal;
+    const nextYieldGoalUnit = input.yieldGoalUnit === undefined ? current.yieldGoalUnit : (input.yieldGoalUnit?.trim() || null);
+    const nextCultivationOrder = input.cultivationOrderAfterSoilAnalysis === undefined
+      ? current.cultivationOrderAfterSoilAnalysis
+      : input.cultivationOrderAfterSoilAnalysis;
 
-    if (!assignments.length) {
-      throw new RecommendationContextError("Nenhum campo de contexto de recomendação foi informado.", 400);
-    }
+    const changedFields: string[] = [];
+    if (nextYieldGoal !== current.yieldGoal) changedFields.push("yieldGoal");
+    if (nextYieldGoalUnit !== current.yieldGoalUnit) changedFields.push("yieldGoalUnit");
+    if (nextCultivationOrder !== current.cultivationOrderAfterSoilAnalysis) changedFields.push("cultivationOrderAfterSoilAnalysis");
+
+    // Salvar exatamente o mesmo contexto não cria uma "mudança" artificial nem invalida uma prescrição
+    // já gerada. A versão temporal só avança quando o conteúdo agronômico realmente muda.
+    if (changedFields.length === 0) return mapContext(current);
 
     const updated = await client.query<RecommendationContextRow>(
       `UPDATE crop_seasons
-       SET ${assignments.join(", ")}, updated_at = now()
+       SET yield_goal = $3::numeric,
+           yield_goal_unit = $4::text,
+           cultivation_order_after_soil_analysis = $5::integer,
+           updated_at = now()
        WHERE tenant_id = $1::uuid AND id = $2::uuid
        RETURNING id::text,
                  yield_goal::float8 AS "yieldGoal",
@@ -142,7 +151,7 @@ export async function updateRecommendationContext(input: {
                  cultivation_years AS "cultivationYears",
                  cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
                  updated_at::text AS "updatedAt"`,
-      values,
+      [input.tenantId, input.cropSeasonId, nextYieldGoal, nextYieldGoalUnit, nextCultivationOrder],
     );
 
     const row = updated.rows[0];
@@ -156,11 +165,7 @@ export async function updateRecommendationContext(input: {
       entityType: "crop_season",
       entityId: input.cropSeasonId,
       metadata: {
-        changedFields: [
-          input.yieldGoal !== undefined ? "yieldGoal" : null,
-          input.yieldGoalUnit !== undefined ? "yieldGoalUnit" : null,
-          input.cultivationOrderAfterSoilAnalysis !== undefined ? "cultivationOrderAfterSoilAnalysis" : null,
-        ].filter(Boolean),
+        changedFields,
         pkDoseReady: context.pkDoseReadiness.ready,
         blockers: context.pkDoseReadiness.blockers,
       },
