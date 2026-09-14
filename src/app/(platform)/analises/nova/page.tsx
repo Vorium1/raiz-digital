@@ -48,7 +48,11 @@ export default async function NewAnalysisPage({
       </Topbar>
       <div className="content-wrap">
         <AnalysisDepthSummary depth={selectedDepth} />
-        <NewAnalysisFlow initialStep={initialStep} databaseMode={databaseMode} />
+        <NewAnalysisFlow
+          initialStep={initialStep}
+          databaseMode={databaseMode}
+          analysisDepthId={selectedDepth.id}
+        />
       </div>
     </>
   );
