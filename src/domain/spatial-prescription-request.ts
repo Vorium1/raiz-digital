@@ -7,6 +7,8 @@ export type SpatialPrescriptionBlocker =
   | "ANALYTICAL_METHOD_MISSING"
   | "ATTRIBUTE_QUALITY_NOT_VALIDATED"
   | "SAMPLE_DISTRIBUTION_INVALID"
+  | "INSUFFICIENT_POINTS_FOR_2D_SURFACE"
+  | "EXPLORATORY_ONLY_WITH_FEW_POINTS"
   | "KRIGING_NOT_ALLOWED_WITH_FEW_POINTS"
   | "PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"
   | "CROSS_VALIDATION_REQUIRED";
@@ -37,11 +39,13 @@ export type SpatialPrescriptionRequestDecision = {
   policy: {
     sampleCount: number | null;
     requestedSpatialMethod: SpatialMethod | null;
-    interpolationClass: "NONE" | "REVIEW_ONLY" | "CANDIDATE_WITH_CROSS_VALIDATION";
+    interpolationClass: "NONE" | "EXPLORATORY_ONLY" | "CANDIDATE_REVIEW" | "CANDIDATE_WITH_CROSS_VALIDATION";
     extrapolationAllowed: false;
     clipToFieldBoundaryRequired: true;
     supportMaskRequired: true;
     noDataMustRemainNoData: true;
+    finalProfessionalApprovalRequired: true;
+    universalRmseThresholdAvailable: false;
   };
 };
 
@@ -49,7 +53,12 @@ function basePolicy(input: SpatialPrescriptionRequestInput): SpatialPrescription
   const n = Number.isInteger(input.sampleCount) && (input.sampleCount as number) >= 0 ? (input.sampleCount as number) : null;
   const method = input.requestedSpatialMethod ?? null;
   let interpolationClass: SpatialPrescriptionRequestDecision["policy"]["interpolationClass"] = "NONE";
-  if (method) interpolationClass = n != null && n >= 100 && method === "KRIGING" ? "CANDIDATE_WITH_CROSS_VALIDATION" : "REVIEW_ONLY";
+  if (method && n != null) {
+    if (n < 3) interpolationClass = "NONE";
+    else if (n < 50) interpolationClass = "EXPLORATORY_ONLY";
+    else if (n >= 100 && method === "KRIGING") interpolationClass = "CANDIDATE_WITH_CROSS_VALIDATION";
+    else interpolationClass = "CANDIDATE_REVIEW";
+  }
   return {
     sampleCount: n,
     requestedSpatialMethod: method,
@@ -58,20 +67,22 @@ function basePolicy(input: SpatialPrescriptionRequestInput): SpatialPrescription
     clipToFieldBoundaryRequired: true,
     supportMaskRequired: true,
     noDataMustRemainNoData: true,
+    finalProfessionalApprovalRequired: true,
+    universalRmseThresholdAvailable: false,
   };
 }
 
 /**
- * Taxa variável é opt-in. A pesquisa técnica Work acrescentou uma segunda camada de segurança:
- * além de polígono, coordenadas confiáveis e política ACTIVE, o pedido precisa carregar contagem,
- * profundidade, método analítico, qualidade do atributo e distribuição amostral.
+ * Taxa variável é opt-in e fail-closed.
  *
- * Política conservadora RAIZ (governança, não “lei agronômica”):
- * - <50 pontos: não ajustar krigagem; Thiessen/NN/IDW somente com revisão profissional explícita;
- * - 50-99: qualquer interpolação permanece sob revisão profissional;
- * - >=100: krigagem pode ser candidata somente com distribuição adequada + validação cruzada aprovada;
- * - colinear/unknown nunca libera krigagem;
- * - extrapolação é sempre false; limite do talhão + máscara de suporte são obrigatórios; NoData não vira zero.
+ * A pesquisa A-H de 2026-09-14 separou evidência científica de política conservadora de software:
+ * - <3 pontos: não há suporte para superfície 2-D; exibir pontos/uma zona uniforme;
+ * - 3-49: pontos, vizinho/Thiessen ou zonas locais podem ser EXPLORATÓRIOS, nunca prescrição;
+ * - 50-99: interpolação é apenas candidata e exige revisão profissional explícita;
+ * - >=100: krigagem continua candidata, exige distribuição adequada, validação cruzada e aprovação humana;
+ * - nenhum número acima é tratado como "lei agronômica"; é política de segurança RAIZ;
+ * - não existe threshold universal de RMSE/MAE/ME capaz de aprovar o mapa sozinho;
+ * - extrapolação é sempre proibida, o talhão deve ser recortado à máscara de suporte e NoData nunca vira zero.
  */
 export function evaluateSpatialPrescriptionRequest(
   input: SpatialPrescriptionRequestInput,
@@ -103,19 +114,20 @@ export function evaluateSpatialPrescriptionRequest(
 
   const method = input.requestedSpatialMethod ?? null;
   if (!method) blockers.push("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED");
+
+  if (n != null && n > 0 && n < 3) blockers.push("INSUFFICIENT_POINTS_FOR_2D_SURFACE");
+  if (n != null && n >= 3 && n < 50) blockers.push("EXPLORATORY_ONLY_WITH_FEW_POINTS");
+
   if (n != null && n > 0 && method === "KRIGING") {
     if (n < 50) blockers.push("KRIGING_NOT_ALLOWED_WITH_FEW_POINTS");
-    else if (n < 100) blockers.push("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED");
-    else if (input.crossValidationPassed !== true) blockers.push("CROSS_VALIDATION_REQUIRED");
+    if (n >= 100 && input.crossValidationPassed !== true) blockers.push("CROSS_VALIDATION_REQUIRED");
   }
 
-  if (method && method !== "KRIGING" && input.professionalSpatialReviewApproved !== true) {
+  // Toda prescrição oficial continua humana, inclusive quando n>=100 e a validação cruzada passou.
+  if (method && input.professionalSpatialReviewApproved !== true) {
     blockers.push("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED");
   }
 
-  // Mesmo >=100 pontos não transforma um método/filtro de qualidade em decisão automática.
-  // KRIGING só deixa de exigir review adicional quando a política ACTIVE já representa a aprovação
-  // profissional do método e a validação cruzada deste conjunto passou. Fallbacks exigem review explícito.
   return {
     mode: "VARIABLE_RATE",
     requested: true,
