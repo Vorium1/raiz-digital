@@ -123,11 +123,12 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       for (const recommendation of recommendations) {
         if (typeof recommendation.inputType !== "string" || typeof recommendation.quantity !== "number" || typeof recommendation.unit !== "string") continue;
         const inserted = await client.query(
-          `INSERT INTO input_recommendations (tenant_id, analysis_id, input_type, quantity, unit, calculation_source)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+          `INSERT INTO input_recommendations
+           (tenant_id, analysis_id, input_type, quantity, unit, calculation_source, source_generation_id)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid)
            ON CONFLICT DO NOTHING
            RETURNING id::text`,
-          [input.tenantId, current.analysisId, recommendation.inputType, recommendation.quantity, recommendation.unit, `ai_generations:${current.id}`],
+          [input.tenantId, current.analysisId, recommendation.inputType, recommendation.quantity, recommendation.unit, `ai_generations:${current.id}`, current.id],
         );
         promotedCount += inserted.rowCount ?? 0;
       }
