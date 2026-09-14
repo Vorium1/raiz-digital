@@ -132,7 +132,7 @@ function matchesConstraint(value: AgronomicContextValue, constraint: AgronomicCo
   return true;
 }
 
-function unique(values: readonly string[]) {
+function unique<T extends string>(values: readonly T[]): T[] {
   return [...new Set(values)];
 }
 
