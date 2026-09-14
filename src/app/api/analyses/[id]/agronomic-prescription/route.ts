@@ -9,7 +9,7 @@ import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescripti
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
-import { validatePrescriptionPkRecommendations } from "@/domain/prescription-pk-validation";
+import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
@@ -17,6 +17,14 @@ function interpretationItems(structuredOutput: unknown) {
   if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
   const value = (structuredOutput as { interpretation?: unknown }).interpretation;
   return Array.isArray(value) ? value : [];
+}
+
+function prescriptionRecommendations(responsePayload: unknown): PrescriptionRecommendationCandidate[] {
+  if (!responsePayload || typeof responsePayload !== "object" || Array.isArray(responsePayload)) return [];
+  const prescription = (responsePayload as { prescription?: unknown }).prescription;
+  if (!prescription || typeof prescription !== "object" || Array.isArray(prescription)) return [];
+  const recommendations = (prescription as { recommendations?: unknown }).recommendations;
+  return Array.isArray(recommendations) ? recommendations as PrescriptionRecommendationCandidate[] : [];
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -60,6 +68,16 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       nutrient: "K2O",
     }),
   };
+  const prescriptionPkValidation = latest
+    ? validatePrescriptionPkRecommendations({
+        recommendations: prescriptionRecommendations(latest.responsePayload),
+        cropCode: recommendationContext.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: recommendationContext.yieldGoal,
+        yieldGoalUnit: recommendationContext.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      })
+    : null;
 
   return Response.json({
     latest,
@@ -71,6 +89,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       interpretationStatus: interpretation?.status ?? null,
       interpretationId: interpretation?.id ?? null,
       prescriptionFreshness,
+      prescriptionPkValidation,
       recommendationContext: {
         cropSeasonId: recommendationContext.cropSeasonId,
         yieldGoal: recommendationContext.yieldGoal,
@@ -148,10 +167,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
   }
 
-  // Defesa em profundidade: prompt não é barreira de segurança. Antes de persistir a geração, qualquer
-  // P2O5/K2O devolvido pelo provedor é recalculado no servidor com o mesmo motor determinístico. Se a IA
-  // inventar dose, usar P/K elemental ambíguo ou tentar contornar a heterogeneidade, a resposta inteira é
-  // descartada e não chega sequer ao estado PENDING_REVIEW.
+  // Prompt não é barreira de segurança. Antes de persistir, qualquer P2O5/K2O devolvido pelo provedor
+  // é recalculado no servidor. Dose inventada, P/K elemental ambíguo, duplicidade ou tentativa de
+  // contornar heterogeneidade descarta a resposta inteira; nada chega a PENDING_REVIEW.
   const providerPkValidation = validatePrescriptionPkRecommendations({
     recommendations: result.prescription.recommendations,
     cropCode: contextAfterProvider.cropProfileCode,
