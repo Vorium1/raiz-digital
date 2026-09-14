@@ -36,12 +36,14 @@ type Readiness = {
   reason: string | null;
   interpretationStatus: string | null;
   interpretationId: string | null;
+  prescriptionFreshness?: { current: boolean; reason: string | null } | null;
   recommendationContext?: {
     cropSeasonId: string;
     yieldGoal: number | null;
     yieldGoalUnit: string | null;
     technologyLevel: string | null;
     cultivationOrderAfterSoilAnalysis: number | null;
+    updatedAt: string;
     pkDoseReadiness: PkDoseReadiness;
   };
 };
@@ -163,12 +165,16 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
   const readyToGenerate = readiness?.allowed === true;
   const recommendationContext = readiness?.recommendationContext;
   const pkReadiness = recommendationContext?.pkDoseReadiness;
+  const prescriptionStale = Boolean(latest && readiness?.prescriptionFreshness?.current === false);
+  const statusMeta = prescriptionStale
+    ? { label: "Desatualizada — contexto mudou", tone: "review" as const }
+    : latest ? (STATUS_META[latest.status] ?? { label: latest.status, tone: "waiting" as const }) : null;
 
   return (
     <section className="narrative-panel">
       <div className="narrative-panel-head">
         <div><span className="eyebrow">RECOMENDAÇÃO ASSISTIDA RAIZ</span><h3>Da interpretação aprovada ao plano de manejo</h3></div>
-        {latest && <StatusBadge tone={STATUS_META[latest.status]?.tone ?? "waiting"}>{STATUS_META[latest.status]?.label ?? latest.status}</StatusBadge>}
+        {latest && statusMeta && <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>}
       </div>
 
       <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ só libera esta etapa depois de uma interpretação determinística aprovada. Toda recomendação gerada continua exigindo revisão profissional antes de virar recomendação oficial.</p>
@@ -194,7 +200,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
               <summary>Preencher/atualizar contexto de P/K</summary>
               <div className="narrative-review-form" style={{ marginTop: 10 }}>
                 <div className="review-grid">
-                  <label className="review-summary"><span>Meta produtiva</span><input type="number" min="0.1" step="0.1" inputMode="decimal" value={contextYieldGoal} onChange={(event) => setContextYieldGoal(event.target.value)} placeholder="Ex.: 4,2"/><small>t/ha · sem conversão implícita de sc/ha</small></label>
+                  <label className="review-summary"><span>Meta produtiva</span><input type="number" min="0.1" step="0.1" inputMode="decimal" value={contextYieldGoal} onChange={(event) => setContextYieldGoal(event.target.value)} placeholder="Ex.: 4.2"/><small>t/ha · sem conversão implícita de sc/ha</small></label>
                   <label className="review-summary"><span>Cultivo após a análise</span><select value={contextCultivationOrder} onChange={(event) => setContextCultivationOrder(event.target.value)}><option value="">Selecione</option><option value="1">1º cultivo</option><option value="2">2º cultivo</option></select><small>Não é o mesmo que anos de cultivo da área.</small></label>
                 </div>
                 <div className="narrative-review-actions"><button className="button secondary" disabled={contextBusy} onClick={() => void saveRecommendationContext()}>{contextBusy ? "Salvando…" : "Salvar contexto agronômico"}</button></div>
@@ -208,6 +214,10 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         <Icon name="layers" size={13}/>
         Taxa variável é sob solicitação: não é gerada automaticamente nesta análise. O fluxo espacial exige limite do talhão, coordenadas confiáveis e política técnica homologada.
       </div>
+
+      {prescriptionStale && (
+        <div className="agro-message danger"><Icon name="warning" size={14}/><span>{readiness?.prescriptionFreshness?.reason ?? "O contexto da safra mudou depois desta geração."} A versão anterior permanece no histórico, mas não deve ser tratada como recomendação corrente.</span></div>
+      )}
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
 
@@ -258,7 +268,11 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
 
           {latest.reviewerNote && <p className="narrative-reviewer-note"><strong>Observação do revisor{latest.reviewedByName ? ` (${latest.reviewedByName})` : ""}:</strong> {latest.reviewerNote}</p>}
 
-          {canReview && latest.status === "PENDING_REVIEW" && (
+          {prescriptionStale && canRun && (
+            <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão com contexto atual" : "Interpretação precisa estar aprovada"}</button>
+          )}
+
+          {canReview && latest.status === "PENDING_REVIEW" && !prescriptionStale && (
             <div className="narrative-review-form">
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação técnica (opcional)" rows={2}/>
               <div className="narrative-review-actions">
@@ -269,7 +283,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
             </div>
           )}
 
-          {canRun && latest.status === "CHANGES_REQUESTED" && <button className="button ghost" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão" : "Interpretação precisa estar aprovada"}</button>}
+          {canRun && latest.status === "CHANGES_REQUESTED" && !prescriptionStale && <button className="button ghost" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão" : "Interpretação precisa estar aprovada"}</button>}
 
           {history.length > 1 && (
             <details className="agro-history"><summary>Histórico de recomendações ({history.length})</summary>
