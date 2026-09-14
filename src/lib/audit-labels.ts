@@ -14,6 +14,10 @@ export const auditActionLabel: Record<string, string> = {
   CROP_SEASON_UPDATED: "Safra editada",
   CROP_SEASON_DELETED: "Safra excluída",
   NITROGEN_RECOMMENDATION_CONTEXT_UPDATED: "Contexto de nitrogênio atualizado",
+  COMMERCIAL_INPUT_PRODUCT_CREATED: "Insumo comercial cadastrado",
+  COMMERCIAL_INPUT_PRODUCT_UPDATED: "Insumo comercial atualizado",
+  COMMERCIAL_INPUT_PRODUCT_DEACTIVATED: "Insumo comercial desativado",
+  COMMERCIAL_INPUT_PRODUCT_REACTIVATED: "Insumo comercial reativado",
   CLIENT_CREATED: "Cliente cadastrado",
   CLIENT_UPDATED: "Cliente editado",
   CLIENT_DELETED: "Cliente excluído",
@@ -39,5 +43,6 @@ export const auditEntityLabel: Record<string, string> = {
   collection_order: "Ordem de coleta",
   sample_point: "Ponto de coleta",
   agronomic_rule_execution: "Execução de regra agronômica",
+  commercial_input_product: "Insumo comercial",
   user: "Usuário",
 };
