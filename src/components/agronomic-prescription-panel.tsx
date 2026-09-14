@@ -26,13 +26,42 @@ type Generation = {
 
 type HistoryEntry = { id: string; status: string; createdAt: string; reviewedByName: string | null };
 type Usage = { monthlyLimit: number; usedThisMonth: number };
-type Readiness = { allowed: boolean; reason: string | null; interpretationStatus: string | null; interpretationId: string | null };
+type PkDoseReadiness = {
+  ready: boolean;
+  blockers: string[];
+  normalized: { yieldGoalTonPerHa: number | null; cultivationYear: "PRIMEIRO" | "SEGUNDO" | null };
+};
+type Readiness = {
+  allowed: boolean;
+  reason: string | null;
+  interpretationStatus: string | null;
+  interpretationId: string | null;
+  prescriptionFreshness?: { current: boolean; reason: string | null } | null;
+  recommendationContext?: {
+    cropSeasonId: string;
+    yieldGoal: number | null;
+    yieldGoalUnit: string | null;
+    technologyLevel: string | null;
+    cultivationOrderAfterSoilAnalysis: number | null;
+    updatedAt: string;
+    pkDoseReadiness: PkDoseReadiness;
+  };
+};
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "review" | "waiting" | "danger" }> = {
   PENDING_REVIEW: { label: "Aguardando revisão profissional", tone: "waiting" },
   APPROVED: { label: "Recomendação oficial aprovada", tone: "success" },
   CHANGES_REQUESTED: { label: "Ajuste solicitado", tone: "review" },
   REJECTED: { label: "Rejeitada", tone: "danger" },
+};
+
+const PK_BLOCKER_LABELS: Record<string, string> = {
+  YIELD_GOAL_MISSING: "Informe a meta de produtividade da safra.",
+  YIELD_GOAL_INVALID: "A meta de produtividade precisa ser maior que zero.",
+  YIELD_UNIT_MISSING: "Informe a unidade da meta de produtividade.",
+  YIELD_UNIT_UNSUPPORTED: "A unidade da meta ainda não possui conversão homologada para o motor de P/K.",
+  POST_ANALYSIS_CULTIVATION_ORDER_MISSING: "Informe se esta é a 1ª ou 2ª cultura após a análise de solo.",
+  POST_ANALYSIS_CULTIVATION_ORDER_UNSUPPORTED: "A regra P/K atual está homologada somente para 1º e 2º cultivo após a análise.",
 };
 
 /**
@@ -46,6 +75,9 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
   const [usage, setUsage] = useState<Usage | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [busy, setBusy] = useState(false);
+  const [contextBusy, setContextBusy] = useState(false);
+  const [contextYieldGoal, setContextYieldGoal] = useState("");
+  const [contextCultivationOrder, setContextCultivationOrder] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
@@ -59,6 +91,45 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
   }
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const context = readiness?.recommendationContext;
+    if (!context) return;
+    setContextYieldGoal(context.yieldGoal == null ? "" : String(context.yieldGoal));
+    setContextCultivationOrder(context.cultivationOrderAfterSoilAnalysis == null ? "" : String(context.cultivationOrderAfterSoilAnalysis));
+  }, [readiness]);
+
+  async function saveRecommendationContext() {
+    const context = readiness?.recommendationContext;
+    if (!context) return;
+    const yieldGoal = Number(contextYieldGoal);
+    const cultivationOrderAfterSoilAnalysis = Number(contextCultivationOrder);
+    if (!Number.isFinite(yieldGoal) || yieldGoal <= 0) {
+      setMessage({ tone: "danger", text: "Informe uma meta produtiva válida em t/ha." });
+      return;
+    }
+    if (![1, 2].includes(cultivationOrderAfterSoilAnalysis)) {
+      setMessage({ tone: "danger", text: "Informe se esta é a 1ª ou 2ª cultura após a análise de solo." });
+      return;
+    }
+
+    setContextBusy(true); setMessage(null);
+    try {
+      const response = await fetch(`/api/crop-seasons/${context.cropSeasonId}/recommendation-context`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ yieldGoal, yieldGoalUnit: "t/ha", cultivationOrderAfterSoilAnalysis }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Falha ao salvar contexto agronômico.");
+      setMessage({ tone: "success", text: "Contexto agronômico salvo. A prontidão de P/K foi recalculada sem inferências." });
+      await load();
+    } catch (error) {
+      setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao salvar contexto agronômico." });
+    } finally {
+      setContextBusy(false);
+    }
+  }
 
   async function generate() {
     setBusy(true); setMessage(null);
@@ -92,17 +163,61 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
 
   const monthlyLimitReached = Boolean(usage && usage.usedThisMonth >= usage.monthlyLimit);
   const readyToGenerate = readiness?.allowed === true;
+  const recommendationContext = readiness?.recommendationContext;
+  const pkReadiness = recommendationContext?.pkDoseReadiness;
+  const prescriptionStale = Boolean(latest && readiness?.prescriptionFreshness?.current === false);
+  const statusMeta = prescriptionStale
+    ? { label: "Desatualizada — contexto mudou", tone: "review" as const }
+    : latest ? (STATUS_META[latest.status] ?? { label: latest.status, tone: "waiting" as const }) : null;
 
   return (
     <section className="narrative-panel">
       <div className="narrative-panel-head">
         <div><span className="eyebrow">RECOMENDAÇÃO ASSISTIDA RAIZ</span><h3>Da interpretação aprovada ao plano de manejo</h3></div>
-        {latest && <StatusBadge tone={STATUS_META[latest.status]?.tone ?? "waiting"}>{STATUS_META[latest.status]?.label ?? latest.status}</StatusBadge>}
+        {latest && statusMeta && <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>}
       </div>
 
       <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ só libera esta etapa depois de uma interpretação determinística aprovada. Toda recomendação gerada continua exigindo revisão profissional antes de virar recomendação oficial.</p>
 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
+
+      {recommendationContext && (
+        <div className={`narrative-block ${pkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
+          <h4>{pkReadiness?.ready ? <Icon name="check" size={12}/> : <Icon name="warning" size={12}/>} Contexto para dose de P e K</h4>
+          <p style={{ marginBottom: 8 }}>
+            Meta: <strong>{recommendationContext.yieldGoal ?? "não informada"}{recommendationContext.yieldGoalUnit ? ` ${recommendationContext.yieldGoalUnit}` : ""}</strong>
+            {" · "}cultivo após a análise: <strong>{recommendationContext.cultivationOrderAfterSoilAnalysis ? `${recommendationContext.cultivationOrderAfterSoilAnalysis}º` : "não informado"}</strong>
+            {recommendationContext.technologyLevel ? <> · nível tecnológico: <strong>{recommendationContext.technologyLevel}</strong></> : null}
+          </p>
+          {pkReadiness?.ready ? (
+            <p className="report-empty-note" style={{ margin: 0 }}>Contexto mínimo disponível para o motor determinístico de P/K. O nível tecnológico é apenas contexto de cenário e não altera a dose sozinho.</p>
+          ) : (
+            <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>P/K quantitativo permanece bloqueado até fechar os campos abaixo. Outras recomendações tecnicamente sustentadas podem continuar sendo analisadas.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
+          )}
+
+          {canRun && (
+            <details style={{ marginTop: 10 }} open={!pkReadiness?.ready}>
+              <summary>Preencher/atualizar contexto de P/K</summary>
+              <div className="narrative-review-form" style={{ marginTop: 10 }}>
+                <div className="review-grid">
+                  <label className="review-summary"><span>Meta produtiva</span><input type="number" min="0.1" step="0.1" inputMode="decimal" value={contextYieldGoal} onChange={(event) => setContextYieldGoal(event.target.value)} placeholder="Ex.: 4.2"/><small>t/ha · sem conversão implícita de sc/ha</small></label>
+                  <label className="review-summary"><span>Cultivo após a análise</span><select value={contextCultivationOrder} onChange={(event) => setContextCultivationOrder(event.target.value)}><option value="">Selecione</option><option value="1">1º cultivo</option><option value="2">2º cultivo</option></select><small>Não é o mesmo que anos de cultivo da área.</small></label>
+                </div>
+                <div className="narrative-review-actions"><button className="button secondary" disabled={contextBusy} onClick={() => void saveRecommendationContext()}>{contextBusy ? "Salvando…" : "Salvar contexto agronômico"}</button></div>
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
+      <div className="narrative-provider-note" style={{ marginBottom: 10 }}>
+        <Icon name="layers" size={13}/>
+        Taxa variável é sob solicitação: não é gerada automaticamente nesta análise. O fluxo espacial exige limite do talhão, coordenadas confiáveis e política técnica homologada.
+      </div>
+
+      {prescriptionStale && (
+        <div className="agro-message danger"><Icon name="warning" size={14}/><span>{readiness?.prescriptionFreshness?.reason ?? "O contexto da safra mudou depois desta geração."} A versão anterior permanece no histórico, mas não deve ser tratada como recomendação corrente.</span></div>
+      )}
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
 
@@ -153,7 +268,11 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
 
           {latest.reviewerNote && <p className="narrative-reviewer-note"><strong>Observação do revisor{latest.reviewedByName ? ` (${latest.reviewedByName})` : ""}:</strong> {latest.reviewerNote}</p>}
 
-          {canReview && latest.status === "PENDING_REVIEW" && (
+          {prescriptionStale && canRun && (
+            <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão com contexto atual" : "Interpretação precisa estar aprovada"}</button>
+          )}
+
+          {canReview && latest.status === "PENDING_REVIEW" && !prescriptionStale && (
             <div className="narrative-review-form">
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação técnica (opcional)" rows={2}/>
               <div className="narrative-review-actions">
@@ -164,7 +283,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
             </div>
           )}
 
-          {canRun && latest.status === "CHANGES_REQUESTED" && <button className="button ghost" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão" : "Interpretação precisa estar aprovada"}</button>}
+          {canRun && latest.status === "CHANGES_REQUESTED" && !prescriptionStale && <button className="button ghost" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar nova versão" : "Interpretação precisa estar aprovada"}</button>}
 
           {history.length > 1 && (
             <details className="agro-history"><summary>Histórico de recomendações ({history.length})</summary>

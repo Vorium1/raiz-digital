@@ -22,6 +22,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     livestockTrampleAreaHa: number | null; headlandAreaHa: number | null;
     isFirstYearArea: boolean | null; cultivationYears: number | null;
     cultivationOrderAfterSoilAnalysis: number | null;
+    updatedAt: string;
   };
   pkDoseReadiness: PkDoseReadiness;
   region: { code: string | null };
@@ -58,6 +59,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               cs.livestock_trample_area_ha::float8 AS "livestockTrampleAreaHa", cs.headland_area_ha::float8 AS "headlandAreaHa",
               cs.is_first_year_area AS "isFirstYearArea", cs.cultivation_years AS "cultivationYears",
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+              cs.updated_at::text AS "seasonUpdatedAt",
               cs.technical_region_code AS "regionCode", cs.crop_profile_id::text AS "cropProfileId"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -123,6 +125,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         livestockTrampleAreaHa: base.livestockTrampleAreaHa, headlandAreaHa: base.headlandAreaHa,
         isFirstYearArea: base.isFirstYearArea, cultivationYears: base.cultivationYears,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        updatedAt: base.seasonUpdatedAt,
       },
       pkDoseReadiness,
       region: { code: base.regionCode },
