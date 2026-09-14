@@ -6,6 +6,7 @@ import { getLatestAgronomicPrescription, listAgronomicPrescriptionHistory, recor
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
+import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
@@ -21,6 +22,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
+  const prescriptionFreshness = latest
+    ? evaluatePrescriptionContextFreshness({ generationCreatedAt: latest.createdAt, cropSeasonUpdatedAt: recommendationContext.updatedAt })
+    : null;
   return Response.json({
     latest,
     history,
@@ -30,12 +34,14 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       reason: gate.allowed ? null : gate.reason,
       interpretationStatus: interpretation?.status ?? null,
       interpretationId: interpretation?.id ?? null,
+      prescriptionFreshness,
       recommendationContext: {
         cropSeasonId: recommendationContext.cropSeasonId,
         yieldGoal: recommendationContext.yieldGoal,
         yieldGoalUnit: recommendationContext.yieldGoalUnit,
         technologyLevel: recommendationContext.technologyLevel,
         cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+        updatedAt: recommendationContext.updatedAt,
         pkDoseReadiness: recommendationContext.pkDoseReadiness,
       },
     },
