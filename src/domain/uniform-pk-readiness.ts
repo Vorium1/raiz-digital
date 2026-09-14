@@ -9,6 +9,7 @@ import {
 } from "./fertilizer-dose-engine.ts";
 import { computeParameterPredominance } from "./parameter-predominance.ts";
 import { evaluatePkDoseReadiness } from "./recommendation-context.ts";
+import { evaluateAgronomicRuleAutomation } from "./agronomic-rule-catalog.ts";
 
 export type UniformPkTarget = "P2O5" | "K2O";
 
@@ -39,55 +40,12 @@ export type UniformPkReadiness = {
   nutrients: Record<UniformPkTarget, UniformPkNutrientReadiness>;
 };
 
-export type PkRuleManifest = {
-  ruleId: string;
-  version: string;
-  cropCode: string;
-  region: "RS/SC";
-  status: "READY_FOR_IMPLEMENTATION";
-  sourceTitle: string;
-  sourceInstitution: string;
-  sourceYear: 2016;
-  sourceLocator: string;
-};
-
-export const PK_RULES: Readonly<Record<string, PkRuleManifest>> = Object.freeze({
-  SOJA: Object.freeze({
-    ruleId: "PK-SOJA-CQFS-2016",
-    version: "1.0.0",
-    cropCode: "SOJA",
-    region: "RS/SC",
-    status: "READY_FOR_IMPLEMENTATION",
-    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
-    sourceInstitution: "CQFS-RS/SC",
-    sourceYear: 2016,
-    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.18 p.130",
-  }),
-  MILHO: Object.freeze({
-    ruleId: "PK-MILHO-CQFS-2016",
-    version: "1.0.0",
-    cropCode: "MILHO",
-    region: "RS/SC",
-    status: "READY_FOR_IMPLEMENTATION",
-    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
-    sourceInstitution: "CQFS-RS/SC",
-    sourceYear: 2016,
-    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.14 p.127",
-  }),
-  TRIGO: Object.freeze({
-    ruleId: "PK-TRIGO-CQFS-2016",
-    version: "1.0.0",
-    cropCode: "TRIGO",
-    region: "RS/SC",
-    status: "READY_FOR_IMPLEMENTATION",
-    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
-    sourceInstitution: "CQFS-RS/SC",
-    sourceYear: 2016,
-    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.21 p.133",
-  }),
-});
-
 const SOIL_LEVELS = new Set<SoilNutrientLevel>(["Muito Baixo", "Baixo", "Médio", "Alto", "Muito Alto"]);
+const PK_RULE_ID_BY_CROP: Record<string, string> = {
+  SOJA: "PK-SOJA-CQFS-2016",
+  MILHO: "PK-MILHO-CQFS-2016",
+  TRIGO: "PK-TRIGO-CQFS-2016",
+};
 const DOSE_TABLE_BY_CROP: Record<string, GrainDoseTable> = {
   SOJA: SOJA_DOSE_TABLE,
   MILHO: MILHO_DOSE_TABLE,
@@ -182,22 +140,26 @@ function nutrientReadiness(
   };
 }
 
+/**
+ * Gate de dose UNIFORME de P/K. A liberação da regra vem exclusivamente do catálogo agronômico central;
+ * alterar a regra para revisão/insuficiência nesse catálogo derruba automaticamente a execução aqui.
+ */
 export function evaluateUniformPkReadiness(input: {
   cropCode: string | null | undefined;
   interpretation: unknown;
 }): UniformPkReadiness {
   const cropCode = normalizeCropCode(input.cropCode);
-  const manifest = cropCode ? (PK_RULES[cropCode] ?? null) : null;
-  const ruleId = manifest?.ruleId ?? null;
-  const ruleReady = manifest?.status === "READY_FOR_IMPLEMENTATION" && Boolean(DOSE_TABLE_BY_CROP[cropCode ?? ""]);
+  const ruleId = cropCode ? (PK_RULE_ID_BY_CROP[cropCode] ?? null) : null;
+  const ruleDecision = ruleId ? evaluateAgronomicRuleAutomation(ruleId) : null;
+  const ruleReady = ruleDecision?.allowed === true && Boolean(DOSE_TABLE_BY_CROP[cropCode ?? ""]);
   const interpretation = interpretableItems(input.interpretation);
   const p = nutrientReadiness(interpretation, "P2O5");
   const k = nutrientReadiness(interpretation, "K2O");
   const blockers: string[] = [];
 
   if (!cropCode) blockers.push("PK_CROP_CODE_MISSING");
-  else if (!manifest) blockers.push("PK_CROP_RULE_NOT_IMPLEMENTED");
-  else if (!ruleReady) blockers.push(`PK_RULE_NOT_READY:${manifest.ruleId}`);
+  else if (!ruleId) blockers.push("PK_CROP_RULE_NOT_IMPLEMENTED");
+  else if (!ruleReady) blockers.push(`PK_RULE_NOT_READY:${ruleId}`);
   blockers.push(...p.blockers, ...k.blockers);
 
   return {
