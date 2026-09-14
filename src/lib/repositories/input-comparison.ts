@@ -14,6 +14,7 @@ export type InputComparisonStatus = "OK" | "UNDER" | "OVER" | "UNIT_MISMATCH" | 
 export async function getCurrentInputComparisonForAnalysis(tenantId: string, analysisId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query<{
+      recommendationId: string;
       inputType: string;
       recommendedQuantity: number;
       recommendedUnit: string;
@@ -33,7 +34,7 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
     }>(
       `WITH latest_recommendations AS (
          SELECT DISTINCT ON (ir.input_type)
-                ir.input_type, ir.quantity, ir.unit, ir.calculation_source, ir.calculated_at,
+                ir.id, ir.input_type, ir.quantity, ir.unit, ir.calculation_source, ir.calculated_at,
                 ir.source_generation_id
          FROM input_recommendations ir
          WHERE ir.tenant_id = $1::uuid AND ir.analysis_id = $2::uuid
@@ -50,7 +51,8 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
          FROM input_applications
          WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid
        )
-       SELECT r.input_type AS "inputType",
+       SELECT r.id::text AS "recommendationId",
+              r.input_type AS "inputType",
               r.quantity::float8 AS "recommendedQuantity",
               r.unit AS "recommendedUnit",
               r.calculation_source AS "calculationSource",
@@ -112,6 +114,7 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
       }
 
       return {
+        recommendationId: row.recommendationId,
         inputType: row.inputType,
         recommendedQuantity: row.recommendedQuantity,
         recommendedUnit: row.recommendedUnit,
