@@ -3,6 +3,7 @@ import {
   evaluateUniformPkReadiness,
   validateDeterministicPkRecommendation,
 } from "../src/domain/uniform-pk-readiness.ts";
+import { validatePrescriptionPkRecommendations } from "../src/domain/prescription-pk-validation.ts";
 
 const item = (sampleCode, parameterCode, classification) => ({
   sampleCode,
@@ -18,6 +19,7 @@ const area01 = area01P.flatMap((classification, index) => [
   item(`P${index + 1}`, "P", classification),
   item(`P${index + 1}`, "K", area01K[index]),
 ]);
+const representative = [item("COMPOSTA", "P", "Alto"), item("COMPOSTA", "K", "Alto")];
 
 const cabeda = evaluateUniformPkReadiness({ cropCode: "SOJA", interpretation: area01 });
 assert.equal(cabeda.ruleReady, true);
@@ -40,16 +42,13 @@ const twoPoints = evaluateUniformPkReadiness({
 assert.equal(twoPoints.ready, false, "2/2 não atinge o piso de 3 pontos concordantes");
 assert.ok(twoPoints.nutrients.P2O5.blockers.includes("P_NO_STRICT_PREDOMINANCE"));
 
-const single = evaluateUniformPkReadiness({
-  cropCode: "SOJA",
-  interpretation: [item("COMPOSTA", "P", "Alto"), item("COMPOSTA", "K", "Alto")],
-});
+const single = evaluateUniformPkReadiness({ cropCode: "SOJA", interpretation: representative });
 assert.equal(single.ready, true, "uma única amostra representativa não é tratada como falsa heterogeneidade");
 assert.equal(single.nutrients.P2O5.basis, "SINGLE_SAMPLE");
 
 const exactP = validateDeterministicPkRecommendation({
   cropCode: "SOJA",
-  interpretation: [item("COMPOSTA", "P", "Alto"), item("COMPOSTA", "K", "Alto")],
+  interpretation: representative,
   yieldGoal: 4.2,
   yieldGoalUnit: "t/ha",
   cultivationOrderAfterSoilAnalysis: 1,
@@ -62,7 +61,7 @@ assert.equal(exactP.expected?.doseKgPerHa, 63);
 
 const inventedP = validateDeterministicPkRecommendation({
   cropCode: "SOJA",
-  interpretation: [item("COMPOSTA", "P", "Alto"), item("COMPOSTA", "K", "Alto")],
+  interpretation: representative,
   yieldGoal: 4.2,
   yieldGoalUnit: "t/ha",
   cultivationOrderAfterSoilAnalysis: 1,
@@ -93,4 +92,56 @@ const unsupportedCrop = evaluateUniformPkReadiness({
 assert.equal(unsupportedCrop.ruleReady, false);
 assert.ok(unsupportedCrop.blockers.includes("PK_CROP_RULE_NOT_IMPLEMENTED"));
 
-console.log("uniform-pk-readiness: heterogeneidade, fonte versionada e dose determinística validadas");
+const exactList = validatePrescriptionPkRecommendations({
+  recommendations: [
+    { inputType: "P2O5", quantity: 63, unit: "kg/ha" },
+    { inputType: "K2O", quantity: 105, unit: "kg/ha" },
+    { inputType: "S", quantity: 20, unit: "kg/ha" },
+  ],
+  cropCode: "SOJA",
+  interpretation: representative,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+});
+assert.equal(exactList.allowed, true);
+assert.deepEqual(exactList.validated.map((entry) => entry.nutrient), ["P2O5", "K2O"]);
+assert.equal(exactList.failures.length, 0);
+
+const duplicateTarget = validatePrescriptionPkRecommendations({
+  recommendations: [
+    { inputType: "P2O5", quantity: 63, unit: "kg/ha" },
+    { inputType: "Fósforo P2O5", quantity: 63, unit: "kg/ha" },
+  ],
+  cropCode: "SOJA",
+  interpretation: representative,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+});
+assert.equal(duplicateTarget.allowed, false);
+assert.ok(duplicateTarget.failures.some((failure) => failure.blockers.includes("PK_DUPLICATE_TARGET")));
+
+const elementalP = validatePrescriptionPkRecommendations({
+  recommendations: [{ inputType: "Fósforo", quantity: 27.5, unit: "kg/ha" }],
+  cropCode: "SOJA",
+  interpretation: representative,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+});
+assert.equal(elementalP.allowed, false);
+assert.ok(elementalP.failures[0].blockers.includes("PK_ELEMENTAL_INPUT_AMBIGUOUS"));
+
+const providerInventedDose = validatePrescriptionPkRecommendations({
+  recommendations: [{ inputType: "P2O5", quantity: 70, unit: "kg/ha" }],
+  cropCode: "SOJA",
+  interpretation: representative,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+});
+assert.equal(providerInventedDose.allowed, false);
+assert.ok(providerInventedDose.failures[0].blockers.includes("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+console.log("uniform-pk-readiness: heterogeneidade, fonte, dose e barreira de persistência/promoção validadas");
