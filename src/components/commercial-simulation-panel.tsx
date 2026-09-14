@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
+import { CommercialPlanSnapshotPanel } from "@/components/commercial-plan-snapshot-panel";
 
 type Nutrient = "N" | "P2O5" | "K2O" | "S" | "Ca" | "Mg";
 type Product = {
@@ -178,6 +179,16 @@ export function CommercialSimulationPanel({ analysisId }: { analysisId: string }
         {simulation?.mode === "PK_PAIR" && <div className="narrative-block" style={{ marginTop: 12 }}><h4>Combinação P/K</h4><div className="review-grid"><div className="review-summary"><span>Produto A</span><strong>{formatNumber(simulation.result.productA.rateKgPerHa)} kg/ha</strong><small>{simulation.result.productA.product.name} · total {formatNumber(simulation.result.productA.totalProductTon, 4)} t</small></div><div className="review-summary"><span>Produto B</span><strong>{formatNumber(simulation.result.productB.rateKgPerHa)} kg/ha</strong><small>{simulation.result.productB.product.name} · total {formatNumber(simulation.result.productB.totalProductTon, 4)} t</small></div><div className="review-summary"><span>Custo combinado</span><strong>{formatMoney(simulation.result.costPerHa)}/ha</strong><small>Total {formatMoney(simulation.result.totalCost)}</small></div></div><TargetComparison comparison={simulation.result.targetComparison}/>{[...(simulation.result.productA.constraintViolations ?? []), ...(simulation.result.productB.constraintViolations ?? [])].length > 0 && <div className="field-ops-inline-warning" style={{ marginTop: 10 }}><Icon name="warning" size={15}/><span>{[...(simulation.result.productA.constraintViolations ?? []), ...(simulation.result.productB.constraintViolations ?? [])].join(" ")}</span></div>}</div>}
 
         {simulation?.mode === "LIME" && <div className="narrative-block" style={{ marginTop: 12 }}><h4>Conversão por PRNT real</h4><div className="review-grid"><div className="review-summary"><span>Dose do produto</span><strong>{formatNumber(simulation.result.productDoseTonPerHa, 4)} t/ha</strong><small>{formatNumber(simulation.result.productDoseKgPerHa)} kg/ha</small></div><div className="review-summary"><span>Total no talhão</span><strong>{formatNumber(simulation.result.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(simulation.result.costPerHa)}/ha</strong><small>Total {formatMoney(simulation.result.totalCost)}</small></div><div className="review-summary"><span>PRNT do produto</span><strong>{formatNumber(simulation.result.productPrntPercent)}%</strong></div></div>{simulation.result.constraintViolations?.length > 0 && <div className="field-ops-inline-warning" style={{ marginTop: 10 }}><Icon name="warning" size={15}/><span>{simulation.result.constraintViolations.join(" ")}</span></div>}</div>}
+
+        <CommercialPlanSnapshotPanel
+          analysisId={analysisId}
+          enabled={Boolean(simulation)}
+          mode={mode}
+          productId={productId || null}
+          productAId={productAId || null}
+          productBId={productBId || null}
+          driverNutrient={driverNutrient || null}
+        />
       </div>
     </section>
   );

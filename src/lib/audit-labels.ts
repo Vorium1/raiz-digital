@@ -18,6 +18,7 @@ export const auditActionLabel: Record<string, string> = {
   COMMERCIAL_INPUT_PRODUCT_UPDATED: "Insumo comercial atualizado",
   COMMERCIAL_INPUT_PRODUCT_DEACTIVATED: "Insumo comercial desativado",
   COMMERCIAL_INPUT_PRODUCT_REACTIVATED: "Insumo comercial reativado",
+  COMMERCIAL_PLAN_SNAPSHOT_SAVED: "Cenário comercial congelado",
   CLIENT_CREATED: "Cliente cadastrado",
   CLIENT_UPDATED: "Cliente editado",
   CLIENT_DELETED: "Cliente excluído",
@@ -44,5 +45,6 @@ export const auditEntityLabel: Record<string, string> = {
   sample_point: "Ponto de coleta",
   agronomic_rule_execution: "Execução de regra agronômica",
   commercial_input_product: "Insumo comercial",
+  commercial_plan_snapshot: "Cenário comercial",
   user: "Usuário",
 };

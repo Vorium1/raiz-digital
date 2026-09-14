@@ -1,10 +1,15 @@
 import type { CommercialNutrient, NutrientTargets } from "./commercial-input-engine.ts";
 
 export type RecommendationTargetRow = {
+  recommendationId?: string | null;
   inputType: string;
   recommendedQuantity: number;
   recommendedUnit: string;
+  calculationSource?: string | null;
+  recommendedAt?: string | null;
+  sourceGenerationId?: string | null;
   recommendationCurrent: boolean;
+  recommendationCurrentCode?: string | null;
   recommendationCurrentReason?: string | null;
 };
 
@@ -20,16 +25,23 @@ export type CommercialTargetBlocker = {
   reason: string;
 };
 
+export type CommercialTargetSourceRow = {
+  recommendationId: string | null;
+  inputType: string;
+  canonicalTarget: CommercialNutrient | "LIME_PRNT100";
+  quantity: number;
+  unit: string;
+  calculationSource: string | null;
+  recommendedAt: string | null;
+  sourceGenerationId: string | null;
+  freshnessCode: string | null;
+};
+
 export type CommercialTargetState = {
   nutrientTargetsKgPerHa: NutrientTargets;
   limingRequirementTonPerHaPrnt100: number | null;
   blockers: CommercialTargetBlocker[];
-  sourceRows: Array<{
-    inputType: string;
-    canonicalTarget: CommercialNutrient | "LIME_PRNT100";
-    quantity: number;
-    unit: string;
-  }>;
+  sourceRows: CommercialTargetSourceRow[];
 };
 
 function normalizeText(value: string) {
@@ -104,6 +116,20 @@ function sameNumber(a: number, b: number) {
   return Math.abs(a - b) <= 1e-6;
 }
 
+function sourceRow(row: RecommendationTargetRow, canonicalTarget: CommercialNutrient | "LIME_PRNT100"): CommercialTargetSourceRow {
+  return {
+    recommendationId: row.recommendationId ?? null,
+    inputType: row.inputType,
+    canonicalTarget,
+    quantity: row.recommendedQuantity,
+    unit: row.recommendedUnit,
+    calculationSource: row.calculationSource ?? null,
+    recommendedAt: row.recommendedAt ?? null,
+    sourceGenerationId: row.sourceGenerationId ?? null,
+    freshnessCode: row.recommendationCurrentCode ?? null,
+  };
+}
+
 /**
  * Traduz SOMENTE recomendações oficiais correntes em alvos físicos consumíveis pela camada comercial.
  *
@@ -113,7 +139,7 @@ function sameNumber(a: number, b: number) {
  */
 export function deriveCommercialTargets(rows: RecommendationTargetRow[]): CommercialTargetState {
   const blockers: CommercialTargetBlocker[] = [];
-  const sourceRows: CommercialTargetState["sourceRows"] = [];
+  const sourceRows: CommercialTargetSourceRow[] = [];
   const nutrientTargetsKgPerHa: NutrientTargets = {};
   let limingRequirementTonPerHaPrnt100: number | null = null;
   const ambiguous = new Set<CommercialNutrient | "LIME_PRNT100">();
@@ -148,7 +174,7 @@ export function deriveCommercialTargets(rows: RecommendationTargetRow[]): Commer
         blockers.push({ code: "AMBIGUOUS_TARGET", inputType: row.inputType, reason: "Existem recomendações correntes divergentes para calcário PRNT100; nenhuma delas foi escolhida automaticamente." });
       } else {
         limingRequirementTonPerHaPrnt100 = row.recommendedQuantity;
-        sourceRows.push({ inputType: row.inputType, canonicalTarget: target, quantity: row.recommendedQuantity, unit: row.recommendedUnit });
+        sourceRows.push(sourceRow(row, target));
       }
       continue;
     }
@@ -164,7 +190,7 @@ export function deriveCommercialTargets(rows: RecommendationTargetRow[]): Commer
       blockers.push({ code: "AMBIGUOUS_TARGET", inputType: row.inputType, reason: `Existem recomendações correntes divergentes para ${target}; nenhuma delas foi escolhida automaticamente.` });
     } else {
       nutrientTargetsKgPerHa[target] = row.recommendedQuantity;
-      sourceRows.push({ inputType: row.inputType, canonicalTarget: target, quantity: row.recommendedQuantity, unit: row.recommendedUnit });
+      sourceRows.push(sourceRow(row, target));
     }
   }
 

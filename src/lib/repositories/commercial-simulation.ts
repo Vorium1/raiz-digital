@@ -12,6 +12,20 @@ import { getCurrentInputComparisonForAnalysis } from "@/lib/repositories/input-c
 
 export type CommercialSimulationMode = "SINGLE" | "PK_PAIR" | "LIME";
 
+export type CommercialProductSnapshot = {
+  id: string;
+  code: string;
+  name: string;
+  kind: CommercialInputProduct["kind"];
+  guaranteesPercent: CommercialInputProduct["guaranteesPercent"];
+  prntPercent: number | null;
+  pricePerTon: number | null;
+  minRateKgPerHa: number | null;
+  maxRateKgPerHa: number | null;
+  active: boolean;
+  updatedAt: string;
+};
+
 export class CommercialSimulationError extends Error {
   constructor(message: string, readonly status = 422, readonly details?: unknown) {
     super(message);
@@ -27,6 +41,22 @@ function asEngineProduct(product: CommercialInputProduct): CommercialFertilizerP
     pricePerTon: product.pricePerTon,
     minRateKgPerHa: product.minRateKgPerHa,
     maxRateKgPerHa: product.maxRateKgPerHa,
+  };
+}
+
+export function commercialProductSnapshot(product: CommercialInputProduct): CommercialProductSnapshot {
+  return {
+    id: product.id,
+    code: product.code,
+    name: product.name,
+    kind: product.kind,
+    guaranteesPercent: { ...product.guaranteesPercent },
+    prntPercent: product.prntPercent,
+    pricePerTon: product.pricePerTon,
+    minRateKgPerHa: product.minRateKgPerHa,
+    maxRateKgPerHa: product.maxRateKgPerHa,
+    active: product.active,
+    updatedAt: product.updatedAt,
   };
 }
 
@@ -52,16 +82,22 @@ export async function getCommercialSimulationWorkspace(input: {
   if (!analysis) throw new CommercialSimulationError("Análise não encontrada.", 404);
 
   const targets = deriveCommercialTargets(comparison.map((row) => ({
+    recommendationId: row.recommendationId,
     inputType: row.inputType,
     recommendedQuantity: row.recommendedQuantity,
     recommendedUnit: row.recommendedUnit,
+    calculationSource: row.calculationSource,
+    recommendedAt: row.recommendedAt,
+    sourceGenerationId: row.sourceGenerationId,
     recommendationCurrent: row.recommendationCurrent,
+    recommendationCurrentCode: row.recommendationCurrentCode,
     recommendationCurrentReason: row.recommendationCurrentReason,
   })));
 
   return {
     analysisId: input.analysisId,
     analysisCode: String(analysis.code),
+    cropSeasonId: String(analysis.seasonId),
     areaHa: Number(analysis.areaHa),
     targets,
     products: products.filter((product) => product.active),
@@ -115,9 +151,13 @@ export async function simulateCommercialPlan(input: {
       });
       return {
         mode: input.mode,
+        analysisId: workspace.analysisId,
+        cropSeasonId: workspace.cropSeasonId,
+        areaHa,
         driverNutrient: input.driverNutrient,
         targetKgPerHa: target,
         productId: product.id,
+        selectedProducts: [commercialProductSnapshot(product)],
         result,
         sourceTargets: targets.sourceRows,
       } as const;
@@ -147,8 +187,12 @@ export async function simulateCommercialPlan(input: {
       });
       return {
         mode: input.mode,
+        analysisId: workspace.analysisId,
+        cropSeasonId: workspace.cropSeasonId,
+        areaHa,
         productAId: productA.id,
         productBId: productB.id,
+        selectedProducts: [commercialProductSnapshot(productA), commercialProductSnapshot(productB)],
         targetsKgPerHa: { P2O5: targetP, K2O: targetK },
         result,
         sourceTargets: targets.sourceRows,
@@ -175,7 +219,11 @@ export async function simulateCommercialPlan(input: {
     const constraintViolations = limestoneConstraintViolations(product, result.productDoseKgPerHa);
     return {
       mode: input.mode,
+      analysisId: workspace.analysisId,
+      cropSeasonId: workspace.cropSeasonId,
+      areaHa,
       productId: product.id,
+      selectedProducts: [commercialProductSnapshot(product)],
       requirementTonPerHaPrnt100: requirement,
       result: {
         ...result,
