@@ -28,6 +28,7 @@ const parameterAiValidation = await readFile(new URL("../db/migrations/024_param
 const ruleExecutions = await readFile(new URL("../db/migrations/031_agronomic_rule_executions.sql", import.meta.url), "utf8");
 const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_recommendation_context.sql", import.meta.url), "utf8");
 const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
+const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -113,4 +114,15 @@ assert.match(commercialInputCatalog, /GRANT SELECT, INSERT, UPDATE ON commercial
 assert.doesNotMatch(commercialInputCatalog, /GRANT[^;]*DELETE[^;]*commercial_input_products/i);
 assert.match(commercialInputCatalog, /min_rate_kg_ha IS NULL OR max_rate_kg_ha IS NULL OR min_rate_kg_ha <= max_rate_kg_ha/i);
 
-console.log("migrations: contratos estruturais críticos 001-033 aprovados");
+assert.match(commercialPlanSnapshots, /CREATE TABLE commercial_plan_snapshots/i);
+assert.match(commercialPlanSnapshots, /source_targets jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /product_snapshots jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /engine_input jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /engine_output jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /FORCE ROW LEVEL SECURITY/i);
+assert.match(commercialPlanSnapshots, /CREATE POLICY tenant_isolation ON commercial_plan_snapshots/i);
+assert.match(commercialPlanSnapshots, /GRANT SELECT, INSERT ON commercial_plan_snapshots TO raiz_app/i);
+assert.match(commercialPlanSnapshots, /REVOKE UPDATE, DELETE ON commercial_plan_snapshots FROM raiz_app/i);
+assert.doesNotMatch(commercialPlanSnapshots, /GRANT[^;]*(UPDATE|DELETE)[^;]*commercial_plan_snapshots/i);
+
+console.log("migrations: contratos estruturais críticos 001-034 aprovados");
