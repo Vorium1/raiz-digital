@@ -25,6 +25,10 @@ export const auditActionLabel: Record<string, string> = {
   COLLECTION_POINTS_IMPORTED: "Pontos de coleta importados",
   SAMPLE_POINT_COLLECTED: "Ponto coletado via GPS",
   LAB_IMPORT_COMMITTED: "Laudo laboratorial importado",
+  COMMERCIAL_INPUT_PRODUCT_CREATED: "Insumo comercial cadastrado",
+  COMMERCIAL_INPUT_PRODUCT_UPDATED: "Insumo comercial editado",
+  COMMERCIAL_INPUT_PRODUCT_DEACTIVATED: "Insumo comercial desativado",
+  COMMERCIAL_INPUT_PRODUCT_REACTIVATED: "Insumo comercial reativado",
 };
 
 export const auditEntityLabel: Record<string, string> = {
@@ -37,4 +41,5 @@ export const auditEntityLabel: Record<string, string> = {
   collection_order: "Ordem de coleta",
   sample_point: "Ponto de coleta",
   user: "Usuário",
+  commercial_input_product: "Insumo comercial",
 };
