@@ -8,7 +8,6 @@ import {
   type SoilNutrientLevel,
 } from "./fertilizer-dose-engine.ts";
 import { computeParameterPredominance } from "./parameter-predominance.ts";
-import { evaluateAgronomicRuleAutomation } from "./agronomic-rule-catalog.ts";
 import { evaluatePkDoseReadiness } from "./recommendation-context.ts";
 
 export type UniformPkTarget = "P2O5" | "K2O";
@@ -40,12 +39,60 @@ export type UniformPkReadiness = {
   nutrients: Record<UniformPkTarget, UniformPkNutrientReadiness>;
 };
 
-const SOIL_LEVELS = new Set<SoilNutrientLevel>(["Muito Baixo", "Baixo", "Médio", "Alto", "Muito Alto"]);
-const PK_RULE_BY_CROP: Record<string, string> = {
-  SOJA: "PK-SOJA-CQFS-2016",
-  MILHO: "PK-MILHO-CQFS-2016",
-  TRIGO: "PK-TRIGO-CQFS-2016",
+export type PkRuleManifest = {
+  ruleId: string;
+  version: string;
+  cropCode: string;
+  region: "RS/SC";
+  status: "READY_FOR_IMPLEMENTATION";
+  sourceTitle: string;
+  sourceInstitution: string;
+  sourceYear: 2016;
+  sourceLocator: string;
 };
+
+/**
+ * Manifestos explícitos das mesmas tabelas já implementadas em `fertilizer-dose-engine.ts`.
+ * Elas são as únicas culturas autorizadas a produzir P/K uniforme neste módulo. Cultura sem manifesto
+ * falha fechada, mesmo que exista classificação laboratorial.
+ */
+export const PK_RULES: Readonly<Record<string, PkRuleManifest>> = Object.freeze({
+  SOJA: Object.freeze({
+    ruleId: "PK-SOJA-CQFS-2016",
+    version: "1.0.0",
+    cropCode: "SOJA",
+    region: "RS/SC",
+    status: "READY_FOR_IMPLEMENTATION",
+    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
+    sourceInstitution: "CQFS-RS/SC",
+    sourceYear: 2016,
+    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.18 p.130",
+  }),
+  MILHO: Object.freeze({
+    ruleId: "PK-MILHO-CQFS-2016",
+    version: "1.0.0",
+    cropCode: "MILHO",
+    region: "RS/SC",
+    status: "READY_FOR_IMPLEMENTATION",
+    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
+    sourceInstitution: "CQFS-RS/SC",
+    sourceYear: 2016,
+    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.14 p.127",
+  }),
+  TRIGO: Object.freeze({
+    ruleId: "PK-TRIGO-CQFS-2016",
+    version: "1.0.0",
+    cropCode: "TRIGO",
+    region: "RS/SC",
+    status: "READY_FOR_IMPLEMENTATION",
+    sourceTitle: "Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e de Santa Catarina",
+    sourceInstitution: "CQFS-RS/SC",
+    sourceYear: 2016,
+    sourceLocator: "Tabela 6.1.2 p.106; item 6.1.21 p.133",
+  }),
+});
+
+const SOIL_LEVELS = new Set<SoilNutrientLevel>(["Muito Baixo", "Baixo", "Médio", "Alto", "Muito Alto"]);
 const DOSE_TABLE_BY_CROP: Record<string, GrainDoseTable> = {
   SOJA: SOJA_DOSE_TABLE,
   MILHO: MILHO_DOSE_TABLE,
@@ -98,12 +145,7 @@ function nutrientReadiness(
       blockers.push(`${label}_SAMPLE_CLASSIFICATION_AMBIGUOUS`);
       continue;
     }
-    observations.push({
-      sampleCode,
-      parameterCode,
-      interpretable: true,
-      classification: [...classes][0],
-    });
+    observations.push({ sampleCode, parameterCode, interpretable: true, classification: [...classes][0] });
   }
 
   if (observations.length === 0) {
@@ -129,15 +171,7 @@ function nutrientReadiness(
     .find((item) => item.parameterCode.toUpperCase() === parameterCode);
   if (!predominance) {
     blockers.push(`${label}_NO_STRICT_PREDOMINANCE`);
-    return {
-      nutrient,
-      ready: false,
-      soilLevel: null,
-      matchingCount: 0,
-      totalCount: observations.length,
-      basis: null,
-      blockers,
-    };
+    return { nutrient, ready: false, soilLevel: null, matchingCount: 0, totalCount: observations.length, basis: null, blockers };
   }
 
   const level = soilLevel(predominance.classification);
@@ -155,28 +189,25 @@ function nutrientReadiness(
 
 /**
  * Gate para dose UNIFORME de P/K.
- *
- * Uma única amostra representativa pode sustentar a classificação uniforme da própria análise. Quando
- * existem múltiplos pontos, porém, a RAIZ não escolhe maioria simples nem média: exige a mesma regra de
- * predominância estrita já usada no cockpit (mais da metade E pelo menos 3 pontos concordantes).
- * Isso impede o caso Cabeda/Área 01 (P = 4/8 em Alto) de virar dose uniforme silenciosamente.
+ * Uma única amostra representativa pode sustentar a própria análise. Com múltiplos pontos, a RAIZ exige
+ * maioria estrita + pelo menos 3 pontos concordantes; 4/8, 2/3 ou simples pluralidade não viram dose.
  */
 export function evaluateUniformPkReadiness(input: {
   cropCode: string | null | undefined;
   interpretation: unknown;
 }): UniformPkReadiness {
   const cropCode = normalizeCropCode(input.cropCode);
-  const ruleId = cropCode ? (PK_RULE_BY_CROP[cropCode] ?? null) : null;
-  const ruleDecision = ruleId ? evaluateAgronomicRuleAutomation(ruleId) : null;
-  const ruleReady = ruleDecision?.allowed === true;
+  const manifest = cropCode ? (PK_RULES[cropCode] ?? null) : null;
+  const ruleId = manifest?.ruleId ?? null;
+  const ruleReady = manifest?.status === "READY_FOR_IMPLEMENTATION" && Boolean(DOSE_TABLE_BY_CROP[cropCode ?? ""]);
   const interpretation = interpretableItems(input.interpretation);
   const p = nutrientReadiness(interpretation, "P2O5");
   const k = nutrientReadiness(interpretation, "K2O");
   const blockers: string[] = [];
 
   if (!cropCode) blockers.push("PK_CROP_CODE_MISSING");
-  else if (!ruleId) blockers.push("PK_CROP_RULE_NOT_IMPLEMENTED");
-  else if (!ruleReady) blockers.push(`PK_RULE_NOT_READY:${ruleId}`);
+  else if (!manifest) blockers.push("PK_CROP_RULE_NOT_IMPLEMENTED");
+  else if (!ruleReady) blockers.push(`PK_RULE_NOT_READY:${manifest.ruleId}`);
   blockers.push(...p.blockers, ...k.blockers);
 
   return {
@@ -218,9 +249,9 @@ export type DeterministicPkRecommendationValidation = {
 };
 
 /**
- * Valida no servidor a quantidade proposta pela IA/profissional contra a própria tabela determinística.
- * A IA não ganha autoridade para inventar dose: para P/K a quantidade promovida precisa coincidir com o
- * motor, ou ficar dentro da faixa discricionária que a própria fonte autoriza em "Muito Alto".
+ * Valida no servidor a quantidade proposta contra a tabela determinística. A IA nunca é autoridade de
+ * dose. P/K só é promovido se coincidir com o motor, ou cair na faixa que a fonte deixa ao técnico em
+ * "Muito Alto".
  */
 export function validateDeterministicPkRecommendation(input: {
   cropCode: string | null | undefined;
@@ -258,13 +289,7 @@ export function validateDeterministicPkRecommendation(input: {
     return { allowed: false, blockers: [...new Set(blockers)], expected: null };
   }
 
-  const result = computeGrainFertilizerDose(
-    table,
-    input.nutrient as Nutrient,
-    level,
-    cultivationYear,
-    yieldGoalTonPerHa,
-  );
+  const result = computeGrainFertilizerDose(table, input.nutrient as Nutrient, level, cultivationYear, yieldGoalTonPerHa);
   const minimumKgPerHa = result.isDiscretionaryRange ? result.yieldAdjustmentKgPerHa : result.doseKgPerHa;
   const maximumKgPerHa = result.isDiscretionaryRange
     ? (result.discretionaryRangeMax ?? result.doseKgPerHa)
