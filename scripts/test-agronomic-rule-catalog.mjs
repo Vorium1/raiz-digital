@@ -5,6 +5,7 @@ import {
   RESEARCH_SNAPSHOT_ID,
   evaluateAgronomicRuleAutomation,
   buildRuleTrace,
+  resolveAgronomicExecutionStatus,
 } from "../src/domain/agronomic-rule-catalog.ts";
 
 assert.ok(AGRONOMIC_RULES.length >= 15);
@@ -46,4 +47,19 @@ assert.deepEqual(trace, {
   executionStatus: "READY_FOR_IMPLEMENTATION",
 });
 
-console.log("agronomic-rule-catalog: execução só para READY; review/insufficient falham fechado; ledger e trace ok");
+// O dado concreto pode tornar uma execução mais conservadora, nunca mais permissiva
+// do que o catálogo técnico homologado.
+assert.equal(
+  resolveAgronomicExecutionStatus("N-MILHO-CQFS-2016", "REQUIRES_AGRONOMIST_REVIEW"),
+  "REQUIRES_AGRONOMIST_REVIEW",
+);
+assert.equal(
+  resolveAgronomicExecutionStatus("VRA-SUPPORT-GATE", "READY_FOR_IMPLEMENTATION"),
+  "REQUIRES_AGRONOMIST_REVIEW",
+);
+assert.equal(
+  resolveAgronomicExecutionStatus("CARINATA-RS-SC-NUTRITION", "READY_FOR_IMPLEMENTATION"),
+  "INSUFFICIENT_EVIDENCE",
+);
+
+console.log("agronomic-rule-catalog: execução só para READY; runtime só rebaixa; ledger e trace ok");

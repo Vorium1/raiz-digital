@@ -81,3 +81,26 @@ export function buildRuleTrace(ruleId: string) {
     executionStatus: decision.rule.status,
   };
 }
+
+const STATUS_SEVERITY: Record<AgronomicRuleStatus, number> = {
+  READY_FOR_IMPLEMENTATION: 0,
+  REQUIRES_AGRONOMIST_REVIEW: 1,
+  INSUFFICIENT_EVIDENCE: 2,
+};
+
+/**
+ * Um estado observado em runtime pode tornar uma execução MAIS conservadora
+ * que o catálogo (ex.: faixa/combinação ambígua), mas nunca pode promover uma
+ * regra que o catálogo mantém em revisão ou com evidência insuficiente.
+ */
+export function resolveAgronomicExecutionStatus(
+  ruleId: string,
+  runtimeStatus?: AgronomicRuleStatus | null,
+): AgronomicRuleStatus {
+  const decision = evaluateAgronomicRuleAutomation(ruleId);
+  if (!decision.rule) throw new Error(`Regra agronômica desconhecida: ${ruleId}`);
+  if (!runtimeStatus) return decision.rule.status;
+  return STATUS_SEVERITY[runtimeStatus] > STATUS_SEVERITY[decision.rule.status]
+    ? runtimeStatus
+    : decision.rule.status;
+}

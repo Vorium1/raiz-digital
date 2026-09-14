@@ -1,4 +1,9 @@
-import { buildRuleTrace, evaluateAgronomicRuleAutomation } from "@/domain/agronomic-rule-catalog";
+import {
+  buildRuleTrace,
+  evaluateAgronomicRuleAutomation,
+  resolveAgronomicExecutionStatus,
+  type AgronomicRuleStatus,
+} from "@/domain/agronomic-rule-catalog";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 
@@ -20,9 +25,9 @@ function serializeJson(value: unknown, label: string): string {
 }
 
 /**
- * Grava uma execução imutável. O status e a fonte NÃO vêm do chamador: são resolvidos
- * novamente pelo catálogo versionado para impedir que um cliente marque uma regra de
- * revisão/insuficiente como READY no ledger.
+ * Grava uma execução imutável. O catálogo é o teto de confiança: runtime pode
+ * rebaixar READY para revisão/insuficiente por causa dos dados concretos, mas
+ * nunca elevar uma regra que a governança técnica mantém bloqueada.
  */
 export async function recordAgronomicRuleExecution(input: {
   tenantId: string;
@@ -30,6 +35,7 @@ export async function recordAgronomicRuleExecution(input: {
   ruleId: string;
   analysisId?: string | null;
   cropSeasonId?: string | null;
+  runtimeStatus?: AgronomicRuleStatus | null;
   inputPayload: unknown;
   outputPayload: unknown;
 }) {
@@ -37,7 +43,14 @@ export async function recordAgronomicRuleExecution(input: {
   if (!decision.rule) throw new AgronomicRuleExecutionError(`Regra agronômica desconhecida: ${input.ruleId}`, 400);
   const serializedInput = serializeJson(input.inputPayload, "Input da execução");
   const serializedOutput = serializeJson(input.outputPayload, "Output da execução");
-  const trace = buildRuleTrace(input.ruleId);
+
+  const catalogTrace = buildRuleTrace(input.ruleId);
+  const executionStatus = resolveAgronomicExecutionStatus(input.ruleId, input.runtimeStatus);
+  const trace = {
+    ...catalogTrace,
+    catalogStatus: catalogTrace.executionStatus,
+    executionStatus,
+  };
   const serializedTrace = serializeJson(trace, "Rastreabilidade da regra");
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -86,13 +99,18 @@ export async function recordAgronomicRuleExecution(input: {
         ruleId: trace.ruleId,
         ruleVersion: trace.ruleVersion,
         sourceSnapshotId: trace.sourceSnapshotId,
+        catalogStatus: trace.catalogStatus,
         executionStatus: trace.executionStatus,
         analysisId: input.analysisId ?? null,
         cropSeasonId: input.cropSeasonId ?? null,
-        automationAllowed: decision.allowed,
+        automationAllowed: executionStatus === "READY_FOR_IMPLEMENTATION",
       },
     });
 
-    return { ...execution, automationAllowed: decision.allowed, sourceTrace: trace };
+    return {
+      ...execution,
+      automationAllowed: executionStatus === "READY_FOR_IMPLEMENTATION",
+      sourceTrace: trace,
+    };
   });
 }

@@ -25,6 +25,8 @@ const derivedParameters = await readFile(new URL("../db/migrations/021_derived_p
 const sampleType = await readFile(new URL("../db/migrations/022_sample_type.sql", import.meta.url), "utf8");
 const satelliteNdvi = await readFile(new URL("../db/migrations/023_satellite_ndvi.sql", import.meta.url), "utf8");
 const parameterAiValidation = await readFile(new URL("../db/migrations/024_parameter_ai_cross_validation.sql", import.meta.url), "utf8");
+const ruleExecutions = await readFile(new URL("../db/migrations/031_agronomic_rule_executions.sql", import.meta.url), "utf8");
+const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_recommendation_context.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -90,4 +92,16 @@ assert.match(satelliteNdvi, /UNIQUE \(tenant_id,field_id,captured_at,source\)/i)
 assert.match(parameterAiValidation, /ADD COLUMN ai_validation_status text NOT NULL DEFAULT 'NAO_VALIDADO'/i);
 assert.match(parameterAiValidation, /CHECK \(ai_validation_status IN \('NAO_VALIDADO', 'CONSISTENTE', 'INCONSISTENTE', 'INDETERMINADO'\)\)/i);
 assert.match(parameterAiValidation, /ai_validation_sources jsonb/i);
-console.log("migrations: contratos estruturais 001-024 aprovados");
+
+assert.match(ruleExecutions, /CREATE TABLE agronomic_rule_executions/i);
+assert.match(ruleExecutions, /FORCE ROW LEVEL SECURITY/i);
+assert.match(ruleExecutions, /GRANT SELECT, INSERT ON agronomic_rule_executions TO raiz_app/i);
+assert.match(ruleExecutions, /REVOKE UPDATE, DELETE ON agronomic_rule_executions FROM raiz_app/i);
+
+assert.match(nitrogenContext, /CREATE TABLE nitrogen_recommendation_contexts/i);
+assert.match(nitrogenContext, /UNIQUE \(tenant_id,crop_season_id\)/i);
+assert.match(nitrogenContext, /FORCE ROW LEVEL SECURITY/i);
+assert.match(nitrogenContext, /effective_legume_inoculation IS TRUE AND proven_legume_inoculation_failure IS TRUE/i);
+assert.match(nitrogenContext, /CREATE POLICY tenant_isolation ON nitrogen_recommendation_contexts/i);
+
+console.log("migrations: contratos estruturais críticos 001-032 aprovados");
