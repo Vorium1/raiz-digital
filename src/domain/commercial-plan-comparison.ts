@@ -50,7 +50,7 @@ function finiteNumber(value: unknown): number | null {
 
 function sumKnown(values: Array<number | null>): number | null {
   return values.every((value) => value != null)
-    ? values.reduce((sum, value) => sum + (value ?? 0), 0)
+    ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
 }
 
