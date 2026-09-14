@@ -11,6 +11,13 @@ ALTER TABLE tenants
 ALTER TABLE analysis_imports
   ADD COLUMN IF NOT EXISTS raw_object_key text;
 
+-- Permite que a confirmação referencie atomicamente o par import + análise dentro do mesmo tenant.
+-- O `id` do import já é único, mas a chave composta impede por integridade relacional que uma confirmação
+-- associe acidentalmente um import de uma análise a outra análise do mesmo tenant.
+ALTER TABLE analysis_imports
+  ADD CONSTRAINT analysis_imports_tenant_import_analysis_unique
+  UNIQUE (tenant_id, id, analysis_id);
+
 CREATE TABLE analysis_source_verifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id),
@@ -21,7 +28,8 @@ CREATE TABLE analysis_source_verifications (
   verified_by uuid NOT NULL REFERENCES users(id),
   verified_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (tenant_id, analysis_id) REFERENCES analyses(tenant_id, id),
-  FOREIGN KEY (tenant_id, import_id) REFERENCES analysis_imports(tenant_id, id),
+  FOREIGN KEY (tenant_id, import_id, analysis_id)
+    REFERENCES analysis_imports(tenant_id, id, analysis_id),
   UNIQUE (tenant_id, id),
   UNIQUE (tenant_id, import_id, file_sha256, raw_object_key)
 );
@@ -37,6 +45,6 @@ CREATE POLICY tenant_isolation ON analysis_source_verifications
 GRANT SELECT, INSERT ON analysis_source_verifications TO raiz_app;
 
 COMMENT ON TABLE analysis_source_verifications IS
-  'Confirmações humanas auditáveis do arquivo bruto que originou um import. Uma confirmação só vale para o mesmo import + SHA-256 + chave de objeto; nenhuma linha histórica é marcada por inferência.';
+  'Confirmações humanas auditáveis do arquivo bruto que originou um import. Uma confirmação só vale para o mesmo import + análise + SHA-256 + chave de objeto; nenhuma linha histórica é marcada por inferência.';
 
 COMMIT;
