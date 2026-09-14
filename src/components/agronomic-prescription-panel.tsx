@@ -31,6 +31,37 @@ type PkDoseReadiness = {
   blockers: string[];
   normalized: { yieldGoalTonPerHa: number | null; cultivationYear: "PRIMEIRO" | "SEGUNDO" | null };
 };
+type UniformPkNutrientReadiness = {
+  nutrient: "P2O5" | "K2O";
+  ready: boolean;
+  soilLevel: string | null;
+  matchingCount: number;
+  totalCount: number;
+  basis: "SINGLE_SAMPLE" | "STRICT_PREDOMINANCE" | null;
+  blockers: string[];
+};
+type UniformPkReadiness = {
+  ready: boolean;
+  cropCode: string | null;
+  ruleId: string | null;
+  ruleReady: boolean;
+  blockers: string[];
+  nutrients: Record<"P2O5" | "K2O", UniformPkNutrientReadiness>;
+};
+type DeterministicPkDoseDecision = {
+  ready: boolean;
+  blockers: string[];
+  expected: null | {
+    ruleId: string;
+    nutrient: "P2O5" | "K2O";
+    soilLevel: string;
+    doseKgPerHa: number;
+    minimumKgPerHa: number;
+    maximumKgPerHa: number;
+    isDiscretionaryRange: boolean;
+    source: string;
+  };
+};
 type Readiness = {
   allowed: boolean;
   reason: string | null;
@@ -43,8 +74,11 @@ type Readiness = {
     yieldGoalUnit: string | null;
     technologyLevel: string | null;
     cultivationOrderAfterSoilAnalysis: number | null;
+    cropProfileCode: string | null;
     updatedAt: string;
     pkDoseReadiness: PkDoseReadiness;
+    uniformPkReadiness: UniformPkReadiness;
+    deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   };
 };
 
@@ -64,11 +98,32 @@ const PK_BLOCKER_LABELS: Record<string, string> = {
   POST_ANALYSIS_CULTIVATION_ORDER_UNSUPPORTED: "A regra P/K atual está homologada somente para 1º e 2º cultivo após a análise.",
 };
 
-/**
- * A recomendação assistida só fica disponível depois da interpretação determinística APPROVED. A marca
- * percebida pelo cliente é RAIZ, não o fornecedor de modelo. Provider/model continuam persistidos na
- * auditoria para rastreabilidade e custo, mas não viram argumento comercial nem poluem a decisão técnica.
- */
+const UNIFORM_PK_BLOCKER_LABELS: Record<string, string> = {
+  PK_CROP_CODE_MISSING: "A cultura homologada da safra não está definida.",
+  PK_CROP_RULE_NOT_IMPLEMENTED: "A cultura ainda não possui tabela determinística P/K liberada para aplicação uniforme.",
+  P_NO_CLASSIFIED_OBSERVATION: "Não há classificação válida de fósforo para sustentar dose uniforme.",
+  K_NO_CLASSIFIED_OBSERVATION: "Não há classificação válida de potássio para sustentar dose uniforme.",
+  P_NO_STRICT_PREDOMINANCE: "Fósforo sem predominância estrita entre os pontos: não usar maioria simples ou média para uma dose uniforme.",
+  K_NO_STRICT_PREDOMINANCE: "Potássio sem predominância estrita entre os pontos: não usar maioria simples ou média para uma dose uniforme.",
+  P_SAMPLE_CLASSIFICATION_AMBIGUOUS: "Há ponto com classificação ambígua de fósforo.",
+  K_SAMPLE_CLASSIFICATION_AMBIGUOUS: "Há ponto com classificação ambígua de potássio.",
+  P_CLASSIFICATION_UNSUPPORTED_FOR_DOSE: "A classe de fósforo não é suportada pela tabela de dose ativa.",
+  K_CLASSIFICATION_UNSUPPORTED_FOR_DOSE: "A classe de potássio não é suportada pela tabela de dose ativa.",
+};
+
+function blockerLabel(code: string) {
+  return UNIFORM_PK_BLOCKER_LABELS[code] ?? code;
+}
+
+function doseLabel(decision: DeterministicPkDoseDecision | undefined) {
+  const expected = decision?.expected;
+  if (!expected) return "dose bloqueada";
+  if (expected.isDiscretionaryRange) {
+    return `${expected.minimumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${expected.maximumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
+  }
+  return `${expected.doseKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
+}
+
 export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, canReview }: { analysisId: string; hasLabResults: boolean; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Generation | null | undefined>(undefined);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -165,6 +220,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
   const readyToGenerate = readiness?.allowed === true;
   const recommendationContext = readiness?.recommendationContext;
   const pkReadiness = recommendationContext?.pkDoseReadiness;
+  const uniformPkReadiness = recommendationContext?.uniformPkReadiness;
   const prescriptionStale = Boolean(latest && readiness?.prescriptionFreshness?.current === false);
   const statusMeta = prescriptionStale
     ? { label: "Desatualizada — contexto mudou", tone: "review" as const }
@@ -182,11 +238,12 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
 
       {recommendationContext && (
-        <div className={`narrative-block ${pkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
+        <div className={`narrative-block ${pkReadiness?.ready && uniformPkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
           <h4>{pkReadiness?.ready ? <Icon name="check" size={12}/> : <Icon name="warning" size={12}/>} Contexto para dose de P e K</h4>
           <p style={{ marginBottom: 8 }}>
             Meta: <strong>{recommendationContext.yieldGoal ?? "não informada"}{recommendationContext.yieldGoalUnit ? ` ${recommendationContext.yieldGoalUnit}` : ""}</strong>
             {" · "}cultivo após a análise: <strong>{recommendationContext.cultivationOrderAfterSoilAnalysis ? `${recommendationContext.cultivationOrderAfterSoilAnalysis}º` : "não informado"}</strong>
+            {recommendationContext.cropProfileCode ? <> · cultura/regra: <strong>{recommendationContext.cropProfileCode}</strong></> : null}
             {recommendationContext.technologyLevel ? <> · nível tecnológico: <strong>{recommendationContext.technologyLevel}</strong></> : null}
           </p>
           {pkReadiness?.ready ? (
@@ -194,6 +251,23 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           ) : (
             <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>P/K quantitativo permanece bloqueado até fechar os campos abaixo. Outras recomendações tecnicamente sustentadas podem continuar sendo analisadas.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
           )}
+
+          {uniformPkReadiness && (
+            <div className="review-grid" style={{ marginTop: 10 }}>
+              {(["P2O5", "K2O"] as const).map((nutrient) => {
+                const state = uniformPkReadiness.nutrients[nutrient];
+                const dose = recommendationContext.deterministicPkDoses[nutrient];
+                return <div className="review-summary" key={nutrient}>
+                  <span>{nutrient} · aplicação uniforme</span>
+                  <strong>{state.ready && uniformPkReadiness.ruleReady ? `${state.soilLevel ?? "—"} · ${doseLabel(dose)}` : "Bloqueado"}</strong>
+                  {state.ready ? <small>{state.basis === "SINGLE_SAMPLE" ? "Base: amostra representativa única." : `Predominância estrita: ${state.matchingCount}/${state.totalCount} pontos concordantes.`}</small> : state.blockers.map((blocker) => <small key={blocker}>{blockerLabel(blocker)}</small>)}
+                  {state.ready && uniformPkReadiness.ruleId ? <small>Regra versionada: {uniformPkReadiness.ruleId}. A quantidade oficial é recalculada no servidor.</small> : null}
+                </div>;
+              })}
+            </div>
+          )}
+
+          {uniformPkReadiness && !uniformPkReadiness.ruleReady && <p className="report-empty-note" style={{ marginTop: 8 }}>{uniformPkReadiness.blockers.filter((code) => code.startsWith("PK_")).map(blockerLabel).join(" ")}</p>}
 
           {canRun && (
             <details style={{ marginTop: 10 }} open={!pkReadiness?.ready}>
