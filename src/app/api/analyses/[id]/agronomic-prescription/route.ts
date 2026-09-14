@@ -68,21 +68,24 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   // Governança obrigatória:
   // interpretação determinística -> revisão profissional -> APPROVED -> prescrição assistida
   // -> revisão/aprovação da prescrição. Nenhuma IA pula a decisão humana anterior.
-  const interpretation = await getLatestInterpretation(session.tenantId, id, session.userId);
+  const [interpretation, contextBeforeProvider] = await Promise.all([
+    getLatestInterpretation(session.tenantId, id, session.userId),
+    getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
+  ]);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
   if (!gate.allowed) {
     return Response.json({ error: gate.reason }, { status: 409 });
   }
 
-  // O pacote foi montado em uma transação separada. Se uma nova revisão tiver surgido entre a montagem
-  // da evidência e este gate, falhamos fechados em vez de enviar ao LLM uma revisão antiga enquanto
-  // gravamos a geração vinculada a outra. A prescrição precisa estar ancorada na MESMA revisão aprovada.
+  // O pacote foi montado em uma transação separada. Se a revisão determinística OU o contexto da safra
+  // mudou entre a leitura das evidências e este ponto, não enviamos um snapshot antigo ao provedor.
   if (
-    !evidence.deterministicInterpretation ||
-    evidence.deterministicInterpretation.id !== interpretation?.id ||
-    evidence.deterministicInterpretation.status !== "APPROVED"
+    !evidence.deterministicInterpretation
+    || evidence.deterministicInterpretation.id !== interpretation?.id
+    || evidence.deterministicInterpretation.status !== "APPROVED"
+    || evidence.season.updatedAt !== contextBeforeProvider.updatedAt
   ) {
-    return Response.json({ error: "A revisão determinística mudou durante a preparação da prescrição. Atualize a análise e tente novamente após confirmar a revisão aprovada atual." }, { status: 409 });
+    return Response.json({ error: "As evidências agronômicas mudaram durante a preparação da prescrição. Atualize a análise e gere novamente a partir da revisão e do contexto atuais." }, { status: 409 });
   }
 
   const provider = resolveAgronomicPrescriptionProvider();
@@ -94,12 +97,27 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: error instanceof Error ? error.message : "Falha ao gerar prescrição." }, { status: 502 });
   }
 
+  // O provedor pode levar alguns segundos. Revalidamos DEPOIS da chamada para fechar a janela em que
+  // um agrônomo poderia alterar a safra ou gerar/revisar uma nova interpretação enquanto a IA respondia.
+  // Se isso aconteceu, descartamos a resposta como geração corrente; nada é promovido nem persistido.
+  const [interpretationAfterProvider, contextAfterProvider] = await Promise.all([
+    getLatestInterpretation(session.tenantId, id, session.userId),
+    getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
+  ]);
+  if (
+    evidence.deterministicInterpretation.id !== interpretationAfterProvider?.id
+    || interpretationAfterProvider?.status !== "APPROVED"
+    || evidence.season.updatedAt !== contextAfterProvider.updatedAt
+  ) {
+    return Response.json({ error: "A interpretação ou o contexto da safra mudou enquanto a recomendação era gerada. A resposta antiga foi descartada; gere novamente com as evidências atuais." }, { status: 409 });
+  }
+
   const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);
   const created = await recordAgronomicPrescriptionGeneration({
     tenantId: session.tenantId,
     userId: session.userId,
     analysisId: id,
-    interpretationId: interpretation?.id ?? null,
+    interpretationId: interpretationAfterProvider.id,
     provider: result.provider,
     model: result.model,
     promptVersion: result.promptVersion,
