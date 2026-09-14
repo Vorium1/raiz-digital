@@ -1,0 +1,1 @@
+Integração A-H preparada em `feature/raiz-motor-regras-ready`. Este arquivo é apenas uma nota operacional do lote; a integração ocorre exclusivamente por PR para `develop`, com CI verde e sem alterar `main`.
