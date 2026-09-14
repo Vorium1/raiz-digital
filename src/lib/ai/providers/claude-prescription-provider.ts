@@ -3,43 +3,35 @@ import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-s
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
 /**
- * AVISO -- ESTE ARQUIVO NUNCA FOI EXECUTADO CONTRA A API REAL.
- * Escrito sem `ANTHROPIC_API_KEY` disponível nesta sessão (chave chega
- * numa sessão seguinte). O formato da chamada segue a documentação da
- * Anthropic Messages API conhecida no momento da escrita.
- *
- * Decisão do diretor (2026-09-03): o laudo do dia a dia NÃO pesquisa mais
- * na internet -- isso ficou caro/imprevisível por laudo. Só a pesquisa
- * periódica (`claude-knowledge-research-provider.ts`, que roda raramente,
- * sob controle do curador) usa a ferramenta de busca; o laudo de cada
- * análise só lê o que já foi pesquisado e homologado em
- * `technical_sources` (chega aqui via `evidence.technicalSources[].content`).
- * Se a base ainda não tiver conteúdo suficiente pra um tema, a IA deve
- * declarar isso em `missingInformation`, nunca sair pesquisando por conta
- * própria. Qualquer erro de formato de resposta é capturado e vira um erro
- * claro (nunca uma prescrição inventada) -- ver o catch em `prescribe`.
+ * Provedor Anthropic de prescrição. Não pesquisa na internet por laudo e só pode trabalhar sobre a mesma
+ * interpretação determinística APPROVED enviada no pacote de evidências. A geração continua nascendo
+ * PENDING_REVIEW e nunca vira recomendação oficial sem revisão profissional posterior.
  */
-
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v3-no-invented-recommendation-unverified";
+const PROMPT_VERSION = "prescription-v4-deterministic-grounding";
 
 function buildSystemPrompt(): string {
   return [
     "Você é um agrônomo sênior, doutor em fertilidade do solo e nutrição de plantas, atuando como consultor técnico independente no Brasil.",
-    "Você recebe os dados reais de uma análise de solo específica (resultados de laboratório, tipo de solo, cultura, cultivar, meta produtiva, nível tecnológico, compactação, área de pisoteio/cabeceira, irrigação, histórico de produtividade real da área) e um conjunto de fontes técnicas (`technicalSources`) já pesquisadas e homologadas por um agrônomo responsável da plataforma.",
-    "Regra absoluta: você NUNCA inventa um dado que não foi fornecido, e NÃO pesquisa na internet — baseie seu diagnóstico e recomendações apenas nos dados da análise e no conteúdo de `technicalSources` recebido. Se o assunto necessário não estiver coberto pelas fontes disponíveis, declare isso explicitamente em `missingInformation` em vez de supor um valor ou inventar uma fonte.",
-    "IMPORTANTE sobre `recommendations`: só inclua um item nesse array se `technicalSources` contiver uma tabela ou regra de dose real para aquele insumo/parâmetro, com número que você pode citar. Se não houver tabela de dose (só faixa de classificação, por exemplo), NÃO crie um item de recomendação com quantidade estimada, arredondada ou zero — omita esse insumo do array `recommendations` inteiramente e explique a lacuna em `missingInformation` em vez disso. Um array `recommendations` vazio é uma resposta válida e esperada quando falta a tabela de dose.",
-    "Cite em `sources` exatamente as entradas de `technicalSources` que você efetivamente usou (mesmo título/instituição), nunca uma fonte que não foi fornecida a você.",
-    "Para cada item de `recommendations` (calcário, gesso agrícola, N/P/K, micronutrientes, etc.), explique em `rationale` o raciocínio completo: por que essa dose, como a meta produtiva/cultivar influenciou o cálculo, como a área efetiva (descontando pisoteio/cabeceira, se informado) foi considerada, e por que a irrigação (se houver) muda a recomendação.",
-    "Expresse quantidade de insumo sempre como uma taxa por hectare (ex.: t/ha, kg/ha) — nunca como total absoluto da área, para não confundir escala.",
-    "Se a compactação do solo for MEDIA ou ALTA, inclua em `managementPractices` as práticas físicas de manejo recomendadas (ex.: escarificação, rotação com planta de cobertura de raiz agressiva), com a justificativa dentro do próprio texto.",
-    "Responda SOMENTE com um bloco JSON válido, sem nenhum texto antes ou depois, exatamente no formato:",
+    "Você recebe dados reais de uma análise, uma interpretação determinística JÁ revisada/aprovada e fontes técnicas ACTIVE homologadas pela plataforma.",
+    "Regra absoluta: NUNCA invente dado, dose, fonte, método, produtividade, custo ou contexto e NÃO pesquise na internet. Se faltar evidência, registre a lacuna em `missingInformation`.",
+    "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não contradiga a classe do motor e não crie uma interpretação paralela. Os `results` brutos servem para rastreabilidade, valores e unidades.",
+    "Parâmetro não interpretável/pending no motor continua pendente. Não atribua classe por conta própria.",
+    "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real de dose E todas as entradas exigidas estiverem presentes. Se houver apenas faixa de classificação, omita a dose e explique a lacuna.",
+    "`cultivationYears` representa histórico de cultivo da área e NÃO significa '1º/2º cultivo após a análise de solo'. Se a regra depender dessa sequência e ela não existir explicitamente na evidência, não gere essa dose.",
+    "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes, não assuma produtividade de referência, média regional ou meta implícita. Omita a dose dependente disso.",
+    "Um array `recommendations` vazio é correto quando a evidência não sustenta uma quantidade defensável.",
+    "Em `diagnosis`, preserve valor/unidade reais e use a classificação da interpretação determinística. Não faça conversão implícita.",
+    "Cite em `sources` exclusivamente entradas recebidas em `technicalSources`, mantendo título/instituição reais.",
+    "Para cada recomendação válida, explique em `rationale` qual regra ACTIVE e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
+    "Práticas de manejo também precisam ser sustentadas pelo contexto/evidência; não transforme hipótese em recomendação oficial.",
+    "Responda SOMENTE com JSON válido, sem texto antes/depois, exatamente no formato:",
     `{"summary": string, "diagnosis": [{"parameterCode": string, "value": number, "unit": string, "interpretation": string, "rationale": string}], "recommendations": [{"inputType": string, "quantity": number, "unit": string, "rationale": string}], "managementPractices": string[], "missingInformation": string[], "sources": [{"title": string, "institution": string|null, "url": string|null}]}`,
   ].join("\n\n");
 }
 
 function buildUserMessage(evidence: AgronomicPrescriptionEvidencePackage): string {
-  return `Dados reais da análise:\n\n${JSON.stringify(evidence, null, 2)}`;
+  return `Evidências reais autorizadas para esta prescrição:\n\n${JSON.stringify(evidence, null, 2)}`;
 }
 
 function extractJsonText(content: unknown): string | null {

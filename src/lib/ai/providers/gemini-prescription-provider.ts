@@ -4,15 +4,11 @@ import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription
 
 /**
  * Provedor de prescrição via Gemini. Toda prescrição continua subordinada ao gate de governança da rota:
- * só uma interpretação determinística APPROVED pode chegar aqui, e toda geração nasce PENDING_REVIEW.
- *
- * Fechamento 2026-09-12: a primeira integração pedia JSON apenas no prompt. Em dado real Cabeda o modelo
- * respondeu algo que não passou pelo schema e a rota devolveu 502. Agora a própria API recebe
- * `responseMimeType=application/json` + `responseJsonSchema`, reduzindo drasticamente a liberdade de formato.
- * O validador local continua obrigatório mesmo assim; structured output não substitui validação server-side.
+ * só a MESMA interpretação determinística APPROVED presente na evidência pode chegar aqui, e toda geração
+ * nasce PENDING_REVIEW.
  */
 
-const PROMPT_VERSION = "prescription-gemini-v3-structured-output";
+const PROMPT_VERSION = "prescription-gemini-v4-deterministic-grounding";
 const MAX_OUTPUT_TOKENS = 8000;
 
 const PRESCRIPTION_JSON_SCHEMA = {
@@ -71,13 +67,17 @@ const PRESCRIPTION_JSON_SCHEMA = {
 function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
   return [
     "Você é um agrônomo sênior, doutor em fertilidade do solo e nutrição de plantas, atuando como consultor técnico independente no Brasil.",
-    "Você recebe os dados reais de uma análise específica e fontes técnicas já presentes e homologadas na plataforma.",
+    "Você recebe dados reais de uma análise, uma interpretação determinística JÁ revisada/aprovada e fontes técnicas ACTIVE presentes na plataforma.",
     "Regra absoluta: NUNCA invente dado, dose, fonte, método, produtividade, custo ou contexto que não esteja nas evidências recebidas. Não pesquise na internet.",
-    "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela real que sustente a dose. Se houver apenas faixa de classificação, deixe a recomendação ausente e explique a lacuna em `missingInformation`.",
+    "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não substitua uma classe do motor e não crie uma segunda interpretação paralela. Os `results` brutos existem apenas para rastreabilidade, valores e unidades.",
+    "Se um parâmetro está marcado como não interpretável/pending na interpretação determinística, trate-o como informação pendente; não invente a classe correspondente.",
+    "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real que sustente a dose E todas as entradas exigidas por essa regra estiverem presentes no contexto.",
+    "`cultivationYears` descreve histórico de cultivo da área. NÃO interprete esse campo como '1º/2º cultivo após a análise de solo'. Se uma tabela de dose depender dessa sequência e ela não estiver explicitamente presente, não gere a dose e registre a falta em `missingInformation`.",
+    "Se a regra exigir meta de produtividade e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes, não assuma produtividade de referência, teto, média regional ou meta implícita: omita a dose dependente disso e registre a lacuna.",
     "Um array `recommendations` vazio é correto quando a evidência não sustenta uma dose. É melhor declarar falta de informação do que produzir uma recomendação aparentemente completa e tecnicamente falsa.",
-    "Em `diagnosis`, mantenha valor e unidade coerentes com o dado recebido. Não faça conversão implícita.",
+    "Em `diagnosis`, mantenha valor e unidade coerentes com o dado recebido e a classificação exatamente coerente com a interpretação determinística. Não faça conversão implícita.",
     "Em `sources`, use exclusivamente fontes recebidas em `technicalSources`; título deve corresponder à evidência. Se instituição/URL não existirem, use string vazia.",
-    "Para cada recomendação válida, explique em `rationale` a regra técnica usada e os fatores do contexto realmente disponíveis. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
+    "Para cada recomendação válida, explique em `rationale` qual regra ACTIVE foi usada e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
     "Práticas de manejo sem dose também precisam ser sustentadas pela evidência/contexto fornecido; não transformar hipótese em recomendação oficial.",
     "A resposta deve obedecer exatamente ao schema JSON solicitado pela API.",
     "",

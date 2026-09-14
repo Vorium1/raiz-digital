@@ -1,12 +1,12 @@
 import { withTenant } from "@/lib/db";
 
 /**
- * Pacote de evidências para a IA de PRESCRIÇÃO -- mais completo que o da
- * narrativa (`AgronomicEvidencePackage`), porque aqui a IA precisa de todo
- * o contexto físico da área para propor dose real (não só explicar uma
- * classificação já pronta). Mesma regra: nunca dá acesso a banco, tudo já
- * filtrado por tenant/RBAC antes de existir; nada aqui é inferido, é dado
- * real persistido ou `null`.
+ * Pacote de evidências para a IA de PRESCRIÇÃO.
+ *
+ * Regra central: a IA NÃO recebe apenas o laudo cru. Ela também recebe a revisão determinística mais
+ * recente que o motor já calculou. A rota só permite chegar ao provedor quando essa mesma revisão está
+ * APPROVED. Assim o modelo explica/transforma uma decisão já revisada; não cria uma segunda interpretação
+ * paralela a partir dos números brutos.
  */
 export type AgronomicPrescriptionEvidencePackage = {
   tenant: { id: string; name: string };
@@ -23,6 +23,14 @@ export type AgronomicPrescriptionEvidencePackage = {
   };
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
+  deterministicInterpretation: {
+    id: string;
+    revision: number;
+    status: string;
+    cropProfileId: string | null;
+    structuredOutput: unknown;
+    warnings: unknown;
+  } | null;
   results: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string; method: string }>;
   yieldHistory: Array<{ seasonLabel: string; crop: string; cultivar: string | null; yieldValue: number; yieldUnit: string }>;
   technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null; content: string | null }>;
@@ -58,12 +66,23 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
     const base = baseResult.rows[0];
     if (!base) return null;
 
-    const resultsResult = await client.query(
-      `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method
-       FROM lab_samples ls JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
-       WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid ORDER BY ls.laboratory_code, lr.parameter_code`,
-      [tenantId, analysisId],
-    );
+    const [resultsResult, interpretationResult] = await Promise.all([
+      client.query(
+        `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method
+         FROM lab_samples ls JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+         WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid ORDER BY ls.laboratory_code, lr.parameter_code`,
+        [tenantId, analysisId],
+      ),
+      client.query(
+        `SELECT id::text, revision, status::text, crop_profile_id::text AS "cropProfileId",
+                structured_output AS "structuredOutput", warnings
+         FROM interpretations
+         WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid
+         ORDER BY revision DESC
+         LIMIT 1`,
+        [tenantId, analysisId],
+      ),
+    ]);
 
     const yieldHistoryResult = await client.query(
       `SELECT season_label AS "seasonLabel", crop, cultivar, yield_value::float8 AS "yieldValue", yield_unit AS "yieldUnit"
@@ -71,10 +90,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       [tenantId, base.fieldId],
     );
 
-    // `crop_profile_id IS NULL` = conhecimento geral, não específico de uma cultura
-    // (ex.: fertilizante organomineral, fosfato natural, bioinsumos) -- vale pra
-    // qualquer cultura, por isso entra na evidência de todas, não só quando bate
-    // o crop_profile_id exato.
+    // Somente fontes ACTIVE entram. Fontes DRAFT nunca sustentam dose oficial.
     const sourcesResult = base.cropProfileId
       ? await client.query(
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE (crop_profile_id = $1::uuid OR crop_profile_id IS NULL) AND status = 'ACTIVE' ORDER BY title`,
@@ -99,6 +115,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       },
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
+      deterministicInterpretation: interpretationResult.rows[0] ?? null,
       results: resultsResult.rows,
       yieldHistory: yieldHistoryResult.rows,
       technicalSources: sourcesResult.rows,
