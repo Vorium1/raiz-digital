@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
+import { evaluateSourceVerificationCompleteness } from "@/domain/source-verification";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { readRawStoredFile } from "@/lib/storage";
@@ -41,10 +42,7 @@ async function computeAnalysisVerifiedState(client: PoolClient, tenantId: string
     [tenantId, analysisId],
   );
   const counts = result.rows[0] ?? { importCount: 0, archivedCount: 0, verifiedCount: 0 };
-  return {
-    verified: counts.importCount > 0 && counts.archivedCount === counts.importCount && counts.verifiedCount === counts.importCount,
-    ...counts,
-  };
+  return { ...counts, ...evaluateSourceVerificationCompleteness(counts) };
 }
 
 /** Recalcula o campo-resumo sem inferência: todo import vinculado precisa ter objeto bruto e confirmação exata. */
