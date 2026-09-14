@@ -1,7 +1,6 @@
 import { evaluatePrescriptionReviewTransition, type PrescriptionReviewDecision, type PrescriptionReviewStatus } from "@/domain/agronomic-prescription-review";
 import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
-import { canonicalCommercialTarget } from "@/domain/commercial-recommendation-targets";
-import { validateDeterministicPkRecommendation, type UniformPkTarget } from "@/domain/uniform-pk-readiness";
+import { validatePrescriptionPkRecommendations } from "@/domain/prescription-pk-validation";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
@@ -12,23 +11,12 @@ function interpretationItems(structuredOutput: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
-function ambiguousElementalPkInput(inputType: string) {
-  const code = inputType
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return new Set(["P", "K", "FOSFORO", "POTASSIO", "PHOSPHORUS", "POTASSIUM"]).has(code);
-}
-
 /**
  * Revisão transacional e concorrente-segura da prescrição.
  *
- * Além de freshness/interpretação APPROVED, P2O5/K2O passam por uma barreira adicional: o servidor
- * recalcula a dose com a tabela determinística, a cultura homologada, a meta produtiva, a ordem após a
- * análise e a representatividade dos pontos. A IA nunca vira autoridade de dose por ter produzido JSON.
+ * Além de freshness/interpretação APPROVED, P2O5/K2O passam pela MESMA barreira determinística usada
+ * antes da persistência da resposta do provedor. Isso também protege gerações históricas que possam ter
+ * sido criadas antes desse gate: dose inválida, duplicada, ambígua ou sem predominância não é promovida.
  */
 export async function reviewAgronomicPrescriptionSafely(input: {
   tenantId: string;
@@ -125,46 +113,34 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       }
 
       const recommendations = current.responsePayload?.prescription?.recommendations ?? [];
-      const interpreted = interpretationItems(state?.latestStructuredOutput);
-      for (let index = 0; index < recommendations.length; index += 1) {
-        const recommendation = recommendations[index];
-        if (typeof recommendation.inputType !== "string") continue;
-        const canonicalTarget = canonicalCommercialTarget(recommendation.inputType);
-        if (canonicalTarget !== "P2O5" && canonicalTarget !== "K2O") {
-          if (ambiguousElementalPkInput(recommendation.inputType)) {
-            throw new AiGenerationError(
-              `A recomendação “${recommendation.inputType}” é ambígua. P/K oficial precisa declarar P2O5 ou K2O explicitamente; nenhuma conversão elemental é feita por suposição.`,
-              409,
-            );
-          }
-          continue;
-        }
-        if (typeof recommendation.quantity !== "number" || typeof recommendation.unit !== "string") {
-          throw new AiGenerationError(`A recomendação de ${canonicalTarget} não possui quantidade/unidade válidas para validação determinística.`, 409);
-        }
-
-        const validation = validateDeterministicPkRecommendation({
-          cropCode: state?.cropProfileCode,
-          interpretation: interpreted,
-          yieldGoal: state?.yieldGoal,
-          yieldGoalUnit: state?.yieldGoalUnit,
-          cultivationOrderAfterSoilAnalysis: state?.cultivationOrderAfterSoilAnalysis,
-          nutrient: canonicalTarget as UniformPkTarget,
-          quantity: recommendation.quantity,
-          unit: recommendation.unit,
-        });
-        if (!validation.allowed || !validation.expected) {
-          const expected = validation.expected
-            ? ` Faixa/valor permitido pelo motor: ${validation.expected.minimumKgPerHa}–${validation.expected.maximumKgPerHa} kg/ha.`
+      const pkValidation = validatePrescriptionPkRecommendations({
+        recommendations,
+        cropCode: state?.cropProfileCode,
+        interpretation: interpretationItems(state?.latestStructuredOutput),
+        yieldGoal: state?.yieldGoal,
+        yieldGoalUnit: state?.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: state?.cultivationOrderAfterSoilAnalysis,
+      });
+      if (!pkValidation.allowed) {
+        const details = pkValidation.failures.map((failure) => {
+          const expected = failure.validation?.expected;
+          const expectedText = expected
+            ? ` permitido ${expected.minimumKgPerHa}–${expected.maximumKgPerHa} kg/ha`
             : "";
-          throw new AiGenerationError(
-            `${canonicalTarget} não pode ser promovido como dose oficial nesta análise. ${validation.blockers.join(", ")}.${expected}`,
-            409,
-          );
-        }
-        recommendationSources.set(index, `deterministic:${validation.expected.ruleId};ai_generation:${current.id}`);
-        deterministicPkValidated += 1;
+          return `${failure.inputType}: ${failure.blockers.join(", ")}${expectedText}`;
+        }).join("; ");
+        throw new AiGenerationError(
+          `P/K não pode ser promovido como dose oficial nesta análise. ${details}. Gere uma nova versão ancorada no motor determinístico.`,
+          409,
+        );
       }
+
+      for (const validated of pkValidation.validated) {
+        const expected = validated.validation.expected;
+        if (!expected) continue;
+        recommendationSources.set(validated.index, `deterministic:${expected.ruleId};ai_generation:${current.id}`);
+      }
+      deterministicPkValidated = pkValidation.validated.length;
     }
 
     await client.query(
