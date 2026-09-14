@@ -13,6 +13,8 @@ assert.equal(normalAnalysis.canGenerateVariableRate, false);
 assert.deepEqual(normalAnalysis.blockers, []);
 assert.equal(normalAnalysis.policy.extrapolationAllowed, false);
 assert.equal(normalAnalysis.policy.noDataMustRemainNoData, true);
+assert.equal(normalAnalysis.policy.finalProfessionalApprovalRequired, true);
+assert.equal(normalAnalysis.policy.universalRmseThresholdAvailable, false);
 
 const requestedWithoutEvidence = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
@@ -34,6 +36,23 @@ for (const expected of [
   "PROFESSIONAL_SPATIAL_REVIEW_REQUIRED",
 ]) assert.ok(requestedWithoutEvidence.blockers.includes(expected));
 
+const twoPoints = evaluateSpatialPrescriptionRequest({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  hasReliableSampleCoordinates: true,
+  activeSpatialPolicyId: "policy-rs-sc-v1",
+  sampleCount: 2,
+  hasSampleDepth: true,
+  hasAnalyticalMethod: true,
+  attributeQualityValidated: true,
+  sampleDistribution: "DISTRIBUTED",
+  requestedSpatialMethod: "THIESSEN",
+  professionalSpatialReviewApproved: true,
+});
+assert.equal(twoPoints.canGenerateVariableRate, false);
+assert.ok(twoPoints.blockers.includes("INSUFFICIENT_POINTS_FOR_2D_SURFACE"));
+assert.equal(twoPoints.policy.interpolationClass, "NONE");
+
 const fewPointsKriging = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
   hasFieldBoundary: true,
@@ -45,13 +64,15 @@ const fewPointsKriging = evaluateSpatialPrescriptionRequest({
   attributeQualityValidated: true,
   sampleDistribution: "DISTRIBUTED",
   requestedSpatialMethod: "KRIGING",
+  professionalSpatialReviewApproved: true,
   crossValidationPassed: true,
 });
 assert.equal(fewPointsKriging.canGenerateVariableRate, false);
+assert.ok(fewPointsKriging.blockers.includes("EXPLORATORY_ONLY_WITH_FEW_POINTS"));
 assert.ok(fewPointsKriging.blockers.includes("KRIGING_NOT_ALLOWED_WITH_FEW_POINTS"));
-assert.equal(fewPointsKriging.policy.interpolationClass, "REVIEW_ONLY");
+assert.equal(fewPointsKriging.policy.interpolationClass, "EXPLORATORY_ONLY");
 
-const mediumKriging = evaluateSpatialPrescriptionRequest({
+const mediumKrigingNeedsReview = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
   hasFieldBoundary: true,
   hasReliableSampleCoordinates: true,
@@ -64,8 +85,25 @@ const mediumKriging = evaluateSpatialPrescriptionRequest({
   requestedSpatialMethod: "KRIGING",
   crossValidationPassed: true,
 });
-assert.equal(mediumKriging.canGenerateVariableRate, false);
-assert.ok(mediumKriging.blockers.includes("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"));
+assert.equal(mediumKrigingNeedsReview.canGenerateVariableRate, false);
+assert.ok(mediumKrigingNeedsReview.blockers.includes("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"));
+assert.equal(mediumKrigingNeedsReview.policy.interpolationClass, "CANDIDATE_REVIEW");
+
+const mediumKrigingReviewed = evaluateSpatialPrescriptionRequest({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  hasReliableSampleCoordinates: true,
+  activeSpatialPolicyId: "policy-rs-sc-v1",
+  sampleCount: 70,
+  hasSampleDepth: true,
+  hasAnalyticalMethod: true,
+  attributeQualityValidated: true,
+  sampleDistribution: "DISTRIBUTED",
+  requestedSpatialMethod: "KRIGING",
+  professionalSpatialReviewApproved: true,
+});
+assert.equal(mediumKrigingReviewed.canGenerateVariableRate, true);
+assert.deepEqual(mediumKrigingReviewed.blockers, []);
 
 const enoughPointsNoCv = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
@@ -78,11 +116,28 @@ const enoughPointsNoCv = evaluateSpatialPrescriptionRequest({
   attributeQualityValidated: true,
   sampleDistribution: "DISTRIBUTED",
   requestedSpatialMethod: "KRIGING",
+  professionalSpatialReviewApproved: true,
   crossValidationPassed: false,
 });
 assert.equal(enoughPointsNoCv.canGenerateVariableRate, false);
 assert.deepEqual(enoughPointsNoCv.blockers, ["CROSS_VALIDATION_REQUIRED"]);
 assert.equal(enoughPointsNoCv.policy.interpolationClass, "CANDIDATE_WITH_CROSS_VALIDATION");
+
+const enoughPointsCvButNoReview = evaluateSpatialPrescriptionRequest({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  hasReliableSampleCoordinates: true,
+  activeSpatialPolicyId: "policy-rs-sc-v1",
+  sampleCount: 120,
+  hasSampleDepth: true,
+  hasAnalyticalMethod: true,
+  attributeQualityValidated: true,
+  sampleDistribution: "DISTRIBUTED",
+  requestedSpatialMethod: "KRIGING",
+  crossValidationPassed: true,
+});
+assert.equal(enoughPointsCvButNoReview.canGenerateVariableRate, false);
+assert.deepEqual(enoughPointsCvButNoReview.blockers, ["PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"]);
 
 const eligibleKriging = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
@@ -95,6 +150,7 @@ const eligibleKriging = evaluateSpatialPrescriptionRequest({
   attributeQualityValidated: true,
   sampleDistribution: "DISTRIBUTED",
   requestedSpatialMethod: "KRIGING",
+  professionalSpatialReviewApproved: true,
   crossValidationPassed: true,
 });
 assert.equal(eligibleKriging.canGenerateVariableRate, true);
@@ -116,9 +172,10 @@ const thiessenNeedsReview = evaluateSpatialPrescriptionRequest({
   requestedSpatialMethod: "THIESSEN",
 });
 assert.equal(thiessenNeedsReview.canGenerateVariableRate, false);
+assert.ok(thiessenNeedsReview.blockers.includes("EXPLORATORY_ONLY_WITH_FEW_POINTS"));
 assert.ok(thiessenNeedsReview.blockers.includes("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"));
 
-const thiessenReviewed = evaluateSpatialPrescriptionRequest({
+const thiessenReviewedStillExploratory = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
   hasFieldBoundary: true,
   hasReliableSampleCoordinates: true,
@@ -131,7 +188,9 @@ const thiessenReviewed = evaluateSpatialPrescriptionRequest({
   requestedSpatialMethod: "THIESSEN",
   professionalSpatialReviewApproved: true,
 });
-assert.equal(thiessenReviewed.canGenerateVariableRate, true);
+assert.equal(thiessenReviewedStillExploratory.canGenerateVariableRate, false);
+assert.deepEqual(thiessenReviewedStillExploratory.blockers, ["EXPLORATORY_ONLY_WITH_FEW_POINTS"]);
+assert.equal(thiessenReviewedStillExploratory.policy.interpolationClass, "EXPLORATORY_ONLY");
 
 const collinear = evaluateSpatialPrescriptionRequest({
   explicitRequested: true,
@@ -144,9 +203,10 @@ const collinear = evaluateSpatialPrescriptionRequest({
   attributeQualityValidated: true,
   sampleDistribution: "COLLINEAR",
   requestedSpatialMethod: "KRIGING",
+  professionalSpatialReviewApproved: true,
   crossValidationPassed: true,
 });
 assert.equal(collinear.canGenerateVariableRate, false);
 assert.ok(collinear.blockers.includes("SAMPLE_DISTRIBUTION_INVALID"));
 
-console.log("spatial-prescription-request: VRA opt-in, suporte amostral, revisão/CV e no-extrapolation enforced");
+console.log("spatial-prescription-request: VRA opt-in, <50 exploratório, CV e aprovação humana final; no-extrapolation enforced");
