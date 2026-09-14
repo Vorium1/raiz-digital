@@ -9,6 +9,7 @@ import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescripti
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
+import { validatePrescriptionPkRecommendations } from "@/domain/prescription-pk-validation";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
@@ -145,6 +146,30 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   });
   if (!afterProvider.current) {
     return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
+  }
+
+  // Defesa em profundidade: prompt não é barreira de segurança. Antes de persistir a geração, qualquer
+  // P2O5/K2O devolvido pelo provedor é recalculado no servidor com o mesmo motor determinístico. Se a IA
+  // inventar dose, usar P/K elemental ambíguo ou tentar contornar a heterogeneidade, a resposta inteira é
+  // descartada e não chega sequer ao estado PENDING_REVIEW.
+  const providerPkValidation = validatePrescriptionPkRecommendations({
+    recommendations: result.prescription.recommendations,
+    cropCode: contextAfterProvider.cropProfileCode,
+    interpretation: interpretationItems(interpretationAfterProvider?.structuredOutput),
+    yieldGoal: contextAfterProvider.yieldGoal,
+    yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
+    cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
+  });
+  if (!providerPkValidation.allowed) {
+    return Response.json({
+      error: "A resposta do provedor tentou propor P/K fora do motor determinístico da RAIZ. A geração foi descartada e nada foi salvo.",
+      blockers: providerPkValidation.failures.map((failure) => ({
+        inputType: failure.inputType,
+        nutrient: failure.nutrient,
+        blockers: failure.blockers,
+        expected: failure.validation?.expected ?? null,
+      })),
+    }, { status: 502 });
   }
 
   const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);
