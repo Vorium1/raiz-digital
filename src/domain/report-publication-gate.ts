@@ -11,6 +11,10 @@ export type ReportPublicationGateInput = {
   interpretationStatus: string | null;
   prescriptionId: string | null;
   prescriptionStatus: string | null;
+  interpretationIsLatest?: boolean;
+  prescriptionCurrent?: boolean;
+  sourceVerificationRequired?: boolean;
+  sourceHumanVerified?: boolean;
 };
 
 /** Regra pura da entrega oficial, sem banco e sem dependências de runtime. */
@@ -22,6 +26,24 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
     return {
       allowed: false,
       reason: "A interpretação precisa estar aprovada pelo responsável técnico antes da entrega oficial.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (input.interpretationIsLatest === false) {
+    return {
+      allowed: false,
+      reason: "Esta interpretação foi superada por uma revisão mais recente. Publique somente a revisão atual aprovada.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (input.sourceVerificationRequired === true && input.sourceHumanVerified !== true) {
+    return {
+      allowed: false,
+      reason: "A política desta empresa exige conferência humana do arquivo original do laudo antes da entrega oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
@@ -44,6 +66,15 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
         : input.prescriptionStatus === "CHANGES_REQUESTED"
           ? "A recomendação recebeu solicitação de ajuste e precisa de uma nova versão aprovada antes da publicação."
           : "A recomendação atual não está aprovada; a entrega oficial permanece bloqueada.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (input.prescriptionCurrent === false) {
+    return {
+      allowed: false,
+      reason: "A recomendação aprovada foi gerada com um contexto agronômico anterior. Gere e aprove uma nova versão antes da entrega oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
