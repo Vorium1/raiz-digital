@@ -17,8 +17,8 @@ CREATE TABLE agronomic_rule_executions (
   output_payload jsonb NOT NULL,
   created_by uuid NOT NULL REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
-  FOREIGN KEY (tenant_id, analysis_id) REFERENCES analyses(tenant_id, id) ON DELETE SET NULL (analysis_id),
-  FOREIGN KEY (tenant_id, crop_season_id) REFERENCES crop_seasons(tenant_id, id) ON DELETE SET NULL (crop_season_id),
+  FOREIGN KEY (tenant_id, analysis_id) REFERENCES analyses(tenant_id, id),
+  FOREIGN KEY (tenant_id, crop_season_id) REFERENCES crop_seasons(tenant_id, id),
   UNIQUE (tenant_id, id)
 );
 
@@ -34,7 +34,8 @@ CREATE POLICY tenant_isolation ON agronomic_rule_executions
   WITH CHECK (tenant_id = app.current_tenant_id());
 
 -- Ledger append-only no papel de runtime. Correções geram uma nova execução; nunca
--- alteram ou apagam a evidência que sustentou a execução anterior.
+-- alteram ou apagam a evidência que sustentou a execução anterior. As FKs também
+-- impedem apagar silenciosamente a análise/safra que uma execução histórica cita.
 GRANT SELECT, INSERT ON agronomic_rule_executions TO raiz_app;
 REVOKE UPDATE, DELETE ON agronomic_rule_executions FROM raiz_app;
 
