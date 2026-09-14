@@ -9,19 +9,37 @@ import type { NutrientGuarantees } from "@/domain/commercial-input-engine";
 
 const MANAGE_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
+function parseNullableNumber(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new CommercialInputProductError(`${key} precisa ser número ou nulo.`);
+  }
+  return value;
+}
+
+function parseGuarantees(value: unknown): NutrientGuarantees {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new CommercialInputProductError("guaranteesPercent precisa ser um objeto de garantias.");
+  }
+  return value as NutrientGuarantees;
+}
+
 function parseDraft(body: Record<string, unknown>): CommercialInputCatalogDraft {
+  if (body.active != null && typeof body.active !== "boolean") {
+    throw new CommercialInputProductError("active precisa ser booleano.");
+  }
   return {
     code: typeof body.code === "string" ? body.code : "",
     name: typeof body.name === "string" ? body.name : "",
     kind: body.kind as CommercialInputKind,
-    guaranteesPercent: body.guaranteesPercent && typeof body.guaranteesPercent === "object"
-      ? body.guaranteesPercent as NutrientGuarantees
-      : {},
-    prntPercent: body.prntPercent == null ? null : body.prntPercent as number,
-    pricePerTon: body.pricePerTon == null ? null : body.pricePerTon as number,
-    minRateKgPerHa: body.minRateKgPerHa == null ? null : body.minRateKgPerHa as number,
-    maxRateKgPerHa: body.maxRateKgPerHa == null ? null : body.maxRateKgPerHa as number,
-    active: body.active == null ? true : Boolean(body.active),
+    guaranteesPercent: parseGuarantees(body.guaranteesPercent),
+    prntPercent: parseNullableNumber(body, "prntPercent"),
+    pricePerTon: parseNullableNumber(body, "pricePerTon"),
+    minRateKgPerHa: parseNullableNumber(body, "minRateKgPerHa"),
+    maxRateKgPerHa: parseNullableNumber(body, "maxRateKgPerHa"),
+    active: body.active == null ? true : body.active,
   };
 }
 
