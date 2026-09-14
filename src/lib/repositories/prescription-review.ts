@@ -1,4 +1,5 @@
 import { evaluatePrescriptionReviewTransition, type PrescriptionReviewDecision, type PrescriptionReviewStatus } from "@/domain/agronomic-prescription-review";
+import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
@@ -9,6 +10,9 @@ import { AiGenerationError } from "@/lib/repositories/ai-generations";
  * O SELECT ... FOR UPDATE é essencial: duas aprovações simultâneas da mesma geração são serializadas.
  * A segunda enxerga o estado já decidido e vira no-op idempotente, em vez de promover as mesmas doses
  * uma segunda vez. O índice parcial da migration 026 é a segunda barreira no banco.
+ *
+ * Aprovação também falha fechada quando o cadastro da safra foi alterado depois da geração. A geração
+ * continua existindo como histórico, mas precisa ser refeita com o contexto atual antes de promover doses.
  */
 export async function reviewAgronomicPrescriptionSafely(input: {
   tenantId: string;
@@ -22,9 +26,11 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       id: string;
       analysisId: string;
       status: PrescriptionReviewStatus;
+      createdAt: string;
       responsePayload: { prescription?: { recommendations?: Array<{ inputType?: unknown; quantity?: unknown; unit?: unknown }> } } | null;
     }>(
-      `SELECT id::text, analysis_id::text AS "analysisId", status::text AS status, response_payload AS "responsePayload"
+      `SELECT id::text, analysis_id::text AS "analysisId", status::text AS status,
+              created_at::text AS "createdAt", response_payload AS "responsePayload"
        FROM ai_generations
        WHERE tenant_id = $1::uuid AND id = $2::uuid AND kind = 'AGRONOMIC_PRESCRIPTION'
        FOR UPDATE`,
@@ -32,6 +38,24 @@ export async function reviewAgronomicPrescriptionSafely(input: {
     );
     const current = locked.rows[0];
     if (!current) throw new AiGenerationError("Prescrição não encontrada.", 404);
+
+    if (input.decision === "APPROVED") {
+      const season = await client.query<{ updatedAt: string }>(
+        `SELECT cs.updated_at::text AS "updatedAt"
+         FROM analyses a
+         JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+         WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+         LIMIT 1`,
+        [input.tenantId, current.analysisId],
+      );
+      const freshness = evaluatePrescriptionContextFreshness({
+        generationCreatedAt: current.createdAt,
+        cropSeasonUpdatedAt: season.rows[0]?.updatedAt,
+      });
+      if (!freshness.current) {
+        throw new AiGenerationError(freshness.reason ?? "O contexto da prescrição mudou; gere uma nova versão.", 409);
+      }
+    }
 
     const transition = evaluatePrescriptionReviewTransition(current.status, input.decision);
     if (!transition.allowed) throw new AiGenerationError(transition.reason ?? "Transição de revisão inválida.", 409);
