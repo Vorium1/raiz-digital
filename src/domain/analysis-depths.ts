@@ -165,7 +165,17 @@ export const PREDEFINED_ANALYSIS_DEPTHS = ANALYSIS_DEPTHS.filter(
   (depth) => depth.id !== "personalizada",
 );
 
+export function isAnalysisDepthId(value: unknown): value is AnalysisDepthId {
+  return typeof value === "string" && ANALYSIS_DEPTHS.some((depth) => depth.id === value);
+}
+
 export function getAnalysisDepthById(id: string | undefined | null): AnalysisDepth | null {
   if (!id) return null;
   return ANALYSIS_DEPTHS.find((depth) => depth.id === id) ?? null;
+}
+
+export function getRequestedAnalysisLayer(id: AnalysisDepthId): 1 | 2 | 3 | 4 | null {
+  if (id === "personalizada") return null;
+  const depth = getAnalysisDepthById(id);
+  return depth ? (Math.max(...depth.layers) as 1 | 2 | 3 | 4) : null;
 }
