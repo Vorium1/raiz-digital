@@ -4,6 +4,7 @@ import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescri
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { getLatestAgronomicPrescription, listAgronomicPrescriptionHistory, recordAgronomicPrescriptionGeneration } from "@/lib/repositories/ai-generations";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
+import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
@@ -12,11 +13,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id } = await context.params;
-  const [latest, history, usage, interpretation] = await Promise.all([
+  const [latest, history, usage, interpretation, recommendationContext] = await Promise.all([
     getLatestAgronomicPrescription(session.tenantId, id, session.userId),
     listAgronomicPrescriptionHistory(session.tenantId, id, session.userId),
     getTenantPrescriptionUsage(session.tenantId),
     getLatestInterpretation(session.tenantId, id, session.userId),
+    getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
   return Response.json({
@@ -28,6 +30,14 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       reason: gate.allowed ? null : gate.reason,
       interpretationStatus: interpretation?.status ?? null,
       interpretationId: interpretation?.id ?? null,
+      recommendationContext: {
+        cropSeasonId: recommendationContext.cropSeasonId,
+        yieldGoal: recommendationContext.yieldGoal,
+        yieldGoalUnit: recommendationContext.yieldGoalUnit,
+        technologyLevel: recommendationContext.technologyLevel,
+        cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+        pkDoseReadiness: recommendationContext.pkDoseReadiness,
+      },
     },
   });
 }
