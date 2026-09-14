@@ -56,6 +56,20 @@ ALTER TABLE technical_sources
       AND length(trim(homologated_rule_id)) > 0
       AND quantitative_applicability_approved = true
     )
+  ),
+  ADD CONSTRAINT technical_sources_quantitative_approval_guard_chk
+  CHECK (
+    quantitative_applicability_approved = false
+    OR (
+      quantitative_use_status = 'HOMOLOGATED_DETERMINISTIC'
+      AND homologated_rule_id IS NOT NULL
+      AND length(trim(homologated_rule_id)) > 0
+    )
+  ),
+  ADD CONSTRAINT technical_sources_rule_id_guard_chk
+  CHECK (
+    homologated_rule_id IS NULL
+    OR quantitative_use_status = 'HOMOLOGATED_DETERMINISTIC'
   );
 
 CREATE INDEX technical_sources_evidence_type_idx
