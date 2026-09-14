@@ -13,6 +13,7 @@ export const auditActionLabel: Record<string, string> = {
   CROP_SEASON_CREATED: "Safra cadastrada",
   CROP_SEASON_UPDATED: "Safra editada",
   CROP_SEASON_DELETED: "Safra excluída",
+  NITROGEN_RECOMMENDATION_CONTEXT_UPDATED: "Contexto de nitrogênio atualizado",
   CLIENT_CREATED: "Cliente cadastrado",
   CLIENT_UPDATED: "Cliente editado",
   CLIENT_DELETED: "Cliente excluído",
