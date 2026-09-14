@@ -154,11 +154,11 @@ export function validateKnowledgeResearchSources(value: unknown): KnowledgeResea
       source.peerReviewed = candidate.peerReviewed as boolean | null;
     }
 
-    // A coleta de pesquisa nunca pode auto-homologar uma regra quantitativa.
-    // Esse estado só pode existir após a etapa explícita de curadoria da plataforma.
-    if (source.quantitativeUseStatus === "HOMOLOGATED_DETERMINISTIC") {
-      if (!source.homologatedRuleId || source.quantitativeApplicabilityApproved !== true) return null;
-    }
+    // A etapa de pesquisa só propõe evidência. Homologação quantitativa é uma
+    // mutação de curadoria separada e nunca pode vir do payload gerado por IA.
+    if (source.quantitativeUseStatus === "HOMOLOGATED_DETERMINISTIC") return null;
+    if (source.quantitativeApplicabilityApproved === true) return null;
+    if (source.homologatedRuleId) return null;
 
     sources.push(source);
   }
