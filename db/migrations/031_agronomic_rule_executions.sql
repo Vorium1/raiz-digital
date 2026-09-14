@@ -6,8 +6,8 @@ BEGIN;
 CREATE TABLE agronomic_rule_executions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  analysis_id uuid REFERENCES analyses(id) ON DELETE SET NULL,
-  crop_season_id uuid REFERENCES crop_seasons(id) ON DELETE SET NULL,
+  analysis_id uuid,
+  crop_season_id uuid,
   rule_id text NOT NULL,
   rule_version text NOT NULL,
   source_snapshot_id text NOT NULL,
@@ -17,6 +17,8 @@ CREATE TABLE agronomic_rule_executions (
   output_payload jsonb NOT NULL,
   created_by uuid NOT NULL REFERENCES users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id, analysis_id) REFERENCES analyses(tenant_id, id) ON DELETE SET NULL (analysis_id),
+  FOREIGN KEY (tenant_id, crop_season_id) REFERENCES crop_seasons(tenant_id, id) ON DELETE SET NULL (crop_season_id),
   UNIQUE (tenant_id, id)
 );
 
