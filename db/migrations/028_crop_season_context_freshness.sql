@@ -24,15 +24,20 @@ ALTER TABLE crop_seasons
 COMMENT ON COLUMN crop_seasons.updated_at IS
   'Última mudança persistida no contexto da safra. Prescrições de IA anteriores a esta data são históricas/stale e devem ser regeneradas antes de aprovação.';
 
--- Não dependemos de cada rota lembrar de atualizar o timestamp. Qualquer UPDATE
--- na safra (cultura, cultivar, meta, manejo, irrigação, tecnologia etc.) toca o
--- contexto e, portanto, torna uma geração anterior um snapshot histórico.
+-- Não dependemos de cada rota lembrar de atualizar o timestamp. Qualquer mudança
+-- REAL na safra (cultura, cultivar, meta, manejo, irrigação, tecnologia etc.)
+-- toca o contexto. UPDATE idempotente com os mesmos valores não invalida uma
+-- prescrição só porque o usuário clicou em "salvar" novamente.
 CREATE OR REPLACE FUNCTION touch_crop_seasons_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  NEW.updated_at := now();
+  IF (to_jsonb(NEW) - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'updated_at') THEN
+    NEW.updated_at := now();
+  ELSE
+    NEW.updated_at := OLD.updated_at;
+  END IF;
   RETURN NEW;
 END;
 $$;
