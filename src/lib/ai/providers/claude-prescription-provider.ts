@@ -2,13 +2,8 @@ import type { AgronomicPrescriptionProvider, AgronomicPrescriptionProviderResult
 import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-/**
- * Provedor Anthropic de prescrição. Não pesquisa na internet por laudo e só pode trabalhar sobre a mesma
- * interpretação determinística APPROVED enviada no pacote de evidências. A geração continua nascendo
- * PENDING_REVIEW e nunca vira recomendação oficial sem revisão profissional posterior.
- */
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v5-explicit-recommendation-context";
+const PROMPT_VERSION = "prescription-v6-deterministic-pk-gate";
 
 function buildSystemPrompt(): string {
   return [
@@ -17,16 +12,18 @@ function buildSystemPrompt(): string {
     "Regra absoluta: NUNCA invente dado, dose, fonte, método, produtividade, custo ou contexto e NÃO pesquise na internet. Se faltar evidência, registre a lacuna em `missingInformation`.",
     "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não contradiga a classe do motor e não crie uma interpretação paralela. Os `results` brutos servem para rastreabilidade, valores e unidades.",
     "Parâmetro não interpretável/pending no motor continua pendente. Não atribua classe por conta própria.",
-    "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real de dose E todas as entradas exigidas estiverem presentes. Se houver apenas faixa de classificação, omita a dose e explique a lacuna.",
+    "Só inclua `recommendations` quando houver regra técnica rastreável e todas as entradas exigidas estiverem presentes. Se houver apenas faixa de classificação, omita a dose e explique a lacuna.",
     "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` representa apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
-    "Para doses de P/K que dependem do contexto CQFS atual, respeite `pkDoseReadiness`: se `ready=false`, não gere a dose de P2O5/K2O e registre os `blockers` em `missingInformation`. Não contorne o gate com inferências.",
-    "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados por `pkDoseReadiness`, não assuma produtividade de referência, média regional ou meta implícita.",
-    "`season.technologyLevel` é metadado/cenário e NÃO é multiplicador de dose. Não aumente ou reduza adubação apenas por BAIXO/MEDIO/ALTO sem uma regra ACTIVE explícita recebida em `technicalSources`.",
+    "P/K tem regra especial e rígida: `pkDoseReadiness` valida contexto; `uniformPkReadiness` valida cultura/regra e representatividade dos pontos; `deterministicPkDoses` contém a dose/faixa calculada pelo motor. Se qualquer gate estiver bloqueado para um nutriente, NÃO gere P2O5/K2O para ele e registre os blockers em `missingInformation`.",
+    "Quando `deterministicPkDoses.P2O5` ou `.K2O` estiver `ready=true`, NÃO recalcule nem estime a dose: use somente o valor/faixa fornecido pelo motor. Para valor não discricionário, a quantidade deve ser exatamente `expected.doseKgPerHa` em kg/ha. A aprovação no servidor recalculará e rejeitará divergências.",
+    "Nunca transforme maioria simples, média de pontos ou 50% de concordância em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
+    "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados, não assuma produtividade de referência, média regional ou meta implícita.",
+    "`season.technologyLevel` é metadado/cenário e NÃO é multiplicador de dose. Não aumente ou reduza adubação apenas por BAIXO/MEDIO/ALTO sem uma regra quantitativa homologada.",
     "Taxa variável é um fluxo separado e sob demanda. Este provedor gera recomendação por hectare no contexto da análise; não crie mapa, zona, pixel ou dose espacial sem uma solicitação espacial explícita e um gate espacial próprio.",
     "Um array `recommendations` vazio é correto quando a evidência não sustenta uma quantidade defensável.",
     "Em `diagnosis`, preserve valor/unidade reais e use a classificação da interpretação determinística. Não faça conversão implícita.",
     "Cite em `sources` exclusivamente entradas recebidas em `technicalSources`, mantendo título/instituição reais.",
-    "Para cada recomendação válida, explique em `rationale` qual regra ACTIVE e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
+    "Para cada recomendação válida, explique em `rationale` qual regra e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
     "Práticas de manejo também precisam ser sustentadas pelo contexto/evidência; não transforme hipótese em recomendação oficial.",
     "Responda SOMENTE com JSON válido, sem texto antes/depois, exatamente no formato:",
     `{"summary": string, "diagnosis": [{"parameterCode": string, "value": number, "unit": string, "interpretation": string, "rationale": string}], "recommendations": [{"inputType": string, "quantity": number, "unit": string, "rationale": string}], "managementPractices": string[], "missingInformation": string[], "sources": [{"title": string, "institution": string|null, "url": string|null}]}`,

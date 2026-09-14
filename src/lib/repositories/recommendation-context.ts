@@ -16,6 +16,7 @@ type RecommendationContextRow = {
   technologyLevel: string | null;
   cultivationYears: number | null;
   cultivationOrderAfterSoilAnalysis: number | null;
+  cropProfileCode: string | null;
   updatedAt: string;
 };
 
@@ -27,6 +28,7 @@ function mapContext(row: RecommendationContextRow) {
     technologyLevel: row.technologyLevel,
     cultivationYears: row.cultivationYears,
     cultivationOrderAfterSoilAnalysis: row.cultivationOrderAfterSoilAnalysis,
+    cropProfileCode: row.cropProfileCode,
     updatedAt: row.updatedAt,
     pkDoseReadiness: evaluatePkDoseReadiness({
       yieldGoal: row.yieldGoal,
@@ -37,15 +39,17 @@ function mapContext(row: RecommendationContextRow) {
 }
 
 const SELECT_CONTEXT = `
-  SELECT id::text,
-         yield_goal::float8 AS "yieldGoal",
-         yield_goal_unit AS "yieldGoalUnit",
-         technology_level AS "technologyLevel",
-         cultivation_years AS "cultivationYears",
-         cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
-         updated_at::text AS "updatedAt"
-  FROM crop_seasons
-  WHERE tenant_id = $1::uuid AND id = $2::uuid
+  SELECT cs.id::text,
+         cs.yield_goal::float8 AS "yieldGoal",
+         cs.yield_goal_unit AS "yieldGoalUnit",
+         cs.technology_level AS "technologyLevel",
+         cs.cultivation_years AS "cultivationYears",
+         cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+         cp.code AS "cropProfileCode",
+         cs.updated_at::text AS "updatedAt"
+  FROM crop_seasons cs
+  LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+  WHERE cs.tenant_id = $1::uuid AND cs.id = $2::uuid
 `;
 
 export async function getRecommendationContext(input: {
@@ -61,10 +65,6 @@ export async function getRecommendationContext(input: {
   });
 }
 
-/**
- * Leitura leve do contexto a partir de uma análise. Evita reconstruir todo o pacote de evidências da IA
- * só para a interface explicar por que P/K ainda está ou não pronto para dose quantitativa.
- */
 export async function getRecommendationContextByAnalysis(input: {
   tenantId: string;
   userId: string;
@@ -78,9 +78,11 @@ export async function getRecommendationContextByAnalysis(input: {
               cs.technology_level AS "technologyLevel",
               cs.cultivation_years AS "cultivationYears",
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+              cp.code AS "cropProfileCode",
               cs.updated_at::text AS "updatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
        LIMIT 1`,
       [input.tenantId, input.analysisId],
@@ -116,7 +118,7 @@ export async function updateRecommendationContext(input: {
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const currentResult = await client.query<RecommendationContextRow>(
-      `${SELECT_CONTEXT} FOR UPDATE`,
+      `${SELECT_CONTEXT} FOR UPDATE OF cs`,
       [input.tenantId, input.cropSeasonId],
     );
     const current = currentResult.rows[0];
@@ -133,11 +135,9 @@ export async function updateRecommendationContext(input: {
     if (nextYieldGoalUnit !== current.yieldGoalUnit) changedFields.push("yieldGoalUnit");
     if (nextCultivationOrder !== current.cultivationOrderAfterSoilAnalysis) changedFields.push("cultivationOrderAfterSoilAnalysis");
 
-    // Salvar exatamente o mesmo contexto não cria uma "mudança" artificial nem invalida uma prescrição
-    // já gerada. A versão temporal só avança quando o conteúdo agronômico realmente muda.
     if (changedFields.length === 0) return mapContext(current);
 
-    const updated = await client.query<RecommendationContextRow>(
+    const updated = await client.query<Omit<RecommendationContextRow, "cropProfileCode">>(
       `UPDATE crop_seasons
        SET yield_goal = $3::numeric,
            yield_goal_unit = $4::text,
@@ -157,7 +157,7 @@ export async function updateRecommendationContext(input: {
     const row = updated.rows[0];
     if (!row) throw new RecommendationContextError("Safra não encontrada.", 404);
 
-    const context = mapContext(row);
+    const context = mapContext({ ...row, cropProfileCode: current.cropProfileCode });
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,

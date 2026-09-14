@@ -8,8 +8,24 @@ import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommend
 import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
+import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
+import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
+function interpretationItems(structuredOutput: unknown) {
+  if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
+  const value = (structuredOutput as { interpretation?: unknown }).interpretation;
+  return Array.isArray(value) ? value : [];
+}
+
+function prescriptionRecommendations(responsePayload: unknown): PrescriptionRecommendationCandidate[] {
+  if (!responsePayload || typeof responsePayload !== "object" || Array.isArray(responsePayload)) return [];
+  const prescription = (responsePayload as { prescription?: unknown }).prescription;
+  if (!prescription || typeof prescription !== "object" || Array.isArray(prescription)) return [];
+  const recommendations = (prescription as { recommendations?: unknown }).recommendations;
+  return Array.isArray(recommendations) ? recommendations as PrescriptionRecommendationCandidate[] : [];
+}
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -29,6 +45,40 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     analysisId: id,
     generationId: latest?.id,
   });
+  const interpreted = interpretationItems(interpretation?.structuredOutput);
+  const uniformPkReadiness = evaluateUniformPkReadiness({
+    cropCode: recommendationContext.cropProfileCode,
+    interpretation: interpreted,
+  });
+  const deterministicPkDoses = {
+    P2O5: computeDeterministicPkDose({
+      cropCode: recommendationContext.cropProfileCode,
+      interpretation: interpreted,
+      yieldGoal: recommendationContext.yieldGoal,
+      yieldGoalUnit: recommendationContext.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      nutrient: "P2O5",
+    }),
+    K2O: computeDeterministicPkDose({
+      cropCode: recommendationContext.cropProfileCode,
+      interpretation: interpreted,
+      yieldGoal: recommendationContext.yieldGoal,
+      yieldGoalUnit: recommendationContext.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      nutrient: "K2O",
+    }),
+  };
+  const prescriptionPkValidation = latest
+    ? validatePrescriptionPkRecommendations({
+        recommendations: prescriptionRecommendations(latest.responsePayload),
+        cropCode: recommendationContext.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: recommendationContext.yieldGoal,
+        yieldGoalUnit: recommendationContext.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      })
+    : null;
+
   return Response.json({
     latest,
     history,
@@ -39,14 +89,18 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       interpretationStatus: interpretation?.status ?? null,
       interpretationId: interpretation?.id ?? null,
       prescriptionFreshness,
+      prescriptionPkValidation,
       recommendationContext: {
         cropSeasonId: recommendationContext.cropSeasonId,
         yieldGoal: recommendationContext.yieldGoal,
         yieldGoalUnit: recommendationContext.yieldGoalUnit,
         technologyLevel: recommendationContext.technologyLevel,
         cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+        cropProfileCode: recommendationContext.cropProfileCode,
         updatedAt: recommendationContext.updatedAt,
         pkDoseReadiness: recommendationContext.pkDoseReadiness,
+        uniformPkReadiness,
+        deterministicPkDoses,
       },
     },
   });
@@ -69,9 +123,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: "Não há resultado de laboratório vinculado a esta análise ainda." }, { status: 409 });
   }
 
-  // Governança obrigatória:
-  // interpretação determinística -> revisão profissional -> APPROVED -> prescrição assistida
-  // -> revisão/aprovação da prescrição. Nenhuma IA pula a decisão humana anterior.
   const [interpretation, contextBeforeProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
@@ -101,9 +152,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: error instanceof Error ? error.message : "Falha ao gerar prescrição." }, { status: 502 });
   }
 
-  // O provedor pode levar alguns segundos. Revalidamos DEPOIS da chamada para fechar a janela em que
-  // um agrônomo poderia alterar a safra ou gerar/revisar uma nova interpretação enquanto a IA respondia.
-  // Se isso aconteceu, descartamos a resposta como geração corrente; nada é promovido nem persistido.
   const [interpretationAfterProvider, contextAfterProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
@@ -117,6 +165,29 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   });
   if (!afterProvider.current) {
     return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
+  }
+
+  // Prompt não é barreira de segurança. Antes de persistir, qualquer P2O5/K2O devolvido pelo provedor
+  // é recalculado no servidor. Dose inventada, P/K elemental ambíguo, duplicidade ou tentativa de
+  // contornar heterogeneidade descarta a resposta inteira; nada chega a PENDING_REVIEW.
+  const providerPkValidation = validatePrescriptionPkRecommendations({
+    recommendations: result.prescription.recommendations,
+    cropCode: contextAfterProvider.cropProfileCode,
+    interpretation: interpretationItems(interpretationAfterProvider?.structuredOutput),
+    yieldGoal: contextAfterProvider.yieldGoal,
+    yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
+    cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
+  });
+  if (!providerPkValidation.allowed) {
+    return Response.json({
+      error: "A resposta do provedor tentou propor P/K fora do motor determinístico da RAIZ. A geração foi descartada e nada foi salvo.",
+      blockers: providerPkValidation.failures.map((failure) => ({
+        inputType: failure.inputType,
+        nutrient: failure.nutrient,
+        blockers: failure.blockers,
+        expected: failure.validation?.expected ?? null,
+      })),
+    }, { status: 502 });
   }
 
   const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);

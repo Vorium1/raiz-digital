@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 import { computeLimingDoseBySmpIndex } from "../src/domain/liming-engine.ts";
 import { computeParameterPredominance } from "../src/domain/parameter-predominance.ts";
+import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "../src/domain/uniform-pk-readiness.ts";
 
 // Fixture de regressão: Área 01 / AN-CABEDA-01, transcrita do mesmo conjunto real já mantido em
 // scripts/import-cabeda-solo-2026.mjs. Este teste NÃO inventa uma nova análise e NÃO acessa banco.
@@ -94,6 +95,44 @@ const kPredominance = predominance.find((item) => item.parameterCode === "K");
 assert.equal(pPredominance, undefined, "P tem 4/8 pontos em Alto (50%): não é maioria estrita e não pode virar dose uniforme por predominância.");
 assert.deepEqual(kPredominance && { classification: kPredominance.classification, matchingCount: kPredominance.matchingCount, totalCount: kPredominance.totalCount }, { classification: "Alto", matchingCount: 5, totalCount: 8 });
 
+// Fechamento direto do achado #27: o fixture real alimenta o MESMO gate usado pela API/revisão.
+// P continua bloqueado em 4/8; K pode usar a classe Alto em 5/8. Nenhuma média/maioria simples entra.
+const uniformPk = evaluateUniformPkReadiness({ cropCode: "SOJA", interpretation: engine.interpretation });
+assert.equal(uniformPk.ruleId, "PK-SOJA-CQFS-2016");
+assert.equal(uniformPk.ruleReady, true);
+assert.equal(uniformPk.ready, false);
+assert.equal(uniformPk.nutrients.P2O5.ready, false);
+assert.ok(uniformPk.nutrients.P2O5.blockers.includes("P_NO_STRICT_PREDOMINANCE"));
+assert.equal(uniformPk.nutrients.K2O.ready, true);
+assert.equal(uniformPk.nutrients.K2O.soilLevel, "Alto");
+assert.equal(uniformPk.nutrients.K2O.matchingCount, 5);
+
+// Mesmo se o usuário completar o contexto agronômico, a heterogeneidade de P continua sendo barreira.
+// K, por outro lado, calcula pela tabela CQFS para o mesmo cenário explícito (soja, 4,2 t/ha, 1º cultivo).
+const pWithCompleteContext = computeDeterministicPkDose({
+  cropCode: "SOJA",
+  interpretation: engine.interpretation,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+  nutrient: "P2O5",
+});
+assert.equal(pWithCompleteContext.ready, false);
+assert.ok(pWithCompleteContext.blockers.includes("P_NO_STRICT_PREDOMINANCE"));
+assert.equal(pWithCompleteContext.expected, null);
+
+const kWithCompleteContext = computeDeterministicPkDose({
+  cropCode: "SOJA",
+  interpretation: engine.interpretation,
+  yieldGoal: 4.2,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+  nutrient: "K2O",
+});
+assert.equal(kWithCompleteContext.ready, true);
+assert.equal(kWithCompleteContext.expected?.soilLevel, "Alto");
+assert.equal(kWithCompleteContext.expected?.doseKgPerHa, 105);
+
 const limePh6 = AREA_01.map((row) => computeLimingDoseBySmpIndex(row.smp, "6.0").doseTonPerHaPrnt100);
 assert.deepEqual(limePh6, [5.4, 6.1, 4.2, 4.2, 4.2, 4.2, 4.8, 4.8]);
 const limeMean = limePh6.reduce((sum, value) => sum + value, 0) / limePh6.length;
@@ -104,17 +143,14 @@ assert.equal(Math.max(...limePh6), 6.1);
 const sulfurBelow10 = AREA_01.filter((row) => row.s < 10).length;
 assert.equal(sulfurBelow10, 5);
 
-// O laudo Cabeda importado não informa meta de produtividade nem qual é o 1º/2º cultivo APÓS esta
-// análise. `cultivation_years` representa idade/histórico da área e NÃO substitui a dimensão da tabela
-// CQFS relativa à análise. Portanto o ensaio deliberadamente NÃO chama computeGrainFertilizerDose para
-// produzir uma dose P/K oficial: faltam entradas de decisão, e P nem sequer tem predominância >50%.
 const recommendationBlockers = [
   "YIELD_GOAL_MISSING",
   "CULTIVATION_SEQUENCE_AFTER_ANALYSIS_MISSING",
-  "P_NO_STRICT_PREDOMINANCE",
+  ...uniformPk.nutrients.P2O5.blockers,
   "SAMPLE_COORDINATES_NOT_VERIFIED_FOR_VARIABLE_RATE",
 ];
 assert.ok(recommendationBlockers.includes("CULTIVATION_SEQUENCE_AFTER_ANALYSIS_MISSING"));
+assert.ok(recommendationBlockers.includes("P_NO_STRICT_PREDOMINANCE"));
 
 console.log(JSON.stringify({
   scenario: "Cabeda / Área 01 / AN-CABEDA-01",
@@ -122,6 +158,9 @@ console.log(JSON.stringify({
   pClassifications: classes("P"),
   kClassifications: classes("K"),
   predominance: predominance.map(({ parameterCode, classification, matchingCount, totalCount }) => ({ parameterCode, classification, matchingCount, totalCount })),
+  uniformPk,
+  pDoseWithCompleteContext: pWithCompleteContext,
+  kDoseWithCompleteContext: kWithCompleteContext,
   limePh6Prnt100TonHa: { bySample: limePh6, mean: 4.74, min: 4.2, max: 6.1 },
   sulfurBelow10MgDm3: sulfurBelow10,
   recommendationBlockers,

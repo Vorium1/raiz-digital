@@ -2,13 +2,7 @@ import type { AgronomicPrescriptionProvider, AgronomicPrescriptionProviderResult
 import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-/**
- * Provedor de prescrição via Gemini. Toda prescrição continua subordinada ao gate de governança da rota:
- * só a MESMA interpretação determinística APPROVED presente na evidência pode chegar aqui, e toda geração
- * nasce PENDING_REVIEW.
- */
-
-const PROMPT_VERSION = "prescription-gemini-v5-explicit-recommendation-context";
+const PROMPT_VERSION = "prescription-gemini-v6-deterministic-pk-gate";
 const MAX_OUTPUT_TOKENS = 8000;
 
 const PRESCRIPTION_JSON_SCHEMA = {
@@ -71,16 +65,18 @@ function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
     "Regra absoluta: NUNCA invente dado, dose, fonte, método, produtividade, custo ou contexto que não esteja nas evidências recebidas. Não pesquise na internet.",
     "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não substitua uma classe do motor e não crie uma segunda interpretação paralela. Os `results` brutos existem apenas para rastreabilidade, valores e unidades.",
     "Se um parâmetro está marcado como não interpretável/pending na interpretação determinística, trate-o como informação pendente; não invente a classe correspondente.",
-    "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real que sustente a dose E todas as entradas exigidas por essa regra estiverem presentes no contexto.",
+    "Só inclua `recommendations` quando houver regra técnica rastreável e todas as entradas exigidas estiverem presentes no contexto.",
     "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` descreve apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
-    "Para doses de P/K que dependem do contexto CQFS atual, respeite `pkDoseReadiness`: se `ready=false`, não gere dose de P2O5/K2O; registre os `blockers` em `missingInformation` e não tente inferir os dados ausentes.",
-    "Se a regra exigir meta de produtividade e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados por `pkDoseReadiness`, não assuma produtividade de referência, teto, média regional ou meta implícita.",
-    "`season.technologyLevel` é apenas metadado/cenário. NÃO aumente ou reduza dose por BAIXO/MEDIO/ALTO sem regra quantitativa ACTIVE explícita em `technicalSources`.",
+    "Para P/K, use os três blocos recebidos: `pkDoseReadiness` (contexto), `uniformPkReadiness` (cultura/regra + representatividade) e `deterministicPkDoses` (dose/faixa calculada pelo motor). Se qualquer gate estiver bloqueado para um nutriente, NÃO gere P2O5/K2O para ele e registre os blockers em `missingInformation`.",
+    "Quando `deterministicPkDoses.P2O5` ou `.K2O` estiver `ready=true`, NÃO recalcule, estime nem ajuste por conta própria: para dose não discricionária, copie exatamente `expected.doseKgPerHa` em kg/ha. O servidor recalculará antes de promover a recomendação oficial.",
+    "Nunca transforme maioria simples, média ou 50% dos pontos em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
+    "Se a regra exigir meta de produtividade e ela estiver ausente ou não suportada, não assuma produtividade de referência, teto, média regional ou meta implícita.",
+    "`season.technologyLevel` é apenas metadado/cenário. NÃO aumente ou reduza dose por BAIXO/MEDIO/ALTO sem regra quantitativa homologada.",
     "Taxa variável é um fluxo separado e sob demanda. Este provedor não deve criar mapa, zona, pixel ou dose espacial sem solicitação espacial explícita e gate espacial próprio.",
     "Um array `recommendations` vazio é correto quando a evidência não sustenta uma dose. É melhor declarar falta de informação do que produzir uma recomendação aparentemente completa e tecnicamente falsa.",
     "Em `diagnosis`, mantenha valor e unidade coerentes com o dado recebido e a classificação exatamente coerente com a interpretação determinística. Não faça conversão implícita.",
     "Em `sources`, use exclusivamente fontes recebidas em `technicalSources`; título deve corresponder à evidência. Se instituição/URL não existirem, use string vazia.",
-    "Para cada recomendação válida, explique em `rationale` qual regra ACTIVE foi usada e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
+    "Para cada recomendação válida, explique em `rationale` qual regra foi usada e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
     "Práticas de manejo sem dose também precisam ser sustentadas pela evidência/contexto fornecido; não transformar hipótese em recomendação oficial.",
     "A resposta deve obedecer exatamente ao schema JSON solicitado pela API.",
     "",

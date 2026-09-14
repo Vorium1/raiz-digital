@@ -31,20 +31,64 @@ type PkDoseReadiness = {
   blockers: string[];
   normalized: { yieldGoalTonPerHa: number | null; cultivationYear: "PRIMEIRO" | "SEGUNDO" | null };
 };
+type UniformPkNutrientReadiness = {
+  nutrient: "P2O5" | "K2O";
+  ready: boolean;
+  soilLevel: string | null;
+  matchingCount: number;
+  totalCount: number;
+  basis: "SINGLE_SAMPLE" | "STRICT_PREDOMINANCE" | null;
+  blockers: string[];
+};
+type UniformPkReadiness = {
+  ready: boolean;
+  cropCode: string | null;
+  ruleId: string | null;
+  ruleReady: boolean;
+  blockers: string[];
+  nutrients: Record<"P2O5" | "K2O", UniformPkNutrientReadiness>;
+};
+type DeterministicPkDoseDecision = {
+  ready: boolean;
+  blockers: string[];
+  expected: null | {
+    ruleId: string;
+    nutrient: "P2O5" | "K2O";
+    soilLevel: string;
+    doseKgPerHa: number;
+    minimumKgPerHa: number;
+    maximumKgPerHa: number;
+    isDiscretionaryRange: boolean;
+    source: string;
+  };
+};
+type PrescriptionPkValidation = {
+  allowed: boolean;
+  failures: Array<{
+    inputType: string;
+    nutrient: "P2O5" | "K2O" | null;
+    blockers: string[];
+    expected: DeterministicPkDoseDecision["expected"];
+  }>;
+};
 type Readiness = {
   allowed: boolean;
   reason: string | null;
   interpretationStatus: string | null;
   interpretationId: string | null;
   prescriptionFreshness?: { current: boolean; reason: string | null } | null;
+  prescriptionPkValidation?: PrescriptionPkValidation | null;
   recommendationContext?: {
     cropSeasonId: string;
     yieldGoal: number | null;
     yieldGoalUnit: string | null;
     technologyLevel: string | null;
     cultivationOrderAfterSoilAnalysis: number | null;
+    cropProfileCode: string | null;
     updatedAt: string;
     pkDoseReadiness: PkDoseReadiness;
+    uniformPkReadiness: UniformPkReadiness;
+    deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   };
 };
 
@@ -64,11 +108,41 @@ const PK_BLOCKER_LABELS: Record<string, string> = {
   POST_ANALYSIS_CULTIVATION_ORDER_UNSUPPORTED: "A regra P/K atual está homologada somente para 1º e 2º cultivo após a análise.",
 };
 
-/**
- * A recomendação assistida só fica disponível depois da interpretação determinística APPROVED. A marca
- * percebida pelo cliente é RAIZ, não o fornecedor de modelo. Provider/model continuam persistidos na
- * auditoria para rastreabilidade e custo, mas não viram argumento comercial nem poluem a decisão técnica.
- */
+const UNIFORM_PK_BLOCKER_LABELS: Record<string, string> = {
+  PK_CROP_CODE_MISSING: "A cultura homologada da safra não está definida.",
+  PK_CROP_RULE_NOT_IMPLEMENTED: "A cultura ainda não possui tabela determinística P/K liberada para aplicação uniforme.",
+  PK_DETERMINISTIC_TABLE_NOT_IMPLEMENTED: "Não existe tabela determinística P/K implementada para esta cultura.",
+  PK_ELEMENTAL_INPUT_AMBIGUOUS: "A geração usou P ou K elemental de forma ambígua; a RAIZ exige P2O5 ou K2O explícito.",
+  PK_DUPLICATE_TARGET: "A geração repetiu o mesmo alvo P/K; uma dose oficial não pode ser duplicada.",
+  PK_QUANTITY_OR_UNIT_INVALID: "Quantidade ou unidade P/K inválida na geração.",
+  PK_QUANTITY_INVALID: "Quantidade P/K inválida.",
+  PK_UNIT_MUST_BE_KG_PER_HA: "P/K oficial precisa estar explicitamente em kg/ha.",
+  PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE: "A quantidade proposta não coincide com o valor/faixa permitido pelo motor determinístico.",
+  P_NO_CLASSIFIED_OBSERVATION: "Não há classificação válida de fósforo para sustentar dose uniforme.",
+  K_NO_CLASSIFIED_OBSERVATION: "Não há classificação válida de potássio para sustentar dose uniforme.",
+  P_NO_STRICT_PREDOMINANCE: "Fósforo sem predominância estrita entre os pontos: não usar maioria simples ou média para uma dose uniforme.",
+  K_NO_STRICT_PREDOMINANCE: "Potássio sem predominância estrita entre os pontos: não usar maioria simples ou média para uma dose uniforme.",
+  P_SAMPLE_CLASSIFICATION_AMBIGUOUS: "Há ponto com classificação ambígua de fósforo.",
+  K_SAMPLE_CLASSIFICATION_AMBIGUOUS: "Há ponto com classificação ambígua de potássio.",
+  P_CLASSIFICATION_UNSUPPORTED_FOR_DOSE: "A classe de fósforo não é suportada pela tabela de dose ativa.",
+  K_CLASSIFICATION_UNSUPPORTED_FOR_DOSE: "A classe de potássio não é suportada pela tabela de dose ativa.",
+};
+
+function blockerLabel(code: string) {
+  if (code.startsWith("PK_CONTEXT:")) return PK_BLOCKER_LABELS[code.slice("PK_CONTEXT:".length)] ?? code;
+  if (code.startsWith("PK_RULE_NOT_READY:")) return `A regra ${code.slice("PK_RULE_NOT_READY:".length)} não está liberada para execução automática.`;
+  return UNIFORM_PK_BLOCKER_LABELS[code] ?? code;
+}
+
+function doseLabel(decision: DeterministicPkDoseDecision | undefined) {
+  const expected = decision?.expected;
+  if (!expected) return "dose bloqueada";
+  if (expected.isDiscretionaryRange) {
+    return `${expected.minimumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${expected.maximumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
+  }
+  return `${expected.doseKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
+}
+
 export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, canReview }: { analysisId: string; hasLabResults: boolean; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Generation | null | undefined>(undefined);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -165,7 +239,9 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
   const readyToGenerate = readiness?.allowed === true;
   const recommendationContext = readiness?.recommendationContext;
   const pkReadiness = recommendationContext?.pkDoseReadiness;
+  const uniformPkReadiness = recommendationContext?.uniformPkReadiness;
   const prescriptionStale = Boolean(latest && readiness?.prescriptionFreshness?.current === false);
+  const pkPromotionBlocked = Boolean(latest?.status === "PENDING_REVIEW" && readiness?.prescriptionPkValidation?.allowed === false);
   const statusMeta = prescriptionStale
     ? { label: "Desatualizada — contexto mudou", tone: "review" as const }
     : latest ? (STATUS_META[latest.status] ?? { label: latest.status, tone: "waiting" as const }) : null;
@@ -182,11 +258,12 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
 
       {recommendationContext && (
-        <div className={`narrative-block ${pkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
+        <div className={`narrative-block ${pkReadiness?.ready && uniformPkReadiness?.ready ? "" : "attention"}`} style={{ marginBottom: 12 }}>
           <h4>{pkReadiness?.ready ? <Icon name="check" size={12}/> : <Icon name="warning" size={12}/>} Contexto para dose de P e K</h4>
           <p style={{ marginBottom: 8 }}>
             Meta: <strong>{recommendationContext.yieldGoal ?? "não informada"}{recommendationContext.yieldGoalUnit ? ` ${recommendationContext.yieldGoalUnit}` : ""}</strong>
             {" · "}cultivo após a análise: <strong>{recommendationContext.cultivationOrderAfterSoilAnalysis ? `${recommendationContext.cultivationOrderAfterSoilAnalysis}º` : "não informado"}</strong>
+            {recommendationContext.cropProfileCode ? <> · cultura/regra: <strong>{recommendationContext.cropProfileCode}</strong></> : null}
             {recommendationContext.technologyLevel ? <> · nível tecnológico: <strong>{recommendationContext.technologyLevel}</strong></> : null}
           </p>
           {pkReadiness?.ready ? (
@@ -194,6 +271,23 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           ) : (
             <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>P/K quantitativo permanece bloqueado até fechar os campos abaixo. Outras recomendações tecnicamente sustentadas podem continuar sendo analisadas.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
           )}
+
+          {uniformPkReadiness && (
+            <div className="review-grid" style={{ marginTop: 10 }}>
+              {(["P2O5", "K2O"] as const).map((nutrient) => {
+                const state = uniformPkReadiness.nutrients[nutrient];
+                const dose = recommendationContext.deterministicPkDoses[nutrient];
+                return <div className="review-summary" key={nutrient}>
+                  <span>{nutrient} · aplicação uniforme</span>
+                  <strong>{state.ready && uniformPkReadiness.ruleReady ? `${state.soilLevel ?? "—"} · ${doseLabel(dose)}` : "Bloqueado"}</strong>
+                  {state.ready ? <small>{state.basis === "SINGLE_SAMPLE" ? "Base: única amostra classificada; a representatividade depende do plano de amostragem." : `Predominância estrita: ${state.matchingCount}/${state.totalCount} pontos concordantes.`}</small> : state.blockers.map((blocker) => <small key={blocker}>{blockerLabel(blocker)}</small>)}
+                  {state.ready && uniformPkReadiness.ruleId ? <small>Regra versionada: {uniformPkReadiness.ruleId}. A quantidade oficial é recalculada no servidor.</small> : null}
+                </div>;
+              })}
+            </div>
+          )}
+
+          {uniformPkReadiness && !uniformPkReadiness.ruleReady && <p className="report-empty-note" style={{ marginTop: 8 }}>{uniformPkReadiness.blockers.filter((code) => code.startsWith("PK_")).map(blockerLabel).join(" ")}</p>}
 
           {canRun && (
             <details style={{ marginTop: 10 }} open={!pkReadiness?.ready}>
@@ -217,6 +311,19 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
 
       {prescriptionStale && (
         <div className="agro-message danger"><Icon name="warning" size={14}/><span>{readiness?.prescriptionFreshness?.reason ?? "O contexto da safra mudou depois desta geração."} A versão anterior permanece no histórico, mas não deve ser tratada como recomendação corrente.</span></div>
+      )}
+
+      {pkPromotionBlocked && (
+        <div className="agro-message danger">
+          <Icon name="warning" size={14}/>
+          <div>
+            <strong>Aprovação P/K bloqueada pelo motor determinístico.</strong>
+            <div>Esta versão pode permanecer no histórico ou receber solicitação de ajuste, mas não pode promover a dose oficial.</div>
+            <ul>{(readiness?.prescriptionPkValidation?.failures ?? []).map((failure, index) => (
+              <li key={`${failure.inputType}-${index}`}><strong>{failure.inputType}</strong>: {failure.blockers.map(blockerLabel).join(" ")}{failure.expected ? ` Permitido: ${failure.expected.minimumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${failure.expected.maximumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha.` : ""}</li>
+            ))}</ul>
+          </div>
+        </div>
       )}
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
@@ -276,7 +383,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
             <div className="narrative-review-form">
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação técnica (opcional)" rows={2}/>
               <div className="narrative-review-actions">
-                <button className="button primary" disabled={busy} onClick={() => void review("APPROVED")}>Aprovar e assinar</button>
+                <button className="button primary" disabled={busy || pkPromotionBlocked} onClick={() => void review("APPROVED")}>{pkPromotionBlocked ? "Aprovação bloqueada pelo motor P/K" : "Aprovar e assinar"}</button>
                 <button className="button secondary" disabled={busy} onClick={() => void review("CHANGES_REQUESTED")}>Solicitar ajuste</button>
                 <button className="button ghost" disabled={busy} onClick={() => void review("REJECTED")}>Rejeitar</button>
               </div>
