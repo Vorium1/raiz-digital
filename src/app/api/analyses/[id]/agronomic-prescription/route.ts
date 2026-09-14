@@ -8,8 +8,15 @@ import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommend
 import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
+import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
+function interpretationItems(structuredOutput: unknown) {
+  if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
+  const value = (structuredOutput as { interpretation?: unknown }).interpretation;
+  return Array.isArray(value) ? value : [];
+}
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -29,6 +36,30 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     analysisId: id,
     generationId: latest?.id,
   });
+  const interpreted = interpretationItems(interpretation?.structuredOutput);
+  const uniformPkReadiness = evaluateUniformPkReadiness({
+    cropCode: recommendationContext.cropProfileCode,
+    interpretation: interpreted,
+  });
+  const deterministicPkDoses = {
+    P2O5: computeDeterministicPkDose({
+      cropCode: recommendationContext.cropProfileCode,
+      interpretation: interpreted,
+      yieldGoal: recommendationContext.yieldGoal,
+      yieldGoalUnit: recommendationContext.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      nutrient: "P2O5",
+    }),
+    K2O: computeDeterministicPkDose({
+      cropCode: recommendationContext.cropProfileCode,
+      interpretation: interpreted,
+      yieldGoal: recommendationContext.yieldGoal,
+      yieldGoalUnit: recommendationContext.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+      nutrient: "K2O",
+    }),
+  };
+
   return Response.json({
     latest,
     history,
@@ -45,8 +76,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         yieldGoalUnit: recommendationContext.yieldGoalUnit,
         technologyLevel: recommendationContext.technologyLevel,
         cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
+        cropProfileCode: recommendationContext.cropProfileCode,
         updatedAt: recommendationContext.updatedAt,
         pkDoseReadiness: recommendationContext.pkDoseReadiness,
+        uniformPkReadiness,
+        deterministicPkDoses,
       },
     },
   });
@@ -69,9 +103,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: "Não há resultado de laboratório vinculado a esta análise ainda." }, { status: 409 });
   }
 
-  // Governança obrigatória:
-  // interpretação determinística -> revisão profissional -> APPROVED -> prescrição assistida
-  // -> revisão/aprovação da prescrição. Nenhuma IA pula a decisão humana anterior.
   const [interpretation, contextBeforeProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
@@ -101,9 +132,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: error instanceof Error ? error.message : "Falha ao gerar prescrição." }, { status: 502 });
   }
 
-  // O provedor pode levar alguns segundos. Revalidamos DEPOIS da chamada para fechar a janela em que
-  // um agrônomo poderia alterar a safra ou gerar/revisar uma nova interpretação enquanto a IA respondia.
-  // Se isso aconteceu, descartamos a resposta como geração corrente; nada é promovido nem persistido.
   const [interpretationAfterProvider, contextAfterProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
