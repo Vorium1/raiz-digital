@@ -1,3 +1,4 @@
+import { evaluatePkDoseReadiness, type PkDoseReadiness } from "@/domain/recommendation-context";
 import { withTenant } from "@/lib/db";
 
 /**
@@ -20,7 +21,9 @@ export type AgronomicPrescriptionEvidencePackage = {
     technologyLevel: string | null; soilCompactionLevel: string | null;
     livestockTrampleAreaHa: number | null; headlandAreaHa: number | null;
     isFirstYearArea: boolean | null; cultivationYears: number | null;
+    cultivationOrderAfterSoilAnalysis: number | null;
   };
+  pkDoseReadiness: PkDoseReadiness;
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
   deterministicInterpretation: {
@@ -54,6 +57,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               cs.technology_level AS "technologyLevel", cs.soil_compaction_level AS "soilCompactionLevel",
               cs.livestock_trample_area_ha::float8 AS "livestockTrampleAreaHa", cs.headland_area_ha::float8 AS "headlandAreaHa",
               cs.is_first_year_area AS "isFirstYearArea", cs.cultivation_years AS "cultivationYears",
+              cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
               cs.technical_region_code AS "regionCode", cs.crop_profile_id::text AS "cropProfileId"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -100,6 +104,12 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id IS NULL AND status = 'ACTIVE' ORDER BY title`,
         );
 
+    const pkDoseReadiness = evaluatePkDoseReadiness({
+      yieldGoal: base.yieldGoal,
+      yieldGoalUnit: base.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+    });
+
     return {
       tenant: { id: tenant.id, name: tenant.name },
       client: { id: base.clientId, name: base.clientName },
@@ -112,7 +122,9 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         technologyLevel: base.technologyLevel, soilCompactionLevel: base.soilCompactionLevel,
         livestockTrampleAreaHa: base.livestockTrampleAreaHa, headlandAreaHa: base.headlandAreaHa,
         isFirstYearArea: base.isFirstYearArea, cultivationYears: base.cultivationYears,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
       },
+      pkDoseReadiness,
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
       deterministicInterpretation: interpretationResult.rows[0] ?? null,

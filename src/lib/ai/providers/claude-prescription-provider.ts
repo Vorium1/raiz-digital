@@ -8,7 +8,7 @@ import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription
  * PENDING_REVIEW e nunca vira recomendação oficial sem revisão profissional posterior.
  */
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v4-deterministic-grounding";
+const PROMPT_VERSION = "prescription-v5-explicit-recommendation-context";
 
 function buildSystemPrompt(): string {
   return [
@@ -18,8 +18,11 @@ function buildSystemPrompt(): string {
     "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não contradiga a classe do motor e não crie uma interpretação paralela. Os `results` brutos servem para rastreabilidade, valores e unidades.",
     "Parâmetro não interpretável/pending no motor continua pendente. Não atribua classe por conta própria.",
     "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real de dose E todas as entradas exigidas estiverem presentes. Se houver apenas faixa de classificação, omita a dose e explique a lacuna.",
-    "`cultivationYears` representa histórico de cultivo da área e NÃO significa '1º/2º cultivo após a análise de solo'. Se a regra depender dessa sequência e ela não existir explicitamente na evidência, não gere essa dose.",
-    "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes, não assuma produtividade de referência, média regional ou meta implícita. Omita a dose dependente disso.",
+    "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` representa apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
+    "Para doses de P/K que dependem do contexto CQFS atual, respeite `pkDoseReadiness`: se `ready=false`, não gere a dose de P2O5/K2O e registre os `blockers` em `missingInformation`. Não contorne o gate com inferências.",
+    "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados por `pkDoseReadiness`, não assuma produtividade de referência, média regional ou meta implícita.",
+    "`season.technologyLevel` é metadado/cenário e NÃO é multiplicador de dose. Não aumente ou reduza adubação apenas por BAIXO/MEDIO/ALTO sem uma regra ACTIVE explícita recebida em `technicalSources`.",
+    "Taxa variável é um fluxo separado e sob demanda. Este provedor gera recomendação por hectare no contexto da análise; não crie mapa, zona, pixel ou dose espacial sem uma solicitação espacial explícita e um gate espacial próprio.",
     "Um array `recommendations` vazio é correto quando a evidência não sustenta uma quantidade defensável.",
     "Em `diagnosis`, preserve valor/unidade reais e use a classificação da interpretação determinística. Não faça conversão implícita.",
     "Cite em `sources` exclusivamente entradas recebidas em `technicalSources`, mantendo título/instituição reais.",
