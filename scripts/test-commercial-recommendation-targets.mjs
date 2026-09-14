@@ -34,6 +34,7 @@ const ambiguous = deriveCommercialTargets([
 ]);
 assert.equal(ambiguous.nutrientTargetsKgPerHa.P2O5, undefined, "alvo divergente precisa falhar fechado");
 assert.ok(ambiguous.blockers.some((item) => item.code === "AMBIGUOUS_TARGET"));
+assert.equal(ambiguous.sourceRows.some((row) => row.canonicalTarget === "P2O5"), false, "alvo ambíguo também sai do pacote de evidência utilizável");
 
 const sameAlias = deriveCommercialTargets([
   { inputType: "P2O5", recommendedQuantity: 80, recommendedUnit: "kg/ha", recommendationCurrent: true },
