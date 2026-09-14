@@ -8,7 +8,7 @@ import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription
  * nasce PENDING_REVIEW.
  */
 
-const PROMPT_VERSION = "prescription-gemini-v4-deterministic-grounding";
+const PROMPT_VERSION = "prescription-gemini-v5-explicit-recommendation-context";
 const MAX_OUTPUT_TOKENS = 8000;
 
 const PRESCRIPTION_JSON_SCHEMA = {
@@ -72,8 +72,11 @@ function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
     "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não substitua uma classe do motor e não crie uma segunda interpretação paralela. Os `results` brutos existem apenas para rastreabilidade, valores e unidades.",
     "Se um parâmetro está marcado como não interpretável/pending na interpretação determinística, trate-o como informação pendente; não invente a classe correspondente.",
     "Só inclua `recommendations` quando `technicalSources` contiver regra/tabela ACTIVE real que sustente a dose E todas as entradas exigidas por essa regra estiverem presentes no contexto.",
-    "`cultivationYears` descreve histórico de cultivo da área. NÃO interprete esse campo como '1º/2º cultivo após a análise de solo'. Se uma tabela de dose depender dessa sequência e ela não estiver explicitamente presente, não gere a dose e registre a falta em `missingInformation`.",
-    "Se a regra exigir meta de produtividade e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes, não assuma produtividade de referência, teto, média regional ou meta implícita: omita a dose dependente disso e registre a lacuna.",
+    "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` descreve apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
+    "Para doses de P/K que dependem do contexto CQFS atual, respeite `pkDoseReadiness`: se `ready=false`, não gere dose de P2O5/K2O; registre os `blockers` em `missingInformation` e não tente inferir os dados ausentes.",
+    "Se a regra exigir meta de produtividade e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados por `pkDoseReadiness`, não assuma produtividade de referência, teto, média regional ou meta implícita.",
+    "`season.technologyLevel` é apenas metadado/cenário. NÃO aumente ou reduza dose por BAIXO/MEDIO/ALTO sem regra quantitativa ACTIVE explícita em `technicalSources`.",
+    "Taxa variável é um fluxo separado e sob demanda. Este provedor não deve criar mapa, zona, pixel ou dose espacial sem solicitação espacial explícita e gate espacial próprio.",
     "Um array `recommendations` vazio é correto quando a evidência não sustenta uma dose. É melhor declarar falta de informação do que produzir uma recomendação aparentemente completa e tecnicamente falsa.",
     "Em `diagnosis`, mantenha valor e unidade coerentes com o dado recebido e a classificação exatamente coerente com a interpretação determinística. Não faça conversão implícita.",
     "Em `sources`, use exclusivamente fontes recebidas em `technicalSources`; título deve corresponder à evidência. Se instituição/URL não existirem, use string vazia.",
