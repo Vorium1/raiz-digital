@@ -16,6 +16,7 @@ type RecommendationContextRow = {
   technologyLevel: string | null;
   cultivationYears: number | null;
   cultivationOrderAfterSoilAnalysis: number | null;
+  updatedAt: string;
 };
 
 function mapContext(row: RecommendationContextRow) {
@@ -26,6 +27,7 @@ function mapContext(row: RecommendationContextRow) {
     technologyLevel: row.technologyLevel,
     cultivationYears: row.cultivationYears,
     cultivationOrderAfterSoilAnalysis: row.cultivationOrderAfterSoilAnalysis,
+    updatedAt: row.updatedAt,
     pkDoseReadiness: evaluatePkDoseReadiness({
       yieldGoal: row.yieldGoal,
       yieldGoalUnit: row.yieldGoalUnit,
@@ -40,7 +42,8 @@ const SELECT_CONTEXT = `
          yield_goal_unit AS "yieldGoalUnit",
          technology_level AS "technologyLevel",
          cultivation_years AS "cultivationYears",
-         cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis"
+         cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+         updated_at::text AS "updatedAt"
   FROM crop_seasons
   WHERE tenant_id = $1::uuid AND id = $2::uuid
 `;
@@ -74,7 +77,8 @@ export async function getRecommendationContextByAnalysis(input: {
               cs.yield_goal_unit AS "yieldGoalUnit",
               cs.technology_level AS "technologyLevel",
               cs.cultivation_years AS "cultivationYears",
-              cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis"
+              cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+              cs.updated_at::text AS "updatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
@@ -136,7 +140,8 @@ export async function updateRecommendationContext(input: {
                  yield_goal_unit AS "yieldGoalUnit",
                  technology_level AS "technologyLevel",
                  cultivation_years AS "cultivationYears",
-                 cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis"`,
+                 cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
+                 updated_at::text AS "updatedAt"`,
       values,
     );
 
