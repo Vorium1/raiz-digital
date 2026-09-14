@@ -173,5 +173,9 @@ export function deriveCommercialTargets(rows: RecommendationTargetRow[]): Commer
     else delete nutrientTargetsKgPerHa[target];
   }
 
-  return { nutrientTargetsKgPerHa, limingRequirementTonPerHaPrnt100, blockers, sourceRows };
+  // Uma evidência ambígua não pode continuar aparecendo na UI como se fosse um alvo utilizável.
+  // Mantemos o blocker como explicação, mas removemos todas as linhas daquele alvo do pacote comercial.
+  const usableSourceRows = sourceRows.filter((row) => !ambiguous.has(row.canonicalTarget));
+
+  return { nutrientTargetsKgPerHa, limingRequirementTonPerHaPrnt100, blockers, sourceRows: usableSourceRows };
 }
