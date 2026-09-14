@@ -27,6 +27,7 @@ const satelliteNdvi = await readFile(new URL("../db/migrations/023_satellite_ndv
 const parameterAiValidation = await readFile(new URL("../db/migrations/024_parameter_ai_cross_validation.sql", import.meta.url), "utf8");
 const ruleExecutions = await readFile(new URL("../db/migrations/031_agronomic_rule_executions.sql", import.meta.url), "utf8");
 const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_recommendation_context.sql", import.meta.url), "utf8");
+const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -104,4 +105,12 @@ assert.match(nitrogenContext, /FORCE ROW LEVEL SECURITY/i);
 assert.match(nitrogenContext, /effective_legume_inoculation IS TRUE AND proven_legume_inoculation_failure IS TRUE/i);
 assert.match(nitrogenContext, /CREATE POLICY tenant_isolation ON nitrogen_recommendation_contexts/i);
 
-console.log("migrations: contratos estruturais críticos 001-032 aprovados");
+assert.match(commercialInputCatalog, /CREATE TABLE commercial_input_products/i);
+assert.match(commercialInputCatalog, /UNIQUE \(tenant_id, code\)/i);
+assert.match(commercialInputCatalog, /FORCE ROW LEVEL SECURITY/i);
+assert.match(commercialInputCatalog, /CREATE POLICY tenant_isolation ON commercial_input_products/i);
+assert.match(commercialInputCatalog, /GRANT SELECT, INSERT, UPDATE ON commercial_input_products TO raiz_app/i);
+assert.doesNotMatch(commercialInputCatalog, /GRANT[^;]*DELETE[^;]*commercial_input_products/i);
+assert.match(commercialInputCatalog, /min_rate_kg_ha IS NULL OR max_rate_kg_ha IS NULL OR min_rate_kg_ha <= max_rate_kg_ha/i);
+
+console.log("migrations: contratos estruturais críticos 001-033 aprovados");
