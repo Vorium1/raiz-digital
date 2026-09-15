@@ -88,6 +88,17 @@ export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder)
       throw new BillingReconciliationError("Fatura já paga recebeu outro payment_id pela Order.", "DUPLICATE_PAYMENT");
     }
 
+    // O FOR UPDATE serializa duas notificações concorrentes da mesma fatura. Depois que a primeira
+    // transação aplica exatamente esta Order/estado/payment, a segunda vira no-op e não gera outra
+    // auditoria. Se o estado oficial evoluiu (ex.: processing -> processed), a mudança continua aplicada.
+    if (
+      invoice.provider_order_id === order.id &&
+      invoice.status === status &&
+      (paymentId == null || invoice.provider_charge_id === paymentId)
+    ) {
+      return { kind: "ignored" as const, reason: "ALREADY_RECONCILED" as const };
+    }
+
     await client.query(
       `UPDATE invoices
        SET provider_order_id = COALESCE(provider_order_id, $3),
