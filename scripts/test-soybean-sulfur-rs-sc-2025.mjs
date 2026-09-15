@@ -33,7 +33,7 @@ const adequate = evaluateSoybeanSulfurRsSc2025({
 assert.equal(adequate.interpretation, "SUFFICIENT_BY_PROFILE");
 assert.equal(adequate.recommendation.recommendedNutrientDoseKgSPerHa, 0);
 
-// A fonte escreve teores desejados >10 e >8,5; os valores exatos do limite não são tratados como adequados.
+// A fonte escreve explicitamente >10 mg/dm3 na superfície e 8,5 mg/dm3 em 20-40 cm.
 const exactSurfaceBoundary = evaluateSoybeanSulfurRsSc2025({
   ...base020,
   sulfur0To20MgDm3: 10,
@@ -41,13 +41,16 @@ const exactSurfaceBoundary = evaluateSoybeanSulfurRsSc2025({
 });
 assert.equal(exactSurfaceBoundary.interpretation, "DEFICIENT_APPLY_20_KG_S_HA");
 assert.equal(exactSurfaceBoundary.recommendation.recommendedNutrientDoseKgSPerHa, 20);
+assert.equal(exactSurfaceBoundary.thresholds.exactSurfaceBoundaryIsAdequate, false);
 
 const exactDeepBoundary = evaluateSoybeanSulfurRsSc2025({
   ...base020,
   sulfur0To20MgDm3: 12,
   sulfur20To40MgDm3: 8.5,
 });
-assert.equal(exactDeepBoundary.interpretation, "DEFICIENT_APPLY_20_KG_S_HA");
+assert.equal(exactDeepBoundary.interpretation, "SUFFICIENT_BY_PROFILE");
+assert.equal(exactDeepBoundary.recommendation.recommendedNutrientDoseKgSPerHa, 0);
+assert.equal(exactDeepBoundary.thresholds.exactSubsurfaceBoundaryIsAdequate, true);
 
 const splitShallowNotConfirmed = evaluateSoybeanSulfurRsSc2025({
   region: "SC",
