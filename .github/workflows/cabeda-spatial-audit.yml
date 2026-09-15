@@ -11,6 +11,12 @@ on:
           - "01"
           - "02"
         default: "01"
+  push:
+    branches:
+      - "audit/cabeda-area01"
+      - "audit/cabeda-area02"
+    paths:
+      - ".audit-trigger/**"
 
 permissions:
   contents: read
@@ -26,19 +32,40 @@ jobs:
     timeout-minutes: 10
     environment: homologation
     env:
-      CABEDA_AUDIT_AREA: ${{ inputs.area }}
+      CABEDA_AUDIT_AREA: ${{ github.event_name == 'workflow_dispatch' && inputs.area || (github.ref_name == 'audit/cabeda-area02' && '02' || '01') }}
       CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
       CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
       DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_SSL: require
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Usar código auditado de develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
+      - name: Validar origem do disparo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            case "${GITHUB_REF_NAME}" in
+              audit/cabeda-area01|audit/cabeda-area02) ;;
+              *)
+                echo "::error::Branch de auditoria não autorizada."
+                exit 1
+                ;;
+            esac
+          elif [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "::error::Evento não autorizado para auditoria Cabeda."
+            exit 1
+          fi
+          echo "Disparo autorizado para Área ${CABEDA_AUDIT_AREA}."
 
       - name: Validar contexto autorizado sem expor secrets
         shell: bash
@@ -105,7 +132,7 @@ jobs:
         if: always() && (steps.audit.outputs.exit_code == '0' || steps.audit.outputs.exit_code == '2')
         uses: actions/upload-artifact@v4
         with:
-          name: cabeda-spatial-audit-area-${{ inputs.area }}
+          name: cabeda-spatial-audit-area-${{ env.CABEDA_AUDIT_AREA }}
           path: ${{ steps.audit.outputs.result_file }}
           if-no-files-found: error
           retention-days: 30
