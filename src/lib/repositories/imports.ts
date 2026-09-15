@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
-import { saveRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
+import { saveRequiredRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
 
 async function promoteRowsToLabResults(
   client: PoolClient,
@@ -85,12 +84,27 @@ export async function commitCsvImport(input: {
 }) {
   // PDF/foto chega como CSV transcrito, mas pode carregar um envelope de proveniência criado pelo servidor
   // no /api/import/extract. O envelope nunca entra no parser agronômico; ele só referencia o original já
-  // arquivado, que é relido e conferido por hash/bytes antes do commit.
+  // arquivado, que é relido e conferido por hash/bytes antes de qualquer interpretação no commit.
   const transported = unwrapExtractedLabContent(input.content);
   const sourceReceipt = transported.source;
   const normalizedContent = transported.content;
   const isSpreadsheet = !sourceReceipt && isSpreadsheetFileName(input.fileName);
   const originalFileName = sourceReceipt?.fileName ?? input.fileName;
+
+  // Cadeia de custódia fail-closed: a fonte original precisa existir e ter integridade confirmada antes
+  // de o parser/validador agronômico examinar o conteúdo ou qualquer linha poder ser promovida.
+  const stored = sourceReceipt
+    ? await (async () => {
+        await verifyRawImportArchive({ tenantId: input.tenantId, source: sourceReceipt });
+        return sourceReceipt;
+      })()
+    : await saveRequiredRawImportFile({
+        tenantId: input.tenantId,
+        analysisId: input.analysisId,
+        fileName: originalFileName,
+        content: normalizedContent,
+        encoding: isSpreadsheet ? "base64" : "utf8",
+      });
 
   const importContext = {
     fallbackMethod: input.fallbackMethod,
@@ -101,34 +115,18 @@ export async function commitCsvImport(input: {
     ? buildLabImportPreviewFromXlsxBase64(normalizedContent, input.fileName, importContext)
     : buildLabImportPreview(normalizedContent, input.fileName, importContext);
 
-  let stored: { key: string; bytes: number; sha256: string } | null;
-  let sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR";
-  let analysisSourceType: "CSV" | "XLSX" | "PDF_OCR";
+  const sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR" = sourceReceipt
+    ? "PDF_OCR"
+    : isSpreadsheet
+      ? "XLSX"
+      : preview.format === "LONG"
+        ? "CSV_LONG"
+        : "CSV_WIDE";
+  const analysisSourceType: "CSV" | "XLSX" | "PDF_OCR" = sourceReceipt ? "PDF_OCR" : isSpreadsheet ? "XLSX" : "CSV";
 
-  if (sourceReceipt) {
-    await verifyRawImportArchive({ tenantId: input.tenantId, source: sourceReceipt });
-    stored = sourceReceipt;
-    sourceFormat = "PDF_OCR";
-    analysisSourceType = "PDF_OCR";
-  } else {
-    stored = await saveRawImportFile({
-      tenantId: input.tenantId,
-      analysisId: input.analysisId,
-      fileName: originalFileName,
-      content: normalizedContent,
-      encoding: isSpreadsheet ? "base64" : "utf8",
-    });
-    sourceFormat = isSpreadsheet ? "XLSX" : preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE";
-    analysisSourceType = isSpreadsheet ? "XLSX" : "CSV";
-  }
-
-  // Hash de proveniência sempre representa os BYTES ORIGINAIS, não a string base64 de um XLSX nem o CSV
-  // produzido por OCR. Se o provider bruto está indisponível em desenvolvimento, calculamos os mesmos bytes
-  // localmente para manter a identidade do arquivo sem fingir que ele foi arquivado.
-  const rawBuffer = sourceReceipt
-    ? null
-    : Buffer.from(normalizedContent, isSpreadsheet ? "base64" : "utf8");
-  const sourceSha256 = stored?.sha256 ?? createHash("sha256").update(rawBuffer as Buffer).digest("hex");
+  // O hash e a chave agora vêm obrigatoriamente do arquivo original já persistido. Não existe mais
+  // caminho de produção que promova resultados com `raw_object_key` nulo.
+  const sourceSha256 = stored.sha256;
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -149,7 +147,7 @@ export async function commitCsvImport(input: {
         input.analysisId,
         originalFileName,
         sourceSha256,
-        stored?.key ?? null,
+        stored.key,
         sourceFormat,
         persistedStatus,
         JSON.stringify(preview.detectedHeaders),
@@ -211,7 +209,7 @@ export async function commitCsvImport(input: {
         preview.confidence.score,
         preview.confidence.level,
         analysisSourceType,
-        stored?.key ?? null,
+        stored.key,
       ],
     );
 
@@ -232,8 +230,8 @@ export async function commitCsvImport(input: {
         importId,
         sha256: sourceSha256,
         sourceFormat,
-        sourceArchived: Boolean(stored),
-        sourceFileKey: stored?.key ?? null,
+        sourceArchived: true,
+        sourceFileKey: stored.key,
         sourceHumanVerified: verificationState.verified,
         blockers: preview.blockers,
         warnings: preview.warnings,
