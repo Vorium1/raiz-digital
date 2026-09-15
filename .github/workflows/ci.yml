@@ -33,6 +33,9 @@ jobs:
       - name: Rodar testes (lógica pura, sem banco de dados)
         run: npm run test:handoff
 
+      - name: Validar preflight automático de homologação
+        run: node --experimental-strip-types scripts/test-homologation-readiness.mjs
+
       - name: Validar profundidade progressiva das análises
         run: node --experimental-strip-types scripts/test-analysis-depth-readiness.mjs
 
