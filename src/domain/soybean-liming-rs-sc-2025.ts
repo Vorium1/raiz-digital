@@ -67,7 +67,13 @@ export type SoybeanLimingRsSc2025Input = {
 
 type ApplicationMode = "INCORPORATED" | "SURFACE" | null;
 type RuleStatus = "READY_FOR_IMPLEMENTATION" | "REQUIRES_AGRONOMIST_REVIEW";
-type Decision = "APPLY" | "DO_NOT_APPLY" | "BLOCKED_CONTEXT" | "BLOCKED_SOURCE_CONFLICT" | "BLOCKED_PROFESSIONAL_REVIEW";
+type Decision =
+  | "APPLY"
+  | "DO_NOT_APPLY"
+  | "BLOCKED_CONTEXT"
+  | "BLOCKED_SOURCE_CONFLICT"
+  | "BLOCKED_SOURCE_DOMAIN"
+  | "BLOCKED_PROFESSIONAL_REVIEW";
 
 function finite(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -108,12 +114,19 @@ function resultBase(system: SoybeanLimingSystem) {
       commercialPrntConversionAllowedHere: false as const,
       productSelectionAllowedHere: false as const,
       sourceConflictCanBeAutoResolved: false as const,
+      sourceDomainGapCanBeAutoResolved: false as const,
       historicalResultMustNotBeRewritten: true as const,
     },
   };
 }
 
-function buildBlocked(system: SoybeanLimingSystem, blockers: string[], decision: Extract<Decision, "BLOCKED_CONTEXT" | "BLOCKED_SOURCE_CONFLICT" | "BLOCKED_PROFESSIONAL_REVIEW">, warnings: string[] = [], evidenceConflict: Record<string, unknown> | null = null) {
+function buildBlocked(
+  system: SoybeanLimingSystem,
+  blockers: string[],
+  decision: Extract<Decision, "BLOCKED_CONTEXT" | "BLOCKED_SOURCE_CONFLICT" | "BLOCKED_SOURCE_DOMAIN" | "BLOCKED_PROFESSIONAL_REVIEW">,
+  warnings: string[] = [],
+  evidenceConflict: Record<string, unknown> | null = null,
+) {
   return {
     ...resultBase(system),
     contextReady: false,
@@ -223,12 +236,13 @@ export function adjustSoybeanLimeDoseForPrnt2025(doseTonHaPrnt100: number, prntP
 }
 
 function classifyConventionalVAl(v: number, al: number) {
-  // O texto da seção 2.3.2 exige V<65 E Al>10; a nota (1) da Tabela 2.2
-  // apenas exclui explicitamente V>=65 E Al<10. Nos quadrantes mistos e em
-  // Al=10 a publicação não é inequívoca, portanto falhamos fechado.
+  // O texto da seção 2.3.2 autoriza positivamente V<65 E Al>10; a nota (1)
+  // da Tabela 2.2 define um caso negativo V>=65 E Al<10. A nota negativa não
+  // é o inverso lógico da regra positiva. Quadrantes mistos e Al=10 ficam fora
+  // do domínio explicitamente autorizado pela fonte e, por segurança, bloqueiam.
   if (v < 65 && al > 10) return "APPLY" as const;
   if (v >= 65 && al < 10) return "DO_NOT_APPLY" as const;
-  return "AMBIGUOUS" as const;
+  return "UNSPECIFIED_SOURCE_DOMAIN" as const;
 }
 
 export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input) {
@@ -245,11 +259,13 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
     if ((input.phWater0To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_AT_OR_ABOVE_5_5");
     const criteria = classifyConventionalVAl(input.baseSaturation0To20Pct as number, input.aluminumSaturation0To20Pct as number);
     if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
-    if (criteria === "AMBIGUOUS") {
-      return buildBlocked(system, ["TABLE_2_2_AND_SECTION_2_3_2_V_AL_LOGIC_NOT_UNAMBIGUOUS"], "BLOCKED_SOURCE_CONFLICT", [], {
-        tableFootnote: "não aplicar quando V>=65% e Al<10%",
-        narrative: "preconiza calagem quando pH<5,5, V<65% e Al>10%",
-      });
+    if (criteria === "UNSPECIFIED_SOURCE_DOMAIN") {
+      return buildBlocked(
+        system,
+        ["V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"],
+        "BLOCKED_SOURCE_DOMAIN",
+        ["TABLE_2_2_NOTE_IS_ONE_WAY_NON_APPLICATION_EXCEPTION"],
+      );
     }
     return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To20 as number),
@@ -275,8 +291,9 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
 
   // A Ata oficial da 44ª RPSRS (item 7.4) resolve duas divergências editoriais
   // da publicação 2025: 1/2 SMP (e não 1/4) no SPD consolidado sem restrições,
-  // e Al>=10% (e não 30%) no SPD consolidado com restrições. A divergência
-  // V/Al entre a nota (1) da Tabela 2.2 e o texto 2.3.2 permanece fail-closed.
+  // e Al>=10% (e não 30%) no SPD consolidado com restrições. Já os quadrantes
+  // V/Al mistos não são explicitamente autorizados pela fonte e permanecem
+  // fail-closed como lacuna de domínio, não como conflito lógico entre trechos.
   if (finite(input.yearsSinceLastLiming) && (input.yearsSinceLastLiming as number) < 3) {
     return buildBlocked(system, ["RECENT_LIMING_CAN_MASK_SMP_RESPONSE_REVIEW_BEFORE_REAPPLICATION"], "BLOCKED_PROFESSIONAL_REVIEW", [
       "SECTION_2_3_3_NOTES_CORRECTIVE_MAY_TAKE_ABOUT_THREE_YEARS_TO_DISSOLVE_COMPLETELY",
@@ -294,8 +311,13 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
     if ((input.phWater0To10 as number) >= 5.5) return buildNoApply(system, "PH_WATER_0_10_AT_OR_ABOVE_5_5");
     const criteria = classifyConventionalVAl(input.baseSaturation0To10Pct as number, input.aluminumSaturation0To10Pct as number);
     if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
-    if (criteria === "AMBIGUOUS") {
-      return buildBlocked(system, ["TABLE_2_2_AND_SECTION_2_3_2_V_AL_LOGIC_NOT_UNAMBIGUOUS"], "BLOCKED_SOURCE_CONFLICT");
+    if (criteria === "UNSPECIFIED_SOURCE_DOMAIN") {
+      return buildBlocked(
+        system,
+        ["V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"],
+        "BLOCKED_SOURCE_DOMAIN",
+        ["TABLE_2_2_NOTE_IS_ONE_WAY_NON_APPLICATION_EXCEPTION"],
+      );
     }
     return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To10 as number),
