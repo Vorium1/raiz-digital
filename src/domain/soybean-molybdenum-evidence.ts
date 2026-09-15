@@ -170,7 +170,7 @@ export function buildSoybeanMolybdenumReviewPacket(input: {
     sandySoilHighEndSignal: input.soilTexture === "SANDY",
     blockers,
     warnings,
-    applicationBlockedBySafety: blockers.includes("PASTURE_MO_THRESHOLD_REACHED") || blockers.includes("REGIONAL_PROFILE_OUTSIDE_RS_SC"),
+    applicationBlockedBySafety: blockers.length > 0,
     professionalReviewRequired: true as const,
     autoProfileSelectionAllowed: false as const,
     automaticDoseGMoPerHa: null,
