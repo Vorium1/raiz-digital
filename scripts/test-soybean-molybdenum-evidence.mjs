@@ -35,6 +35,7 @@ assert.equal(regionalFoliar.professionalReviewRequired, true);
 assert.equal(regionalFoliar.canAutoPrescribe, false);
 assert.equal(regionalFoliar.automaticDoseGMoPerHa, null);
 assert.deepEqual(regionalFoliar.blockers, []);
+assert.equal(regionalFoliar.applicationBlockedBySafety, false);
 
 const regionalSeed = buildSoybeanMolybdenumReviewPacket({
   profileId: "RS_SC_2025",
@@ -61,6 +62,7 @@ const ilpUnknownPasture = buildSoybeanMolybdenumReviewPacket({
   pastureMoDryMatterMgPerKg: null,
 });
 assert.ok(ilpUnknownPasture.blockers.includes("PASTURE_MO_MONITORING_REQUIRED"));
+assert.equal(ilpUnknownPasture.applicationBlockedBySafety, true);
 
 const ilpThreshold = buildSoybeanMolybdenumReviewPacket({
   profileId: "RS_SC_2025",
