@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import { evaluateAgronomicRuleAutomation } from "../src/domain/agronomic-rule-catalog.ts";
 import { buildSoybeanGypsumRsSc2025Review } from "../src/domain/soybean-gypsum-rs-sc-2025.ts";
+
+const catalogRule = evaluateAgronomicRuleAutomation("GYPSUM-SOYBEAN-RS-SC-2025");
+assert.equal(catalogRule.allowed, false);
+assert.equal(catalogRule.status, "REQUIRES_AGRONOMIST_REVIEW");
+assert.equal(catalogRule.rule?.sourceYear, 2025);
 
 const base = {
   region: "RS",
