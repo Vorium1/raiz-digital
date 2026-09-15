@@ -18,7 +18,7 @@ type SoybeanMoProfile = {
   seedRange: DoseRange;
   foliarRange: DoseRange;
   foliarStage: "V2_V3" | "V3_V5";
-  preferredMethod: "FOLIAR" | "NO_UNIQUE_PREFERENCE";
+  preferredMethod: "FOLIAR";
   triggerFraming: "CONDITIONAL_RESPONSE_CONTEXT" | "MINIMUM_EXPORT_EACH_CROP_CYCLE";
   annualUsePolicy: "DO_NOT_APPLY_EVERY_YEAR_IN_ILP" | "MINIMUM_EXPORT_EACH_CROP_CYCLE";
   pastureStopThresholdMgPerKg: number | null;
@@ -59,7 +59,7 @@ export const SOYBEAN_MO_PROFILES: Readonly<Record<SoybeanMoProfileId, SoybeanMoP
     seedRange: { minGMoPerHa: 12, maxGMoPerHa: 25 },
     foliarRange: { minGMoPerHa: 12, maxGMoPerHa: 25 },
     foliarStage: "V3_V5",
-    preferredMethod: "NO_UNIQUE_PREFERENCE",
+    preferredMethod: "FOLIAR",
     triggerFraming: "MINIMUM_EXPORT_EACH_CROP_CYCLE",
     annualUsePolicy: "MINIMUM_EXPORT_EACH_CROP_CYCLE",
     pastureStopThresholdMgPerKg: null,
