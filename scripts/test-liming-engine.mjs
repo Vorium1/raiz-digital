@@ -105,7 +105,7 @@ assert.equal(establishment.ruleId, SOYBEAN_LIMING_RULE_IDS.noTillEstablishment);
 assert.equal(establishment.decision, "APPLY");
 assert.equal(establishment.recommendedDoseTonHaPrnt100, 5.4);
 
-// 12. SPD consolidado sem restrições: edição 2025 conflita 1/2 SMP (Tabela 2.2) x 1/4 SMP (texto 2.3.3).
+// 12. Ata oficial 44ª RPSRS resolve SPD consolidado sem restrições em 1/2 SMP para pH 6,0.
 const consolidatedNoRestriction = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
@@ -116,13 +116,48 @@ const consolidatedNoRestriction = evaluateSoybeanLimingRsSc2025({
   smp0To10: 5.6,
   yearsSinceLastLiming: 4,
 });
-assert.equal(consolidatedNoRestriction.ruleStatus, "REQUIRES_AGRONOMIST_REVIEW");
-assert.equal(consolidatedNoRestriction.decision, "BLOCKED_SOURCE_CONFLICT");
-assert.equal(consolidatedNoRestriction.evidenceConflict.table2_2.candidateTonHaPrnt100, 2.7);
-assert.equal(consolidatedNoRestriction.evidenceConflict.section2_3_3.candidateTonHaPrnt100, 1.35);
+assert.equal(consolidatedNoRestriction.ruleStatus, "READY_FOR_IMPLEMENTATION");
+assert.equal(consolidatedNoRestriction.decision, "APPLY");
+assert.equal(consolidatedNoRestriction.automaticDoseAllowed, true);
+assert.equal(consolidatedNoRestriction.rawSmpDoseTonHaPrnt100, 5.4);
+assert.equal(consolidatedNoRestriction.recommendedDoseTonHaPrnt100, 2.7);
+assert.equal(consolidatedNoRestriction.applicationMode, "SURFACE");
+assert.equal(consolidatedNoRestriction.surfaceCapApplied, false);
+assert.ok(consolidatedNoRestriction.warnings.includes("OFFICIAL_44_RPSRS_MINUTES_RESOLVE_HALF_SMP_FOR_CONSOLIDATED_NO_RESTRICTIONS"));
 
-// 13. SPD consolidado com restrições: 10-29,99% Al cai no conflito 10% (tabela) x 30% (texto).
-const consolidatedThresholdConflict = evaluateSoybeanLimingRsSc2025({
+// 13. O teto oficial de 5 t/ha PRNT100 é aplicado após a fração de 1/2 SMP.
+const consolidatedSurfaceCap = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  noRestrictions10To20Confirmed: true,
+  phWater0To10: 5.0,
+  baseSaturation0To10Pct: 55,
+  aluminumSaturation0To10Pct: 15,
+  smp0To10: 4.8,
+  yearsSinceLastLiming: 4,
+});
+assert.equal(consolidatedSurfaceCap.decision, "APPLY");
+assert.equal(consolidatedSurfaceCap.rawSmpDoseTonHaPrnt100, 11.9);
+assert.equal(consolidatedSurfaceCap.recommendedDoseTonHaPrnt100, 5);
+assert.equal(consolidatedSurfaceCap.surfaceCapApplied, true);
+assert.ok(consolidatedSurfaceCap.warnings.includes("SURFACE_APPLICATION_CAPPED_AT_5_T_HA_PRNT100"));
+
+// 14. A Ata não resolveu a divergência V/Al; quadrantes mistos continuam fail-closed.
+const consolidatedVAlAmbiguous = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  noRestrictions10To20Confirmed: true,
+  phWater0To10: 5.2,
+  baseSaturation0To10Pct: 70,
+  aluminumSaturation0To10Pct: 12,
+  smp0To10: 5.6,
+  yearsSinceLastLiming: 4,
+});
+assert.equal(consolidatedVAlAmbiguous.decision, "BLOCKED_SOURCE_CONFLICT");
+assert.equal(consolidatedVAlAmbiguous.automaticDoseAllowed, false);
+
+// 15. Ata oficial resolve Al>=10%; entre 10 e 30% não há mais conflito de fonte, mas incorporação exige decisão agronômica.
+const consolidatedNeedsReview = evaluateSoybeanLimingRsSc2025({
   region: "SC",
   system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
   phWater10To20: 5.2,
@@ -137,15 +172,17 @@ const consolidatedThresholdConflict = evaluateSoybeanLimingRsSc2025({
     agronomistConfirmedIncorporationDecision: false,
   },
 });
-assert.equal(consolidatedThresholdConflict.decision, "BLOCKED_SOURCE_CONFLICT");
-assert.equal(consolidatedThresholdConflict.automaticDoseAllowed, false);
+assert.equal(consolidatedNeedsReview.ruleStatus, "REQUIRES_AGRONOMIST_REVIEW");
+assert.equal(consolidatedNeedsReview.decision, "BLOCKED_PROFESSIONAL_REVIEW");
+assert.equal(consolidatedNeedsReview.automaticDoseAllowed, false);
+assert.ok(!consolidatedNeedsReview.blockers.some((blocker) => blocker.includes("SOURCE_CONFLICT_AL_THRESHOLD")));
 
-// 14. Quando ambos os trechos concordam (Al>=30), ainda exige decisão profissional e não vira dose automática.
+// 16. O limiar Al=10% é inclusivo; com decisão profissional confirmada, dose usa SMP médio das duas camadas.
 const consolidatedReviewed = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
   phWater10To20: 5.1,
-  aluminumSaturation10To20Pct: 35,
+  aluminumSaturation10To20Pct: 10,
   smp0To10: 5.6,
   smp10To20: 5.7,
   yearsSinceLastLiming: 4,
@@ -156,11 +193,47 @@ const consolidatedReviewed = evaluateSoybeanLimingRsSc2025({
     agronomistConfirmedIncorporationDecision: true,
   },
 });
-assert.equal(consolidatedReviewed.decision, "BLOCKED_PROFESSIONAL_REVIEW");
-assert.equal(consolidatedReviewed.reviewedDoseCandidateTonHaPrnt100, 5.1);
-assert.equal(consolidatedReviewed.automaticDoseAllowed, false);
+assert.equal(consolidatedReviewed.ruleStatus, "REQUIRES_AGRONOMIST_REVIEW");
+assert.equal(consolidatedReviewed.decision, "APPLY");
+assert.equal(consolidatedReviewed.automaticDoseAllowed, true);
+assert.equal(consolidatedReviewed.recommendedDoseTonHaPrnt100, 5.1);
+assert.equal(consolidatedReviewed.reviewedSmpMean, 5.65);
+assert.equal(consolidatedReviewed.applicationMode, "INCORPORATED");
+assert.deepEqual(consolidatedReviewed.incorporatedDepthCm, { from: 0, to: 20 });
 
-// 15. Calagem recente em SPD consolidado bloqueia reaplicação automática por risco de SMP não detectar corretivo ainda reagindo.
+// 17. Limites de decisão do ramo com restrições permanecem literais: pH=5,5 ou Al<10 -> não aplicar por essa regra.
+const consolidatedPhBoundary = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
+  phWater10To20: 5.5,
+  aluminumSaturation10To20Pct: 20,
+  smp0To10: 5.6,
+  smp10To20: 5.7,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: true,
+    phosphorus10To20BelowCritical: true,
+    agronomistConfirmedIncorporationDecision: true,
+  },
+});
+assert.equal(consolidatedPhBoundary.decision, "DO_NOT_APPLY");
+const consolidatedAlBoundary = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
+  phWater10To20: 5.2,
+  aluminumSaturation10To20Pct: 9.9,
+  smp0To10: 5.6,
+  smp10To20: 5.7,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: true,
+    phosphorus10To20BelowCritical: true,
+    agronomistConfirmedIncorporationDecision: true,
+  },
+});
+assert.equal(consolidatedAlBoundary.decision, "DO_NOT_APPLY");
+
+// 18. Calagem recente em SPD consolidado bloqueia reaplicação automática por risco de SMP não detectar corretivo ainda reagindo.
 const recentLiming = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
@@ -169,11 +242,11 @@ const recentLiming = evaluateSoybeanLimingRsSc2025({
 assert.equal(recentLiming.decision, "BLOCKED_PROFESSIONAL_REVIEW");
 assert.ok(recentLiming.blockers.includes("RECENT_LIMING_CAN_MASK_SMP_RESPONSE_REVIEW_BEFORE_REAPPLICATION"));
 
-// 16. Equação oficial para baixo tamponamento e ajuste de PRNT ficam explícitos e separados da escolha comercial.
+// 19. Equação oficial para baixo tamponamento e ajuste de PRNT ficam explícitos e separados da escolha comercial.
 const lowBuffer = computeSoybeanLowBufferingLiming2025({ targetPh: "6.0", organicMatterPct: 2, exchangeableAlCmolcDm3: 0.5 });
 assert.equal(lowBuffer.ready, true);
 assert.equal(lowBuffer.recommendedDoseTonHaPrnt100, 2.31);
 assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
 
-console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; conflitos internos da edição 2025 permanecem fail-closed");
+console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; Ata 44ª RPSRS resolve C1/C2 e C3 V/Al permanece fail-closed");
