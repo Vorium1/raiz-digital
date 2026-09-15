@@ -2,39 +2,85 @@ import type { AgronomicPrescriptionProvider, AgronomicPrescriptionProviderResult
 import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-/**
- * Provedor de prescrição via Gemini (nível gratuito), usado como alternativa
- * enquanto não há crédito pago em nenhum provedor (decisão do diretor,
- * 2026-09-04: rodar um piloto de demonstração sem custo). Mesma regra
- * absoluta do provedor Anthropic: NUNCA pesquisa na internet e NUNCA inventa
- * dado -- só usa `evidence` (resultados reais de laboratório) e
- * `evidence.technicalSources[].content` (fontes já homologadas na base).
- * Por isso não usa `tools: [{ google_search: {} }]` -- é justamente esse
- * endpoint sem ferramenta de busca que funciona de graça no Gemini (testado
- * em 2026-09-04; ver `gemini-knowledge-research-provider.ts` para o
- * contraste com a busca, que exige faturamento).
- * Qualidade esperada é menor que o Opus da Anthropic -- por isso permanece
- * como alternativa de fallback, nunca preferencial quando `ANTHROPIC_API_KEY`
- * também estiver configurada (ver `agronomic-prescription-provider.ts`).
- */
-
-const PROMPT_VERSION = "prescription-gemini-v2-no-invented-recommendation";
+const PROMPT_VERSION = "prescription-gemini-v6-deterministic-pk-gate";
 const MAX_OUTPUT_TOKENS = 8000;
+
+const PRESCRIPTION_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary", "diagnosis", "recommendations", "managementPractices", "missingInformation", "sources"],
+  properties: {
+    summary: { type: "string", description: "Síntese agronômica objetiva baseada somente nas evidências fornecidas." },
+    diagnosis: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["parameterCode", "value", "unit", "interpretation", "rationale"],
+        properties: {
+          parameterCode: { type: "string" },
+          value: { type: "number" },
+          unit: { type: "string" },
+          interpretation: { type: "string" },
+          rationale: { type: "string" },
+        },
+      },
+    },
+    recommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["inputType", "quantity", "unit", "rationale"],
+        properties: {
+          inputType: { type: "string" },
+          quantity: { type: "number", minimum: 0.000001 },
+          unit: { type: "string" },
+          rationale: { type: "string" },
+        },
+      },
+    },
+    managementPractices: { type: "array", items: { type: "string" } },
+    missingInformation: { type: "array", items: { type: "string" } },
+    sources: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "institution", "url"],
+        properties: {
+          title: { type: "string" },
+          institution: { type: "string", description: "Use string vazia se não houver instituição." },
+          url: { type: "string", description: "Use string vazia se não houver URL na evidência." },
+        },
+      },
+    },
+  },
+} as const;
 
 function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
   return [
     "Você é um agrônomo sênior, doutor em fertilidade do solo e nutrição de plantas, atuando como consultor técnico independente no Brasil.",
-    "Você recebe os dados reais de uma análise de solo específica (resultados de laboratório, tipo de solo, cultura, cultivar, meta produtiva, nível tecnológico, compactação, área de pisoteio/cabeceira, irrigação, histórico de produtividade real da área) e um conjunto de fontes técnicas (`technicalSources`) já pesquisadas e homologadas por um agrônomo responsável da plataforma.",
-    "Regra absoluta: você NUNCA inventa um dado que não foi fornecido, e NÃO pesquisa na internet — baseie seu diagnóstico e recomendações apenas nos dados da análise e no conteúdo de `technicalSources` recebido. Se o assunto necessário não estiver coberto pelas fontes disponíveis, declare isso explicitamente em `missingInformation` em vez de supor um valor ou inventar uma fonte.",
-    "IMPORTANTE sobre `recommendations`: só inclua um item nesse array se `technicalSources` contiver uma tabela ou regra de dose real para aquele insumo/parâmetro, com número que você pode citar. Se não houver tabela de dose (só faixa de classificação, por exemplo), NÃO crie um item de recomendação com quantidade estimada, arredondada ou zero — omita esse insumo do array `recommendations` inteiramente e explique a lacuna em `missingInformation` em vez disso. Um array `recommendations` vazio é uma resposta válida e esperada quando falta a tabela de dose.",
-    "Cite em `sources` exatamente as entradas de `technicalSources` que você efetivamente usou (mesmo título/instituição), nunca uma fonte que não foi fornecida a você.",
-    "Para cada item de `recommendations` (calcário, gesso agrícola, N/P/K, micronutrientes, etc.), explique em `rationale` o raciocínio completo: por que essa dose, como a meta produtiva/cultivar influenciou o cálculo, como a área efetiva (descontando pisoteio/cabeceira, se informado) foi considerada, e por que a irrigação (se houver) muda a recomendação.",
-    "Expresse quantidade de insumo sempre como uma taxa por hectare (ex.: t/ha, kg/ha) — nunca como total absoluto da área, para não confundir escala.",
-    "Se a compactação do solo for MEDIA ou ALTA, inclua em `managementPractices` as práticas físicas de manejo recomendadas (ex.: escarificação, rotação com planta de cobertura de raiz agressiva), com a justificativa dentro do próprio texto.",
-    "Responda SOMENTE com um bloco JSON válido, sem nenhum texto antes ou depois, exatamente no formato:",
-    `{"summary": string, "diagnosis": [{"parameterCode": string, "value": number, "unit": string, "interpretation": string, "rationale": string}], "recommendations": [{"inputType": string, "quantity": number, "unit": string, "rationale": string}], "managementPractices": string[], "missingInformation": string[], "sources": [{"title": string, "institution": string|null, "url": string|null}]}`,
+    "Você recebe dados reais de uma análise, uma interpretação determinística JÁ revisada/aprovada e fontes técnicas ACTIVE presentes na plataforma.",
+    "Regra absoluta: NUNCA invente dado, dose, fonte, método, produtividade, custo ou contexto que não esteja nas evidências recebidas. Não pesquise na internet.",
+    "`deterministicInterpretation.structuredOutput.interpretation` é a autoridade para as CLASSIFICAÇÕES. Não reclassifique o laudo bruto, não substitua uma classe do motor e não crie uma segunda interpretação paralela. Os `results` brutos existem apenas para rastreabilidade, valores e unidades.",
+    "Se um parâmetro está marcado como não interpretável/pending na interpretação determinística, trate-o como informação pendente; não invente a classe correspondente.",
+    "Só inclua `recommendations` quando houver regra técnica rastreável e todas as entradas exigidas estiverem presentes no contexto.",
+    "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` descreve apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
+    "Para P/K, use os três blocos recebidos: `pkDoseReadiness` (contexto), `uniformPkReadiness` (cultura/regra + representatividade) e `deterministicPkDoses` (dose/faixa calculada pelo motor). Se qualquer gate estiver bloqueado para um nutriente, NÃO gere P2O5/K2O para ele e registre os blockers em `missingInformation`.",
+    "Quando `deterministicPkDoses.P2O5` ou `.K2O` estiver `ready=true`, NÃO recalcule, estime nem ajuste por conta própria: para dose não discricionária, copie exatamente `expected.doseKgPerHa` em kg/ha. O servidor recalculará antes de promover a recomendação oficial.",
+    "Nunca transforme maioria simples, média ou 50% dos pontos em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
+    "Se a regra exigir meta de produtividade e ela estiver ausente ou não suportada, não assuma produtividade de referência, teto, média regional ou meta implícita.",
+    "`season.technologyLevel` é apenas metadado/cenário. NÃO aumente ou reduza dose por BAIXO/MEDIO/ALTO sem regra quantitativa homologada.",
+    "Taxa variável é um fluxo separado e sob demanda. Este provedor não deve criar mapa, zona, pixel ou dose espacial sem solicitação espacial explícita e gate espacial próprio.",
+    "Um array `recommendations` vazio é correto quando a evidência não sustenta uma dose. É melhor declarar falta de informação do que produzir uma recomendação aparentemente completa e tecnicamente falsa.",
+    "Em `diagnosis`, mantenha valor e unidade coerentes com o dado recebido e a classificação exatamente coerente com a interpretação determinística. Não faça conversão implícita.",
+    "Em `sources`, use exclusivamente fontes recebidas em `technicalSources`; título deve corresponder à evidência. Se instituição/URL não existirem, use string vazia.",
+    "Para cada recomendação válida, explique em `rationale` qual regra foi usada e quais entradas reais sustentaram a quantidade. Quantidade sempre por hectare, nunca total absoluto da fazenda.",
+    "Práticas de manejo sem dose também precisam ser sustentadas pela evidência/contexto fornecido; não transformar hipótese em recomendação oficial.",
+    "A resposta deve obedecer exatamente ao schema JSON solicitado pela API.",
     "",
-    `Dados reais da análise:\n\n${JSON.stringify(evidence, null, 2)}`,
+    `Evidências permitidas:\n\n${JSON.stringify(evidence, null, 2)}`,
   ].join("\n\n");
 }
 
@@ -63,7 +109,12 @@ export const geminiPrescriptionProvider: AgronomicPrescriptionProvider = {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: buildPrompt(request.evidence) }] }],
-          generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+          generationConfig: {
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            temperature: 0.2,
+            responseMimeType: "application/json",
+            responseJsonSchema: PRESCRIPTION_JSON_SCHEMA,
+          },
         }),
       },
     );
@@ -75,7 +126,7 @@ export const geminiPrescriptionProvider: AgronomicPrescriptionProvider = {
 
     const payload = await response.json() as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
     const jsonText = extractJsonText(payload);
-    if (!jsonText) throw new Error("Resposta da IA (Gemini) não continha texto — formato inesperado.");
+    if (!jsonText) throw new Error("Resposta da IA (Gemini) não continha JSON utilizável — nada foi salvo.");
 
     let parsed: unknown;
     try {

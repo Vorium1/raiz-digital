@@ -12,7 +12,8 @@ import { ParameterRangeBar, StatusDonut, ParameterTrendLine, ConfidenceRankingLi
 
 export const metadata = { title: "Análises" };
 
-export default async function AnalysesPage() {
+export default async function AnalysesPage({ searchParams }: { searchParams: Promise<{ talhao?: string }> }) {
+  const { talhao } = await searchParams;
   const database = isDatabaseMode();
   const session = database ? await requirePlatformSession() : null;
   const realAnalyses = session ? await listAnalyses(session.tenantId, session.userId) : [];
@@ -89,7 +90,7 @@ export default async function AnalysesPage() {
         <div className="summary-item"><span>Com inconsistências</span><strong>{summary.inconsistent}</strong></div>
         <div className="summary-item"><span>Relatórios enviados</span><strong>{summary.published}</strong></div>
       </section>
-      {database ? <AnalysesTable analyses={realAnalyses} /> : <>
+      {database ? <AnalysesTable analyses={realAnalyses} initialQuery={talhao ?? ""} /> : <>
         <div className="toolbar">
           <div className="toolbar-left"><label className="search-box"><Icon name="search" size={17}/><input aria-label="Buscar por cliente, área ou código" placeholder="Buscar por cliente, área ou código"/></label><select className="select" aria-label="Filtrar status"><option>Todos os status</option><option>Aguardando revisão</option><option>Com inconsistências</option><option>Aprovada</option></select></div>
           <div className="toolbar-right"><Link href="/analises/nova?etapa=laudo" className="button secondary"><Icon name="upload" size={16}/>Importar laudo</Link></div>

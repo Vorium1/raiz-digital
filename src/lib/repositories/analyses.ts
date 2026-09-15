@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 
@@ -7,20 +8,32 @@ function analysisCode() {
   return `AN-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
-export async function listAnalyses(tenantId: string, userId?: string) {
+/** `clientId` opcional -- omitido, mantém o comportamento antigo (carteira inteira), usado por /analises,
+ * /relatorios e /api/analyses. O dashboard passa o cliente filtrado na tela pra corrigir o mesmo bug real
+ * do item A (seção "Fluxo de análises" ignorava o filtro de cliente selecionado). */
+export async function listAnalyses(tenantId: string, userId?: string, clientId?: string | null) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT a.id::text, a.code, a.status::text, a.confidence_score::float8 AS "confidenceScore",
+              a.requested_analysis_depth AS "requestedAnalysisDepth",
               a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt",
               c.name AS "clientName", p.name AS "propertyName", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
-              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop"
+              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop",
+              li.status AS "latestInterpretationStatus", li.not_interpretable_reason AS "notInterpretableReason"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN LATERAL (
+         SELECT status, not_interpretable_reason FROM interpretations
+         WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id
+         ORDER BY revision DESC LIMIT 1
+       ) li ON true
+       WHERE ($1::uuid IS NULL OR c.id = $1::uuid)
        ORDER BY a.updated_at DESC
        LIMIT 200`,
+      [clientId ?? null],
     );
     return result.rows;
   });
@@ -33,15 +46,28 @@ export async function createAnalysis(input: {
   collectionOrderId?: string | null;
   laboratoryId?: string | null;
   sourceType?: "INTEGRATION" | "CSV" | "XLSX" | "PDF_OCR" | "MANUAL" | null;
+  analysisDepth?: AnalysisDepthId | null;
+  analysisContext?: Record<string, unknown> | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const code = analysisCode();
     const result = await client.query(
       `INSERT INTO analyses
-       (tenant_id, crop_season_id, collection_order_id, laboratory_id, code, source_type, created_by)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::uuid)
-       RETURNING id::text, code, status::text, created_at::text AS "createdAt"`,
-      [input.tenantId, input.cropSeasonId, input.collectionOrderId ?? null, input.laboratoryId ?? null, code, input.sourceType ?? null, input.userId],
+       (tenant_id, crop_season_id, collection_order_id, laboratory_id, code, source_type, created_by,
+        requested_analysis_depth, analysis_context)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::uuid, $8, $9::jsonb)
+       RETURNING id::text, code, status::text, requested_analysis_depth AS "requestedAnalysisDepth", created_at::text AS "createdAt"`,
+      [
+        input.tenantId,
+        input.cropSeasonId,
+        input.collectionOrderId ?? null,
+        input.laboratoryId ?? null,
+        code,
+        input.sourceType ?? null,
+        input.userId,
+        input.analysisDepth ?? null,
+        JSON.stringify(input.analysisContext ?? {}),
+      ],
     );
     const created = result.rows[0];
     await writeAudit(client, {
@@ -50,7 +76,7 @@ export async function createAnalysis(input: {
       action: "ANALYSIS_CREATED",
       entityType: "analysis",
       entityId: created.id,
-      metadata: { code },
+      metadata: { code, analysisDepth: input.analysisDepth ?? null },
     });
     return created;
   });
@@ -62,15 +88,18 @@ export async function getAnalysisById(tenantId: string, analysisId: string, user
     const result = await client.query(
       `SELECT a.id::text, a.code, a.status::text, a.source_type AS "sourceType",
               a.confidence_score::float8 AS "confidenceScore", a.confidence_level AS "confidenceLevel",
+              a.requested_analysis_depth AS "requestedAnalysisDepth", a.analysis_context AS "analysisContext",
               a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt",
-              c.name AS "clientName", p.name AS "propertyName", p.municipality, p.state,
-              f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
-              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop",
+              c.id::text AS "clientId", c.name AS "clientName",
+              p.id::text AS "propertyId", p.name AS "propertyName", p.municipality, p.state,
+              f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
+              cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop",
               cs.yield_goal::float8 AS "yieldGoal", cs.yield_goal_unit AS "yieldGoalUnit",
-              co.code AS "collectionCode", l.name AS "laboratoryName",
+              co.id::text AS "collectionOrderId", co.code AS "collectionCode", l.name AS "laboratoryName",
               (SELECT count(*)::int FROM analysis_imports ai WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id) AS "importCount",
               (SELECT count(*)::int FROM lab_samples ls WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id) AS "labSampleCount",
-              (SELECT count(*)::int FROM interpretations i WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id) AS "interpretationCount"
+              (SELECT count(*)::int FROM interpretations i WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id) AS "interpretationCount",
+              li.status AS "latestInterpretationStatus", li.not_interpretable_reason AS "notInterpretableReason"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
@@ -78,6 +107,11 @@ export async function getAnalysisById(tenantId: string, analysisId: string, user
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN collection_orders co ON co.tenant_id = a.tenant_id AND co.id = a.collection_order_id
        LEFT JOIN laboratories l ON l.id = a.laboratory_id
+       LEFT JOIN LATERAL (
+         SELECT status, not_interpretable_reason FROM interpretations
+         WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id
+         ORDER BY revision DESC LIMIT 1
+       ) li ON true
        WHERE a.id = $1::uuid
        LIMIT 1`,
       [analysisId],

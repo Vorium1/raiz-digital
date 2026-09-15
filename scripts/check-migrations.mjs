@@ -24,6 +24,11 @@ const conditionalRanges = await readFile(new URL("../db/migrations/020_condition
 const derivedParameters = await readFile(new URL("../db/migrations/021_derived_parameters.sql", import.meta.url), "utf8");
 const sampleType = await readFile(new URL("../db/migrations/022_sample_type.sql", import.meta.url), "utf8");
 const satelliteNdvi = await readFile(new URL("../db/migrations/023_satellite_ndvi.sql", import.meta.url), "utf8");
+const parameterAiValidation = await readFile(new URL("../db/migrations/024_parameter_ai_cross_validation.sql", import.meta.url), "utf8");
+const ruleExecutions = await readFile(new URL("../db/migrations/031_agronomic_rule_executions.sql", import.meta.url), "utf8");
+const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_recommendation_context.sql", import.meta.url), "utf8");
+const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
+const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -86,4 +91,38 @@ assert.match(satelliteNdvi, /CREATE TABLE field_ndvi_snapshots/i);
 assert.match(satelliteNdvi, /FORCE ROW LEVEL SECURITY/i);
 assert.match(satelliteNdvi, /mean_ndvi numeric\(6,4\) NOT NULL CHECK \(mean_ndvi BETWEEN -1 AND 1\)/i);
 assert.match(satelliteNdvi, /UNIQUE \(tenant_id,field_id,captured_at,source\)/i);
-console.log("migrations: contratos estruturais 001-023 aprovados");
+assert.match(parameterAiValidation, /ADD COLUMN ai_validation_status text NOT NULL DEFAULT 'NAO_VALIDADO'/i);
+assert.match(parameterAiValidation, /CHECK \(ai_validation_status IN \('NAO_VALIDADO', 'CONSISTENTE', 'INCONSISTENTE', 'INDETERMINADO'\)\)/i);
+assert.match(parameterAiValidation, /ai_validation_sources jsonb/i);
+
+assert.match(ruleExecutions, /CREATE TABLE agronomic_rule_executions/i);
+assert.match(ruleExecutions, /FORCE ROW LEVEL SECURITY/i);
+assert.match(ruleExecutions, /GRANT SELECT, INSERT ON agronomic_rule_executions TO raiz_app/i);
+assert.match(ruleExecutions, /REVOKE UPDATE, DELETE ON agronomic_rule_executions FROM raiz_app/i);
+
+assert.match(nitrogenContext, /CREATE TABLE nitrogen_recommendation_contexts/i);
+assert.match(nitrogenContext, /UNIQUE \(tenant_id,crop_season_id\)/i);
+assert.match(nitrogenContext, /FORCE ROW LEVEL SECURITY/i);
+assert.match(nitrogenContext, /effective_legume_inoculation IS TRUE AND proven_legume_inoculation_failure IS TRUE/i);
+assert.match(nitrogenContext, /CREATE POLICY tenant_isolation ON nitrogen_recommendation_contexts/i);
+
+assert.match(commercialInputCatalog, /CREATE TABLE commercial_input_products/i);
+assert.match(commercialInputCatalog, /UNIQUE \(tenant_id, code\)/i);
+assert.match(commercialInputCatalog, /FORCE ROW LEVEL SECURITY/i);
+assert.match(commercialInputCatalog, /CREATE POLICY tenant_isolation ON commercial_input_products/i);
+assert.match(commercialInputCatalog, /GRANT SELECT, INSERT, UPDATE ON commercial_input_products TO raiz_app/i);
+assert.doesNotMatch(commercialInputCatalog, /GRANT[^;]*DELETE[^;]*commercial_input_products/i);
+assert.match(commercialInputCatalog, /min_rate_kg_ha IS NULL OR max_rate_kg_ha IS NULL OR min_rate_kg_ha <= max_rate_kg_ha/i);
+
+assert.match(commercialPlanSnapshots, /CREATE TABLE commercial_plan_snapshots/i);
+assert.match(commercialPlanSnapshots, /source_targets jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /product_snapshots jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /engine_input jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /engine_output jsonb NOT NULL/i);
+assert.match(commercialPlanSnapshots, /FORCE ROW LEVEL SECURITY/i);
+assert.match(commercialPlanSnapshots, /CREATE POLICY tenant_isolation ON commercial_plan_snapshots/i);
+assert.match(commercialPlanSnapshots, /GRANT SELECT, INSERT ON commercial_plan_snapshots TO raiz_app/i);
+assert.match(commercialPlanSnapshots, /REVOKE UPDATE, DELETE ON commercial_plan_snapshots FROM raiz_app/i);
+assert.doesNotMatch(commercialPlanSnapshots, /GRANT[^;]*(UPDATE|DELETE)[^;]*commercial_plan_snapshots/i);
+
+console.log("migrations: contratos estruturais críticos 001-034 aprovados");

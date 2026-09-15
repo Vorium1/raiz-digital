@@ -342,4 +342,99 @@ function makeParam(overrides = {}) {
   }
 }
 
-console.log("agronomic-engine: 27 cenários aprovados");
+// 27-31. Compatibilidade de UNIDADE (item 3 do fechamento técnico, auditoria RAIZ_2.0/Cabeda 2026-09-11):
+// `unitExpected` existia em `CropProfileParameterDef` mas nunca era conferido contra `result.unit` --
+// achado real, corrigido. Comparação sempre EXATA, nunca frouxa (nenhuma tradução de unidade dentro do
+// motor -- isso é responsabilidade da ingestão/normalização, `lab-method-normalization.ts`).
+
+// 27. unidade esperada bate exatamente com a recebida -> interpreta normalmente.
+{
+  const profile = makeProfile({ parameters: [makeParam({ unitExpected: "mg/dm³" })] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ unit: "mg/dm³", value: 5.8 })] });
+  assert.equal(result.interpretation[0].interpretable, true);
+}
+
+// 28. unidade incompatível de verdade (cmolc/dm³ esperado, mg/dm³ recebido) -> nunca classifica.
+{
+  const profile = makeProfile({ parameters: [makeParam({ unitExpected: "cmolc/dm³" })] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ unit: "mg/dm³", value: 5.8 })] });
+  assert.equal(result.interpretation[0].interpretable, false);
+  assert.equal(result.interpretation[0].code, "UNIT_NOT_SUPPORTED");
+}
+
+// 29. unidade totalmente desconhecida/não relacionada -> não interpreta (nunca assume).
+{
+  const profile = makeProfile({ parameters: [makeParam({ unitExpected: "mg/dm³" })] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ unit: "unidade-desconhecida-xyz", value: 5.8 })] });
+  assert.equal(result.interpretation[0].interpretable, false);
+  assert.equal(result.interpretation[0].code, "UNIT_NOT_SUPPORTED");
+}
+
+// 30. P/K com unidade "mg/L" não homologada (perfil espera "mg/dm³") -> não interpreta -- o MOTOR nunca
+// aceita uma tradução de unidade sozinho; essa tradução só pode acontecer na ingestão (fora do motor,
+// antes do resultado chegar aqui), nunca dentro de `interpretOne`.
+{
+  const profile = makeProfile({ parameters: [makeParam({ parameterCode: "P", unitExpected: "mg/dm³", analyticalMethodAllowed: ["Mehlich-1"] })] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "P", method: "Mehlich-1", unit: "mg/L", value: 11.0 })] });
+  assert.equal(result.interpretation[0].interpretable, false);
+  assert.equal(result.interpretation[0].code, "UNIT_NOT_SUPPORTED");
+}
+
+// 31. parâmetro SEM unitExpected declarado (null/vazio) -> comportamento explícito: sem restrição, nunca
+// bloqueia por unidade (mesmo padrão já usado por `analyticalMethodAllowed: []`) -- mesmo com uma unidade
+// "esquisita" no resultado, a ausência de `unitExpected` significa "perfil não declarou restrição".
+{
+  const profile = makeProfile({ parameters: [makeParam({ unitExpected: null })] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ unit: "qualquer-coisa", value: 5.8 })] });
+  assert.equal(result.interpretation[0].interpretable, true);
+}
+
+// 32-35. `classificationRole` / dado AUXILIAR (item 2 do fechamento técnico): um código listado em
+// `cropProfile.auxiliaryParameterCodes` nunca é tratado como "parâmetro não homologado" -- é
+// estruturalmente um dado auxiliar, código `NOT_CLASSIFICATION_TARGET`, `classificationRole: "AUXILIARY"`,
+// mesmo que NENHUMA linha exista pra ele em `parameters` (não é sobre existir cadastro, é sobre nunca ser
+// um alvo de classificação nesta metodologia).
+
+// 32. Parâmetro auxiliar sem NENHUMA linha em `parameters` -> NOT_CLASSIFICATION_TARGET, não
+// PARAMETER_NOT_IN_PROFILE (achado real: os dois casos usavam o MESMO código antes desta correção).
+{
+  const profile = makeProfile({ parameters: [], auxiliaryParameterCodes: ["CLAY"] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "CLAY", unit: "%", value: 72 })] });
+  const item = result.interpretation[0];
+  assert.equal(item.interpretable, false);
+  assert.equal(item.code, "NOT_CLASSIFICATION_TARGET");
+  assert.equal(item.classificationRole, "AUXILIARY");
+}
+
+// 33. Todo resultado TARGET (classificado ou não) carrega `classificationRole: "TARGET"`.
+{
+  const profile = makeProfile({ parameters: [makeParam()], auxiliaryParameterCodes: ["CLAY"] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "PH", value: 5.8 })] });
+  assert.equal(result.interpretation[0].classificationRole, "TARGET");
+  assert.equal(result.interpretation[0].interpretable, true);
+}
+
+// 34. Um parâmetro genuinamente ainda não homologado (existe em `parameters` mas DRAFT, não está em
+// `auxiliaryParameterCodes`) continua PARAMETER_NOT_IN_PROFILE/TARGET -- nunca vira AUXILIARY por engano.
+{
+  const profile = makeProfile({ parameters: [makeParam({ parameterCode: "CTC", status: "DRAFT" })], auxiliaryParameterCodes: ["CLAY"] });
+  const result = runAgronomicEngine({ cropProfile: profile, labResults: [makeResult({ parameterCode: "CTC", value: 15 })] });
+  const item = result.interpretation[0];
+  assert.equal(item.classificationRole, "TARGET");
+  assert.equal(item.code, "PARAMETER_NOT_IN_PROFILE");
+}
+
+// 35. Completude (confidence.dimensions) conta só entre alvos reais (classificado + aguardando) -- um
+// dado auxiliar nunca derruba a nota de completude por só existir. 1 TARGET classificado + 1 AUXILIARY
+// -> completude 100% (não 50%).
+{
+  const profile = makeProfile({ parameters: [makeParam()], auxiliaryParameterCodes: ["CLAY"] });
+  const result = runAgronomicEngine({
+    cropProfile: profile,
+    labResults: [makeResult({ parameterCode: "PH", value: 5.8 }), makeResult({ parameterCode: "CLAY", unit: "%", value: 72 })],
+  });
+  const completeness = result.confidence.dimensions.find((d) => d.key === "completeness");
+  assert.equal(completeness.score, 100);
+}
+
+console.log("agronomic-engine: 35 cenários aprovados");

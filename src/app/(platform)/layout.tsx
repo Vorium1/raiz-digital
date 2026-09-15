@@ -11,9 +11,15 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const pendingAnalyses = snapshot ? snapshot.awaitingReview + snapshot.inconsistent : undefined;
   return (
     <div className="app-shell">
-      <Sidebar tenantName={session?.tenantName} userName={session?.name} role={session?.role} pendingAnalyses={pendingAnalyses} />
+      <Sidebar
+        tenantName={session?.tenantName}
+        userName={session?.name}
+        role={session?.role}
+        isPlatformCurator={session?.isPlatformCurator}
+        pendingAnalyses={pendingAnalyses}
+      />
       <main id="conteudo-principal" className="main-content" tabIndex={-1}>{children}</main>
-      <MobileNavigation role={session?.role} />
+      <MobileNavigation role={session?.role} isPlatformCurator={session?.isPlatformCurator} />
       {session && <AssistantRaizWidget/>}
     </div>
   );

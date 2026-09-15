@@ -1,0 +1,189 @@
+name: Cabeda Spatial Provenance Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      area:
+        description: "Área Cabeda a auditar"
+        required: true
+        type: choice
+        options:
+          - "01"
+          - "02"
+        default: "01"
+  push:
+    branches:
+      - "audit/cabeda-area01"
+      - "audit/cabeda-area02"
+    paths:
+      - ".audit-trigger/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabeda-spatial-audit-homologation
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: audit-read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      CABEDA_AUDIT_AREA: ${{ github.event_name == 'workflow_dispatch' && inputs.area || (github.ref_name == 'audit/cabeda-area02' && '02' || '01') }}
+      CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
+      CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - name: Usar código auditado de develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar origem do disparo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            case "${GITHUB_REF_NAME}" in
+              audit/cabeda-area01|audit/cabeda-area02) ;;
+              *)
+                echo "::error::Branch de auditoria não autorizada."
+                exit 1
+                ;;
+            esac
+          elif [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "::error::Evento não autorizado para auditoria Cabeda."
+            exit 1
+          fi
+          echo "Disparo autorizado para Área ${CABEDA_AUDIT_AREA}."
+
+      - name: Validar contexto autorizado sem expor secrets
+        id: context
+        shell: bash
+        run: |
+          set -euo pipefail
+          READY=true
+          MISSING=0
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            READY=false
+            MISSING=$((MISSING + 1))
+            echo "::notice::HOMOLOGATION_DATABASE_URL não está configurado no environment homologation."
+          fi
+          if [ -z "${CABEDA_TENANT_ID:-}" ]; then
+            READY=false
+            MISSING=$((MISSING + 1))
+            echo "::notice::CABEDA_TENANT_ID não está configurado no environment homologation."
+          fi
+
+          echo "ready=${READY}" >> "${GITHUB_OUTPUT}"
+          echo "missing_count=${MISSING}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${READY}" = "true" ]; then
+            echo "Contexto mínimo de homologação presente. Nenhum valor sensível será impresso."
+          else
+            echo "Contexto de homologação incompleto (${MISSING} secret(s) obrigatório(s) ausente(s)). A auditoria de banco será ignorada e o gate falhará uma única vez no fechamento."
+          fi
+
+      - name: Instalar dependências
+        if: ${{ steps.context.outputs.ready == 'true' }}
+        run: npm ci
+
+      - name: Executar auditoria read-only
+        id: audit
+        if: ${{ steps.context.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -u
+          RESULT_FILE="cabeda-audit-area-${CABEDA_AUDIT_AREA}.json"
+          ERROR_FILE="cabeda-audit-error.txt"
+
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+
+          set +e
+          node --experimental-strip-types scripts/audit-cabeda-persisted-geometry.mjs >"${RESULT_FILE}" 2>"${ERROR_FILE}"
+          STATUS=$?
+          set -e
+
+          echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
+
+          if [ -s "${RESULT_FILE}" ]; then
+            cat "${RESULT_FILE}"
+          fi
+
+          if [ "${STATUS}" -eq 0 ]; then
+            echo "Auditoria concluída: proveniência espacial persistida atende ao gate."
+          elif [ "${STATUS}" -eq 2 ]; then
+            echo "Auditoria concluída: proveniência persistida não atende ao gate."
+          else
+            echo "Auditoria não pôde ser concluída. Detalhes técnicos foram omitidos dos logs para reduzir risco de exposição de infraestrutura."
+          fi
+
+      - name: Registrar resultado privacy-safe no resumo
+        if: ${{ always() && steps.audit.outcome == 'success' && steps.audit.outputs.result_file != '' && (steps.audit.outputs.exit_code == '0' || steps.audit.outputs.exit_code == '2') }}
+        shell: bash
+        run: |
+          RESULT_FILE="${{ steps.audit.outputs.result_file }}"
+          test -n "${RESULT_FILE}"
+          test -s "${RESULT_FILE}"
+          {
+            echo "## Cabeda · auditoria espacial read-only"
+            echo
+            echo "Área: ${CABEDA_AUDIT_AREA}"
+            echo
+            echo '```json'
+            cat "${RESULT_FILE}"
+            echo '```'
+            echo
+            echo "Este resultado comprova apenas proveniência espacial. Não autoriza VRA/taxa variável sozinho."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Salvar evidência privacy-safe
+        if: ${{ always() && steps.audit.outcome == 'success' && steps.audit.outputs.result_file != '' && (steps.audit.outputs.exit_code == '0' || steps.audit.outputs.exit_code == '2') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabeda-spatial-audit-area-${{ env.CABEDA_AUDIT_AREA }}
+          path: ${{ steps.audit.outputs.result_file }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Aplicar resultado fail-closed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.context.outputs.ready }}" != "true" ]; then
+            echo "::error::Auditoria Cabeda não executada: contexto/secrets obrigatórios de homologação não estão completos."
+            exit 1
+          fi
+
+          STATUS="${{ steps.audit.outputs.exit_code }}"
+          if [ -z "${STATUS}" ]; then
+            echo "::error::Auditoria Cabeda não produziu estado verificável."
+            exit 1
+          fi
+
+          case "${STATUS}" in
+            0)
+              echo "Gate de proveniência espacial aprovado para a área auditada. Demais gates de VRA continuam independentes."
+              ;;
+            2)
+              echo "::error::Proveniência espacial persistida não atende ao gate; VRA deve permanecer bloqueada."
+              exit 1
+              ;;
+            *)
+              echo "::error::Auditoria Cabeda falhou operacionalmente (exit=${STATUS}); nenhuma conclusão de proveniência pode ser emitida."
+              exit 1
+              ;;
+          esac

@@ -12,12 +12,17 @@ export type MapPoint = {
   observedLatitude: number | null; observedLongitude: number | null; collectedAt: string | null;
   depthFromCm: number; depthToCm: number; subsampleCount: number | null; accuracyM: number | null; gpsSource: string | null;
   notes: string | null; labResultCount: number;
-  /** Presentes só quando o mapa está mostrando um parâmetro agronômico (não no uso simples de coleta). */
   value?: number | null; unit?: string | null; method?: string | null;
   interpretable?: boolean | null; classification?: string | null; notInterpretableReason?: string | null;
 };
 
 export type MapLegendEntry = { label: string; color: string };
+export type MapImageOverlay = {
+  url: string;
+  /** [[sul, oeste], [norte, leste]] — envelope geográfico exato usado para gerar a imagem. */
+  bounds: [[number, number], [number, number]];
+  opacity?: number;
+};
 
 function geometryRings(geometry: Geometry): [number, number][][] {
   const toLatLng = (ring: number[][]) => ring.map(([lon, lat]) => [lat, lon] as [number, number]);
@@ -28,18 +33,9 @@ function geometryRings(geometry: Geometry): [number, number][][] {
 const NEUTRAL = "#9AA79F";
 
 /**
- * Mapa geográfico real: PostGIS -> GeoJSON -> Leaflet + OpenStreetMap.
- * Nenhuma forma abstrata -- o polígono é o limite real do talhão
- * (fields.boundary) e cada marcador é a coordenada real do ponto de
- * amostragem (sample_points.position). `layersRef` guarda os grupos de
- * camada por nome para que uma futura camada de fertilidade só precise
- * adicionar um novo grupo, sem reestruturar o mapa.
- *
- * Por padrão colore por status de coleta. Quando o chamador passa
- * `colorFor`/`legend` (painel de Inteligência Agronômica), a mesma
- * geometria passa a ser colorida pela classificação determinística do
- * parâmetro escolhido -- nunca uma cor inventada, sempre derivada do que
- * o motor já calculou.
+ * Mapa geográfico real: PostGIS -> GeoJSON -> Leaflet. Além do limite e pontos reais, aceita um
+ * raster georreferenciado opcional (por exemplo o PNG NDVI do Sentinel-2). O raster fica entre a
+ * imagem-base e o contorno/pontos, preservando contexto visual sem esconder a geometria de auditoria.
  */
 export function RealFieldMap({
   boundary,
@@ -49,6 +45,7 @@ export function RealFieldMap({
   legend,
   hint = "Clique num ponto para ver os dados",
   boundaryFillColor,
+  imageOverlay,
 }: {
   boundary: Geometry;
   points: MapPoint[];
@@ -56,18 +53,16 @@ export function RealFieldMap({
   colorFor?: (point: MapPoint) => { stroke: string; fill: string; fillOpacity: number };
   legend?: MapLegendEntry[];
   hint?: string;
-  /** Cor do preenchimento do próprio talhão, derivada do vigor real (satélite) quando disponível --
-   * substitui o preenchimento cyan neutro padrão. Nunca uma cor inventada: vem sempre de uma
-   * classificação já calculada (ver `classifyNdviValue` em `ndvi-engine.ts`). */
   boundaryFillColor?: string;
+  imageOverlay?: MapImageOverlay | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const layersRef = useRef<Record<string, Leaflet.LayerGroup>>({});
-  const latestRef = useRef({ boundary, points, colorFor, boundaryFillColor });
+  const latestRef = useRef({ boundary, points, colorFor, boundaryFillColor, imageOverlay });
   const onSelectRef = useRef<(point: MapPoint) => void>(() => {});
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
-  latestRef.current = { boundary, points, colorFor, boundaryFillColor };
+  latestRef.current = { boundary, points, colorFor, boundaryFillColor, imageOverlay };
   onSelectRef.current = setSelectedPoint;
 
   function defaultColor(point: MapPoint) {
@@ -76,20 +71,31 @@ export function RealFieldMap({
   }
 
   function drawLayers(L: typeof Leaflet, map: Leaflet.Map) {
+    const rasterLayer = layersRef.current.raster;
     const boundaryLayer = layersRef.current.boundary;
     const pointsLayer = layersRef.current.points;
-    if (!boundaryLayer || !pointsLayer) return;
+    if (!rasterLayer || !boundaryLayer || !pointsLayer) return;
+    rasterLayer.clearLayers();
     boundaryLayer.clearLayers();
     pointsLayer.clearLayers();
 
-    const { boundary, points, colorFor, boundaryFillColor } = latestRef.current;
+    const { boundary, points, colorFor, boundaryFillColor, imageOverlay } = latestRef.current;
     const rings = geometryRings(boundary);
+
+    if (imageOverlay) {
+      L.imageOverlay(imageOverlay.url, imageOverlay.bounds, {
+        opacity: imageOverlay.opacity ?? 0.78,
+        interactive: false,
+      }).addTo(rasterLayer);
+    }
+
     rings.forEach((ring) => {
       L.polygon(ring, {
         color: boundaryFillColor ?? "#00C4D6",
         weight: 3,
         fillColor: boundaryFillColor ?? "#00C4D6",
-        fillOpacity: boundaryFillColor ? 0.35 : 0.08,
+        // Raster real presente: contorno continua visível, mas não recebe tinta agregada por cima.
+        fillOpacity: imageOverlay ? 0 : boundaryFillColor ? 0.35 : 0.08,
       }).addTo(boundaryLayer);
     });
 
@@ -122,9 +128,6 @@ export function RealFieldMap({
       if (cancelled || !containerRef.current || mapRef.current) return;
       const L = mod.default;
       const map = L.map(containerRef.current, { attributionControl: true }).setView([-15.7797, -47.9297], 4);
-      // Imagem de satélite real (Esri World Imagery, gratuito, sem chave) -- trocado do mapa de ruas
-      // (OpenStreetMap) porque o diretor pediu explicitamente pra enxergar o terreno de verdade, não só
-      // linha de rua/rio. Camada de rótulos (nome de rua/rio) por cima, sutil, só pra referência.
       L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
         maxZoom: 19,
         attribution: "Tiles &copy; Esri",
@@ -134,6 +137,7 @@ export function RealFieldMap({
         opacity: 0.85,
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
       }).addTo(map);
+      layersRef.current.raster = L.layerGroup().addTo(map);
       layersRef.current.boundary = L.layerGroup().addTo(map);
       layersRef.current.points = L.layerGroup().addTo(map);
       mapRef.current = map;
@@ -159,7 +163,7 @@ export function RealFieldMap({
     setSelectedPoint(null);
     void import("leaflet").then((mod) => drawLayers(mod.default, map));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundary, points, colorFor, boundaryFillColor]);
+  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay]);
 
   const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;

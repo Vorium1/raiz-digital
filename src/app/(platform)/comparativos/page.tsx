@@ -2,6 +2,7 @@ import { Topbar } from "@/components/topbar";
 import { Icon } from "@/components/icon";
 import { PageIntro } from "@/components/ui";
 import { ComparisonExplorer } from "@/components/comparison-explorer";
+import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { demoComparison } from "@/lib/demo-data";
 
@@ -28,7 +29,7 @@ export default function ComparativesPage() {
   }
   return (
     <>
-      <Topbar eyebrow="Inteligência" title="Comparativos"/>
+      <Topbar eyebrow="Inteligência" title="Comparativos"><AssistantEntryButton label="Pergunte sobre este comparativo"/></Topbar>
       <div className="content-wrap">
         <PageIntro title="Comparar talhões, safras, pontos e propriedades" description="Usa somente classificações já homologadas pelo motor determinístico — sem interpretação inventada para preencher lacuna."/>
         <ComparisonExplorer/>

@@ -1,5 +1,25 @@
 import * as XLSX from "xlsx";
 
+/**
+ * Duplicado (não importado) de `ANALYTICAL_METHOD_ALIASES`/`normalizeAnalyticalMethod` em
+ * `lab-method-normalization.ts` -- mesma restrição de sempre neste projeto: um import relativo entre dois
+ * arquivos `.ts` quebra `node --experimental-strip-types` (usado por `scripts/test-lab-import.mjs` pra
+ * testar este módulo sem subir a aplicação inteira), e adicionar a extensão `.ts` no import quebra o
+ * `tsc`/Next build (`allowImportingTsExtensions` não habilitado). `lab-method-normalization.ts` continua
+ * a fonte de verdade documentada/auditada (comentários com o motivo de cada equivalência, e a distinção
+ * entre o que está APLICADO vs. PENDENTE DE CONFIRMAÇÃO DOCUMENTAL -- item 5 do fechamento técnico,
+ * 2026-09-11); mudar uma entrada aqui exige mudar a mesma entrada lá. Só CTC aplicada -- S/B/MN ficaram
+ * de fora de propósito (equivalência plausível, mas não confirmada contra o PDF original do laboratório).
+ */
+const ANALYTICAL_METHOD_ALIASES: Array<{ parameterCode: string; rawMethod: string; canonicalMethod: string }> = [
+  { parameterCode: "CTC", rawMethod: "Calculado: Ca+Mg+K+(H+Al)", canonicalMethod: "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)" },
+];
+
+function normalizeAnalyticalMethod(parameterCode: string, rawMethod: string): string {
+  const alias = ANALYTICAL_METHOD_ALIASES.find((a) => a.parameterCode === parameterCode && a.rawMethod === rawMethod);
+  return alias ? alias.canonicalMethod : rawMethod;
+}
+
 export type LabImportSeverity = "BLOCKER" | "WARNING" | "INFO";
 
 export type LabImportIssue = {
@@ -317,7 +337,11 @@ export function buildLabImportPreviewFromMatrix(
       const value = parseNumber(valueRaw);
       const parameterCode = normalizeParameter(parameterRaw);
       const unitRaw = unitIndex >= 0 ? (sourceRow[unitIndex] ?? "").trim() : "";
-      const methodRaw = methodIndex >= 0 ? (sourceRow[methodIndex] ?? "").trim() : "";
+      // Traduz um método exatamente como um laboratório já confirmado escreve (ex.: "Turbidimetria") para
+      // o nome canônico homologado, ANTES de decidir se precisa de fallback/inferência -- ver
+      // `ANALYTICAL_METHOD_ALIASES` acima. Sem correspondência conhecida, devolve o texto original.
+      const methodRawFromFile = methodIndex >= 0 ? (sourceRow[methodIndex] ?? "").trim() : "";
+      const methodRaw = methodRawFromFile ? normalizeAnalyticalMethod(parameterCode, methodRawFromFile) : methodRawFromFile;
       const inferredUnit = !unitRaw && Boolean(DEFAULT_UNITS[parameterCode]);
       const fallbackForParameter = inferMethod(parameterCode, context.fallbackMethod);
       const inferredMethod = !methodRaw && Boolean(fallbackForParameter);

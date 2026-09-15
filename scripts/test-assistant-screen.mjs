@@ -1,0 +1,156 @@
+import assert from "node:assert/strict";
+import { inferScreenContext, inferScreenState, parseAssistantScreenContext, parseAssistantScreenState, INVALID_SCREEN_CONTEXT } from "../src/lib/ai/assistant-screen.ts";
+
+// Fase 4A, Bloco 1 -- resolução de rota/contexto e estado de tela do Assistente RAIZ. Cobre exatamente as
+// rotas reais do app (nenhuma inventada) e prova a separação real entre ScreenContext (qual entidade) e
+// ScreenState (filtro/seleção visível), correção pedida pelo diretor na revisão da arquitetura.
+
+const UUID_A = "11111111-1111-1111-1111-111111111111";
+// UUID válido (versão 4, variante 10xx) -- necessário pra bater no regex real usado em produção
+// (`field-overview.ts`/`assistant-screen.ts`), não um id qualquer de 36 caracteres.
+const REAL_UUID = "9f8b6e2a-4c1d-4a7e-9b3a-2f6d8c1e5a90";
+
+function searchParams(entries) {
+  const map = new Map(Object.entries(entries));
+  return { get: (key) => (map.has(key) ? map.get(key) : null) };
+}
+
+// 1. Dashboard.
+assert.deepEqual(inferScreenContext("/dashboard"), { type: "dashboard" });
+assert.deepEqual(inferScreenContext("/dashboard/"), { type: "dashboard" });
+
+// 2. Análise -- exige uuid real, id malformado nunca vira contexto de análise.
+assert.deepEqual(inferScreenContext(`/analises/${REAL_UUID}`), { type: "analysis", id: REAL_UUID });
+assert.equal(inferScreenContext("/analises/nao-e-um-uuid"), undefined);
+assert.equal(inferScreenContext("/analises/nova"), undefined);
+
+// 3. Talhão.
+assert.deepEqual(inferScreenContext(`/talhoes/${REAL_UUID}`), { type: "field", id: REAL_UUID });
+
+// 4. Relatório por talhão / por propriedade.
+assert.deepEqual(inferScreenContext(`/relatorios/talhao/${REAL_UUID}`), { type: "report-field", id: REAL_UUID });
+assert.deepEqual(inferScreenContext(`/relatorios/propriedade/${REAL_UUID}`), { type: "report-property", id: REAL_UUID });
+
+// 5. Mapas / comparativos / inteligência -- telas sem entidade única (o "qual" é resolvido pelo ScreenState).
+assert.deepEqual(inferScreenContext("/mapas"), { type: "map" });
+assert.deepEqual(inferScreenContext("/comparativos"), { type: "comparison" });
+assert.deepEqual(inferScreenContext("/inteligencia"), { type: "intelligence" });
+
+// 6. Rotas sem inferência automática hoje (honesto: não existe página própria de propriedade, por
+// exemplo) -- devolve undefined, nunca um contexto forjado.
+assert.equal(inferScreenContext("/clientes"), undefined);
+assert.equal(inferScreenContext("/coletas"), undefined);
+assert.equal(inferScreenContext("/relatorios/evolucao/" + REAL_UUID), undefined);
+assert.equal(inferScreenContext("/"), undefined);
+
+// 7. Case-insensitive no uuid (URLs reais podem vir em maiúsculas por engano de cópia) -- normaliza pra
+// minúsculo, nunca guarda o id com caixa inconsistente.
+assert.deepEqual(inferScreenContext(`/talhoes/${REAL_UUID.toUpperCase()}`), { type: "field", id: REAL_UUID });
+
+// 8. ScreenState do mapa -- exatamente os mesmos nomes de query param que agronomic-map-explorer.tsx já lê.
+assert.deepEqual(
+  inferScreenState("/mapas", searchParams({ ordem: "abc", parametro: "P", status: "pending", satelite: "1" })),
+  { screen: "map", collectionOrderId: "abc", parameter: "P", status: "pending", satellite: true },
+);
+assert.deepEqual(inferScreenState("/mapas", searchParams({})), { screen: "map", collectionOrderId: undefined, parameter: undefined, status: undefined, satellite: false });
+
+// 9. ScreenState do comparativo -- só A escolhido (B ainda não), cenário real de pré-seleção via URL.
+assert.deepEqual(
+  inferScreenState("/comparativos", searchParams({ mode: "fields", a: UUID_A })),
+  { screen: "comparison", mode: "fields", a: UUID_A, b: undefined },
+);
+// modo inválido nunca é aceito como se fosse um dos 4 reais.
+assert.equal(inferScreenState("/comparativos", searchParams({ mode: "invalido" })).mode, undefined);
+
+// 10. ScreenState da inteligência (uuids reais e válidos -- ver cenário 19+ pra ids malformados).
+// UUID_A ("1111...1111") NÃO bate o formato estrito (nibble de variante precisa ser 8/9/a/b, aqui é "1")
+// -- por isso os testes de intelligence usam REAL_UUID/REAL_UUID_2, ambos realmente válidos.
+const REAL_UUID_2 = "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d";
+assert.deepEqual(
+  inferScreenState("/inteligencia", searchParams({ clientId: REAL_UUID, fieldId: REAL_UUID_2 })),
+  { screen: "intelligence", clientId: REAL_UUID, propertyId: undefined, fieldId: REAL_UUID_2, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: false },
+);
+
+// 11. Tela sem ScreenState definido (ex.: dashboard) -> undefined, nunca um objeto vazio inventado.
+assert.equal(inferScreenState("/dashboard", searchParams({})), undefined);
+
+// ---------------------------------------------------------------------------------------------
+// Fechamento técnico (2º pedido, item 2) -- parseAssistantScreenContext/parseAssistantScreenState:
+// parsing do CORPO de /api/assistant. Correção do diretor: contexto explicitamente informado porém
+// inválido/malformado NUNCA vira `{type:"dashboard"}` silenciosamente -- só a ausência LEGÍTIMA
+// (nada enviado) pode virar contexto global.
+// ---------------------------------------------------------------------------------------------
+
+// 12. Ausência legítima (corpo não mandou screenContext nenhum) -> dashboard é a escolha correta.
+assert.deepEqual(parseAssistantScreenContext(undefined), { type: "dashboard" });
+assert.deepEqual(parseAssistantScreenContext(null), { type: "dashboard" });
+
+// 13. Tela Dashboard real, explícita -> dashboard (trivial).
+assert.deepEqual(parseAssistantScreenContext({ type: "dashboard" }), { type: "dashboard" });
+
+// 14. Tipo desconhecido/não reconhecido -> INVALID, nunca dashboard.
+assert.equal(parseAssistantScreenContext({ type: "isso-nao-existe" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({}), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext("string-solta"), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext(42), INVALID_SCREEN_CONTEXT);
+
+// 15. Tipo que exige id, mas id ausente ou malformado -> INVALID, nunca dashboard (achado real do
+// diretor -- antes da correção, isso virava {type:"dashboard"} e a RAIZ respondia sobre a operação
+// inteira em vez de admitir que não sabia de qual talhão/análise/propriedade se tratava).
+assert.equal(parseAssistantScreenContext({ type: "field" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({ type: "field", id: "nao-e-um-uuid" }), INVALID_SCREEN_CONTEXT);
+assert.equal(parseAssistantScreenContext({ type: "analysis", id: "12345" }), INVALID_SCREEN_CONTEXT);
+
+// 16. Tipo que exige id, com um uuid real e válido -> contexto real, id normalizado pra minúsculo.
+assert.deepEqual(parseAssistantScreenContext({ type: "field", id: REAL_UUID.toUpperCase() }), { type: "field", id: REAL_UUID });
+
+// 17. Tipo que NÃO exige id (map/comparison/intelligence) sem id nenhum -> contexto real, não é inválido.
+assert.deepEqual(parseAssistantScreenContext({ type: "map" }), { type: "map" });
+assert.deepEqual(parseAssistantScreenContext({ type: "comparison" }), { type: "comparison" });
+
+// 18. parseAssistantScreenState -- mesma leitura defensiva, corpo sem `screen` reconhecido -> undefined.
+assert.equal(parseAssistantScreenState(undefined), undefined);
+assert.equal(parseAssistantScreenState({ screen: "tela-desconhecida" }), undefined);
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "map", collectionOrderId: "abc", satellite: true }),
+  { screen: "map", collectionOrderId: "abc", parameter: undefined, status: undefined, satellite: true },
+);
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", interpretationState: "BLOQUEADA", reviewState: "APROVADA" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: "BLOQUEADA", reviewState: "APROVADA", invalidFilter: false },
+);
+
+// ---------------------------------------------------------------------------------------------
+// Pré-ajuste 2 (fechamento final da Fase 4A) -- UUIDs do ScreenState de Inteligência: um id malformado
+// nunca pode virar "solta o filtro quebrado e consulta mais amplo" nem lançar erro de cast no Postgres.
+// ---------------------------------------------------------------------------------------------
+
+// 19. Um único id malformado (fieldId) -> invalidFilter true, e os 4 ids (inclusive o clientId válido que
+// veio junto) são zerados -- nunca "quase filtrado" (ex.: só clientId aplicado, fieldId quebrado ignorado).
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", clientId: REAL_UUID, fieldId: "nao-e-um-uuid" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: true },
+);
+
+// 20. Todos os 4 ids malformados -> mesmo resultado (invalidFilter true, tudo zerado).
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", clientId: "x", propertyId: "y", fieldId: "z", seasonId: "w" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: undefined, invalidFilter: true },
+);
+
+// 21. interpretationState/reviewState nunca são afetados pelo invalidFilter dos ids -- são strings de
+// enum próprias, validadas em outro lugar (o builder), não fazem parte da checagem de uuid.
+assert.deepEqual(
+  parseAssistantScreenState({ screen: "intelligence", fieldId: "quebrado", reviewState: "APROVADA" }),
+  { screen: "intelligence", clientId: undefined, propertyId: undefined, fieldId: undefined, seasonId: undefined, interpretationState: undefined, reviewState: "APROVADA", invalidFilter: true },
+);
+
+// 22. Nenhum id informado (só reviewState) -> invalidFilter false -- ausência não é malformação.
+assert.equal(parseAssistantScreenState({ screen: "intelligence", reviewState: "APROVADA" }).invalidFilter, false);
+
+// 23. Mesma regra do lado do client (inferScreenState, usada pelo widget antes de mandar pro servidor) --
+// nunca dois comportamentos diferentes pro mesmo dado.
+assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).invalidFilter, true);
+assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).fieldId, undefined);
+
+console.log("assistant-screen: 23 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto; contexto inválido do corpo nunca vira dashboard silenciosamente; uuid malformado no filtro de Inteligência nunca amplia a consulta nem chega no banco)");

@@ -3934,3 +3934,297 @@ real só existe se alguém registrar a colheita depois da safra.
 **Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Verificado visualmente com sessão
 real local (screenshot: mata, estrada e talhão real visíveis, contorno verde forte batendo com o vigor
 muito alto já confirmado em produção pra "Área 01").
+
+## Bug real de responsividade achado pelo diretor: menu lateral sem rolagem (2026-09-09)
+
+Achado direto pelo diretor testando em produção, sem eu ter pedido: precisou reduzir o zoom do navegador
+pra 30% pra conseguir ver e clicar em "Comparativos", "Alertas", "Relatórios" e "Administração" no menu
+lateral -- numa tela normal, esses itens simplesmente não apareciam nem rolavam pra dentro da área
+visível. Eu tinha diagnosticado errado antes (achei que era cache do navegador) -- conferi direto no
+servidor (HTML real devolvido pra sessão real dele) e o conteúdo estava certo, o que confirmou que o
+problema era só de exibição no navegador dele, mas eu ainda não tinha achado a causa raiz até ele mesmo
+achar (baixando o zoom) que era falta de rolagem.
+
+**Causa raiz real**: `.sidebar` tem `height: 100vh; position: fixed` mas **nunca teve
+`overflow-y: auto`** -- em qualquer tela onde o menu (logo + trocador de empresa + botão + 4 seções de
+navegação + selo de base homologada + perfil do usuário) passa da altura da janela, os itens de baixo
+ficam simplesmente inacessíveis, sem nenhuma barra de rolagem pra alcançá-los. Isso não é raro -- notebooks
+comuns (ex.: 1366×768) já sofrem com isso com a quantidade de itens que o menu tem hoje.
+
+**Corrigido e testado com screenshot antes/depois** numa janela de 700px de altura (simulando notebook
+comum): antes, o menu cortava em "Histórico & Evolução"; depois de `overflow-y: auto`, rolar o menu revela
+"Comparativos", "Alertas", "Relatórios" e toda a seção "Administração" normalmente.
+
+**Achado um segundo caso real do MESMO padrão de bug**, numa varredura proposital em todo o
+`globals.css` procurando `max-height` + `overflow:hidden` (a combinação exata que causa isso -- corta sem
+deixar rolar): `.fields-browser-list` (painel de Talhões/Safras/Ordens de coleta em "Propriedades &
+Talhões") tinha `max-height:620px; overflow:hidden`, mas a lista interna (`.fields-browser-items`) não
+tinha `flex:1; min-height:0` -- sem isso, o filho flex nunca fica realmente restrito em altura, então o
+`overflow-y:auto` dele nunca tinha o que rolar de verdade, e o corte acontecia no container de fora, sem
+rolagem nenhuma. Com o Cabeda tendo 45 ordens de coleta, a maioria delas ficava inacessível. Corrigido do
+mesmo jeito (`flex:1; min-height:0` no filho). Varredura confirmou que esses eram os dois únicos lugares
+com esse padrão exato no arquivo inteiro.
+
+**Testado**: `npm run typecheck` e `npm run test:handoff` aprovados. Sidebar verificada com screenshot
+antes/depois numa janela de 700px de altura, simulando notebook comum -- não só suposição.
+
+## Transparência na homologação de parâmetro + cruzamento automático por IA (2026-09-09)
+
+O diretor apontou uma falha real de transparência: a tela de homologar parâmetro técnico só mostrava
+"Homologar ou não", sem o valor real das faixas de suficiência cadastradas -- um agrônomo não tinha como
+conferir o que estava aprovando. Corrigido primeiro (`technical-library-manager.tsx`): cada parâmetro
+agora mostra o texto real das faixas (ex.: "Baixo: 5,0–5,5 · Adequado: 5,5–6,2 · Alto: 6,2–7,0"), não só a
+contagem.
+
+Na sequência, o diretor pediu pra automatizar a homologação: quando a IA cruzar o parâmetro com várias
+fontes e não achar divergência científica, ele queria que isso já entrasse homologado, sem depender de um
+profissional humano clicar -- reservando revisão humana só pra quando houver inconsistência. Isso bate de
+frente com a regra inegociável do `CLAUDE.md` ("IA não decide agronomia" / "nenhuma recomendação oficial é
+publicada sem revisão profissional"), a mesma linha que vim segurando a sessão inteira mesmo sob pedido
+direto repetido. Expliquei isso ao diretor e propus um meio-termo, que ele aceitou: a IA cruza
+automaticamente e sinaliza, mas o clique final de homologar continua sempre humano (podendo ser o próprio
+diretor, que já é curador da plataforma) -- na prática quase tão rápido quanto automação real, sem abrir
+mão do checkpoint que o projeto exige.
+
+**Implementado** (migration `024_parameter_ai_cross_validation.sql` + `check-migrations.mjs` atualizado):
+
+- `crop_profile_parameters` ganhou `ai_validation_status` (NAO_VALIDADO / CONSISTENTE / INCONSISTENTE /
+  INDETERMINADO), `ai_validation_confidence`, `ai_validation_summary`, `ai_validation_sources` (citações),
+  `ai_validation_model` e `ai_validated_at`. Nenhuma dessas colunas jamais muda `status` do parâmetro --
+  só quem muda `status` pra ACTIVE é o clique humano já existente (`setCropProfileParameterStatus` /
+  `activateAllCropProfileParameters`), sem nenhuma mudança nessa regra.
+- Novo provedor de IA (`src/lib/ai/providers/gemini-parameter-cross-validator.ts` +
+  `parameter-cross-validation-provider.ts`, mesmo padrão dos provedores existentes): pergunta ao Gemini se
+  a faixa cadastrada bate com literatura agronômica brasileira reconhecida (Boletim 100 IAC, Embrapa
+  Cerrados, manual CQFS-RS/SC, etc.), com instrução explícita de nunca inventar fonte e responder
+  "INDETERMINADO" quando não tiver base real -- nunca forçar um "sim" só pra parecer pronto.
+- **Honestidade sobre "várias IAs"**: hoje só existe `GEMINI_API_KEY` configurada nesta instância (nem
+  Anthropic nem OpenAI) -- então a tela sempre mostra o modelo real que rodou (ex.: "modelo:
+  gemini-3.6-flash"), nunca sugere um cruzamento entre múltiplos provedores que não aconteceu de verdade.
+  Se no futuro outro provedor for configurado, dá pra estender sem mudar a UI.
+- Rota `POST /api/crop-profile-parameters/[id]/cross-validate` (gated por `isPlatformCurator`, mesmo
+  padrão das outras rotas de homologação) + botão "Cruzar com IA" por parâmetro e "Cruzar todos com a IA"
+  em lote (sequencial, não paralelo, pra não estourar limite do nível gratuito do Gemini) na tela.
+- Resultado aparece como selo na própria linha do parâmetro: "IA: bate com a literatura" (verde) / "IA:
+  divergência encontrada" (vermelho) / "IA: sem base suficiente" (neutro), com % de confiança, modelo, e o
+  resumo da IA explicando o porquê -- nunca escondido, sempre visível antes do curador decidir.
+
+**Testado de ponta a ponta com credencial real** (sessão real inserida no banco de dev, chamada HTTP real
+à rota, sem simulação): primeira tentativa falhou com "resposta não é JSON válido" -- causa raiz real
+encontrada testando: o `gemini-3.6-flash` é um modelo que "pensa" antes de responder, e o orçamento de
+tokens de saída (`maxOutputTokens`) cobre pensamento + resposta juntos; com um limite de 2000 (baixo
+demais pro prompt real, mais longo que meu teste inicial), o JSON saía cortado no meio. Corrigido pra 8000
+(mesmo valor já usado nos outros provedores desta base) -- funcionou na sequência. Teste real contra um
+parâmetro real do Cabeda ("P" pra Abacateiro) **encontrou uma divergência real**: a faixa cadastrada usa
+o critério genérico de solo argiloso, que a IA apontou como inadequado pra frutífera (deveria estratificar
+por teor de argila ou usar P-Resina) -- prova de que o sistema sinaliza problema real em vez de aprovar
+tudo cegamente, exatamente o comportamento pretendido.
+
+**Bug real e sério encontrado de brinde, testando esta tela pra validar o recurso acima**: a lista de
+culturas só iterava sobre os grupos fixos `VERAO`/`INVERNO` -- as **41 culturas dos grupos FRUTIFERA,
+HORTALICA e TUBERCULO já cadastradas no banco (abacateiro, tomate, batata, citros, etc.) ficavam
+completamente invisíveis na tela**, sem nenhum jeito de selecionar, ver parâmetro ou homologar nenhuma
+delas pela interface, mesmo existindo de verdade nos dados. Corrigido: a lista agora itera sobre os
+grupos realmente presentes nos dados (ordem preferida VERAO/INVERNO/FRUTIFERA/HORTALICA/TUBERCULO, com
+qualquer grupo novo no futuro aparecendo automaticamente em vez de ficar escondido) -- consistente com a
+promessa já documentada de catálogo "extensível, sem lógica fixa por cultura".
+
+**Testado**: `npm run typecheck` e `npm run build` aprovados, migration 024 aplicada de verdade no banco
+de dev, chamada real à API do Gemini confirmada (não simulada), tela conferida com screenshot real
+(desktop e celular) mostrando o selo de IA, o resumo e as 41 culturas antes escondidas. Sessão de teste
+revogada e script temporário de screenshot removido depois.
+
+**Pendente pro diretor decidir ao acordar**:
+1. Revisar o resultado real do teste (divergência real encontrada no parâmetro P do Abacateiro) e decidir
+   se cadastra a faixa correta ou mantém como está por enquanto.
+2. Já subi tudo pro `develop` (preview) -- falta só aprovar o PR pra `main` quando quiser ver em produção,
+   do mesmo jeito de sempre (não fiz isso sozinho, como combinado).
+3. **Importante, antes ou junto do merge**: a migration `024_parameter_ai_cross_validation.sql` ainda
+   **não foi aplicada no banco de produção (Neon)** -- eu não tinha acesso confirmado à credencial de
+   produção nesta sessão (sem login no Vercel CLI aqui) pra rodar com segurança sozinho enquanto ele
+   dormia, e é banco de produção, então preferi não arriscar com um dado que só tinha de memória. É só
+   rodar `node --env-file=.env.production scripts/migrate.mjs` (ou o equivalente apontando pra
+   `DATABASE_URL` do Neon) antes de considerar o merge concluído -- sem isso, o código novo em produção
+   vai falhar ao tentar ler as colunas `ai_validation_*` que ainda não existem lá.
+
+## Assistente RAIZ, Fase 4 — de bolha de chat a painel contextual com ações seguras
+
+Branch dedicada `feature/raiz-2.0-fase4`, sem merge em `develop`/`main` nesta fase, sem migração, sem
+provedor de IA generativa conectado. Documentação completa em `docs/RAIZ_2.0_FASE4A_ENTREGA.md` (Blocos
+0-3, aprovado no commit `429d9b1`) e `docs/RAIZ_2.0_FASE4BCD_ENTREGA.md` (Blocos 4-6, esta rodada) --
+resumo aqui, detalhe nos dois arquivos.
+
+- **Fase 4A (Blocos 0-3, aprovada)**: separou `ScreenContext` (qual tela) de `ScreenState` (filtro/seleção
+  visível na URL), um Evidence Package Builder por contexto (sempre `withTenant`, sempre com teto de
+  tamanho), resposta estruturada (`summary`/`facts`/`attention_points`/`patterns`/`hypotheses`/
+  `missing_information`/`technical_references`/`requires_professional_review`), e um manifesto de auditoria
+  (`evidenceManifest`) gravado em `ai_generations` sem migração.
+- **Blocos 4-6 (esta rodada)**: 2 pré-ajustes de segurança corrigidos antes de começar (contexto inválido
+  nunca mais é auditado como Dashboard; filtro de Inteligência malformado nunca mais chega no banco nem
+  amplia a consulta). Bloco 4: schema fechado de 6 ações (`AssistantAction -> validação de formato ->
+  validação de posse/tenant/role no banco -> ResolvedAssistantAction`) -- o provider só sugere intenção
+  tipada, nunca um `href`. Bloco 5: `AssistantRaizWidget` reescrito -- cabeçalho contextual real (nunca
+  inventado), perguntas sugeridas por tela (12 intenções reais no provedor local, nada aspiracional),
+  resposta em seções visuais distintas (fato nunca misturado com hipótese), botão de entrada contextual
+  em 5 telas (Talhão 360°, Análise, Inteligência, Mapas, Comparativos, todos abrindo o MESMO assistente),
+  drawer de altura cheia no mobile. Bloco 6: auditoria completa (ações sugeridas E resolvidas gravadas
+  separadamente), documentação de `evidenceHash` corrigida (é fingerprint de integridade, nunca
+  "reconstruível" -- correção aplicada nos dois documentos de entrega), migração progressiva dos cards
+  legados sem quebrar intenções existentes.
+- **Bug real encontrado na verificação visual** (não pego por nenhum teste automatizado): o mapa (Leaflet)
+  renderizava por cima do painel do Assistente em `/mapas` -- `z-index` do painel perdia pra uma camada
+  interna do Leaflet. Corrigido subindo o painel pra `z-index:950`. Prova de por que "ver o screenshot antes
+  de concluir" continua parte do processo, não um passo opcional.
+- **Validação**: `typecheck`/`build` limpos, `test:handoff` completo (23 scripts, incluindo 2 novos deste
+  bloco), e-2e do Assistente (`assistant-fase4a`/`assistant-actions`/`assistant-widget-ux`, 29 passed / 4
+  skipped honestos / 0 failed) e `sidebar-responsiveness` sem regressão.
+- **Pendente**: Bloco 7 (provedor de LLM real) aguarda autorização explícita -- nada conectado ainda
+  (Claude/OpenAI/Gemini), nenhum RAG, nenhuma ação de banco, nenhuma recomendação autônoma.
+
+### Fase 4E — Gate Pré-LLM + Harness de Avaliação
+
+Documentação completa em `docs/RAIZ_2.0_FASE4E_PRE_LLM.md`. Última etapa antes de qualquer LLM real:
+
+- Cabeçalho contextual do painel virou leve (`resolveContextLabelLight`) -- deixou de montar o Evidence
+  Package inteiro só pra extrair um rótulo (medido: dashboard caiu de >10 consultas pra 0; talhão de 12
+  pra 5). Achado de bug na própria instrumentação de medição (pool de conexões reciclando o wrapper de
+  contagem), corrigido.
+- `filter_intelligence` ganhou validação de coerência HIERÁRQUICA entre os ids (propriedade pertence ao
+  cliente, talhão pertence à propriedade, safra pertence ao talhão) -- isolamento de tenant sozinho não
+  capturava uma combinação inconsistente dentro do mesmo tenant.
+- `cards` legado virou garantia estrutural de código: nenhum provider `isRealLanguageModel:true` consegue
+  fazer um `href` chegar ao navegador, testado com cenários adversariais antes de existir LLM real.
+- Harness de benchmark reproduzível (`src/lib/ai/benchmark/`, rota dev-only
+  `/api/dev/assistant-benchmark`): 39 cenários em 13 categorias, 15 critérios verificáveis, scorecard em 7
+  eixos. Rodado de verdade contra o provider local (35/39, 4 achados reais documentados: 2 respostas de
+  recusa honesta sem `missing_information` populado, `technical_references` nunca narrado mesmo quando a
+  evidência tem fonte real).
+- Provider CANDIDATO Gemini (`gemini-operational-assistant-provider.ts`, reaproveitando a infraestrutura
+  Gemini já existente nesta base -- nunca recriada) implementado e testado só dentro do benchmark. Achado
+  real: a `GEMINI_API_KEY` gratuita já configurada esgotou a cota antes de completar os 39 cenários (só
+  10/39 com resposta real) -- decisão de custo/plano que o diretor precisa considerar antes de aprovar uso
+  em volume. `resolveOperationalAssistantProvider()` continua devolvendo só o local -- nenhum LLM real
+  conectado à aplicação.
+- **Pendente**: decisão do diretor sobre Bloco 7 (se/quando/onde conectar um provider generativo real),
+  usando os critérios objetivos documentados no arquivo de entrega.
+
+### Fase 4F — Grounding Gate + Benchmark V2
+
+Documentação completa em `docs/RAIZ_2.0_FASE4F_GROUNDING_GATE.md`. Fecha a última lacuna antes do Bloco 7:
+
+- Provider local corrigido pros 4 gaps reais achados na Fase 4E (`missing_information` estruturado em 2
+  respostas de recusa honesta; `technical_references` narrado a partir do Evidence Package de análise) --
+  **49/49** no benchmark atualizado (39 originais + 10 cenários adversariais novos).
+- Violação real do contrato arquitetural corrigida: o provider candidato Gemini pedia `facts`/
+  `attention_points`/`patterns`/`technical_references` PRONTOS ao modelo, quando o schema já documentava
+  que `patterns` só pode existir por código determinístico. Novo Evidence Catalog
+  (`assistant-evidence-catalog.ts`): servidor monta um catálogo citável com `ref` estável; o modelo só cita
+  refs, nunca escreve valor/descrição/fonte; servidor materializa. Hipóteses passaram a exigir
+  `supportingEvidenceRefs` resolvidos contra o catálogo -- sem ref válido, a hipótese é descartada.
+- `summary` (único campo verdadeiramente livre) ganhou um grounding gate (`assistant-grounding-gate.ts`) --
+  detecta uuid/número/entidade fora da evidência, coincidência espacial, causalidade, URL, recomendação
+  fora de escopo -- e um wrapper (`grounded-operational-assistant-provider.ts`) que descarta a resposta
+  inteira e usa o local como fallback quando reprova (nunca "conserta" com outro texto gerativo).
+- Benchmark V2: 7 critérios novos de grounding, aplicados universalmente a todo cenário, cobrindo
+  `summary`/`attention_points`/`patterns`/`hypotheses`/`technical_references`/`suggested_actions` -- não só
+  `facts` como antes.
+- Cada execução real do benchmark agora grava um artefato em disco com nome único (`artifact-store.ts`,
+  `.benchmark-runs/`, gitignored) -- nunca sobrescreve uma execução anterior (corrige o achado real da
+  Fase 4E, onde a primeira rodada real contra o Gemini foi perdida por sobrescrita).
+- Gemini (candidato): rodado um subconjunto pequeno pós-validação -- 1 cenário completou com resposta real
+  antes de esgotar a cota gratuita de novo, e passou integralmente em todos os critérios (incluindo os 7
+  novos), prova real de que o Evidence Catalog funciona ponta a ponta com um modelo generativo real.
+  `resolveOperationalAssistantProvider()` continua devolvendo só o local.
+- **Pendente**: decisão do diretor sobre Bloco 7 -- rodada completa do Gemini fica pendente de cota
+  suficiente (mecanismo já pronto pra isso a qualquer momento via `/api/dev/assistant-benchmark`).
+
+### Fase 4G — Provider Routing + Controle de Custo + Fechamento do Assistente
+
+Documentação completa em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`. **Fecha a Fase 4 do Assistente RAIZ.**
+
+- `AssistantHandlingResult` (`"handled"|"unsupported"|"insufficient_evidence"`) -- sinalização ESTRUTURADA
+  de como cada provider tratou a pergunta, nunca detectada por texto (`summary.includes(...)`). Achado real
+  corrigido: um contexto reconhecido mas com entidade cross-tenant/inexistente caía em "unsupported" em vez
+  de "insufficient_evidence", o que faria o router tentar escalonar pro generativo à toa -- corrigido.
+- Router de providers (`assistant-provider-router.ts`): local sempre primeiro; só escalona pro generativo
+  quando o local diz `"unsupported"` explicitamente, nunca pra dado insuficiente (evidência que não existe
+  não pode ser inventada por ninguém). Desacoplado do Gemini -- trabalha só com o contrato
+  `OperationalAssistantProvider`, pronto pra receber um `SelfHostedOperationalAssistantProvider` no futuro
+  trocando uma peça.
+- Modos `RAIZ_ASSISTANT_MODE=local` (padrão, sempre) / `=hybrid` -- ter `GEMINI_API_KEY` configurada nunca
+  basta sozinha pra consumir a API, precisa dos dois.
+- Controle de custo real (`assistant-usage-limits.ts`): limites diários por usuário/tenant/timeout,
+  configuráveis por env, consultados de verdade em `ai_generations` (sem migração, sem contador em
+  memória). Limite atingido -> provider local continua respondendo, nada quebra, nenhuma menção a cota.
+- Auditoria (`routing` em `ai_generations.response_payload`): modo, se escalonou, resultado da tentativa
+  generativa (aprovado/reprovado pelo gate/erro/timeout/limite), provider/modelo/latência/tokens -- tudo
+  isso NUNCA aparece na resposta que o cliente recebe (a marca é sempre "Assistente RAIZ"; o selo do
+  painel virou "Resposta baseada nos dados da sua operação"/"Análise assistida", nunca nomeia fornecedor).
+- 14 testes novos, todos contra um provider generativo FAKE (nunca gastando cota real do Gemini) cobrindo
+  429/503/timeout/JSON inválido/reprovação do gate/limite diário/cross-tenant -- todos caem em fallback
+  local seguro. Benchmark local confirmado 49/49 depois de todas as mudanças.
+- **Pendente**: decisão do diretor sobre ligar `RAIZ_ASSISTANT_MODE=hybrid` em algum ambiente real (o
+  default continua local em todo lugar); modelo self-hosted próprio da RAIZ fica só documentado, sem
+  nenhuma implementação ainda.
+
+#### Patch de pré-merge (antes do merge da Fase 4 em `develop`)
+
+Ainda em `feature/raiz-2.0-fase4`, sem migração, sem ligar híbrido. Documentação completa (atualizada)
+continua em `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md`.
+
+- **Correção real 1** -- `checkGenerativeUsageLimit` contava só `provider <> 'raiz-local-intent'`, o que
+  perdia toda tentativa generativa que caiu em fallback (Gemini falhou/deu timeout/foi reprovado pelo
+  Grounding Gate -- a geração final é gravada com `provider` local, mesmo tendo havido uma chamada externa
+  real). Corrigido: agora conta por `response_payload.routing.escalatedToGenerative` (só `true` nos 4
+  desfechos que realmente iniciaram uma chamada externa), não mais pela coluna `provider`. Teste novo prova
+  que 21 respostas em fallback ainda estouram o limite diário.
+- **Correção real 2** -- o timeout do router só parava de ESPERAR pela chamada externa, sem abortá-la de
+  verdade (continuava rodando e consumindo custo em segundo plano). `OperationalAssistantRequest` ganhou um
+  `signal?: AbortSignal` opcional; o router cria um `AbortController` por tentativa e aborta no timeout; o
+  provider Gemini repassa o signal pro `fetch` real e para de tentar retry assim que detecta abort (inclusive
+  durante o intervalo de espera entre tentativas 429/503, não só durante uma chamada em andamento). Teste
+  novo com um provider fake prova o abort de verdade e "nenhuma 2ª tentativa depois do abort".
+- **5 testes antigos de Field Operations** (`field-operations-isolation.spec.ts`/`-rbac.spec.ts`) --
+  confirmado que NÃO era bug de produção: localizavam a safra-fixture via `orders[0]?.cropSeasonId`
+  ("primeira ordem da lista"), premissa que deixou de ser determinística conforme o banco de dev acumulou
+  ordens de outras suítes. Corrigido localizando pelo nome real do talhão-fixture (`fieldName === "Talhão
+  3"`) -- nenhuma regra de negócio/isolamento/RBAC foi alterada, só a forma de localizar o fixture. 11/11
+  passando depois da correção.
+- Validação final: typecheck, build, `test:handoff` e a suíte e2e inteira do projeto, todos verdes (ver
+  `docs/RAIZ_2.0_FASE4G_FECHAMENTO.md` para os números exatos da rodada completa).
+
+## Diagnóstico e correção do pipeline Laudo → Interpretação → Revisão → Recomendação → Relatório (2026-09-11)
+
+Bloqueador comercial real: as 3 análises reais do Rafael Cabeda apareciam bloqueadas em `/inteligencia`
+("O perfil 'Soja' não tem um parâmetro homologado para AL"). Diagnóstico completo e correção documentados em
+`docs/CABEDA_PIPELINE_DIAGNOSTICO_E_CORRECAO.md`. Resumo:
+
+- **Causa raiz** (mais ampla do que o Cabeda): nenhum `crop_profile_parameter` de nenhuma cultura estava
+  `ACTIVE` no banco inteiro (o motor determinístico só considera `status === "ACTIVE"`) + a tela mostrava só
+  `pendencies[0]` (a 1ª pendência, sempre "AL" por ordenação alfabética), escondendo que os outros 15
+  parâmetros do laudo estavam igualmente bloqueados.
+- Homologados 7 parâmetros da Soja (CA, MG, MO, CU, ZN, K, P) para `ACTIVE`, com autorização explícita do
+  diretor -- método/unidade batiam exatamente com o cadastro, faixas já verificadas contra o Manual
+  CQFS-RS/SC 2016 na criação do cadastro.
+- Camada de normalização de método analítico criada (`src/domain/lab-method-normalization.ts`), ligada no
+  importador real (`lab-import.ts`) -- corrige 4 divergências de nomenclatura entre o que um laboratório
+  escreve e o que está homologado (CTC, S, B, MN), na ingestão, nunca dentro do motor.
+- Talhão 3/Fazenda Bela Vista vinculado ao perfil Soja (cultura já conhecida, perfil já existia, só faltava
+  a vinculação).
+- Tela de Inteligência (`agronomic-intelligence-panel.tsx`, `/inteligencia`) agora mostra contagem real
+  ("X/Y resultados interpretados", "Interpretação parcial") e lista de impedimentos agrupada por
+  código/parâmetro, distinguindo impedimento global (sem cultura vinculada) de impedimento por parâmetro.
+- **Gap de governança real encontrado e corrigido**: a rota de prescrição assistida por IA
+  (`/api/analyses/[id]/agronomic-prescription`) não conferia se a interpretação determinística tinha
+  classificado alguma coisa antes de pedir a uma IA pra propor dose -- corrigido com um gate novo (exige
+  `IN_REVIEW`/`APPROVED`).
+- As 3 análises do Cabeda reinterpretadas com sucesso via API real: 56/128, 28/64, 28/64 resultados
+  classificados. Fluxo completo validado até relatório publicado com hash íntegro mostrando dados reais.
+- Teste de aceitação reproduzível: `npm run test:cabeda-acceptance` (`scripts/acceptance-cabeda.mjs`).
+- AL/PH/SMP/H_AL continuam sem faixa (legítimo -- a edição 2016 do manual não usa mais faixa estática pra
+  eles); CTC/S/B/MN continuam `DRAFT` (nomenclatura corrigida, mas homologação continua exigindo decisão de
+  um agrônomo responsável); a falha de geração de prescrição real (502, formato inesperado do provider
+  Gemini) é uma lacuna de infraestrutura pré-existente e separada, não corrigida nesta auditoria.
+- Validação final: typecheck, build, `test:handoff` (25 scripts) e suíte e2e inteira (111 testes: 106
+  passed, 5 skipped honestos, 0 failed -- 1 teste que antes era pulado por falta de dado passou a rodar
+  como efeito colateral positivo desta correção).

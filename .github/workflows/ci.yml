@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
+      - 'release/**'
+      - 'work/**'
+      - 'feature/**'
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - develop
 
 jobs:
   verify:
@@ -25,6 +32,12 @@ jobs:
 
       - name: Rodar testes (lógica pura, sem banco de dados)
         run: npm run test:handoff
+
+      - name: Validar preflight automático de homologação
+        run: node --experimental-strip-types scripts/test-homologation-readiness.mjs
+
+      - name: Validar profundidade progressiva das análises
+        run: node --experimental-strip-types scripts/test-analysis-depth-readiness.mjs
 
       - name: Build de produção
         run: npm run build

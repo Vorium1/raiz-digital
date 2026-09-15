@@ -3,21 +3,9 @@ import type { PoolClient } from "pg";
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
-import { saveRawImportFile } from "@/lib/storage";
+import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
+import { saveRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
 
-/**
- * Promove linhas validadas do laudo (staging em analysis_import_rows) para as
- * tabelas normalizadas lab_samples/lab_results, que é o que o motor
- * determinístico e o restante da plataforma realmente leem. Antes desta
- * função o import commit só gravava em analysis_import_rows e nunca chegava
- * a lab_results — a cadeia de rastreabilidade ficava quebrada exatamente
- * nesse ponto (laudo → amostra → parâmetro).
- *
- * Só promove linhas cuja própria linha não tenha um BLOCKER (unidade/método
- * desconhecidos, valor inválido etc.) — linhas bloqueadas continuam
- * disponíveis em analysis_import_rows para conferência humana, mas nunca
- * viram um lab_result "quase certo".
- */
 async function promoteRowsToLabResults(
   client: PoolClient,
   input: { tenantId: string; analysisId: string; importId: string; rows: LabImportRow[]; issues: LabImportIssue[] },
@@ -95,34 +83,63 @@ export async function commitCsvImport(input: {
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
 }) {
-  const isSpreadsheet = isSpreadsheetFileName(input.fileName);
+  // PDF/foto chega como CSV transcrito, mas pode carregar um envelope de proveniência criado pelo servidor
+  // no /api/import/extract. O envelope nunca entra no parser agronômico; ele só referencia o original já
+  // arquivado, que é relido e conferido por hash/bytes antes do commit.
+  const transported = unwrapExtractedLabContent(input.content);
+  const sourceReceipt = transported.source;
+  const normalizedContent = transported.content;
+  const isSpreadsheet = !sourceReceipt && isSpreadsheetFileName(input.fileName);
+  const originalFileName = sourceReceipt?.fileName ?? input.fileName;
+
   const importContext = {
     fallbackMethod: input.fallbackMethod,
     hasAgronomicContext: input.hasAgronomicContext,
     spatialLinked: input.spatialLinked,
   };
   const preview = isSpreadsheet
-    ? buildLabImportPreviewFromXlsxBase64(input.content, input.fileName, importContext)
-    : buildLabImportPreview(input.content, input.fileName, importContext);
+    ? buildLabImportPreviewFromXlsxBase64(normalizedContent, input.fileName, importContext)
+    : buildLabImportPreview(normalizedContent, input.fileName, importContext);
 
-  const sha256 = createHash("sha256").update(input.content).digest("hex");
+  let stored: { key: string; bytes: number; sha256: string } | null;
+  let sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR";
+  let analysisSourceType: "CSV" | "XLSX" | "PDF_OCR";
+
+  if (sourceReceipt) {
+    await verifyRawImportArchive({ tenantId: input.tenantId, source: sourceReceipt });
+    stored = sourceReceipt;
+    sourceFormat = "PDF_OCR";
+    analysisSourceType = "PDF_OCR";
+  } else {
+    stored = await saveRawImportFile({
+      tenantId: input.tenantId,
+      analysisId: input.analysisId,
+      fileName: originalFileName,
+      content: normalizedContent,
+      encoding: isSpreadsheet ? "base64" : "utf8",
+    });
+    sourceFormat = isSpreadsheet ? "XLSX" : preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE";
+    analysisSourceType = isSpreadsheet ? "XLSX" : "CSV";
+  }
+
+  // Hash de proveniência sempre representa os BYTES ORIGINAIS, não a string base64 de um XLSX nem o CSV
+  // produzido por OCR. Se o provider bruto está indisponível em desenvolvimento, calculamos os mesmos bytes
+  // localmente para manter a identidade do arquivo sem fingir que ele foi arquivado.
+  const rawBuffer = sourceReceipt
+    ? null
+    : Buffer.from(normalizedContent, isSpreadsheet ? "base64" : "utf8");
+  const sourceSha256 = stored?.sha256 ?? createHash("sha256").update(rawBuffer as Buffer).digest("hex");
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
-  const stored = await saveRawImportFile({
-    tenantId: input.tenantId,
-    analysisId: input.analysisId,
-    fileName: input.fileName,
-    content: input.content,
-    encoding: isSpreadsheet ? "base64" : "utf8",
-  });
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const importResult = await client.query<{ id: string }>(
       `INSERT INTO analysis_imports
-       (tenant_id, analysis_id, file_name, file_sha256, source_format, status, detected_headers,
+       (tenant_id, analysis_id, file_name, file_sha256, raw_object_key, source_format, status, detected_headers,
         normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::import_status, $7::jsonb, $8, $9, $10, $11, $12::jsonb, $13::uuid)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::import_status, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14::uuid)
        ON CONFLICT (tenant_id, file_sha256, analysis_id)
-       DO UPDATE SET blocker_count = EXCLUDED.blocker_count,
+       DO UPDATE SET raw_object_key = COALESCE(analysis_imports.raw_object_key, EXCLUDED.raw_object_key),
+                     blocker_count = EXCLUDED.blocker_count,
                      warning_count = EXCLUDED.warning_count,
                      confidence_score = EXCLUDED.confidence_score,
                      validation_issues = EXCLUDED.validation_issues
@@ -130,9 +147,10 @@ export async function commitCsvImport(input: {
       [
         input.tenantId,
         input.analysisId,
-        input.fileName,
-        sha256,
-        isSpreadsheet ? "XLSX" : preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE",
+        originalFileName,
+        sourceSha256,
+        stored?.key ?? null,
+        sourceFormat,
         persistedStatus,
         JSON.stringify(preview.detectedHeaders),
         preview.rows.length,
@@ -192,10 +210,17 @@ export async function commitCsvImport(input: {
         preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED",
         preview.confidence.score,
         preview.confidence.level,
-        isSpreadsheet ? "XLSX" : "CSV",
+        analysisSourceType,
         stored?.key ?? null,
       ],
     );
+
+    // Um novo arquivo ou uma proveniência antes ausente pode tornar a confirmação anterior insuficiente.
+    // Recalculamos o resumo usando somente confirmações que batem exatamente import + SHA + object key.
+    const verificationState = await refreshAnalysisSourceHumanVerified(client, {
+      tenantId: input.tenantId,
+      analysisId: input.analysisId,
+    });
 
     await writeAudit(client, {
       tenantId: input.tenantId,
@@ -205,7 +230,11 @@ export async function commitCsvImport(input: {
       entityId: input.analysisId,
       metadata: {
         importId,
-        sha256,
+        sha256: sourceSha256,
+        sourceFormat,
+        sourceArchived: Boolean(stored),
+        sourceFileKey: stored?.key ?? null,
+        sourceHumanVerified: verificationState.verified,
         blockers: preview.blockers,
         warnings: preview.warnings,
         promotedSamples: promoted.promotedSamples,

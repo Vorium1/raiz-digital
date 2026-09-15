@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { RealFieldMap } from "@/components/real-field-map";
@@ -162,6 +163,17 @@ export function FieldOperationsManager() {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [loading]);
+
+  /** Deep-link real: "Ver pontos" de um talhão (em `PropertiesFieldsBrowser`) e o alerta de "pontos
+   * pendentes" (em `/alertas`) mandam pra cá com `?orderId=...` -- antes disso não existia nenhum jeito de
+   * chegar direto na ordem certa, o usuário tinha que procurar manualmente na lista (bug real confirmado
+   * na auditoria, 2026-09-10). Só age depois que `orders` carregou, pra achar o id de verdade. */
+  const orderIdParam = useSearchParams().get("orderId");
+  useEffect(() => {
+    if (!orderIdParam || loading || !orders.some((order) => order.id === orderIdParam)) return;
+    setSelectedOrderId(orderIdParam);
+    document.getElementById("pontos-coleta")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [orderIdParam, loading, orders]);
 
   async function postJson(url: string, body: unknown) {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -521,7 +533,7 @@ export function FieldOperationsManager() {
       <div className="field-ops-actions"><button className="button primary" disabled={busy === "order" || !orderSeasonId} onClick={()=>void createOrder()}>{busy === "order" ? "Criando…" : strategy === "GRID" ? "Criar ordem e gerar pontos" : "Criar ordem para importação"}<Icon name="arrow" size={15}/></button></div>
     </section>
 
-    <section className="field-ops-live">
+    <section className="field-ops-live" id="pontos-coleta">
       <div className="field-order-list card">
         <div className="field-ops-section-head compact"><div><span className="eyebrow">ORDENS</span><h2>Operação</h2></div><span className="field-ops-count">{orders.length}</span></div>
         {!orders.length ? <div className="field-order-empty"><Icon name="map"/><strong>Nenhuma ordem criada.</strong><small>Crie uma safra e gere o primeiro grid.</small></div> : orders.map((order)=><button key={order.id} className={`field-order-item ${selectedOrder?.id === order.id ? "active" : ""}`} onClick={()=>setSelectedOrderId(order.id)}><span><strong>{order.code}</strong><small>{order.clientName} · {order.fieldName}</small></span><b>{order.collectedPoints}/{order.plannedPoints}</b></button>)}
