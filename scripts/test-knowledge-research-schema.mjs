@@ -8,6 +8,7 @@ import "./test-rice-liming-pregerminated-sosbai-2025.mjs";
 import "./test-soybean-molybdenum-evidence.mjs";
 import "./test-soybean-gypsum-rs-sc-2025.mjs";
 import "./test-soybean-sulfur-rs-sc-2025.mjs";
+import "./test-soybean-pk-rs-sc-2025.mjs";
 
 const valid = [
   { title: "Manual de Calagem e Adubação RS/SC", institution: "CQFS RS/SC", editionYear: 2016, subject: "Fósforo", content: "Resumo técnico completo sobre faixas de fósforo por classe de solo.", regionCode: "RS-PLANALTO" },

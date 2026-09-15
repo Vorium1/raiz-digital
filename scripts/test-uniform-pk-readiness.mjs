@@ -23,7 +23,7 @@ const representative = [item("COMPOSTA", "P", "Alto"), item("COMPOSTA", "K", "Al
 
 const cabeda = evaluateUniformPkReadiness({ cropCode: "SOJA", interpretation: area01 });
 assert.equal(cabeda.ruleReady, true);
-assert.equal(cabeda.ruleId, "PK-SOJA-CQFS-2016");
+assert.equal(cabeda.ruleId, "PK-SOJA-RS-SC-2025");
 assert.equal(cabeda.ready, false);
 assert.equal(cabeda.nutrients.P2O5.ready, false, "P 4/8 não é maioria estrita");
 assert.ok(cabeda.nutrients.P2O5.blockers.includes("P_NO_STRICT_PREDOMINANCE"));
@@ -58,6 +58,7 @@ const exactP = validateDeterministicPkRecommendation({
 });
 assert.equal(exactP.allowed, true);
 assert.equal(exactP.expected?.doseKgPerHa, 63);
+assert.equal(exactP.expected?.ruleId, "PK-SOJA-RS-SC-2025");
 
 const inventedP = validateDeterministicPkRecommendation({
   cropCode: "SOJA",
@@ -144,4 +145,4 @@ const providerInventedDose = validatePrescriptionPkRecommendations({
 assert.equal(providerInventedDose.allowed, false);
 assert.ok(providerInventedDose.failures[0].blockers.includes("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
 
-console.log("uniform-pk-readiness: heterogeneidade, fonte, dose e barreira de persistência/promoção validadas");
+console.log("uniform-pk-readiness: heterogeneidade, fonte 2025, dose e barreira de persistência/promoção validadas");

@@ -97,8 +97,9 @@ assert.deepEqual(kPredominance && { classification: kPredominance.classification
 
 // Fechamento direto do achado #27: o fixture real alimenta o MESMO gate usado pela API/revisão.
 // P continua bloqueado em 4/8; K pode usar a classe Alto em 5/8. Nenhuma média/maioria simples entra.
+// A classificação do fixture preserva a base CQFS; novas doses de soja usam a proveniência regional corrente de 2025.
 const uniformPk = evaluateUniformPkReadiness({ cropCode: "SOJA", interpretation: engine.interpretation });
-assert.equal(uniformPk.ruleId, "PK-SOJA-CQFS-2016");
+assert.equal(uniformPk.ruleId, "PK-SOJA-RS-SC-2025");
 assert.equal(uniformPk.ruleReady, true);
 assert.equal(uniformPk.ready, false);
 assert.equal(uniformPk.nutrients.P2O5.ready, false);
@@ -108,7 +109,8 @@ assert.equal(uniformPk.nutrients.K2O.soilLevel, "Alto");
 assert.equal(uniformPk.nutrients.K2O.matchingCount, 5);
 
 // Mesmo se o usuário completar o contexto agronômico, a heterogeneidade de P continua sendo barreira.
-// K, por outro lado, calcula pela tabela CQFS para o mesmo cenário explícito (soja, 4,2 t/ha, 1º cultivo).
+// K, por outro lado, calcula pela tabela regional corrente (numericamente preservada de CQFS 2016)
+// para o mesmo cenário explícito: soja, 4,2 t/ha, 1º cultivo.
 const pWithCompleteContext = computeDeterministicPkDose({
   cropCode: "SOJA",
   interpretation: engine.interpretation,
@@ -130,6 +132,7 @@ const kWithCompleteContext = computeDeterministicPkDose({
   nutrient: "K2O",
 });
 assert.equal(kWithCompleteContext.ready, true);
+assert.equal(kWithCompleteContext.expected?.ruleId, "PK-SOJA-RS-SC-2025");
 assert.equal(kWithCompleteContext.expected?.soilLevel, "Alto");
 assert.equal(kWithCompleteContext.expected?.doseKgPerHa, 105);
 

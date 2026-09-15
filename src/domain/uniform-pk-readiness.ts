@@ -1,12 +1,15 @@
 import {
   MILHO_DOSE_TABLE,
-  SOJA_DOSE_TABLE,
   TRIGO_DOSE_TABLE,
   computeGrainFertilizerDose,
   type GrainDoseTable,
   type Nutrient,
   type SoilNutrientLevel,
 } from "./fertilizer-dose-engine.ts";
+import {
+  SOJA_RS_SC_2025_DOSE_TABLE,
+  SOYBEAN_PK_RS_SC_2025_RULE_ID,
+} from "./soybean-pk-rs-sc-2025.ts";
 import { computeParameterPredominance } from "./parameter-predominance.ts";
 import { evaluatePkDoseReadiness } from "./recommendation-context.ts";
 import { evaluateAgronomicRuleAutomation } from "./agronomic-rule-catalog.ts";
@@ -42,12 +45,12 @@ export type UniformPkReadiness = {
 
 const SOIL_LEVELS = new Set<SoilNutrientLevel>(["Muito Baixo", "Baixo", "Médio", "Alto", "Muito Alto"]);
 const PK_RULE_ID_BY_CROP: Record<string, string> = {
-  SOJA: "PK-SOJA-CQFS-2016",
+  SOJA: SOYBEAN_PK_RS_SC_2025_RULE_ID,
   MILHO: "PK-MILHO-CQFS-2016",
   TRIGO: "PK-TRIGO-CQFS-2016",
 };
 const DOSE_TABLE_BY_CROP: Record<string, GrainDoseTable> = {
-  SOJA: SOJA_DOSE_TABLE,
+  SOJA: SOJA_RS_SC_2025_DOSE_TABLE,
   MILHO: MILHO_DOSE_TABLE,
   TRIGO: TRIGO_DOSE_TABLE,
 };
