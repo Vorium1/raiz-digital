@@ -1,5 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { commitCsvImport } from "@/lib/repositories/imports";
+import { RawImportPersistenceError } from "@/lib/storage";
 
 const MAX_BODY_BYTES = 6_000_000;
 
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
     return Response.json(result, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao persistir a importação.";
-    return Response.json({ error: message }, { status: 422 });
+    const status = error instanceof RawImportPersistenceError ? 503 : 422;
+    return Response.json({ error: message }, { status });
   }
 }
