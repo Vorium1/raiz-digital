@@ -35,6 +35,7 @@ for (const ruleId of [
   "N-ARROZ-CONTINUO-SOSBAI-2025",
   "P-ARROZ-CONTINUO-SOSBAI-2025",
   "K-ARROZ-CONTINUO-SOSBAI-2025",
+  "S-ARROZ-SOSBAI-2025",
   "FE-ARROZ-RISCO-SOSBAI-2025",
   "MICRO-CLASS-CQFS-2016",
   "LIME-PRNT",
@@ -51,7 +52,6 @@ for (const ruleId of [
 
 for (const ruleId of [
   "N-ARROZ-SOSBAI-2025",
-  "S-ARROZ-SOSBAI-2025",
   "CALAGEM-ARROZ-SECO-SOSBAI-2025",
   "MO-SOJA-CQFS-2016",
   "MO-SOJA-EMBRAPA-2020",
@@ -231,4 +231,4 @@ assert.ok(dapLedger.kgCaCO3EqPerKgProduct > mapLedger.kgCaCO3EqPerKgProduct, "DA
 assert.equal(mapLedger.automaticLimeAdjustmentAllowed, false);
 assert.equal(dapLedger.automaticLimeAdjustmentAllowed, false);
 
-console.log("agronomic-rule-catalog: Work x Gemini cruzado; arroz N/P/K e Fe, micros, métricas e ledger liberados só no escopo fechado; S/calagem/Mo/gesso/carinata/trigo qualidade/VRA final permanecem fail-closed");
+console.log("agronomic-rule-catalog: arroz N/P/K/S e Fe, micros, métricas e ledger liberados apenas no escopo fechado; calagem seca/Mo/gesso/carinata/trigo qualidade/VRA final permanecem fail-closed");
