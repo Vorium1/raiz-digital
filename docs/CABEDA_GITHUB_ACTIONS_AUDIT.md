@@ -27,6 +27,14 @@ Configurar preferencialmente no GitHub Environment `homologation`:
 
 O workflow valida somente a presença dos secrets. Seus valores não são impressos nem gravados em artifacts.
 
+## Preflight observado em 2026-09-15
+
+O primeiro disparo real do mecanismo, run `34979776010`, confirmou que a branch de auditoria chama corretamente o workflow e que o job faz checkout do `develop` esperado. A execução de banco foi bloqueada antes de qualquer consulta porque `HOMOLOGATION_DATABASE_URL` e `CABEDA_TENANT_ID` não estavam configurados no environment `homologation`.
+
+Esse resultado **não é uma auditoria negativa da geometria Cabeda**. Significa somente que ainda não havia contexto autorizado suficiente para conectar ao banco. A proveniência espacial continua desconhecida e fail-closed.
+
+O workflow foi posteriormente endurecido para esse cenário: ausência de secrets não provoca mais passos de summary/artifact com saída vazia. O preflight marca o contexto como incompleto, pula instalação/auditoria e o job termina com uma única decisão fail-closed no fechamento.
+
 ## Execução antes de `main`
 
 Para Área 01:
