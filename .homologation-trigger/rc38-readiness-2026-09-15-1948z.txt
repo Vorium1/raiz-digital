@@ -1,0 +1,1 @@
+Trigger controlado para reexecutar Homologation Readiness Evidence usando o develop corrente (RC38). Nenhum secret é armazenado neste arquivo.
