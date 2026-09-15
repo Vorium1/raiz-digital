@@ -17,6 +17,7 @@ import {
   buildMapDapAcidityLedger,
   RESEARCH_READY_PROFILES,
 } from "../src/domain/research-ready-rules.ts";
+import { computeRiceContinuousPotassium } from "../src/domain/rice-potassium-sosbai-2025.ts";
 
 assert.ok(AGRONOMIC_RULES.length >= 30);
 assert.equal(new Set(AGRONOMIC_RULES.map((rule) => rule.ruleId)).size, AGRONOMIC_RULES.length);
@@ -33,6 +34,7 @@ for (const ruleId of [
   "N-GRAMINEA-INVERNO-CQFS-2016",
   "N-ARROZ-CONTINUO-SOSBAI-2025",
   "P-ARROZ-CONTINUO-SOSBAI-2025",
+  "K-ARROZ-CONTINUO-SOSBAI-2025",
   "FE-ARROZ-RISCO-SOSBAI-2025",
   "MICRO-CLASS-CQFS-2016",
   "LIME-PRNT",
@@ -49,7 +51,6 @@ for (const ruleId of [
 
 for (const ruleId of [
   "N-ARROZ-SOSBAI-2025",
-  "K-ARROZ-CONTINUO-SOSBAI-2025",
   "S-ARROZ-SOSBAI-2025",
   "CALAGEM-ARROZ-SECO-SOSBAI-2025",
   "MO-SOJA-CQFS-2016",
@@ -158,6 +159,21 @@ const ricePUpper = computeRiceContinuousPhosphorus({
 });
 assert.deepEqual(ricePUpper.dose, { kind: "UPPER_BOUND", maxKgPerHa: 40 });
 
+const riceK = computeRiceContinuousPotassium({
+  profileId: RESEARCH_READY_PROFILES.rice,
+  potassiumClass: "BAIXO",
+  classificationProfileId: RESEARCH_READY_PROFILES.rice,
+  potassiumMethod: "MEHLICH_1",
+  responseClass: "ALTA",
+  responseClassApproved: true,
+  ctcPh7CmolcPerDm3: 16,
+  ctcUnit: "cmolc/dm3",
+});
+assert.deepEqual(riceK.baseDose, { kind: "EXACT", kgPerHa: 100 });
+assert.deepEqual(riceK.dose, { kind: "EXACT", kgPerHa: 120 });
+assert.equal(riceK.ctcAdjustmentKgPerHa, 20);
+assert.equal(riceK.splitApplicationAutomated, false);
+
 const feRisk = computeRiceIronToxicityRisk({
   feOxalateGPerDm3: 1,
   ctcPh7CmolcPerDm3: 10,
@@ -215,4 +231,4 @@ assert.ok(dapLedger.kgCaCO3EqPerKgProduct > mapLedger.kgCaCO3EqPerKgProduct, "DA
 assert.equal(mapLedger.automaticLimeAdjustmentAllowed, false);
 assert.equal(dapLedger.automaticLimeAdjustmentAllowed, false);
 
-console.log("agronomic-rule-catalog: Work x Gemini cruzado; arroz/micros/métricas/ledger liberados só no escopo fechado; Mo/gesso/carinata/trigo qualidade/VRA final permanecem fail-closed");
+console.log("agronomic-rule-catalog: Work x Gemini cruzado; arroz N/P/K e Fe, micros, métricas e ledger liberados só no escopo fechado; S/calagem/Mo/gesso/carinata/trigo qualidade/VRA final permanecem fail-closed");
