@@ -41,6 +41,18 @@ assert.equal(
   "timestamp malformado deve ser rejeitado",
 );
 
+// Orders API: o provedor entrega data.id em maiúsculas, mas documenta que o manifesto HMAC deve
+// usar esse identificador em minúsculas. Este caso evita que webhooks reais de `order` sejam rejeitados.
+const orderDataId = "ORD01JQ4S4KY8HWQ6NA5PXB65B3D3";
+const orderManifest = `id:${orderDataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+const orderHash = createHmac("sha256", secret).update(orderManifest).digest("hex");
+const orderSignature = `ts=${ts},v1=${orderHash}`;
+assert.equal(
+  verifyMercadoPagoWebhookSignature({ signature: orderSignature, requestId, dataId: orderDataId, secret }),
+  true,
+  "assinatura de order deve normalizar data.id alfanumérico para minúsculas",
+);
+
 const tenantId = "0f0c1a7e-7c8f-4f2d-9e7b-8a3a2c7d6e5f";
 const invoiceId = "7ccac0e0-2c7c-43a8-9daf-ccbd32306517";
 const reference = buildRaizInvoiceExternalReference(tenantId, invoiceId);
@@ -94,4 +106,4 @@ assert.deepEqual(
   "flag sem credenciais deve falhar fechada",
 );
 
-console.log("✓ Mercado Pago: assinatura HMAC, referência, valores, status, domínio e gate comercial validados");
+console.log("✓ Mercado Pago: assinatura HMAC (payment + order), referência, valores, status, domínio e gate comercial validados");
