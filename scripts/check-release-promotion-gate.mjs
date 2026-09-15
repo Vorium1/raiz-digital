@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { CRITICAL_RELEASE_ISSUES, evaluateReleasePromotionGate } from "../src/domain/release-promotion-gate.ts";
 
 function clean(value) {
@@ -78,5 +79,8 @@ export async function runReleasePromotionGate(env = process.env, logger = consol
   return result;
 }
 
-const result = await runReleasePromotionGate();
-if (!result.allowed) process.exitCode = 1;
+const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  const result = await runReleasePromotionGate();
+  if (!result.allowed) process.exitCode = 1;
+}
