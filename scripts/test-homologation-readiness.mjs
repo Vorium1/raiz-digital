@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { evaluateHomologationReadiness } from "./check-homologation-readiness.mjs";
+import {
+  evaluateHomologationReadiness,
+  getHomologationReadinessHttpResult,
+} from "./check-homologation-readiness.mjs";
 
 const remoteDb = (user, host, database) => ["postgresql://", user, ":", "pw", "@", host, "/", database].join("");
 const configured = (name) => `${name}-configured-value`;
@@ -75,4 +78,49 @@ for (const secret of [
   assert.equal(serialized.includes(secret), false, "Resultado privacy-safe não pode serializar valores sensíveis.");
 }
 
-console.log("homologation-readiness: configuração, Cabeda, financeiro, manual gates e privacy-safe aprovados");
+const unauthenticated = getHomologationReadinessHttpResult(null, safeBase);
+assert.equal(unauthenticated.httpStatus, 401, "Endpoint interno deve exigir sessão ativa.");
+assert.deepEqual(unauthenticated.body, { status: "unauthorized", releaseReady: false });
+
+const tenantAdminOnly = getHomologationReadinessHttpResult({ isPlatformCurator: false }, safeBase);
+assert.equal(tenantAdminOnly.httpStatus, 403, "Administrador de tenant não pode consultar readiness global.");
+assert.deepEqual(tenantAdminOnly.body, { status: "forbidden", releaseReady: false });
+
+const curator = getHomologationReadinessHttpResult({ isPlatformCurator: true }, safeBase);
+assert.equal(curator.httpStatus, 200, "Curador da plataforma deve poder consultar readiness sanitizado.");
+assert.equal(curator.body.status, "READY_FOR_EXTERNAL_HOMOLOGATION");
+assert.equal(curator.body.releaseReady, false, "Nem o endpoint interno pode emitir GO automaticamente.");
+
+const blockedCurator = getHomologationReadinessHttpResult(
+  { isPlatformCurator: true },
+  { ...safeBase, HOMOLOGATION_DATABASE_URL: "", CABEDA_TENANT_ID: "" },
+);
+assert.equal(blockedCurator.httpStatus, 200, "Configuração bloqueada é um resultado válido da avaliação, não falha do serviço.");
+assert.equal(blockedCurator.body.status, "BLOCKED");
+
+const apiSerialized = JSON.stringify(curator.body);
+for (const secret of [
+  safeBase.AUTH_SECRET,
+  safeBase.RESEND_API_KEY,
+  safeBase.S3_ACCESS_KEY,
+  safeBase.S3_SECRET_KEY,
+  safeBase.MERCADO_PAGO_ACCESS_TOKEN,
+  safeBase.MERCADO_PAGO_WEBHOOK_SECRET,
+  safeBase.COPERNICUS_CLIENT_SECRET,
+  safeBase.HOMOLOGATION_DATABASE_URL,
+]) {
+  assert.equal(apiSerialized.includes(secret), false, "Resposta HTTP sanitizada nunca pode incluir secret/configuração bruta.");
+}
+
+const evaluatorFailure = getHomologationReadinessHttpResult(
+  { isPlatformCurator: true },
+  safeBase,
+  () => {
+    throw new Error("SENTINEL_SECRET_MUST_NOT_LEAK");
+  },
+);
+assert.equal(evaluatorFailure.httpStatus, 503, "Erro inesperado do evaluator deve falhar fechado.");
+assert.deepEqual(evaluatorFailure.body, { status: "unavailable", releaseReady: false });
+assert.equal(JSON.stringify(evaluatorFailure).includes("SENTINEL_SECRET_MUST_NOT_LEAK"), false);
+
+console.log("homologation-readiness: configuração, Cabeda, financeiro, auth 401/403, curator, fail-closed e privacy-safe aprovados");
