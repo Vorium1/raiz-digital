@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { evaluateProductionReadiness } from "./check-production-readiness.mjs";
-import { runReleasePromotionGate } from "./check-release-promotion-gate.mjs";
 import "./test-release-promotion-gate.mjs";
 
 const s3 = {
@@ -118,9 +117,8 @@ const incompleteObjectStorage = evaluateProductionReadiness({
 assert.equal(incompleteObjectStorage.ok, false);
 assert.ok(incompleteObjectStorage.failures.some((item) => item.name === "raw-import-archive"));
 
-// Em CI de PR para main, este teste também consulta as issues críticas reais.
-// Em feature/develop/release/push normal ele é neutro e não usa rede.
-const promotionGate = await runReleasePromotionGate(process.env);
-assert.equal(promotionGate.allowed, true, `Promoção para main bloqueada: ${promotionGate.blockers.join(", ")}`);
-
-console.log("production-readiness: cenários seguro, checkout explícito, ativação inconsistente, runtime sem admin, S3 incompleto e release promotion gate aprovados");
+// O release gate continua coberto por testes determinísticos em test-release-promotion-gate.mjs.
+// A consulta às issues reais pertence exclusivamente ao workflow Production Promotion Guard,
+// para que o CI técnico valide integralmente o merge commit (inclusive build) mesmo quando a
+// promoção para main estiver corretamente bloqueada por gates externos.
+console.log("production-readiness: cenários seguro, checkout explícito, ativação inconsistente, runtime sem admin e S3 incompleto aprovados; release gate determinístico também validado");
