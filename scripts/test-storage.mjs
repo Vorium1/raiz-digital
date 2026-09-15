@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   readRawStoredFile,
   saveRawImportFile,
+  saveRequiredRawImportFile,
   saveReportSnapshot,
   unwrapExtractedLabContent,
   wrapExtractedLabContent,
@@ -26,6 +27,11 @@ try {
 
   const raw = await saveRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" });
   assert.equal(raw, null, "arquivos brutos não devem usar inline");
+  await assert.rejects(
+    () => saveRequiredRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" }),
+    /Persistência obrigatória do arquivo original indisponível/,
+    "fluxos agronômicos devem falhar fechado quando não há persistência bruta durável",
+  );
 
   const source = {
     key: "s3:v1:imports/tenant/sources/abc-laudo.pdf",
@@ -48,7 +54,7 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline + envelope de proveniência + providers fail-closed.");
+  console.log("OK — storage: snapshot inline + envelope de proveniência + persistência bruta obrigatória fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;
