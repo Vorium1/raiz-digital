@@ -1,6 +1,7 @@
 import {
   evaluateAgronomicEvidenceTransfer,
   type AgronomicEvidenceTransferDecision,
+  type AgronomicTargetContext,
 } from "@/domain/agronomic-evidence-transferability";
 
 export type CarinataEvidenceObservation = {
@@ -122,6 +123,17 @@ const COASTAL_PLAIN_N_PROFILE = {
   homologatedRuleId: null,
 };
 
+function normalizeCarinataTarget(target: CarinataTargetContext): AgronomicTargetContext {
+  return {
+    crop: target.crop,
+    waterRegime: target.waterRegime === "UNKNOWN" ? null : target.waterRegime,
+    soilTextureGroup: target.soilTextureGroup === "UNKNOWN" ? null : target.soilTextureGroup,
+    soilPH: target.soilPH,
+    soilPHMethod: target.soilPHMethod === "UNKNOWN" ? null : target.soilPHMethod,
+    soilSamplingDepthToCm: target.soilSamplingDepthToCm,
+  };
+}
+
 /**
  * Compara o contexto do campo somente com o domínio observado no ensaio
  * multissítio FL/GA de Bashyal et al. (2021). O intervalo de pH, o método
@@ -131,7 +143,7 @@ const COASTAL_PLAIN_N_PROFILE = {
 export function evaluateCarinataCoastalPlainNitrogenEvidence(
   target: CarinataTargetContext,
 ): AgronomicEvidenceTransferDecision {
-  return evaluateAgronomicEvidenceTransfer(COASTAL_PLAIN_N_PROFILE, target);
+  return evaluateAgronomicEvidenceTransfer(COASTAL_PLAIN_N_PROFILE, normalizeCarinataTarget(target));
 }
 
 export function buildCarinataNutrientEvidenceBrief() {
