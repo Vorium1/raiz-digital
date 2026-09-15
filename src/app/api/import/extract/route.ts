@@ -2,7 +2,7 @@ import { buildLabImportPreview } from "@/domain/lab-import";
 import { geminiLabExtractionProvider } from "@/lib/ai/providers/gemini-lab-extraction-provider";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
-import { saveRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
+import { RawImportPersistenceError, saveRequiredRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
 
 const MAX_BODY_BYTES = 9_000_000;
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -10,10 +10,10 @@ const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"
 /**
  * Leitura de laudo (PDF/foto) por IA.
  *
- * O preview continua sendo produzido pelo mesmo validador determinístico dos arquivos tabulares. Em modo
- * real, porém, o arquivo ORIGINAL é arquivado antes de a resposta sair do servidor. O CSV transcrito leva
- * apenas um envelope opaco de proveniência, que será removido e conferido novamente no commit. Assim o
- * fluxo não troca silenciosamente o PDF/foto original pelo texto gerado pela IA na cadeia de custódia.
+ * Em modo real, o arquivo ORIGINAL é arquivado de forma durável ANTES de qualquer chamada de IA ou
+ * construção de preview. O CSV transcrito leva apenas um envelope opaco de proveniência, que será removido
+ * e conferido novamente no commit. Se o arquivo bruto não puder ser persistido, o fluxo falha fechado e a
+ * IA não recebe o documento.
  */
 export async function POST(request: Request) {
   const database = isDatabaseMode();
@@ -36,6 +36,18 @@ export async function POST(request: Request) {
     }
 
     const originalFileName = body.fileName?.trim() || "laudo-original";
+
+    // Cadeia de custódia: no runtime com banco, nenhum byte segue para IA antes de existir uma cópia
+    // persistente e endereçada por hash do arquivo original.
+    const stored = session
+      ? await saveRequiredRawImportFile({
+          tenantId: session.tenantId,
+          fileName: originalFileName,
+          content: body.content,
+          encoding: "base64",
+        })
+      : null;
+
     const extraction = await geminiLabExtractionProvider.extract({ fileBase64: body.content, mimeType: body.mimeType });
     const preview = buildLabImportPreview(extraction.csvContent, `${originalFileName}.csv`, {
       fallbackMethod: body.fallbackMethod,
@@ -43,26 +55,15 @@ export async function POST(request: Request) {
       spatialLinked: true,
     });
 
-    let csvContent = extraction.csvContent;
-    let sourceArchived = false;
-    if (session) {
-      const stored = await saveRawImportFile({
-        tenantId: session.tenantId,
-        fileName: originalFileName,
-        content: body.content,
-        encoding: "base64",
-      });
-      if (stored) {
-        csvContent = wrapExtractedLabContent(extraction.csvContent, {
+    const csvContent = stored
+      ? wrapExtractedLabContent(extraction.csvContent, {
           key: stored.key,
           bytes: stored.bytes,
           sha256: stored.sha256,
           fileName: originalFileName,
           sourceType: "PDF_OCR",
-        });
-        sourceArchived = true;
-      }
-    }
+        })
+      : extraction.csvContent;
 
     return Response.json({
       ...preview,
@@ -70,10 +71,11 @@ export async function POST(request: Request) {
       aiProvider: extraction.provider,
       aiModel: extraction.model,
       csvContent,
-      sourceArchived,
+      sourceArchived: Boolean(stored),
     }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível ler o arquivo com IA.";
-    return Response.json({ error: message }, { status: 422 });
+    const status = error instanceof RawImportPersistenceError ? 503 : 422;
+    return Response.json({ error: message }, { status });
   }
 }
