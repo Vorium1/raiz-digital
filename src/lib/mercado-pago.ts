@@ -41,6 +41,10 @@ function parseSignatureHeader(signature: string) {
  * Valida a assinatura de Webhook conforme o manifesto documentado pelo Mercado Pago:
  * id:<data.id>;request-id:<x-request-id>;ts:<ts>;
  *
+ * Para notificações da Orders API, o Mercado Pago envia `data.id` alfanumérico em maiúsculas,
+ * mas exige que esse valor seja convertido para minúsculas na montagem do manifesto HMAC.
+ * IDs puramente numéricos (pagamentos) permanecem naturalmente inalterados.
+ *
  * A RAIZ exige data.id e x-request-id em vez de aceitar um manifesto parcial. Isso deixa
  * o recurso financeiro explicitamente vinculado à assinatura e evita processar um corpo
  * alterado usando apenas request-id/timestamp.
@@ -54,9 +58,13 @@ export function verifyMercadoPagoWebhookSignature(input: {
   const { ts, v1 } = parseSignatureHeader(input.signature);
   if (!ts || !/^\d{10,16}$/.test(ts)) return false;
   if (!v1 || !/^[a-f0-9]{64}$/i.test(v1)) return false;
-  if (!input.requestId.trim() || !input.dataId.trim() || !input.secret) return false;
+  const requestId = input.requestId.trim();
+  const dataId = input.dataId.trim();
+  if (!requestId || !dataId || !input.secret) return false;
 
-  const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${ts};`;
+  // Regra explícita da documentação do Mercado Pago para IDs alfanuméricos de Orders API.
+  const signedDataId = dataId.toLowerCase();
+  const manifest = `id:${signedDataId};request-id:${requestId};ts:${ts};`;
   const expectedHex = createHmac("sha256", input.secret).update(manifest).digest("hex");
   const expected = Buffer.from(expectedHex, "hex");
   const received = Buffer.from(v1, "hex");
