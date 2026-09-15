@@ -62,7 +62,7 @@ export async function markPaymentEventRetryableError(eventRowId: string, process
 }
 
 export type PaymentReconciliationResult =
-  | { kind: "ignored"; reason: "FOREIGN_REFERENCE" }
+  | { kind: "ignored"; reason: "FOREIGN_REFERENCE" | "ALREADY_RECONCILED" }
   | { kind: "updated"; tenantId: string; invoiceId: string; previousStatus: string; status: string };
 
 /**
@@ -113,6 +113,15 @@ export async function reconcileOfficialMercadoPagoPayment(payment: MercadoPagoPa
       );
     }
 
+    const status = mapMercadoPagoPaymentStatus(payment.status);
+
+    // O lock da fatura torna a conciliação idempotente também sob duas entregas simultâneas.
+    // A segunda transação espera a primeira; se o mesmo payment_id e o mesmo estado oficial já
+    // tiverem sido aplicados, ela encerra sem novo UPDATE e, principalmente, sem duplicar auditoria.
+    if (current.provider_charge_id === payment.id && current.status === status) {
+      return { kind: "ignored" as const, reason: "ALREADY_RECONCILED" as const };
+    }
+
     // Uma tentativa rejeitada/cancelada pode ser substituída por uma nova tentativa de pagamento.
     // Uma fatura já PAID nunca aceita silenciosamente outro payment_id: potencial pagamento duplo vai
     // para revisão manual, em vez de a plataforma esconder a divergência.
@@ -120,7 +129,6 @@ export async function reconcileOfficialMercadoPagoPayment(payment: MercadoPagoPa
       throw new BillingReconciliationError("Fatura já paga recebeu outro payment_id. Revisão manual obrigatória.", "DUPLICATE_PAYMENT");
     }
 
-    const status = mapMercadoPagoPaymentStatus(payment.status);
     const paidAt = status === "PAID" ? (payment.date_approved ?? new Date().toISOString()) : null;
 
     await client.query(
