@@ -1,0 +1,126 @@
+name: Cabeda Spatial Provenance Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      area:
+        description: "Área Cabeda a auditar"
+        required: true
+        type: choice
+        options:
+          - "01"
+          - "02"
+        default: "01"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabeda-spatial-audit-homologation
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: audit-read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      CABEDA_AUDIT_AREA: ${{ inputs.area }}
+      CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
+      CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar contexto autorizado sem expor secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::Secret HOMOLOGATION_DATABASE_URL não configurado no ambiente homologation."
+            exit 1
+          fi
+          if [ -z "${CABEDA_TENANT_ID:-}" ]; then
+            echo "::error::Secret CABEDA_TENANT_ID não configurado no ambiente homologation."
+            exit 1
+          fi
+          echo "Contexto mínimo de homologação presente. Nenhum valor sensível será impresso."
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar auditoria read-only
+        id: audit
+        shell: bash
+        run: |
+          set -u
+          RESULT_FILE="cabeda-audit-area-${CABEDA_AUDIT_AREA}.json"
+          ERROR_FILE="cabeda-audit-error.txt"
+
+          set +e
+          node --experimental-strip-types scripts/audit-cabeda-persisted-geometry.mjs >"${RESULT_FILE}" 2>"${ERROR_FILE}"
+          STATUS=$?
+          set -e
+
+          echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+
+          if [ -s "${RESULT_FILE}" ]; then
+            cat "${RESULT_FILE}"
+          fi
+
+          if [ "${STATUS}" -eq 0 ]; then
+            echo "Auditoria concluída: proveniência espacial persistida atende ao gate."
+          elif [ "${STATUS}" -eq 2 ]; then
+            echo "::error::Auditoria concluída, mas a proveniência persistida NÃO atende ao gate."
+          else
+            echo "::error::Auditoria não pôde ser concluída. Detalhes técnicos foram omitidos dos logs para reduzir risco de exposição de infraestrutura."
+          fi
+
+      - name: Registrar resultado privacy-safe no resumo
+        if: always() && (steps.audit.outputs.exit_code == '0' || steps.audit.outputs.exit_code == '2')
+        shell: bash
+        run: |
+          {
+            echo "## Cabeda · auditoria espacial read-only"
+            echo
+            echo "Área: ${CABEDA_AUDIT_AREA}"
+            echo
+            echo '```json'
+            cat "${{ steps.audit.outputs.result_file }}"
+            echo '```'
+            echo
+            echo "Este resultado comprova apenas proveniência espacial. Não autoriza VRA/taxa variável sozinho."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Salvar evidência privacy-safe
+        if: always() && (steps.audit.outputs.exit_code == '0' || steps.audit.outputs.exit_code == '2')
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabeda-spatial-audit-area-${{ inputs.area }}
+          path: ${{ steps.audit.outputs.result_file }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Aplicar resultado fail-closed
+        if: always()
+        shell: bash
+        run: |
+          STATUS="${{ steps.audit.outputs.exit_code }}"
+          if [ -z "${STATUS}" ]; then
+            echo "::error::Auditoria não produziu estado verificável."
+            exit 1
+          fi
+          if [ "${STATUS}" -ne 0 ]; then
+            echo "::error::Gate espacial permanece bloqueado (exit=${STATUS})."
+            exit 1
+          fi
+          echo "Gate de proveniência espacial aprovado para a área auditada. Demais gates de VRA continuam independentes."
