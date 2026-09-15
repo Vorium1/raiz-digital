@@ -44,10 +44,12 @@ function unique(values: string[]) {
 /**
  * Regra regional de S para soja baseada nas Indicações Técnicas RS/SC 2025.
  *
- * A fonte estabelece teores desejados >10 mg/dm3 em 0-10 ou 0-20 cm e
- * >8,5 mg/dm3 em 20-40 cm; quando a disponibilidade é insuficiente,
- * recomenda 20 kg S/ha. Quando a amostragem superficial é 0-10 cm, a
- * própria fonte manda confirmar possível deficiência em camadas mais profundas.
+ * A fonte estabelece teor >10 mg/dm3 em 0-10 ou 0-20 cm e 8,5 mg/dm3 em
+ * 20-40 cm; quando essas condições não são atendidas, recomenda 20 kg S/ha.
+ * Portanto, 10 mg/dm3 exatos na superfície ainda não atendem ao critério,
+ * enquanto 8,5 mg/dm3 exatos em 20-40 cm atendem ao valor profundo publicado.
+ * Quando a amostragem superficial é 0-10 cm, a própria fonte manda confirmar
+ * possível deficiência em camadas mais profundas.
  *
  * Política conservadora RAIZ: decisões determinísticas exigem uma camada profunda
  * 20-40 cm. No perfil 0-10 cm, também exigimos a amostra 10-20 cm como evidência de
@@ -75,7 +77,7 @@ export function evaluateSoybeanSulfurRsSc2025(input: SoybeanSulfurRsSc2025Input)
     if (validSulfur(input.sulfur20To40MgDm3)) deepValue = input.sulfur20To40MgDm3;
 
     if (surfaceValue !== null && deepValue !== null) {
-      deficiencyConfirmed = surfaceValue <= 10 || deepValue <= 8.5;
+      deficiencyConfirmed = surfaceValue <= 10 || deepValue < 8.5;
     }
   } else {
     if (!validSulfur(input.sulfur0To10MgDm3)) blockers.push("SULFUR_0_10_MISSING_OR_INVALID");
@@ -85,7 +87,7 @@ export function evaluateSoybeanSulfurRsSc2025(input: SoybeanSulfurRsSc2025Input)
     if (validSulfur(input.sulfur20To40MgDm3)) deepValue = input.sulfur20To40MgDm3;
 
     if (surfaceValue !== null && deepValue !== null) {
-      if (deepValue <= 8.5) {
+      if (deepValue < 8.5) {
         deficiencyConfirmed = true;
       } else if (surfaceValue <= 10) {
         shallowLowNotConfirmedAtDepth = true;
@@ -123,8 +125,9 @@ export function evaluateSoybeanSulfurRsSc2025(input: SoybeanSulfurRsSc2025Input)
       : "INSUFFICIENT_CONTEXT",
     thresholds: {
       surfaceAdequateWhenMgDm3GreaterThan: 10,
-      subsurface20To40AdequateWhenMgDm3GreaterThan: 8.5,
-      exactBoundaryIsNotAdequate: true as const,
+      subsurface20To40AdequateWhenMgDm3AtLeast: 8.5,
+      exactSurfaceBoundaryIsAdequate: false as const,
+      exactSubsurfaceBoundaryIsAdequate: true as const,
     },
     observations: {
       surfaceValueMgDm3: surfaceValue,
