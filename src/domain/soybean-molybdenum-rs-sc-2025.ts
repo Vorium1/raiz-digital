@@ -1,7 +1,7 @@
-import { buildRuleTrace, evaluateAgronomicRuleAutomation } from "./agronomic-rule-catalog.ts";
+import { buildRuleTrace } from "./agronomic-rule-catalog.ts";
 
 export const SOYBEAN_MO_RS_SC_2025_PROFILE = "SOJA_RS_SC_2025_MO_APOS_INDICACAO_PROFISSIONAL" as const;
-export const SOYBEAN_MO_RS_SC_2025_RULE_ID = "MO-SOJA-RS-SC-2025-AFTER-PROFESSIONAL-INDICATION" as const;
+export const SOYBEAN_MO_RS_SC_2025_RULE_ID = "MO-SOJA-RS-SC-2025" as const;
 
 export type SoybeanMoApplicationRoute = "SEED" | "FOLIAR";
 export type SoybeanMoFoliarStage = "V2" | "V3" | "OTHER";
@@ -21,21 +21,21 @@ export type SoybeanMoRsSc2025Input = {
   initialNitrogenDeficiencyObserved?: boolean | null;
 };
 
-type Decision = "RANGE_AVAILABLE" | "DO_NOT_APPLY" | "BLOCKED_PROFESSIONAL_REVIEW" | "BLOCKED_SOURCE_DOMAIN";
+type Decision = "RANGE_AVAILABLE_AFTER_PROFESSIONAL_INDICATION" | "DO_NOT_APPLY" | "BLOCKED_PROFESSIONAL_REVIEW" | "BLOCKED_SOURCE_DOMAIN";
 
 function finite(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function requireReadyRule() {
-  const decision = evaluateAgronomicRuleAutomation(SOYBEAN_MO_RS_SC_2025_RULE_ID);
-  if (!decision.allowed || !decision.rule) {
-    throw new Error(`Regra ${SOYBEAN_MO_RS_SC_2025_RULE_ID} não está liberada (${decision.status}).`);
+function requireReviewGatedTrace() {
+  const trace = buildRuleTrace(SOYBEAN_MO_RS_SC_2025_RULE_ID);
+  if (trace.executionStatus !== "REQUIRES_AGRONOMIST_REVIEW") {
+    throw new Error("A regra ampla de Mo da soja RS/SC 2025 deve permanecer sob revisão agronômica.");
   }
-  return buildRuleTrace(SOYBEAN_MO_RS_SC_2025_RULE_ID);
+  return trace;
 }
 
-function baseResult(trace: ReturnType<typeof requireReadyRule>, input: SoybeanMoRsSc2025Input) {
+function baseResult(trace: ReturnType<typeof requireReviewGatedTrace>, input: SoybeanMoRsSc2025Input) {
   const responseContextMatch = finite(input.phWater) && typeof input.initialNitrogenDeficiencyObserved === "boolean"
     ? input.phWater < 5.5 && input.initialNitrogenDeficiencyObserved
     : null;
@@ -44,6 +44,7 @@ function baseResult(trace: ReturnType<typeof requireReadyRule>, input: SoybeanMo
     ruleId: trace.ruleId,
     ruleVersion: trace.ruleVersion,
     sourceSnapshotId: trace.sourceSnapshotId,
+    catalogExecutionStatus: trace.executionStatus,
     profileId: SOYBEAN_MO_RS_SC_2025_PROFILE,
     applicationRoute: input.applicationRoute,
     professionalIndicationConfirmed: input.professionalIndicationConfirmed,
@@ -62,7 +63,7 @@ function baseResult(trace: ReturnType<typeof requireReadyRule>, input: SoybeanMo
 }
 
 function blocked(
-  trace: ReturnType<typeof requireReadyRule>,
+  trace: ReturnType<typeof requireReviewGatedTrace>,
   input: SoybeanMoRsSc2025Input,
   decision: Extract<Decision, "BLOCKED_PROFESSIONAL_REVIEW" | "BLOCKED_SOURCE_DOMAIN">,
   blockers: string[],
@@ -71,7 +72,7 @@ function blocked(
   return {
     ...baseResult(trace, input),
     decision,
-    automaticRangeAllowed: false,
+    postProfessionalGateRangeAvailable: false,
     doseRangeGMoPerHa: null,
     foliarStage: input.foliarStage ?? null,
     preferredRouteBySource: "FOLIAR" as const,
@@ -81,7 +82,7 @@ function blocked(
 }
 
 function noApply(
-  trace: ReturnType<typeof requireReadyRule>,
+  trace: ReturnType<typeof requireReviewGatedTrace>,
   input: SoybeanMoRsSc2025Input,
   reason: string,
   warnings: string[] = [],
@@ -89,7 +90,7 @@ function noApply(
   return {
     ...baseResult(trace, input),
     decision: "DO_NOT_APPLY" as Decision,
-    automaticRangeAllowed: true,
+    postProfessionalGateRangeAvailable: true,
     doseRangeGMoPerHa: { min: 0, max: 0 },
     foliarStage: input.foliarStage ?? null,
     preferredRouteBySource: "FOLIAR" as const,
@@ -100,7 +101,7 @@ function noApply(
 }
 
 /**
- * SOSBAI/RPSRS 2025, item 2.5.4 (pp.46-47).
+ * RPSRS 2025, item 2.5.4 (pp.46-47).
  *
  * Esta função NÃO decide se Mo deve ser indicado. A própria publicação usa
  * linguagem de possibilidade de resposta e descreve situações mais prováveis,
@@ -118,7 +119,7 @@ function noApply(
  * Esses gates ficam fail-closed quando o histórico/monitoramento não é conhecido.
  */
 export function computeSoybeanMolybdenumRsSc2025(input: SoybeanMoRsSc2025Input) {
-  const trace = requireReadyRule();
+  const trace = requireReviewGatedTrace();
 
   if (input.profileId !== SOYBEAN_MO_RS_SC_2025_PROFILE) {
     throw new Error("Perfil incompatível com a sub-regra regional de Mo da soja 2025.");
@@ -168,8 +169,8 @@ export function computeSoybeanMolybdenumRsSc2025(input: SoybeanMoRsSc2025Input) 
     }
     return {
       ...baseResult(trace, input),
-      decision: "RANGE_AVAILABLE" as Decision,
-      automaticRangeAllowed: true,
+      decision: "RANGE_AVAILABLE_AFTER_PROFESSIONAL_INDICATION" as Decision,
+      postProfessionalGateRangeAvailable: true,
       doseRangeGMoPerHa: { min: 25, max: 50 },
       foliarStage: input.foliarStage,
       preferredRouteBySource: "FOLIAR" as const,
@@ -184,8 +185,8 @@ export function computeSoybeanMolybdenumRsSc2025(input: SoybeanMoRsSc2025Input) 
 
   return {
     ...baseResult(trace, input),
-    decision: "RANGE_AVAILABLE" as Decision,
-    automaticRangeAllowed: true,
+    decision: "RANGE_AVAILABLE_AFTER_PROFESSIONAL_INDICATION" as Decision,
+    postProfessionalGateRangeAvailable: true,
     doseRangeGMoPerHa: { min: 12, max: 25 },
     foliarStage: null,
     preferredRouteBySource: "FOLIAR" as const,
