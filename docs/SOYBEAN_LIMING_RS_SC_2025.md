@@ -16,9 +16,13 @@ A ata oficial é usada como esclarecimento normativo das alterações aprovadas 
 
 ### Sistema convencional
 
-No domínio em que os critérios são simultaneamente inequívocos — `pHágua < 5,5`, `V < 65%` e saturação por Al `> 10%` — a dose-base é `1 SMP para pHágua 6,0`, incorporada em 0–20 cm. A Tabela 2.3 reproduz as doses de SMP para PRNT 100%.
+No domínio em que os critérios positivos estão explicitamente atendidos — `pHágua < 5,5`, `V < 65%` e saturação por Al `> 10%` — a dose-base é `1 SMP para pHágua 6,0`, incorporada em 0–20 cm. A Tabela 2.3 reproduz as doses de SMP para PRNT 100%.
 
-A edição 2025 mantém uma diferença lógica entre a nota (1) da Tabela 2.2 e a redação do item 2.3.2. A nota diz para **não aplicar** quando `V >= 65%` **e** `Al < 10%`; o texto afirma que a calagem é preconizada quando `V < 65%` **e** `Al > 10%`. Nos quadrantes mistos e em `Al = 10%`, a RAIZ não escolhe silenciosamente uma interpretação: retorna conflito de fonte e bloqueia dose automática.
+A nota (1) da Tabela 2.2 estabelece ainda um caso negativo explícito: **não aplicar** quando `V >= 65%` **e** `Al < 10%`.
+
+Essas duas proposições não são inversas lógicas entre si. A nota negativa não autoriza automaticamente todo o complemento do seu domínio. Por isso, nos quadrantes mistos e em `Al = 10%`, a RAIZ não inventa uma regra: retorna `BLOCKED_SOURCE_DOMAIN`, com o blocker `V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE`, e mantém dose automática bloqueada.
+
+Essa classificação substitui a antiga expressão `BLOCKED_SOURCE_CONFLICT` para C3. Não houve liberação de nenhum cenário novo; houve apenas correção semântica da razão do fail-closed.
 
 ### Implantação do sistema plantio direto
 
@@ -42,7 +46,9 @@ A automação é liberada somente quando:
 - `noRestrictions10To20Confirmed=true`;
 - a calagem não for recente a ponto de acionar o gate de reaplicação;
 - pH/V/Al/SMP necessários forem válidos;
-- a lógica V/Al cair no domínio inequívoco. Quadrantes mistos continuam fail-closed porque a ata não resolveu essa terceira divergência.
+- a combinação V/Al estiver em domínio explicitamente coberto pela fonte.
+
+Quadrantes mistos e `Al = 10%` continuam fail-closed como **lacuna de domínio da fonte**, e não como conflito lógico entre a nota da tabela e o texto.
 
 ### SPD consolidado com restrições na camada 10–20 cm
 
@@ -75,14 +81,25 @@ MO deve estar em `%` e Al trocável em `cmolc/dm³`. Resultado matemático não 
 
 As doses da Tabela 2.3 são para PRNT 100%. O ajuste algébrico para PRNT declarado/medido é separado da escolha comercial do produto: `dose_produto = dose_PRNT100 × 100 / PRNT%`.
 
-## Divergência ainda preservada — lógica V/Al
+## C3 — domínio V/Al não explicitamente especificado
 
-A ata resolve as divergências `1/2 vs 1/4 SMP` e `Al 10% vs 30%`, mas não altera explicitamente a diferença entre:
+A leitura lógica auditada é:
 
-- nota (1) da Tabela 2.2: **não aplicar** quando `V >= 65%` **e** `Al < 10%`;
-- item 2.3.2: calagem preconizada quando `V < 65%` **e** `Al > 10%`.
+- regra positiva do item 2.3.2: calagem preconizada quando `V < 65%` **e** `Al > 10%`, além dos demais requisitos;
+- exceção negativa da nota (1) da Tabela 2.2: **não aplicar** quando `V >= 65%` **e** `Al < 10%`;
+- a segunda proposição não é o inverso lógico da primeira;
+- portanto a publicação não determina, de forma explícita, uma ação automática para os quadrantes mistos nem para `Al = 10%` nos perfis que dependem dessa lógica.
 
-Consequentemente, os quadrantes mistos e `Al = 10%` no perfil que depende dessa lógica continuam `BLOCKED_SOURCE_CONFLICT`. A RAIZ não converte silêncio editorial em regra.
+Política RAIZ versionada para C3:
+
+- `V < 65%` e `Al > 10%`: pode seguir para `APPLY` quando todos os demais gates passam;
+- `V >= 65%` e `Al < 10%`: `DO_NOT_APPLY` por regra negativa explícita;
+- `V >= 65%` e `Al >= 10%`: `BLOCKED_SOURCE_DOMAIN`;
+- `V < 65%` e `Al < 10%`: `BLOCKED_SOURCE_DOMAIN`;
+- `Al = 10%` nos perfis C3: `BLOCKED_SOURCE_DOMAIN`;
+- nenhum desses bloqueios gera dose, zero implícito ou preferência editorial.
+
+O blocker operacional é `V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE`. Esta é uma política de segurança da RAIZ para representar o silêncio do domínio da fonte; não é apresentada como recomendação agronômica adicional da publicação.
 
 ## Calagem recente
 
@@ -90,12 +107,12 @@ O item 2.3.3 alerta que, em SPD consolidado com calagem recente, o SMP pode não
 
 ## IDs de regra
 
-- `LIMING-SOYBEAN-RS-SC-2025-CONVENTIONAL` — `READY_FOR_IMPLEMENTATION` apenas no domínio inequívoco; runtime fail-closed nos quadrantes V/Al ambíguos.
+- `LIMING-SOYBEAN-RS-SC-2025-CONVENTIONAL` — `READY_FOR_IMPLEMENTATION` apenas no domínio explicitamente autorizado; runtime fail-closed nos quadrantes V/Al não especificados.
 - `LIMING-SOYBEAN-RS-SC-2025-NO-TILL-ESTABLISHMENT` — `READY_FOR_IMPLEMENTATION` no contexto explicitamente correspondente.
 - `LIMING-SOYBEAN-RS-SC-2025-NO-TILL-CONSOLIDATED`:
-  - sem restrições 10–20 cm: `READY_FOR_IMPLEMENTATION` apenas no domínio inequívoco e com ausência de restrições explicitamente confirmada;
+  - sem restrições 10–20 cm: `READY_FOR_IMPLEMENTATION` apenas no domínio explicitamente coberto e com ausência de restrições confirmada;
   - com restrições 10–20 cm: `REQUIRES_AGRONOMIST_REVIEW`; após confirmação profissional de incorporação, a dose torna-se cálculo determinístico pela regra oficial.
 
 ## Regra de segurança
 
-A ata oficial não é usada para “escolher a versão que parece melhor”; ela registra as alterações aprovadas pela própria reunião técnica e, por isso, resolve somente os pontos explicitamente alterados. Todo conflito não coberto pela ata permanece fail-closed. Histórico anterior não é reprocessado automaticamente.
+A ata oficial não é usada para “escolher a versão que parece melhor”; ela registra as alterações aprovadas pela própria reunião técnica e, por isso, resolve somente os pontos explicitamente alterados. Quando a publicação não define todo o domínio lógico de entrada, a RAIZ bloqueia o domínio não especificado em vez de completar a regra por inferência. Histórico anterior não é reprocessado automaticamente.

@@ -67,7 +67,7 @@ const smpInterp = computeLimingDoseBySmpIndex(5.25, "6.0");
 assert.equal(smpInterp.interpolated, true);
 assert.ok(Math.abs(smpInterp.doseTonPerHaPrnt100 - 7.9) < 0.01);
 
-// 9. Soja RS/SC 2025: sistema convencional, domínio inequívoco.
+// 9. Soja RS/SC 2025: sistema convencional, domínio positivo explicitamente autorizado.
 const conventional = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "CONVENTIONAL",
@@ -82,8 +82,8 @@ assert.equal(conventional.decision, "APPLY");
 assert.equal(conventional.recommendedDoseTonHaPrnt100, 5.4);
 assert.equal(conventional.applicationMode, "INCORPORATED");
 
-// 10. Quadrantes V/Al não resolvidos de forma inequívoca entre Tabela 2.2 e texto falham fechado.
-const conventionalAmbiguous = evaluateSoybeanLimingRsSc2025({
+// 10. A nota negativa da Tabela 2.2 não autoriza o complemento lógico: quadrante misto fica fora do domínio explícito.
+const conventionalUnspecified = evaluateSoybeanLimingRsSc2025({
   region: "SC",
   system: "CONVENTIONAL",
   phWater0To20: 5.2,
@@ -91,8 +91,51 @@ const conventionalAmbiguous = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 5,
   smp0To20: 5.6,
 });
-assert.equal(conventionalAmbiguous.decision, "BLOCKED_SOURCE_CONFLICT");
-assert.equal(conventionalAmbiguous.automaticDoseAllowed, false);
+assert.equal(conventionalUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(conventionalUnspecified.automaticDoseAllowed, false);
+assert.ok(conventionalUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
+assert.equal(conventionalUnspecified.evidenceConflict, null);
+
+// 10a. Fronteiras C3: domínio positivo, exceção negativa e zonas não especificadas permanecem distintos.
+const conventionalPositiveBoundary = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "CONVENTIONAL",
+  phWater0To20: 5.2,
+  baseSaturation0To20Pct: 64.9,
+  aluminumSaturation0To20Pct: 10.1,
+  smp0To20: 5.6,
+});
+assert.equal(conventionalPositiveBoundary.decision, "APPLY");
+
+const conventionalNegativeBoundary = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "CONVENTIONAL",
+  phWater0To20: 5.2,
+  baseSaturation0To20Pct: 65,
+  aluminumSaturation0To20Pct: 9.9,
+  smp0To20: 5.6,
+});
+assert.equal(conventionalNegativeBoundary.decision, "DO_NOT_APPLY");
+
+const conventionalMixedHighV = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "CONVENTIONAL",
+  phWater0To20: 5.2,
+  baseSaturation0To20Pct: 65,
+  aluminumSaturation0To20Pct: 10.1,
+  smp0To20: 5.6,
+});
+assert.equal(conventionalMixedHighV.decision, "BLOCKED_SOURCE_DOMAIN");
+
+const conventionalAlExact10 = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "CONVENTIONAL",
+  phWater0To20: 5.2,
+  baseSaturation0To20Pct: 64.9,
+  aluminumSaturation0To20Pct: 10,
+  smp0To20: 5.6,
+});
+assert.equal(conventionalAlExact10.decision, "BLOCKED_SOURCE_DOMAIN");
 
 // 11. Implantação de SPD permanece direta: pH<5,5 + 1 SMP para pH 6,0 incorporado.
 const establishment = evaluateSoybeanLimingRsSc2025({
@@ -142,8 +185,8 @@ assert.equal(consolidatedSurfaceCap.recommendedDoseTonHaPrnt100, 5);
 assert.equal(consolidatedSurfaceCap.surfaceCapApplied, true);
 assert.ok(consolidatedSurfaceCap.warnings.includes("SURFACE_APPLICATION_CAPPED_AT_5_T_HA_PRNT100"));
 
-// 14. A Ata não resolveu a divergência V/Al; quadrantes mistos continuam fail-closed.
-const consolidatedVAlAmbiguous = evaluateSoybeanLimingRsSc2025({
+// 14. No SPD sem restrições, quadrante misto também é lacuna de domínio e continua fail-closed.
+const consolidatedVAlUnspecified = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
   noRestrictions10To20Confirmed: true,
@@ -153,8 +196,9 @@ const consolidatedVAlAmbiguous = evaluateSoybeanLimingRsSc2025({
   smp0To10: 5.6,
   yearsSinceLastLiming: 4,
 });
-assert.equal(consolidatedVAlAmbiguous.decision, "BLOCKED_SOURCE_CONFLICT");
-assert.equal(consolidatedVAlAmbiguous.automaticDoseAllowed, false);
+assert.equal(consolidatedVAlUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(consolidatedVAlUnspecified.automaticDoseAllowed, false);
+assert.ok(consolidatedVAlUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
 
 // 15. Ata oficial resolve Al>=10%; entre 10 e 30% não há mais conflito de fonte, mas incorporação exige decisão agronômica.
 const consolidatedNeedsReview = evaluateSoybeanLimingRsSc2025({
@@ -177,7 +221,7 @@ assert.equal(consolidatedNeedsReview.decision, "BLOCKED_PROFESSIONAL_REVIEW");
 assert.equal(consolidatedNeedsReview.automaticDoseAllowed, false);
 assert.ok(!consolidatedNeedsReview.blockers.some((blocker) => blocker.includes("SOURCE_CONFLICT_AL_THRESHOLD")));
 
-// 16. O limiar Al=10% é inclusivo; com decisão profissional confirmada, dose usa SMP médio das duas camadas.
+// 16. O limiar Al=10% é inclusivo no ramo específico com restrições; com decisão profissional confirmada, dose usa SMP médio.
 const consolidatedReviewed = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
@@ -249,4 +293,4 @@ assert.equal(lowBuffer.recommendedDoseTonHaPrnt100, 2.31);
 assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
 
-console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; Ata 44ª RPSRS resolve C1/C2 e C3 V/Al permanece fail-closed");
+console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");
