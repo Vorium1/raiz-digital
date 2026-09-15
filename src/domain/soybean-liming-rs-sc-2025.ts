@@ -1,14 +1,19 @@
 import { computeLimingDoseBySmpIndex } from "./liming-engine.ts";
 
-export const SOYBEAN_LIMING_RS_SC_2025_RULE_ID = "LIMING-SOYBEAN-RS-SC-2025" as const;
 export const SOYBEAN_LIMING_RS_SC_2025_SOURCE_URL =
   "https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1183120/1/Indicacoes2025.pdf";
+
+export const SOYBEAN_LIMING_RULE_IDS = Object.freeze({
+  conventional: "LIMING-SOYBEAN-RS-SC-2025-CONVENTIONAL",
+  noTillEstablishment: "LIMING-SOYBEAN-RS-SC-2025-NO-TILL-ESTABLISHMENT",
+  noTillConsolidated: "LIMING-SOYBEAN-RS-SC-2025-NO-TILL-CONSOLIDATED",
+} as const);
 
 const SOURCE = Object.freeze({
   title: "Indicações técnicas para a cultura da soja no Rio Grande do Sul e em Santa Catarina, safras 2025/2026 e 2026/2027",
   institution: "44ª Reunião de Pesquisa de Soja da Região Sul / Embrapa Trigo / Universidade de Passo Fundo",
   year: 2025,
-  locator: "item 2.3 Calagem; Tabelas 2.2 e 2.3",
+  locator: "item 2.3, pp.22-29; Tabelas 2.2 e 2.3",
   url: SOYBEAN_LIMING_RS_SC_2025_SOURCE_URL,
 });
 
@@ -41,71 +46,59 @@ export type SoybeanLimingRsSc2025Input = {
   smp0To10?: number | null;
   smp10To20?: number | null;
   noRestrictions10To20Confirmed?: boolean;
+  yearsSinceLastLiming?: number | null;
   restrictionAssessment?: SoybeanLimingRestrictionAssessment | null;
 };
 
-type Decision = "APPLY" | "DO_NOT_APPLY" | "BLOCKED_CONTEXT" | "BLOCKED_PROFESSIONAL_REVIEW";
 type ApplicationMode = "INCORPORATED" | "SURFACE" | null;
+type RuleStatus = "READY_FOR_IMPLEMENTATION" | "REQUIRES_AGRONOMIST_REVIEW";
+type Decision = "APPLY" | "DO_NOT_APPLY" | "BLOCKED_CONTEXT" | "BLOCKED_SOURCE_CONFLICT" | "BLOCKED_PROFESSIONAL_REVIEW";
 
 function finite(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
-
 function validPh(value: number | null | undefined): value is number {
   return finite(value) && value >= 0 && value <= 14;
 }
-
 function validPercent(value: number | null | undefined): value is number {
   return finite(value) && value >= 0 && value <= 100;
 }
-
 function validSmp(value: number | null | undefined): value is number {
   return finite(value) && value >= 0 && value <= 14;
 }
-
 function unique(values: string[]) {
   return [...new Set(values)];
 }
-
-function noLimeExceptionByVAndAl(vPct: number, alSatPct: number) {
-  // Nota (1), Tabela 2.2: não aplicar quando V >=65% E saturação por Al <10%.
-  return vPct >= 65 && alSatPct < 10;
-}
-
 function fullSmpDoseToPh6(smp: number) {
   return computeLimingDoseBySmpIndex(smp, "6.0").doseTonPerHaPrnt100;
 }
 
-function buildNoApply(reason: string, warnings: string[] = []) {
+function ruleFor(system: SoybeanLimingSystem) {
+  if (system === "CONVENTIONAL") return { ruleId: SOYBEAN_LIMING_RULE_IDS.conventional, status: "READY_FOR_IMPLEMENTATION" as RuleStatus };
+  if (system === "NO_TILL_ESTABLISHMENT") return { ruleId: SOYBEAN_LIMING_RULE_IDS.noTillEstablishment, status: "READY_FOR_IMPLEMENTATION" as RuleStatus };
+  return { ruleId: SOYBEAN_LIMING_RULE_IDS.noTillConsolidated, status: "REQUIRES_AGRONOMIST_REVIEW" as RuleStatus };
+}
+
+function resultBase(system: SoybeanLimingSystem) {
+  const rule = ruleFor(system);
   return {
-    ruleId: SOYBEAN_LIMING_RS_SC_2025_RULE_ID,
-    ruleStatus: "READY_FOR_IMPLEMENTATION" as const,
-    contextReady: true,
-    decision: "DO_NOT_APPLY" as const,
-    automaticDoseAllowed: true,
-    recommendedDoseTonHaPrnt100: 0,
-    rawSmpDoseTonHaPrnt100: 0,
-    applicationMode: null as ApplicationMode,
-    incorporatedDepthCm: null as { from: number; to: number } | null,
-    surfaceCapApplied: false,
-    blockers: [] as string[],
-    warnings: unique(warnings),
-    reason,
+    ruleId: rule.ruleId,
+    ruleStatus: rule.status,
     source: SOURCE,
     policy: {
       commercialPrntConversionAllowedHere: false as const,
       productSelectionAllowedHere: false as const,
-      alternativeLowBufferingMethodImplementedHere: false as const,
+      sourceConflictCanBeAutoResolved: false as const,
+      historicalResultMustNotBeRewritten: true as const,
     },
   };
 }
 
-function buildBlocked(blockers: string[], professionalReview = false, warnings: string[] = []) {
+function buildBlocked(system: SoybeanLimingSystem, blockers: string[], decision: Extract<Decision, "BLOCKED_CONTEXT" | "BLOCKED_SOURCE_CONFLICT" | "BLOCKED_PROFESSIONAL_REVIEW">, warnings: string[] = [], evidenceConflict: Record<string, unknown> | null = null) {
   return {
-    ruleId: SOYBEAN_LIMING_RS_SC_2025_RULE_ID,
-    ruleStatus: "READY_FOR_IMPLEMENTATION" as const,
+    ...resultBase(system),
     contextReady: false,
-    decision: professionalReview ? "BLOCKED_PROFESSIONAL_REVIEW" as const : "BLOCKED_CONTEXT" as const,
+    decision,
     automaticDoseAllowed: false,
     recommendedDoseTonHaPrnt100: null,
     rawSmpDoseTonHaPrnt100: null,
@@ -114,47 +107,56 @@ function buildBlocked(blockers: string[], professionalReview = false, warnings: 
     surfaceCapApplied: false,
     blockers: unique(blockers),
     warnings: unique(warnings),
+    evidenceConflict,
     reason: null,
-    source: SOURCE,
-    policy: {
-      commercialPrntConversionAllowedHere: false as const,
-      productSelectionAllowedHere: false as const,
-      alternativeLowBufferingMethodImplementedHere: false as const,
-    },
   };
 }
 
-function buildApply(input: {
+function buildNoApply(system: SoybeanLimingSystem, reason: string, warnings: string[] = []) {
+  return {
+    ...resultBase(system),
+    contextReady: true,
+    decision: "DO_NOT_APPLY" as Decision,
+    automaticDoseAllowed: true,
+    recommendedDoseTonHaPrnt100: 0,
+    rawSmpDoseTonHaPrnt100: 0,
+    applicationMode: null as ApplicationMode,
+    incorporatedDepthCm: null as { from: number; to: number } | null,
+    surfaceCapApplied: false,
+    blockers: [] as string[],
+    warnings: unique(warnings),
+    evidenceConflict: null,
+    reason,
+  };
+}
+
+function buildApply(system: SoybeanLimingSystem, input: {
   smpDose: number;
-  multiplier: number;
+  multiplier?: number;
   applicationMode: Exclude<ApplicationMode, null>;
   incorporatedDepthCm?: { from: number; to: number } | null;
   surfaceCapTonHaPrnt100?: number | null;
   warnings?: string[];
 }) {
-  const blockers: string[] = [];
-  const warnings = [...(input.warnings ?? [])];
-
-  // Se a tomada de decisão diz "calagem necessária", mas a tabela SMP retorna zero,
-  // não publicamos dose zero. O próprio histórico técnico da soja alerta para solos de
-  // baixo tamponamento em que SMP pode subestimar a necessidade; o método alternativo
-  // deve ser homologado separadamente antes de virar cálculo automático.
   if (!(input.smpDose > 0)) {
-    blockers.push("LIMING_NEEDED_BUT_SMP_TABLE_RETURNS_ZERO_ALTERNATIVE_METHOD_REQUIRED");
-    return buildBlocked(blockers, true, warnings);
+    return buildBlocked(
+      system,
+      ["LIMING_NEEDED_BUT_SMP_TABLE_RETURNS_ZERO_USE_LOW_BUFFERING_FORMULA_OR_REVIEW"],
+      "BLOCKED_PROFESSIONAL_REVIEW",
+      input.warnings,
+    );
   }
-
-  const scaled = input.smpDose * input.multiplier;
+  const multiplier = input.multiplier ?? 1;
+  const scaled = input.smpDose * multiplier;
   const cap = input.surfaceCapTonHaPrnt100 ?? null;
   const surfaceCapApplied = cap !== null && scaled > cap;
-  const recommended = cap !== null ? Math.min(scaled, cap) : scaled;
+  const recommended = cap === null ? scaled : Math.min(scaled, cap);
+  const warnings = [...(input.warnings ?? [])];
   if (surfaceCapApplied) warnings.push("SURFACE_APPLICATION_CAPPED_AT_5_T_HA_PRNT100");
-
   return {
-    ruleId: SOYBEAN_LIMING_RS_SC_2025_RULE_ID,
-    ruleStatus: "READY_FOR_IMPLEMENTATION" as const,
+    ...resultBase(system),
     contextReady: true,
-    decision: "APPLY" as const,
+    decision: "APPLY" as Decision,
     automaticDoseAllowed: true,
     recommendedDoseTonHaPrnt100: Math.round(recommended * 100) / 100,
     rawSmpDoseTonHaPrnt100: Math.round(input.smpDose * 100) / 100,
@@ -163,96 +165,123 @@ function buildApply(input: {
     surfaceCapApplied,
     blockers: [] as string[],
     warnings: unique(warnings),
+    evidenceConflict: null,
     reason: null,
-    source: SOURCE,
-    policy: {
-      commercialPrntConversionAllowedHere: false as const,
-      productSelectionAllowedHere: false as const,
-      alternativeLowBufferingMethodImplementedHere: false as const,
-    },
   };
 }
 
 /**
- * Gate corrente de calagem da soja RS/SC segundo a Tabela 2.2 (2025).
- * A função decide necessidade, fração de SMP e modo de aplicação. A dose SMP
- * usa a tabela já auditada no `liming-engine`, cujos valores são os mesmos
- * reproduzidos na Tabela 2.3 da publicação 2025 (fonte CQFS-RS/SC 2016).
- *
- * Importante: o perfil 2025 mudou critérios operacionais frente a edições
- * antigas da recomendação de soja. Em SPD consolidado sem restrições usa 1/2
- * SMP para pH 6,0; no perfil com restrições em 10-20 cm a Tabela 2.2 atual usa
- * saturação por Al >=10%. Esses valores não devem ser substituídos por 1/4 SMP
- * ou 30% de Al de documentos antigos.
+ * Equações explicitadas no item 2.3.1 para solos de baixo poder tampão,
+ * sobretudo arenosos, quando SMP indicar dose muito pequena apesar de pH baixo.
+ * Retorna NC em t/ha para PRNT 100%. Valor matemático <=0 é tratado como
+ * conflito de contexto, nunca como recomendação negativa/zero silenciosa.
  */
-export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input) {
-  const commonBlockers: string[] = [];
-  if (input.region === "OTHER") commonBlockers.push("LIMING_PROFILE_OUTSIDE_RS_SC");
-  if (commonBlockers.length) return buildBlocked(commonBlockers);
+export function computeSoybeanLowBufferingLiming2025(input: {
+  targetPh: "5.5" | "6.0";
+  organicMatterPct: number;
+  exchangeableAlCmolcDm3: number;
+}) {
+  if (!finite(input.organicMatterPct) || input.organicMatterPct < 0) throw new Error("ORGANIC_MATTER_INVALID");
+  if (!finite(input.exchangeableAlCmolcDm3) || input.exchangeableAlCmolcDm3 < 0) throw new Error("EXCHANGEABLE_AL_INVALID");
+  const raw = input.targetPh === "5.5"
+    ? -0.653 + 0.480 * input.organicMatterPct + 1.937 * input.exchangeableAlCmolcDm3
+    : -0.516 + 0.805 * input.organicMatterPct + 2.435 * input.exchangeableAlCmolcDm3;
+  return {
+    targetPh: input.targetPh,
+    rawDoseTonHaPrnt100: Math.round(raw * 1000) / 1000,
+    recommendedDoseTonHaPrnt100: raw > 0 ? Math.round(raw * 100) / 100 : null,
+    ready: raw > 0,
+    blocker: raw > 0 ? null : "LOW_BUFFERING_FORMULA_NON_POSITIVE_REVIEW_REQUIRED",
+    source: { ...SOURCE, locator: "item 2.3.1, p.25: equações de NC para pH 5,5 e 6,0" },
+  };
+}
 
-  if (input.system === "CONVENTIONAL") {
+/** Ajuste algébrico da dose-base PRNT100 para um corretivo cujo PRNT foi medido/declarado. */
+export function adjustSoybeanLimeDoseForPrnt2025(doseTonHaPrnt100: number, prntPct: number) {
+  if (!finite(doseTonHaPrnt100) || doseTonHaPrnt100 < 0) throw new Error("LIME_DOSE_INVALID");
+  if (!finite(prntPct) || prntPct <= 0) throw new Error("PRNT_INVALID");
+  return Math.round((doseTonHaPrnt100 * 100 / prntPct) * 100) / 100;
+}
+
+function classifyConventionalVAl(v: number, al: number) {
+  // O texto da seção 2.3.2 exige V<65 E Al>10; a nota (1) da Tabela 2.2
+  // apenas exclui explicitamente V>=65 E Al<10. Nos quadrantes mistos e em
+  // Al=10 a publicação não é inequívoca, portanto falhamos fechado.
+  if (v < 65 && al > 10) return "APPLY" as const;
+  if (v >= 65 && al < 10) return "DO_NOT_APPLY" as const;
+  return "AMBIGUOUS" as const;
+}
+
+export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input) {
+  const system = input.system;
+  if (input.region === "OTHER") return buildBlocked(system, ["LIMING_PROFILE_OUTSIDE_RS_SC"], "BLOCKED_CONTEXT");
+
+  if (system === "CONVENTIONAL") {
     const blockers: string[] = [];
     if (!validPh(input.phWater0To20)) blockers.push("PH_WATER_0_20_MISSING_OR_INVALID");
     if (!validPercent(input.baseSaturation0To20Pct)) blockers.push("BASE_SATURATION_0_20_MISSING_OR_INVALID");
     if (!validPercent(input.aluminumSaturation0To20Pct)) blockers.push("AL_SATURATION_0_20_MISSING_OR_INVALID");
     if (!validSmp(input.smp0To20)) blockers.push("SMP_0_20_MISSING_OR_INVALID");
-    if (blockers.length) return buildBlocked(blockers);
-
-    const ph = input.phWater0To20 as number;
-    const v = input.baseSaturation0To20Pct as number;
-    const al = input.aluminumSaturation0To20Pct as number;
-    if (ph >= 5.5) return buildNoApply("PH_WATER_AT_OR_ABOVE_5_5");
-    if (noLimeExceptionByVAndAl(v, al)) {
-      return buildNoApply("TABLE_2_2_EXCEPTION_V_AT_LEAST_65_AND_AL_BELOW_10");
+    if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
+    if ((input.phWater0To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_AT_OR_ABOVE_5_5");
+    const criteria = classifyConventionalVAl(input.baseSaturation0To20Pct as number, input.aluminumSaturation0To20Pct as number);
+    if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
+    if (criteria === "AMBIGUOUS") {
+      return buildBlocked(system, ["TABLE_2_2_AND_SECTION_2_3_2_V_AL_LOGIC_NOT_UNAMBIGUOUS"], "BLOCKED_SOURCE_CONFLICT", [], {
+        tableFootnote: "não aplicar quando V>=65% e Al<10%",
+        narrative: "preconiza calagem quando pH<5,5, V<65% e Al>10%",
+      });
     }
-
-    return buildApply({
+    return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To20 as number),
-      multiplier: 1,
       applicationMode: "INCORPORATED",
       incorporatedDepthCm: { from: 0, to: 20 },
-      warnings: ["IF_P_OR_K_BELOW_CRITICAL_USE_SOIL_MOBILIZATION_TO_INCORPORATE_CORRECTION_FERTILIZATION"],
+      warnings: ["IF_P_OR_K_BELOW_CRITICAL_USE_CORRECTION_FERTILIZATION_WITH_INCORPORATION"],
     });
   }
 
-  if (input.system === "NO_TILL_ESTABLISHMENT") {
+  if (system === "NO_TILL_ESTABLISHMENT") {
     const blockers: string[] = [];
     if (!validPh(input.phWater0To20)) blockers.push("PH_WATER_0_20_MISSING_OR_INVALID");
     if (!validSmp(input.smp0To20)) blockers.push("SMP_0_20_MISSING_OR_INVALID");
-    if (blockers.length) return buildBlocked(blockers);
-
-    if ((input.phWater0To20 as number) >= 5.5) return buildNoApply("PH_WATER_AT_OR_ABOVE_5_5");
-    return buildApply({
+    if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
+    if ((input.phWater0To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_AT_OR_ABOVE_5_5");
+    return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To20 as number),
-      multiplier: 1,
       applicationMode: "INCORPORATED",
       incorporatedDepthCm: { from: 0, to: 20 },
-      warnings: ["IF_P_OR_K_BELOW_CRITICAL_USE_SOIL_MOBILIZATION_TO_INCORPORATE_CORRECTION_FERTILIZATION"],
+      warnings: ["FIELD_OR_NATURAL_GRASSLAND_PRECONDITION_MUST_MATCH_SOURCE_CONTEXT"],
     });
   }
 
-  if (input.system === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS") {
+  // Em SPD consolidado a própria edição 2025 contém conflitos internos materiais:
+  // Tabela 2.2: 1/2 SMP sem restrições e Al>=10% com restrições.
+  // Texto 2.3.3: 1/4 SMP sem restrições e Al>=30% com restrições.
+  // Nenhum deles é resolvido automaticamente por preferência editorial.
+  if (finite(input.yearsSinceLastLiming) && (input.yearsSinceLastLiming as number) < 3) {
+    return buildBlocked(system, ["RECENT_LIMING_CAN_MASK_SMP_RESPONSE_REVIEW_BEFORE_REAPPLICATION"], "BLOCKED_PROFESSIONAL_REVIEW", [
+      "SECTION_2_3_3_NOTES_CORRECTIVE_MAY_TAKE_ABOUT_THREE_YEARS_TO_DISSOLVE_COMPLETELY",
+    ]);
+  }
+
+  if (system === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS") {
     const blockers: string[] = [];
     if (input.noRestrictions10To20Confirmed !== true) blockers.push("ABSENCE_OF_10_20_RESTRICTIONS_NOT_CONFIRMED");
     if (!validPh(input.phWater0To10)) blockers.push("PH_WATER_0_10_MISSING_OR_INVALID");
     if (!validPercent(input.baseSaturation0To10Pct)) blockers.push("BASE_SATURATION_0_10_MISSING_OR_INVALID");
     if (!validPercent(input.aluminumSaturation0To10Pct)) blockers.push("AL_SATURATION_0_10_MISSING_OR_INVALID");
     if (!validSmp(input.smp0To10)) blockers.push("SMP_0_10_MISSING_OR_INVALID");
-    if (blockers.length) return buildBlocked(blockers);
-
-    const ph = input.phWater0To10 as number;
-    const v = input.baseSaturation0To10Pct as number;
-    const al = input.aluminumSaturation0To10Pct as number;
-    if (ph >= 5.5) return buildNoApply("PH_WATER_AT_OR_ABOVE_5_5");
-    if (noLimeExceptionByVAndAl(v, al)) {
-      return buildNoApply("TABLE_2_2_EXCEPTION_V_AT_LEAST_65_AND_AL_BELOW_10");
-    }
-
-    return buildApply({
-      smpDose: fullSmpDoseToPh6(input.smp0To10 as number),
-      multiplier: 0.5,
-      applicationMode: "SURFACE",
-      surfaceCapTonHaPrnt100: 5,
+    if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
+    if ((input.phWater0To10 as number) >= 5.5) return buildNoApply(system, "PH_WATER_0_10_AT_OR_ABOVE_5_5");
+    const criteria = classifyConventionalVAl(input.baseSaturation0To10Pct as number, input.aluminumSaturation0To10Pct as number);
+    if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
+    if (criteria === "AMBIGUOUS") return buildBlocked(system, ["V_AL_DECISION_LOGIC_NOT_UNAMBIGUOUS"], "BLOCKED_SOURCE_CONFLICT");
+    const full = fullSmpDoseToPh6(input.smp0To10 as number);
+    return buildBlocked(system, ["SOURCE_CONFLICT_SMP_FRACTION_1_2_TABLE_VS_1_4_NARRATIVE"], "BLOCKED_SOURCE_CONFLICT", [
+      "SURFACE_APPLICATION_LIMIT_5_T_HA_PRNT100",
+    ], {
+      table2_2: { fractionOfSmpToPh6: 0.5, candidateTonHaPrnt100: Math.round(full * 0.5 * 100) / 100 },
+      section2_3_3: { fractionOfSmpToPh6: 0.25, candidateTonHaPrnt100: Math.round(full * 0.25 * 100) / 100 },
     });
   }
 
@@ -261,45 +290,41 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
   if (!validPercent(input.aluminumSaturation10To20Pct)) blockers.push("AL_SATURATION_10_20_MISSING_OR_INVALID");
   if (!validSmp(input.smp0To10)) blockers.push("SMP_0_10_MISSING_OR_INVALID");
   if (!validSmp(input.smp10To20)) blockers.push("SMP_10_20_MISSING_OR_INVALID");
-
   const assessment = input.restrictionAssessment;
-  if (!assessment) {
-    blockers.push("RESTRICTION_ASSESSMENT_10_20_MISSING");
-  } else {
-    if (typeof assessment.yieldBelowLocalAverageEspeciallyInDrought !== "boolean") {
-      blockers.push("YIELD_RESTRICTION_10_20_NOT_ASSESSED");
-    }
-    if (typeof assessment.compactionRestrictsRootGrowthAtDepth !== "boolean") {
-      blockers.push("COMPACTION_RESTRICTION_10_20_NOT_ASSESSED");
-    }
-    if (typeof assessment.phosphorus10To20BelowCritical !== "boolean") {
-      blockers.push("PHOSPHORUS_RESTRICTION_10_20_NOT_ASSESSED");
-    }
+  if (!assessment) blockers.push("RESTRICTION_ASSESSMENT_10_20_MISSING");
+  else {
+    if (typeof assessment.yieldBelowLocalAverageEspeciallyInDrought !== "boolean") blockers.push("YIELD_RESTRICTION_10_20_NOT_ASSESSED");
+    if (typeof assessment.compactionRestrictsRootGrowthAtDepth !== "boolean") blockers.push("COMPACTION_RESTRICTION_10_20_NOT_ASSESSED");
+    if (typeof assessment.phosphorus10To20BelowCritical !== "boolean") blockers.push("PHOSPHORUS_RESTRICTION_10_20_NOT_ASSESSED");
   }
-  if (blockers.length) return buildBlocked(blockers);
-
-  const ph = input.phWater10To20 as number;
+  if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
+  if ((input.phWater10To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_10_20_AT_OR_ABOVE_5_5");
   const al = input.aluminumSaturation10To20Pct as number;
-  if (ph >= 5.5) return buildNoApply("PH_WATER_10_20_AT_OR_ABOVE_5_5");
-  if (al < 10) return buildNoApply("AL_SATURATION_10_20_BELOW_10");
-
+  if (al < 10) return buildNoApply(system, "AL_SATURATION_10_20_BELOW_10");
+  if (al < 30) {
+    return buildBlocked(system, ["SOURCE_CONFLICT_AL_THRESHOLD_10_TABLE_VS_30_NARRATIVE"], "BLOCKED_SOURCE_CONFLICT", [], {
+      table2_2ThresholdPct: 10,
+      section2_3_3ThresholdPct: 30,
+    });
+  }
   if (assessment?.agronomistConfirmedIncorporationDecision !== true) {
-    return buildBlocked(["INCORPORATION_DECISION_REQUIRES_AGRONOMIST_CONFIRMATION"], true, [
-      "TABLE_2_2_REQUIRES_CONTEXTUAL_REVIEW_OF_YIELD_COMPACTION_AND_P_10_20",
+    return buildBlocked(system, ["INCORPORATION_DECISION_REQUIRES_AGRONOMIST_CONFIRMATION"], "BLOCKED_PROFESSIONAL_REVIEW", [
+      "REVIEW_YIELD_DROUGHT_COMPACTION_P_10_20_AND_EROSION_RISK",
     ]);
   }
-
   const averageSmp = ((input.smp0To10 as number) + (input.smp10To20 as number)) / 2;
-  const warnings = ["INCORPORATION_CAN_INCREASE_EROSION_RISK_AND_REQUIRES_CONSERVATION_REVIEW"];
-  if (assessment.phosphorus10To20BelowCritical) {
-    warnings.push("P_10_20_BELOW_CRITICAL_CORRECTION_FERTILIZATION_WITH_INCORPORATION_SHOULD_BE_CONSIDERED");
-  }
-
-  return buildApply({
-    smpDose: fullSmpDoseToPh6(averageSmp),
-    multiplier: 1,
-    applicationMode: "INCORPORATED",
+  const candidate = fullSmpDoseToPh6(averageSmp);
+  return {
+    ...buildBlocked(system, [], "BLOCKED_PROFESSIONAL_REVIEW", [
+      "AGRONOMIST_REVIEW_CONFIRMED_BUT_CATALOG_PROFILE_REMAINS_NON_AUTOMATIC",
+      "INCORPORATION_REQUIRES_SOIL_AND_WATER_CONSERVATION_REVIEW",
+      ...(assessment?.phosphorus10To20BelowCritical ? ["P_10_20_BELOW_CRITICAL_CONSIDER_CORRECTION_FERTILIZATION_WITH_INCORPORATION"] : []),
+    ]),
+    contextReady: true,
+    blockers: ["CONSOLIDATED_PROFILE_REMAINS_REVIEW_ONLY"],
+    reviewedDoseCandidateTonHaPrnt100: Math.round(candidate * 100) / 100,
+    reviewedSmpMean: Math.round(averageSmp * 1000) / 1000,
+    applicationMode: "INCORPORATED" as ApplicationMode,
     incorporatedDepthCm: { from: 0, to: 20 },
-    warnings,
-  });
+  };
 }
