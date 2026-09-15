@@ -1,0 +1,149 @@
+name: Homologation Readiness Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "audit/homologation-readiness"
+    paths:
+      - ".homologation-trigger/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homologation-readiness-evidence
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    name: readiness-sanitized
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      DATA_MODE: ${{ vars.DATA_MODE }}
+      DATABASE_SSL: ${{ vars.DATABASE_SSL }}
+      APP_URL: ${{ vars.APP_URL }}
+      EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
+      EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+      STORAGE_PROVIDER: ${{ vars.STORAGE_PROVIDER }}
+      S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+      S3_REGION: ${{ vars.S3_REGION }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      REPORT_STORAGE_PROVIDER: ${{ vars.REPORT_STORAGE_PROVIDER }}
+      RAIZ_ASSISTANT_MODE: ${{ vars.RAIZ_ASSISTANT_MODE }}
+      MERCADO_PAGO_CHECKOUT_ENABLED: ${{ vars.MERCADO_PAGO_CHECKOUT_ENABLED }}
+
+    steps:
+      - name: Usar código auditado de develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validar origem do disparo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            if [ "${GITHUB_REF_NAME}" != "audit/homologation-readiness" ]; then
+              echo "::error::Branch não autorizada para readiness de homologação."
+              exit 1
+            fi
+          elif [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "::error::Evento não autorizado para readiness de homologação."
+            exit 1
+          fi
+          echo "Disparo autorizado. A avaliação usa o código corrente de develop."
+
+      - name: Gerar evidência sanitizada
+        id: readiness
+        shell: bash
+        env:
+          APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COPERNICUS_CLIENT_ID: ${{ secrets.COPERNICUS_CLIENT_ID }}
+          COPERNICUS_CLIENT_SECRET: ${{ secrets.COPERNICUS_CLIENT_SECRET }}
+          MERCADO_PAGO_ACCESS_TOKEN: ${{ secrets.MERCADO_PAGO_ACCESS_TOKEN }}
+          MERCADO_PAGO_WEBHOOK_SECRET: ${{ secrets.MERCADO_PAGO_WEBHOOK_SECRET }}
+          HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
+        run: |
+          set -u
+          RESULT_FILE="homologation-readiness.json"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+
+          set +e
+          node --experimental-strip-types scripts/export-homologation-readiness.mjs > "${RESULT_FILE}"
+          STATUS=$?
+          set -e
+
+          echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
+          test -s "${RESULT_FILE}"
+          echo "Evidência sanitizada gerada. Nenhum valor de secret/configuração bruta é serializado."
+
+      - name: Registrar resumo privacy-safe
+        if: ${{ always() && steps.readiness.outputs.result_file != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_FILE="${{ steps.readiness.outputs.result_file }}"
+          test -s "${RESULT_FILE}"
+          RESULT_FILE="${RESULT_FILE}" node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const evidence = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
+          const checks = Array.isArray(evidence.checks) ? evidence.checks : [];
+          const summary = evidence.summary || {};
+          console.log("## RAIZ Digital · readiness de homologação");
+          console.log("");
+          console.log(`Status automatizado: **${evidence.status || "unavailable"}**`);
+          console.log(`Release ready: **${evidence.releaseReady === false ? "não" : "estado inválido"}**`);
+          console.log(`Blockers automatizados: **${summary.blockedCount ?? "n/a"}**`);
+          console.log(`Gates manuais/externos restantes: **${summary.manualGateCount ?? "n/a"}**`);
+          console.log("");
+          for (const check of checks) console.log(`- **${check.status}** · ${check.name}: ${check.message}`);
+          console.log("");
+          console.log("Esta evidência não autoriza produção e não substitui homologação externa, #24, #27 ou GO humano.");
+          NODE
+
+      - name: Salvar evidência sanitizada
+        if: ${{ always() && steps.readiness.outputs.result_file != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homologation-readiness-evidence
+          path: ${{ steps.readiness.outputs.result_file }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Aplicar resultado fail-closed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS="${{ steps.readiness.outputs.exit_code }}"
+          if [ -z "${STATUS}" ]; then
+            echo "::error::Readiness não produziu estado verificável."
+            exit 1
+          fi
+          case "${STATUS}" in
+            0)
+              echo "Configuração automatizável passou. Homologação externa e GO continuam pendentes."
+              ;;
+            2)
+              echo "::error::Readiness encontrou blocker(s) automatizados. Consulte o resumo sanitizado."
+              exit 1
+              ;;
+            *)
+              echo "::error::Readiness ficou indisponível (exit=${STATUS}); falha fechada."
+              exit 1
+              ;;
+          esac

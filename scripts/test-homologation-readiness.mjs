@@ -3,6 +3,7 @@ import {
   evaluateHomologationReadiness,
   getHomologationReadinessHttpResult,
 } from "./check-homologation-readiness.mjs";
+import { buildHomologationReadinessEvidence } from "./export-homologation-readiness.mjs";
 
 const remoteDb = (user, host, database) => ["postgresql://", user, ":", "pw", "@", host, "/", database].join("");
 const configured = (name) => `${name}-configured-value`;
@@ -78,6 +79,34 @@ for (const secret of [
   assert.equal(serialized.includes(secret), false, "Resultado privacy-safe não pode serializar valores sensíveis.");
 }
 
+const evidence = buildHomologationReadinessEvidence(safeBase);
+assert.equal(evidence.schemaVersion, 1);
+assert.equal(evidence.evidenceType, "RAIZ_HOMOLOGATION_READINESS");
+assert.equal(evidence.status, "READY_FOR_EXTERNAL_HOMOLOGATION");
+assert.equal(evidence.automatedOk, true);
+assert.equal(evidence.releaseReady, false, "Artefato de CI nunca pode emitir GO de produção.");
+const evidenceSerialized = JSON.stringify(evidence);
+for (const secret of [
+  safeBase.AUTH_SECRET,
+  safeBase.RESEND_API_KEY,
+  safeBase.S3_ACCESS_KEY,
+  safeBase.S3_SECRET_KEY,
+  safeBase.MERCADO_PAGO_ACCESS_TOKEN,
+  safeBase.MERCADO_PAGO_WEBHOOK_SECRET,
+  safeBase.COPERNICUS_CLIENT_SECRET,
+  safeBase.HOMOLOGATION_DATABASE_URL,
+]) {
+  assert.equal(evidenceSerialized.includes(secret), false, "Artefato de homologação não pode serializar valores sensíveis.");
+}
+const blockedEvidence = buildHomologationReadinessEvidence({
+  ...safeBase,
+  HOMOLOGATION_DATABASE_URL: "",
+  CABEDA_TENANT_ID: "",
+});
+assert.equal(blockedEvidence.status, "BLOCKED");
+assert.equal(blockedEvidence.automatedOk, false);
+assert.equal(blockedEvidence.releaseReady, false);
+
 const unauthenticated = getHomologationReadinessHttpResult(null, safeBase);
 assert.equal(unauthenticated.httpStatus, 401, "Endpoint interno deve exigir sessão ativa.");
 assert.deepEqual(unauthenticated.body, { status: "unauthorized", releaseReady: false });
@@ -123,4 +152,4 @@ assert.equal(evaluatorFailure.httpStatus, 503, "Erro inesperado do evaluator dev
 assert.deepEqual(evaluatorFailure.body, { status: "unavailable", releaseReady: false });
 assert.equal(JSON.stringify(evaluatorFailure).includes("SENTINEL_SECRET_MUST_NOT_LEAK"), false);
 
-console.log("homologation-readiness: configuração, Cabeda, financeiro, auth 401/403, curator, fail-closed e privacy-safe aprovados");
+console.log("homologation-readiness: configuração, artefato, Cabeda, financeiro, auth 401/403, curator, fail-closed e privacy-safe aprovados");
