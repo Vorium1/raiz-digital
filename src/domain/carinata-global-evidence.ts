@@ -2,7 +2,7 @@ import {
   evaluateAgronomicEvidenceTransfer,
   type AgronomicEvidenceTransferDecision,
   type AgronomicTargetContext,
-} from "@/domain/agronomic-evidence-transferability";
+} from "./agronomic-evidence-transferability.ts";
 
 export type CarinataEvidenceObservation = {
   sourceId: string;
