@@ -27,6 +27,20 @@ export type RawSourceReceipt = {
   fileName: string;
   sourceType: "PDF_OCR";
 };
+export type RawImportFileInput = {
+  tenantId: string;
+  analysisId?: string;
+  fileName: string;
+  content: string;
+  encoding: "utf8" | "base64";
+};
+
+export class RawImportPersistenceError extends Error {
+  constructor(message = "Persistência obrigatória do arquivo original indisponível. Configure um armazenamento bruto durável antes de analisar ou importar o laudo.") {
+    super(message);
+    this.name = "RawImportPersistenceError";
+  }
+}
 
 function sha256(buffer: Buffer) {
   return createHash("sha256").update(buffer).digest("hex");
@@ -64,13 +78,7 @@ function rawKeyBelongsToTenant(key: string, tenantId: string) {
  * devolve `null`; o preflight comercial exige `STORAGE_PROVIDER=s3`, portanto produção não pode ser
  * promovida com essa lacuna escondida.
  */
-export async function saveRawImportFile(input: {
-  tenantId: string;
-  analysisId?: string;
-  fileName: string;
-  content: string;
-  encoding: "utf8" | "base64";
-}): Promise<StoredFile | null> {
+export async function saveRawImportFile(input: RawImportFileInput): Promise<StoredFile | null> {
   const provider = configuredProvider();
   if (provider === "inline") return null;
   if (provider === "local" && process.env.VERCEL) return null;
@@ -95,9 +103,19 @@ export async function saveRawImportFile(input: {
 }
 
 /**
+ * Variante fail-closed para qualquer fluxo que vá interpretar, normalizar ou promover dados agronômicos.
+ * Nenhuma análise pode começar se os bytes originais ainda não tiverem sido persistidos de forma durável.
+ */
+export async function saveRequiredRawImportFile(input: RawImportFileInput): Promise<StoredFile> {
+  const stored = await saveRawImportFile(input);
+  if (!stored) throw new RawImportPersistenceError();
+  return stored;
+}
+
+/**
  * PDF/foto passa por IA antes do commit. Para não perder a ligação com o ORIGINAL, o endpoint de extração
- * arquiva o arquivo primeiro e devolve o CSV com este envelope opaco na primeira linha. O cliente apenas
- * transporta o conteúdo; no commit o servidor remove o envelope e verifica novamente key/hash/bytes.
+ * arquiva o arquivo antes de chamar a IA e devolve o CSV com este envelope opaco na primeira linha. O cliente
+ * apenas transporta o conteúdo; no commit o servidor remove o envelope e verifica novamente key/hash/bytes.
  */
 export function wrapExtractedLabContent(csvContent: string, source: RawSourceReceipt) {
   const encoded = Buffer.from(JSON.stringify(source), "utf8").toString("base64url");
