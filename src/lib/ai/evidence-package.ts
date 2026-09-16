@@ -17,6 +17,8 @@ export type AgronomicEvidencePackage = {
   };
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
+  /** Identidade explícita da revisão que originou `classifications`; usada para descartar pacote stale. */
+  interpretation: { id: string; createdAt: string } | null;
   results: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string; method: string }>;
   classifications: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification: string | null; reason: string | null }>;
   ruleUsed: { cropProfileCode: string | null; cropProfileName: string | null; version: string | null; contentHash: string | null } | null;
@@ -67,10 +69,10 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
     );
 
     const interpretationResult = await client.query(
-      `SELECT i.status, i.structured_output AS "structuredOutput", cp.code AS "cropProfileCode", cp.name AS "cropProfileName",
+      `SELECT i.id::text, i.created_at::text AS "createdAt", i.status, i.structured_output AS "structuredOutput", cp.code AS "cropProfileCode", cp.name AS "cropProfileName",
               cp.semantic_version AS "cropProfileVersion", cp.content_hash AS "cropProfileHash"
        FROM interpretations i LEFT JOIN crop_profiles cp ON cp.id = i.crop_profile_id
-       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid ORDER BY i.created_at DESC LIMIT 1`,
+       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid ORDER BY i.revision DESC LIMIT 1`,
       [tenantId, analysisId],
     );
     const interpretation = interpretationResult.rows[0];
@@ -117,6 +119,7 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
       },
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
+      interpretation: interpretation ? { id: interpretation.id, createdAt: interpretation.createdAt } : null,
       results: resultsResult.rows,
       classifications: (structured?.interpretation ?? []).map((item) => ({ sampleCode: item.sampleCode, parameterCode: item.parameterCode, interpretable: item.interpretable, classification: item.interpretable ? (item.classification ?? null) : null, reason: item.interpretable ? null : (item.reason ?? null) })),
       ruleUsed: interpretation ? { cropProfileCode: interpretation.cropProfileCode, cropProfileName: interpretation.cropProfileName, version: interpretation.cropProfileVersion, contentHash: interpretation.cropProfileHash } : null,
