@@ -16,6 +16,13 @@ import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const HISTORY_LOOKBACK_DAYS = 120;
 const MAX_SCENES_PER_REFRESH = 18;
+/**
+ * Cada raster exige Process API + PUT durável. Fazer 18 pares seriais em uma única Vercel Function
+ * transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
+ * mas cada chamada arquiva no máximo quatro datas ainda pendentes (das mais recentes para trás).
+ * Repetir o refresh progride de forma idempotente até zerar `pendingArchiveCount`.
+ */
+const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
 
 function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
   return {
@@ -97,15 +104,13 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
   );
 
+  const missingScenes = selectedScenes.filter((scene) => !archivedByDate.has(scene.capturedAt));
+  const scenesToArchive = missingScenes.slice(-MAX_RASTERS_TO_ARCHIVE_PER_REQUEST);
+  const pendingArchiveCount = Math.max(0, missingScenes.length - scenesToArchive.length);
+  const preservedArchivedCount = selectedScenes.length - missingScenes.length;
   let archivedRasterCount = 0;
-  let preservedArchivedCount = 0;
 
-  for (const scene of selectedScenes) {
-    if (archivedByDate.has(scene.capturedAt)) {
-      preservedArchivedCount += 1;
-      continue;
-    }
-
+  for (const scene of scenesToArchive) {
     let raster;
     try {
       raster = await copernicusNdviProvider.fetchFieldNdviMap({
@@ -114,7 +119,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao gerar o raster NDVI da aquisição.";
-      return Response.json({ error: message, capturedAt: scene.capturedAt, archivedRasterCount }, { status: 502 });
+      return Response.json({
+        error: message,
+        capturedAt: scene.capturedAt,
+        archivedRasterCount,
+        pendingArchiveCount: pendingArchiveCount + (scenesToArchive.length - archivedRasterCount),
+      }, { status: 502 });
     }
 
     let storedRaster;
@@ -128,7 +138,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao arquivar o raster NDVI.";
       const status = error instanceof NdviRasterPersistenceError ? 503 : 502;
-      return Response.json({ error: message, capturedAt: scene.capturedAt, archivedRasterCount }, { status });
+      return Response.json({
+        error: message,
+        capturedAt: scene.capturedAt,
+        archivedRasterCount,
+        pendingArchiveCount: pendingArchiveCount + (scenesToArchive.length - archivedRasterCount),
+      }, { status });
     }
 
     const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
@@ -174,6 +189,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       importedCount: archivedRasterCount,
       archivedRasterCount,
       preservedArchivedCount,
+      pendingArchiveCount,
+      archiveCompleteForSelectedWindow: pendingArchiveCount === 0,
+      maxRastersArchivedPerRequest: MAX_RASTERS_TO_ARCHIVE_PER_REQUEST,
       consideredSceneCount: selectedScenes.length,
       requestedWindowDays: HISTORY_LOOKBACK_DAYS,
       ...intelligencePayload(latest, history),
