@@ -37,18 +37,6 @@ function parseSignatureHeader(signature: string) {
   return { ts: parts.get("ts") ?? null, v1: parts.get("v1") ?? null };
 }
 
-/**
- * Valida a assinatura de Webhook conforme o manifesto documentado pelo Mercado Pago:
- * id:<data.id>;request-id:<x-request-id>;ts:<ts>;
- *
- * Para notificações da Orders API, o Mercado Pago envia `data.id` alfanumérico em maiúsculas,
- * mas exige que esse valor seja convertido para minúsculas na montagem do manifesto HMAC.
- * IDs puramente numéricos (pagamentos) permanecem naturalmente inalterados.
- *
- * A RAIZ exige data.id e x-request-id em vez de aceitar um manifesto parcial. Isso deixa
- * o recurso financeiro explicitamente vinculado à assinatura e evita processar um corpo
- * alterado usando apenas request-id/timestamp.
- */
 export function verifyMercadoPagoWebhookSignature(input: {
   signature: string;
   requestId: string;
@@ -93,16 +81,22 @@ export function mapMercadoPagoPaymentStatus(status: string): InternalPaymentStat
   }
 }
 
+/**
+ * Protege estados financeiros terminais contra regressões silenciosas. Uma fatura confirmada como paga
+ * só pode permanecer paga ou evoluir para reembolso. Depois de reembolsada, nenhuma reabertura automática
+ * é aceita. Demais estados continuam podendo evoluir conforme uma tentativa válida de pagamento.
+ */
+export function isAutomaticPaymentStatusTransitionAllowed(current: string, next: InternalPaymentStatus) {
+  if (current === "REFUNDED") return next === "REFUNDED";
+  if (current === "PAID") return next === "PAID" || next === "REFUNDED";
+  return true;
+}
+
 export function amountInCents(value: number) {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round((value + Number.EPSILON) * 100);
 }
 
-/**
- * Normaliza a lista de pagamentos retornada dentro de uma Order. O provedor modela `transactions.payments`
- * como array e pode representar múltiplas transações; duplicatas idênticas não devem criar um falso cenário
- * de múltiplos pagamentos, mas IDs distintos nunca podem ser silenciosamente reduzidos ao primeiro item.
- */
 export function normalizeMercadoPagoPaymentIds(paymentIds: readonly string[]) {
   return [...new Set(paymentIds.map((id) => id.trim()).filter((id) => Boolean(id) && /^[A-Za-z0-9-]{1,80}$/.test(id)))];
 }
