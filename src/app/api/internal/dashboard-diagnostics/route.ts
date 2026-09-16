@@ -1,4 +1,5 @@
 import { requirePlatformSession } from "@/lib/auth/session";
+import { query } from "@/lib/db";
 import {
   getDashboardSnapshot,
   getExecutiveDashboard,
@@ -40,6 +41,55 @@ async function check(name: string, work: () => Promise<unknown>): Promise<CheckR
   }
 }
 
+async function inspectSchema() {
+  const requiredColumns = [
+    ["analyses", "requested_analysis_depth"],
+    ["analyses", "analysis_context"],
+    ["field_ndvi_snapshots", "raster_object_key"],
+  ] as const;
+
+  const columns = await query<{ table_name: string; column_name: string }>(
+    `SELECT table_name, column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (table_name, column_name) IN (
+          ('analyses', 'requested_analysis_depth'),
+          ('analyses', 'analysis_context'),
+          ('field_ndvi_snapshots', 'raster_object_key')
+        )`,
+  );
+  const presentColumns = new Set(columns.rows.map((row) => `${row.table_name}.${row.column_name}`));
+
+  const migrationsTable = await query<{ exists: boolean }>(
+    `SELECT to_regclass('public.schema_migrations') IS NOT NULL AS exists`,
+  );
+
+  let appliedMigrations: string[] = [];
+  if (migrationsTable.rows[0]?.exists) {
+    const migrations = await query<{ name: string }>(
+      `SELECT name FROM schema_migrations WHERE name = ANY($1::text[]) ORDER BY name`,
+      [[
+        "035_analysis_depth_context.sql",
+        "036_technical_source_transferability.sql",
+        "037_ndvi_raster_custody.sql",
+      ]],
+    );
+    appliedMigrations = migrations.rows.map((row) => row.name);
+  }
+
+  return {
+    missingColumns: requiredColumns
+      .map(([table, column]) => `${table}.${column}`)
+      .filter((name) => !presentColumns.has(name)),
+    appliedMigrations,
+    expectedMigrations: [
+      "035_analysis_depth_context.sql",
+      "036_technical_source_transferability.sql",
+      "037_ndvi_raster_custody.sql",
+    ],
+  };
+}
+
 export async function GET() {
   const session = await requirePlatformSession();
   const tenantId = session.tenantId;
@@ -56,10 +106,13 @@ export async function GET() {
   checks.push(await check("portfolioFields", () => getPortfolioFieldSummaries(tenantId, {}, userId)));
   checks.push(await check("activation", () => getActivationSnapshot(tenantId, userId)));
 
+  const schema = await inspectSchema();
+
   return Response.json(
     {
-      status: checks.every((item) => item.ok) ? "ok" : "failed",
+      status: checks.every((item) => item.ok) && schema.missingColumns.length === 0 ? "ok" : "failed",
       checks,
+      schema,
       note: "sanitized-dashboard-diagnostic-no-operational-data",
     },
     { status: 200, headers: HEADERS },
