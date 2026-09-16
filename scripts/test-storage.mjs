@@ -11,10 +11,12 @@ import {
 const previousStorage = process.env.STORAGE_PROVIDER;
 const previousReportStorage = process.env.REPORT_STORAGE_PROVIDER;
 const previousVercel = process.env.VERCEL;
+const previousAuthSecret = process.env.AUTH_SECRET;
 
 try {
   delete process.env.VERCEL;
   process.env.STORAGE_PROVIDER = "inline";
+  process.env.AUTH_SECRET = "test-auth-secret-with-at-least-32-characters";
   delete process.env.REPORT_STORAGE_PROVIDER;
 
   const content = JSON.stringify({ reportSnapshotVersion: 2, field: "Área 01", facts: [{ p: 11, k: 229.9 }] });
@@ -41,12 +43,47 @@ try {
     sourceType: "PDF_OCR",
   };
   const csv = "amostra,parametro,valor\nA1,P,12";
-  const transported = wrapExtractedLabContent(csv, source);
-  const unwrapped = unwrapExtractedLabContent(transported);
+  const transported = wrapExtractedLabContent(csv, source, "tenant");
+  const unwrapped = unwrapExtractedLabContent(transported, "tenant");
   assert.equal(unwrapped.content, csv);
-  assert.deepEqual(unwrapped.source, source);
-  assert.deepEqual(unwrapExtractedLabContent(csv), { content: csv, source: null });
-  assert.throws(() => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor"), /proveniência/);
+  assert.equal(unwrapped.source?.key, source.key);
+  assert.equal(unwrapped.source?.sha256, source.sha256);
+  assert.equal(unwrapped.source?.fileName, source.fileName);
+  assert.match(unwrapped.source?.extractedSha256 ?? "", /^[a-f0-9]{64}$/);
+  assert.match(unwrapped.source?.signature ?? "", /^[a-f0-9]{64}$/);
+
+  assert.deepEqual(unwrapExtractedLabContent(csv, "tenant"), { content: csv, source: null });
+
+  // O cliente não pode trocar um único valor do CSV depois que /extract assinou a proveniência.
+  const tamperedCsv = transported.replace("A1,P,12", "A1,P,99");
+  assert.throws(
+    () => unwrapExtractedLabContent(tamperedCsv, "tenant"),
+    /proveniência/,
+    "alterar o CSV depois da extração deve invalidar o recibo assinado",
+  );
+
+  // O mesmo recibo também não pode ser reaproveitado por outro tenant.
+  assert.throws(
+    () => unwrapExtractedLabContent(transported, "outro-tenant"),
+    /proveniência/,
+    "recibo de proveniência deve ser vinculado ao tenant que arquivou o original",
+  );
+
+  // Envelopes V1 não assinados são deliberadamente recusados: refazer a extração é mais seguro do que
+  // aceitar uma cadeia de custódia que o cliente conseguiria editar livremente.
+  assert.throws(
+    () => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor", "tenant"),
+    /legado|proveniência/,
+  );
+
+  const signedWithoutSecret = transported;
+  delete process.env.AUTH_SECRET;
+  assert.throws(
+    () => unwrapExtractedLabContent(signedWithoutSecret, "tenant"),
+    /AUTH_SECRET|cadeia de custódia/i,
+    "servidor sem segredo de proveniência deve falhar fechado",
+  );
+  process.env.AUTH_SECRET = "test-auth-secret-with-at-least-32-characters";
 
   process.env.REPORT_STORAGE_PROVIDER = "provider-inexistente";
   await assert.rejects(
@@ -54,9 +91,10 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline + envelope de proveniência + persistência bruta obrigatória fail-closed.");
+  console.log("OK — storage: snapshot inline + proveniência HMAC + anti-tampering + persistência bruta fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;
   if (previousVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = previousVercel;
+  if (previousAuthSecret === undefined) delete process.env.AUTH_SECRET; else process.env.AUTH_SECRET = previousAuthSecret;
 }
