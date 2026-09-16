@@ -10,6 +10,7 @@ import { COPERNICUS_NDVI_MOSAICKING_ORDER } from "../src/lib/satellite/copernicu
  *
  * Prova, sem reconsultar o Copernicus, que:
  * - migration 037 está aplicada;
+ * - o PostgreSQL protege snapshots arquivados contra UPDATE/DELETE e o papel de runtime não possui DELETE;
  * - o snapshot aponta para um objeto S3 durável;
  * - metadados espaciais/algoritmo estão completos;
  * - o objeto pode ser recuperado;
@@ -86,6 +87,34 @@ try {
     throw new Error(`Migration 037 não está comprovadamente aplicada; colunas ausentes: ${missingColumns.join(", ")}.`);
   }
 
+  const immutabilityResult = await client.query(
+    `SELECT
+       COALESCE((
+         SELECT pg_get_triggerdef(t.oid)
+         FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relname = 'field_ndvi_snapshots'
+           AND t.tgname = 'field_ndvi_snapshots_protect_archived'
+           AND NOT t.tgisinternal
+         LIMIT 1
+       ), '') AS "triggerDefinition",
+       has_table_privilege('raiz_app', 'public.field_ndvi_snapshots', 'DELETE') AS "runtimeDeleteAllowed"`,
+  );
+  const immutability = immutabilityResult.rows[0] ?? {};
+  const triggerDefinition = String(immutability.triggerDefinition ?? "");
+  const triggerReady = /BEFORE/i.test(triggerDefinition)
+    && /UPDATE/i.test(triggerDefinition)
+    && /DELETE/i.test(triggerDefinition)
+    && /protect_archived_ndvi_snapshot/i.test(triggerDefinition);
+  if (!triggerReady) {
+    throw new Error("Migration 037 incompleta: trigger de imutabilidade UPDATE/DELETE não foi comprovada no PostgreSQL.");
+  }
+  if (immutability.runtimeDeleteAllowed === true) {
+    throw new Error("Migration 037 incompleta: papel raiz_app ainda possui privilégio DELETE sobre field_ndvi_snapshots.");
+  }
+
   const fieldResult = await client.query(
     `SELECT id::text
      FROM fields
@@ -145,6 +174,7 @@ try {
       readyForImmutableRasterEvidence: false,
       capturedAt: snapshot.capturedAt,
       blockers,
+      databaseImmutabilityVerified: true,
       note: "Metadados persistidos ainda não atendem ao gate de custódia; nenhum objeto foi aceito como evidência.",
     }, null, 2));
     process.exitCode = 2;
@@ -171,7 +201,9 @@ try {
       mosaickingOrder: snapshot.rasterMosaickingOrder,
       archivedAtPresent: true,
       objectIntegrityVerified: true,
-      note: "Objeto recuperado do storage durável e validado por SHA-256/bytes contra o snapshot. Coordenadas do talhão não foram impressas.",
+      databaseImmutabilityVerified: true,
+      runtimeDeletePrivilegeRevoked: true,
+      note: "Objeto recuperado do storage durável e validado por SHA-256/bytes contra o snapshot; trigger/privilegios de imutabilidade também confirmados. Coordenadas do talhão não foram impressas.",
     }, null, 2));
   }
 } finally {
