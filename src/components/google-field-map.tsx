@@ -8,11 +8,19 @@ import {
   type FieldMapProps,
   type MapLegendEntry,
   type MapPoint,
+  type PointPositionKind,
 } from "@/components/spatial-map-types";
 import { loadGoogleMaps } from "@/lib/maps/google-maps-loader";
 
 function positionDescription(point: MapPoint) {
-  return pointPositionKind(point) === "OBSERVED" ? "GPS observado" : "Posição planejada";
+  const kind = pointPositionKind(point);
+  if (kind === "OBSERVED") return "GPS observado em campo";
+  if (kind === "AUDITED_SOURCE") return "Coordenada real importada e auditada";
+  return "Posição planejada";
+}
+
+function isMeasuredOrAudited(kind: PointPositionKind) {
+  return kind !== "PLANNED";
 }
 
 export function GoogleFieldMap({
@@ -89,18 +97,19 @@ export function GoogleFieldMap({
           const point = pointsById.get(pointId);
           if (!point) return { visible: false };
           const palette = colorFor ? colorFor(point) : defaultColor(point);
-          const observed = pointPositionKind(point) === "OBSERVED";
+          const positionKind = pointPositionKind(point);
+          const trustedPosition = isMeasuredOrAudited(positionKind);
           return {
             icon: {
               path: maps.SymbolPath.CIRCLE,
-              scale: observed ? 7 : 6,
+              scale: trustedPosition ? 7 : 6,
               fillColor: palette.fill,
-              fillOpacity: observed ? palette.fillOpacity : Math.min(palette.fillOpacity, 0.55),
+              fillOpacity: trustedPosition ? palette.fillOpacity : Math.min(palette.fillOpacity, 0.55),
               strokeColor: palette.stroke,
               strokeOpacity: 1,
-              strokeWeight: observed ? 2 : 3,
+              strokeWeight: trustedPosition ? 2 : 3,
             },
-            zIndex: observed ? 4 : 3,
+            zIndex: positionKind === "OBSERVED" ? 5 : positionKind === "AUDITED_SOURCE" ? 4 : 3,
           };
         });
 
@@ -149,13 +158,15 @@ export function GoogleFieldMap({
   const activeLegend = legend ?? defaultLegend;
   const showAgronomicFields = selectedPoint && selectedPoint.value !== undefined;
   const hasPlannedOnlyPoints = points.some((point) => pointPositionKind(point) === "PLANNED");
+  const hasAuditedSourcePoints = points.some((point) => pointPositionKind(point) === "AUDITED_SOURCE");
 
   return (
     <div className="real-field-map">
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">
         {activeLegend.map((entry) => <span key={entry.label}><i style={{ background: entry.color }}/>{entry.label}</span>)}
-        {hasPlannedOnlyPoints && <span className="portfolio-map-note">Ponto sem GPS observado = posição planejada</span>}
+        {hasAuditedSourcePoints && <span className="portfolio-map-note">Fonte espacial auditada = coordenada real preservada no banco</span>}
+        {hasPlannedOnlyPoints && <span className="portfolio-map-note">Ponto sem GPS/fonte real = posição planejada</span>}
         <span className="real-field-map-hint">{hint}</span>
       </div>
       {selectedPoint && (
@@ -176,7 +187,8 @@ export function GoogleFieldMap({
             )}
             <div><dt>Posição exibida</dt><dd>{positionDescription(selectedPoint)}</dd></div>
             <div><dt>Coordenadas</dt><dd>{selectedPoint.latitude.toFixed(7)}, {selectedPoint.longitude.toFixed(7)}</dd></div>
-            {pointPositionKind(selectedPoint) === "PLANNED" && <div><dt>Validação</dt><dd className="real-field-map-reason">Sem captura GPS observada. Esta coordenada é de planejamento e não deve ser tratada como posição medida em campo.</dd></div>}
+            {pointPositionKind(selectedPoint) === "PLANNED" && <div><dt>Validação</dt><dd className="real-field-map-reason">Sem captura GPS observada nem fonte espacial real auditada. Esta coordenada é de planejamento e não deve ser tratada como posição medida em campo.</dd></div>}
+            {pointPositionKind(selectedPoint) === "AUDITED_SOURCE" && <div><dt>Proveniência</dt><dd>Coordenada real importada de fonte espacial auditada; a origem declarada permanece registrada em “Origem GPS”.</dd></div>}
             <div><dt>Profundidade</dt><dd>{selectedPoint.depthFromCm}–{selectedPoint.depthToCm} cm</dd></div>
             {selectedPoint.collectedAt && <div><dt>Coletado em</dt><dd>{new Date(selectedPoint.collectedAt).toLocaleString("pt-BR")}</dd></div>}
             {selectedPoint.gpsSource && <div><dt>Origem GPS</dt><dd>{selectedPoint.gpsSource}</dd></div>}
