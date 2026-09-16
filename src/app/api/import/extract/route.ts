@@ -1,10 +1,11 @@
 import { buildLabImportPreview } from "@/domain/lab-import";
+import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { geminiLabExtractionProvider } from "@/lib/ai/providers/gemini-lab-extraction-provider";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { RawImportPersistenceError, saveRequiredRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
 
-const MAX_BODY_BYTES = 9_000_000;
+const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.extractRequestBytes;
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
 /**
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
-    return Response.json({ error: "Arquivo excede o limite desta etapa (9MB)." }, { status: 413 });
+    return Response.json({ error: "Requisição do arquivo excede o limite desta etapa." }, { status: 413 });
   }
 
   try {
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
     }
     if (!body.mimeType || !ALLOWED_MIME_TYPES.has(body.mimeType)) {
       return Response.json({ error: "Tipo de arquivo não suportado para leitura por IA -- use PDF, JPG, PNG ou WEBP." }, { status: 400 });
+    }
+
+    // O navegador envia binários em base64. O teto HTTP é maior para acomodar a expansão ~4/3,
+    // mas o limite funcional continua sendo medido sobre os bytes ORIGINAIS do arquivo.
+    const rawBytes = Buffer.from(body.content, "base64").length;
+    if (rawBytes > LAB_UPLOAD_LIMITS.imageOrPdfBytes) {
+      return Response.json({ error: `PDF/foto excede ${(LAB_UPLOAD_LIMITS.imageOrPdfBytes / 1_000_000).toLocaleString("pt-BR")} MB.` }, { status: 413 });
     }
 
     const originalFileName = body.fileName?.trim() || "laudo-original";
