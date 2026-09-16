@@ -36,3 +36,36 @@ ALTER TABLE field_ndvi_snapshots
 CREATE INDEX field_ndvi_snapshots_raster_idx
   ON field_ndvi_snapshots (tenant_id, field_id, captured_at DESC)
   WHERE raster_object_key IS NOT NULL;
+
+-- O contrato de imutabilidade não pode depender somente do repositório TypeScript. A migration 023
+-- concedeu UPDATE/DELETE ao papel de runtime; sem uma trava no PostgreSQL, uma rota futura ou código
+-- comprometido poderia alterar/deletar a evidência já arquivada mesmo que o fluxo atual não o faça.
+--
+-- Linhas legadas (raster_object_key IS NULL) continuam atualizáveis UMA vez para receber o artefato.
+-- Depois disso, qualquer UPDATE ou DELETE da linha arquivada falha no próprio banco.
+CREATE OR REPLACE FUNCTION protect_archived_ndvi_snapshot()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.raster_object_key IS NOT NULL THEN
+    RAISE EXCEPTION 'Archived NDVI snapshot is immutable'
+      USING ERRCODE = '55000';
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS field_ndvi_snapshots_protect_archived ON field_ndvi_snapshots;
+CREATE TRIGGER field_ndvi_snapshots_protect_archived
+  BEFORE UPDATE OR DELETE ON field_ndvi_snapshots
+  FOR EACH ROW
+  EXECUTE FUNCTION protect_archived_ndvi_snapshot();
+
+-- A aplicação não possui caso funcional para apagar histórico NDVI. Revoga DELETE do papel de runtime;
+-- a trigger acima ainda protege uma linha arquivada mesmo em operações administrativas normais.
+REVOKE DELETE ON field_ndvi_snapshots FROM raiz_app;
