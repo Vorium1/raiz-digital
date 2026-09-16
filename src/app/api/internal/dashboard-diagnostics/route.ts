@@ -1,3 +1,4 @@
+import { Pool } from "pg";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { query } from "@/lib/db";
 import {
@@ -45,7 +46,10 @@ async function inspectSchema() {
   const requiredColumns = [
     ["analyses", "requested_analysis_depth"],
     ["analyses", "analysis_context"],
+    ["technical_sources", "evidence_type"],
+    ["technical_sources", "quantitative_use_status"],
     ["field_ndvi_snapshots", "raster_object_key"],
+    ["field_ndvi_snapshots", "raster_sha256"],
   ] as const;
 
   const columns = await query<{ table_name: string; column_name: string }>(
@@ -55,7 +59,10 @@ async function inspectSchema() {
         AND (table_name, column_name) IN (
           ('analyses', 'requested_analysis_depth'),
           ('analyses', 'analysis_context'),
-          ('field_ndvi_snapshots', 'raster_object_key')
+          ('technical_sources', 'evidence_type'),
+          ('technical_sources', 'quantitative_use_status'),
+          ('field_ndvi_snapshots', 'raster_object_key'),
+          ('field_ndvi_snapshots', 'raster_sha256')
         )`,
   );
   const presentColumns = new Set(columns.rows.map((row) => `${row.table_name}.${row.column_name}`));
@@ -77,10 +84,24 @@ async function inspectSchema() {
     appliedMigrations = migrations.rows.map((row) => row.name);
   }
 
+  const triggerResult = await query<{ present: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = 'field_ndvi_snapshots'
+          AND t.tgname = 'field_ndvi_snapshots_protect_archived'
+          AND NOT t.tgisinternal
+     ) AS present`,
+  );
+
   return {
     missingColumns: requiredColumns
       .map(([table, column]) => `${table}.${column}`)
       .filter((name) => !presentColumns.has(name)),
+    ndviProtectionTriggerPresent: Boolean(triggerResult.rows[0]?.present),
     appliedMigrations,
     expectedMigrations: [
       "035_analysis_depth_context.sql",
@@ -88,6 +109,60 @@ async function inspectSchema() {
       "037_ndvi_raster_custody.sql",
     ],
   };
+}
+
+async function inspectAdminMigrationCapability() {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    return { databaseUrlConfigured: false, canOwnRequiredTables: false, checkSucceeded: true };
+  }
+
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    connectionTimeoutMillis: 5_000,
+    ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+  });
+
+  try {
+    const result = await pool.query<{
+      owns_analyses: boolean;
+      owns_technical_sources: boolean;
+      owns_ndvi: boolean;
+    }>(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = 'analyses'
+              AND pg_get_userbyid(c.relowner) = current_user
+         ) AS owns_analyses,
+         EXISTS (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = 'technical_sources'
+              AND pg_get_userbyid(c.relowner) = current_user
+         ) AS owns_technical_sources,
+         EXISTS (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = 'field_ndvi_snapshots'
+              AND pg_get_userbyid(c.relowner) = current_user
+         ) AS owns_ndvi`,
+    );
+    const row = result.rows[0];
+    return {
+      databaseUrlConfigured: true,
+      canOwnRequiredTables: Boolean(row?.owns_analyses && row?.owns_technical_sources && row?.owns_ndvi),
+      checkSucceeded: true,
+    };
+  } catch (error) {
+    return {
+      databaseUrlConfigured: true,
+      canOwnRequiredTables: false,
+      checkSucceeded: false,
+      ...safeError(error),
+    };
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function GET() {
@@ -107,12 +182,14 @@ export async function GET() {
   checks.push(await check("activation", () => getActivationSnapshot(tenantId, userId)));
 
   const schema = await inspectSchema();
+  const migrationCapability = await inspectAdminMigrationCapability();
 
   return Response.json(
     {
       status: checks.every((item) => item.ok) && schema.missingColumns.length === 0 ? "ok" : "failed",
       checks,
       schema,
+      migrationCapability,
       note: "sanitized-dashboard-diagnostic-no-operational-data",
     },
     { status: 200, headers: HEADERS },
