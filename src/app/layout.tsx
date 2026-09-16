@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Sora } from "next/font/google";
 import "./globals.css";
+import "./ux2-overrides.css";
 
-// Tipografia oficial do Guia de Marca (docs/brand/Guia_de_Marca_Raiz_Digital.pdf):
-// Sora para títulos/institucional, Inter para o restante da plataforma.
 const sora = Sora({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-sora", display: "swap" });
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-inter", display: "swap" });
 

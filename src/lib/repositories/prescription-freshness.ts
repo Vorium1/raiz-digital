@@ -2,13 +2,13 @@ import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-fr
 import { evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 import { withTenant } from "@/lib/db";
 
+const REVIEWABLE_INTERPRETATION_STATUSES = new Set(["IN_REVIEW", "APPROVED", "PUBLISHED"]);
+
 /**
- * Estado corrente de uma geração já persistida. Uma prescrição deixa de ser corrente quando:
- * 1) a safra mudou depois da geração; OU
- * 2) ela não aponta mais para a revisão determinística mais recente e APPROVED; OU
- * 3) o laudo laboratorial foi efetivado depois da interpretação que sustenta a geração.
- *
- * Isso é somente leitura: a geração histórica não é apagada nem reescrita.
+ * Estado corrente de uma geração já persistida.
+ * Uma recomendação deixa de ser corrente quando a safra, a revisão determinística ou o laudo mudam.
+ * A mudança IN_REVIEW -> APPROVED da MESMA revisão não invalida a recomendação: essa é justamente a
+ * assinatura final do pacote completo preparado pela RAIZ.
  */
 export async function getAgronomicPrescriptionFreshness(input: {
   tenantId: string;
@@ -58,7 +58,7 @@ export async function getAgronomicPrescriptionFreshness(input: {
       [input.tenantId, input.analysisId, input.generationId],
     );
     const row = result.rows[0];
-    if (!row) return { current: false, reason: "Não foi possível comprovar a geração de prescrição atual." };
+    if (!row) return { current: false, reason: "Não foi possível comprovar a geração de recomendação atual." };
 
     const contextFreshness = evaluatePrescriptionContextFreshness({
       generationCreatedAt: row.generationCreatedAt,
@@ -69,11 +69,12 @@ export async function getAgronomicPrescriptionFreshness(input: {
     if (
       !row.generationInterpretationId
       || row.generationInterpretationId !== row.latestInterpretationId
-      || row.latestInterpretationStatus !== "APPROVED"
+      || !row.latestInterpretationStatus
+      || !REVIEWABLE_INTERPRETATION_STATUSES.has(row.latestInterpretationStatus)
     ) {
       return {
         current: false,
-        reason: "A interpretação determinística vinculada a esta geração foi superada ou deixou de ser a revisão APPROVED atual.",
+        reason: "A interpretação determinística vinculada a esta recomendação foi superada ou deixou de sustentar a decisão atual.",
       };
     }
 

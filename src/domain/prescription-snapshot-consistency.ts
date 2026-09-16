@@ -3,13 +3,14 @@ export type PrescriptionSnapshotConsistency = {
   reason: string | null;
 };
 
+const REVIEWABLE_INTERPRETATION_STATUSES = new Set(["IN_REVIEW", "APPROVED", "PUBLISHED"]);
+
 /**
- * Confirma que o snapshot de evidências usado por uma geração ainda é exatamente o snapshot corrente.
+ * Confirma que o snapshot usado pela geração ainda é exatamente o snapshot corrente.
  *
- * `seasonUpdatedAt` é tratado como token de versão, não como aproximação temporal: qualquer diferença
- * significa que algum dado da safra mudou. A interpretação também precisa ser a MESMA revisão e continuar
- * APPROVED. Isso fecha a janela em que o provedor de IA responde enquanto outro usuário altera o contexto
- * ou cria/revisa uma nova interpretação.
+ * A recomendação pode ser construída antes da assinatura profissional, portanto a mesma revisão
+ * determinística continua válida enquanto estiver IN_REVIEW, APPROVED ou PUBLISHED. O que nunca pode
+ * acontecer é gerar em cima de revisão antiga, sem cobertura (CALCULATED) ou superada.
  */
 export function evaluatePrescriptionSnapshotConsistency(input: {
   snapshotSeasonUpdatedAt: string | null | undefined;
@@ -25,10 +26,13 @@ export function evaluatePrescriptionSnapshotConsistency(input: {
     return { current: false, reason: "O contexto agronômico da safra mudou durante a geração." };
   }
   if (!input.snapshotInterpretationId || !input.currentInterpretationId) {
-    return { current: false, reason: "Não foi possível comprovar a revisão determinística vinculada à prescrição." };
+    return { current: false, reason: "Não foi possível comprovar a revisão determinística vinculada à recomendação." };
   }
-  if (input.snapshotInterpretationId !== input.currentInterpretationId || input.currentInterpretationStatus !== "APPROVED") {
-    return { current: false, reason: "A interpretação determinística mudou ou deixou de ser a revisão APPROVED atual." };
+  if (input.snapshotInterpretationId !== input.currentInterpretationId) {
+    return { current: false, reason: "A interpretação determinística mudou durante a geração." };
+  }
+  if (!input.currentInterpretationStatus || !REVIEWABLE_INTERPRETATION_STATUSES.has(input.currentInterpretationStatus)) {
+    return { current: false, reason: "A interpretação determinística atual não possui cobertura suficiente para sustentar a recomendação." };
   }
   return { current: true, reason: null };
 }

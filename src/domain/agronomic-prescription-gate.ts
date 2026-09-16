@@ -1,25 +1,24 @@
 /**
- * Gate de governança da prescrição/recomendação assistida (auditoria RAIZ_2.0/Cabeda, 2026-09-11, item 1).
- * Módulo puro (sem banco) pra ser testável isoladamente com `node --experimental-strip-types` -- a lógica
- * em si é pequena, mas é exatamente o tipo de decisão que precisa de teste explícito, não só revisão de
- * código, porque uma versão anterior deste gate aceitava `IN_REVIEW` também (errado: `IN_REVIEW` é
- * "calculado, aguardando revisão", nunca "aprovado por um profissional").
+ * Gate de geração da recomendação RAIZ.
  *
- * Fluxo correto que este gate impõe:
- *   interpretação determinística -> revisão profissional (reviewInterpretation) -> APPROVED
- *     -> prescrição/recomendação assistida (só passa daqui pra frente)
- *     -> revisão/aprovação da prescrição (reviewAgronomicPrescription, já existente)
+ * A validação profissional não deve acontecer entre a interpretação e a recomendação.
+ * O motor prepara o pacote completo primeiro; o agrônomo julga o conjunto no fim.
  *
- * `interpretationStatus` é `null` quando não existe nenhuma interpretação persistida pra esta análise
- * (nunca rodou o motor) -- bloqueado, igual a qualquer status diferente de `APPROVED`.
+ * Portanto:
+ * - CALCULATED continua bloqueado: o motor rodou, mas não encontrou cobertura técnica utilizável;
+ * - IN_REVIEW é permitido: existe interpretação determinística real e corrente, pronta para compor a recomendação;
+ * - APPROVED/PUBLISHED também são permitidos para compatibilidade com decisões já validadas;
+ * - qualquer estado inesperado falha fechado.
  */
 export type PrescriptionGateResult = { allowed: true } | { allowed: false; reason: string };
 
 export const PRESCRIPTION_GATE_BLOCKED_REASON =
-  "É necessário ter uma interpretação técnica aprovada por um profissional (revisão concluída) antes de gerar uma prescrição assistida.";
+  "A RAIZ ainda não possui cobertura técnica suficiente para montar uma recomendação segura. Complete os dados ou regras indicados; a validação profissional acontece depois, sobre a decisão completa.";
+
+const REVIEWABLE_INTERPRETATION_STATUSES = new Set(["IN_REVIEW", "APPROVED", "PUBLISHED"]);
 
 export function checkPrescriptionGate(interpretationStatus: string | null): PrescriptionGateResult {
-  if (interpretationStatus !== "APPROVED") {
+  if (!interpretationStatus || !REVIEWABLE_INTERPRETATION_STATUSES.has(interpretationStatus)) {
     return { allowed: false, reason: PRESCRIPTION_GATE_BLOCKED_REASON };
   }
   return { allowed: true };

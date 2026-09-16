@@ -6,6 +6,8 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
 
+const FINAL_DECISION_INTERPRETATION_STATUSES = new Set(["IN_REVIEW", "APPROVED", "PUBLISHED"]);
+
 function interpretationItems(structuredOutput: unknown) {
   if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
   const value = (structuredOutput as { interpretation?: unknown }).interpretation;
@@ -13,11 +15,11 @@ function interpretationItems(structuredOutput: unknown) {
 }
 
 /**
- * Revisão transacional e concorrente-segura da prescrição.
+ * Validação final, transacional e concorrente-segura da decisão RAIZ.
  *
- * Além de freshness/interpretação APPROVED, P2O5/K2O passam pela MESMA barreira determinística usada
- * antes da persistência da resposta do provedor. Isso também protege gerações históricas que possam ter
- * sido criadas antes desse gate: dose inválida, duplicada, ambígua ou sem predominância não é promovida.
+ * A plataforma prepara interpretação + cálculo + recomendação primeiro. Quando o profissional aprova a
+ * recomendação, a MESMA transação assina a revisão determinística vinculada (se ela ainda estiver
+ * IN_REVIEW), valida freshness/evidência/P-K e só então promove as recomendações oficiais.
  */
 export async function reviewAgronomicPrescriptionSafely(input: {
   tenantId: string;
@@ -43,10 +45,10 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       [input.tenantId, input.generationId],
     );
     const current = locked.rows[0];
-    if (!current) throw new AiGenerationError("Prescrição não encontrada.", 404);
+    if (!current) throw new AiGenerationError("Recomendação não encontrada.", 404);
 
     const transition = evaluatePrescriptionReviewTransition(current.status, input.decision);
-    if (!transition.allowed) throw new AiGenerationError(transition.reason ?? "Transição de revisão inválida.", 409);
+    if (!transition.allowed) throw new AiGenerationError(transition.reason ?? "Transição de validação inválida.", 409);
     if (transition.noOp) {
       return {
         id: current.id,
@@ -59,6 +61,7 @@ export async function reviewAgronomicPrescriptionSafely(input: {
 
     const recommendationSources = new Map<number, string>();
     let deterministicPkValidated = 0;
+    let interpretationApprovedWithDecision = false;
 
     if (transition.shouldPromoteRecommendations) {
       const evidenceState = await client.query<{
@@ -109,15 +112,16 @@ export async function reviewAgronomicPrescriptionSafely(input: {
         cropSeasonUpdatedAt: state?.updatedAt,
       });
       if (!freshness.current) {
-        throw new AiGenerationError(freshness.reason ?? "O contexto da prescrição mudou; gere uma nova versão.", 409);
+        throw new AiGenerationError(freshness.reason ?? "O contexto da recomendação mudou; gere uma nova versão.", 409);
       }
       if (
         !current.interpretationId
         || current.interpretationId !== state?.latestInterpretationId
-        || state?.latestInterpretationStatus !== "APPROVED"
+        || !state?.latestInterpretationStatus
+        || !FINAL_DECISION_INTERPRETATION_STATUSES.has(state.latestInterpretationStatus)
       ) {
         throw new AiGenerationError(
-          "A interpretação determinística vinculada a esta prescrição não é mais a revisão APPROVED atual. Gere uma nova prescrição antes de aprovar ou promover doses.",
+          "A recomendação não está mais ligada à revisão determinística corrente. Gere uma nova versão antes de validar a decisão.",
           409,
         );
       }
@@ -128,7 +132,7 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       });
       if (!labEvidenceFreshness.current) {
         throw new AiGenerationError(
-          labEvidenceFreshness.reason ?? "O laudo laboratorial mudou depois da interpretação desta prescrição. Recalcule antes de aprovar.",
+          labEvidenceFreshness.reason ?? "O laudo laboratorial mudou depois desta decisão. Recalcule antes de aprovar.",
           409,
         );
       }
@@ -162,6 +166,39 @@ export async function reviewAgronomicPrescriptionSafely(input: {
         recommendationSources.set(validated.index, `deterministic:${expected.ruleId};ai_generation:${current.id}`);
       }
       deterministicPkValidated = pkValidation.validated.length;
+
+      if (state.latestInterpretationStatus === "IN_REVIEW") {
+        const signed = await client.query(
+          `UPDATE interpretations
+           SET status = 'APPROVED',
+               reviewed_by = $3::uuid,
+               reviewed_at = now(),
+               approved_by = $3::uuid,
+               approved_at = now()
+           WHERE tenant_id = $1::uuid
+             AND id = $2::uuid
+             AND status = 'IN_REVIEW'`,
+          [input.tenantId, current.interpretationId, input.userId],
+        );
+        if ((signed.rowCount ?? 0) !== 1) {
+          throw new AiGenerationError("A revisão técnica mudou enquanto a decisão era validada. Recarregue antes de aprovar.", 409);
+        }
+        await client.query(
+          `UPDATE analyses
+           SET status = 'APPROVED'::analysis_status, updated_at = now()
+           WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+          [input.tenantId, current.analysisId],
+        );
+        await writeAudit(client, {
+          tenantId: input.tenantId,
+          userId: input.userId,
+          action: "INTERPRETATION_APPROVED",
+          entityType: "interpretation",
+          entityId: current.interpretationId,
+          metadata: { analysisId: current.analysisId, approvedWithPrescription: true },
+        });
+        interpretationApprovedWithDecision = true;
+      }
     }
 
     await client.query(
@@ -180,7 +217,7 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       action: "AI_AGRONOMIC_PRESCRIPTION_REVIEWED",
       entityType: "ai_generation",
       entityId: current.id,
-      metadata: { decision: input.decision, deterministicPkValidated },
+      metadata: { decision: input.decision, deterministicPkValidated, interpretationApprovedWithDecision },
     });
 
     let promotedCount = 0;
