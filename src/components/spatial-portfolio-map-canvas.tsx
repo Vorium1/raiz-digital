@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
 import { spatialGeometryPositions, type PortfolioCanvasField } from "@/components/spatial-map-types";
-import { loadGoogleMaps } from "@/lib/maps/google-maps-loader";
+import {
+  GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS,
+  loadGoogleMaps,
+  subscribeGoogleMapsAuthFailure,
+} from "@/lib/maps/google-maps-loader";
 import { resolveSpatialMapProvider } from "@/lib/maps/spatial-map-provider";
 
 function LeafletPortfolioCanvas({ fields, height, onFieldClick, providerNote }: {
@@ -86,7 +90,7 @@ function GooglePortfolioCanvas({ fields, height, onFieldClick, onProviderFailure
   fields: PortfolioCanvasField[];
   height: number;
   onFieldClick: (fieldId: string) => void;
-  onProviderFailure: () => void;
+  onProviderFailure: (error?: Error) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -96,6 +100,15 @@ function GooglePortfolioCanvas({ fields, height, onFieldClick, onProviderFailure
     let map: any = null;
     const groundOverlays: any[] = [];
     let clickListener: any = null;
+    let tilesLoadedListener: any = null;
+    let tileHealthTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeAuthFailure: () => void = () => {};
+
+    const failProvider = (error?: Error) => {
+      if (!cancelled) onProviderFailure(error);
+    };
+
+    unsubscribeAuthFailure = subscribeGoogleMapsAuthFailure((error) => failProvider(error));
 
     void loadGoogleMaps()
       .then((loadedMaps) => {
@@ -114,6 +127,17 @@ function GooglePortfolioCanvas({ fields, height, onFieldClick, onProviderFailure
           gestureHandling: "greedy",
           backgroundColor: "#0c1512",
         });
+
+        let tilesConfirmed = false;
+        tilesLoadedListener = maps.event.addListenerOnce(map, "tilesloaded", () => {
+          tilesConfirmed = true;
+          if (tileHealthTimer) clearTimeout(tileHealthTimer);
+        });
+        tileHealthTimer = setTimeout(() => {
+          if (!tilesConfirmed) {
+            failProvider(new Error("Google Satellite não confirmou o carregamento dos tiles dentro do limite; usando OSM."));
+          }
+        }, GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS);
 
         const features = fields.map((field) => ({
           type: "Feature",
@@ -163,12 +187,15 @@ function GooglePortfolioCanvas({ fields, height, onFieldClick, onProviderFailure
           });
         }
       })
-      .catch(() => {
-        if (!cancelled) onProviderFailure();
+      .catch((caught) => {
+        failProvider(caught instanceof Error ? caught : new Error("Falha ao carregar Google Maps."));
       });
 
     return () => {
       cancelled = true;
+      if (tileHealthTimer) clearTimeout(tileHealthTimer);
+      unsubscribeAuthFailure();
+      try { tilesLoadedListener?.remove?.(); } catch { /* noop */ }
       try { clickListener?.remove?.(); } catch { /* noop */ }
       for (const overlay of groundOverlays) {
         try { overlay.setMap?.(null); } catch { /* noop */ }
@@ -188,7 +215,7 @@ export function SpatialPortfolioMapCanvas({ fields, height = 420, onFieldClick }
 }) {
   const resolution = useMemo(() => resolveSpatialMapProvider(), []);
   const [googleFailed, setGoogleFailed] = useState(false);
-  const failGoogle = useCallback(() => setGoogleFailed(true), []);
+  const failGoogle = useCallback((_error?: Error) => setGoogleFailed(true), []);
 
   if (resolution.provider === "GOOGLE" && !googleFailed) {
     return <GooglePortfolioCanvas fields={fields} height={height} onFieldClick={onFieldClick} onProviderFailure={failGoogle} />;
