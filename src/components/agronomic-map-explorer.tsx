@@ -30,7 +30,14 @@ type MapLayerResponse = {
   reportId: string | null;
 };
 
-type NdviSnapshot = { capturedAt: string; meanNdvi: number; source: string; cloudCoverPct: number | null; zoneBreakdownPct: Partial<Record<string, number>> };
+type NdviSnapshot = {
+  capturedAt: string;
+  meanNdvi: number;
+  source: string;
+  cloudCoverPct: number | null;
+  rasterObjectKey?: string | null;
+  zoneBreakdownPct: Partial<Record<string, number>>;
+};
 
 const STATUS_LABEL: Record<string, string> = {
   CALCULATED: "Calculado, sem revisão",
@@ -47,6 +54,10 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
   const [minLon, minLat, maxLon, maxLat] = values;
   if (minLon >= maxLon || minLat >= maxLat) return null;
   return [[minLat, minLon], [maxLat, maxLon]];
+}
+
+function hasArchivedRaster(snapshot: NdviSnapshot | null | undefined): snapshot is NdviSnapshot {
+  return Boolean(snapshot?.rasterObjectKey);
 }
 
 /**
@@ -75,6 +86,8 @@ export function AgronomicMapExplorer() {
   const [ndvi, setNdvi] = useState<NdviSnapshot | null>(null);
   const [ndviFieldId, setNdviFieldId] = useState<string | null>(null);
   const [ndviLoading, setNdviLoading] = useState(false);
+  const [ndviLatestNeedsArchive, setNdviLatestNeedsArchive] = useState(false);
+  const [ndviHasStatisticalHistory, setNdviHasStatisticalHistory] = useState(false);
   const [ndviRaster, setNdviRaster] = useState<MapImageOverlay | null>(null);
   const [ndviRasterLoading, setNdviRasterLoading] = useState(false);
   const [ndviRasterError, setNdviRasterError] = useState<string | null>(null);
@@ -92,6 +105,8 @@ export function AgronomicMapExplorer() {
     setLayerError(null);
     setNdvi(null);
     setNdviFieldId(null);
+    setNdviLatestNeedsArchive(false);
+    setNdviHasStatisticalHistory(false);
     setNdviRaster(null);
     setNdviRasterError(null);
     setSelectedOrderIdState(next);
@@ -176,10 +191,14 @@ export function AgronomicMapExplorer() {
   }, [selectedOrderId, parameter]);
 
   // A leitura temporal vem apenas do que já está salvo; ligar a camada nunca dispara aquisição externa.
+  // A tela /mapas usa somente snapshot que já possui raster arquivado. Estatística legada continua
+  // visível no Talhão 360°, mas não é promovida silenciosamente a imagem histórica nesta tela.
   useEffect(() => {
     if (!satelliteLayer || !selectedOrder) {
       setNdvi(null);
       setNdviFieldId(null);
+      setNdviLatestNeedsArchive(false);
+      setNdviHasStatisticalHistory(false);
       setNdviLoading(false);
       return;
     }
@@ -187,6 +206,8 @@ export function AgronomicMapExplorer() {
     const fieldId = selectedOrder.fieldId;
     setNdvi(null);
     setNdviFieldId(null);
+    setNdviLatestNeedsArchive(false);
+    setNdviHasStatisticalHistory(false);
     setNdviLoading(true);
     void fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -195,14 +216,21 @@ export function AgronomicMapExplorer() {
       })
       .then((data) => {
         if (controller.signal.aborted) return;
-        setNdvi(data.latest ?? null);
+        const latest = (data.latest ?? null) as NdviSnapshot | null;
+        const history = (data.history ?? []) as NdviSnapshot[];
+        const archivedSnapshot = history.find(hasArchivedRaster) ?? null;
+        setNdvi(archivedSnapshot);
         setNdviFieldId(fieldId);
+        setNdviHasStatisticalHistory(Boolean(latest) || history.length > 0);
+        setNdviLatestNeedsArchive(Boolean(latest && !hasArchivedRaster(latest)));
         setNdviLoading(false);
       })
       .catch(() => {
         if (controller.signal.aborted) return;
         setNdvi(null);
         setNdviFieldId(null);
+        setNdviLatestNeedsArchive(false);
+        setNdviHasStatisticalHistory(false);
         setNdviLoading(false);
       });
     return () => controller.abort();
@@ -210,9 +238,9 @@ export function AgronomicMapExplorer() {
 
   const currentNdvi = selectedOrder && ndviFieldId === selectedOrder.fieldId ? ndvi : null;
 
-  // O raster espacial usa exatamente a aquisição salva selecionada acima. Nada é interpolado no frontend.
+  // O raster espacial usa exatamente uma aquisição que já possui artefato histórico arquivado.
   useEffect(() => {
-    if (!satelliteLayer || !selectedOrder || !currentNdvi?.capturedAt) {
+    if (!satelliteLayer || !selectedOrder || !currentNdvi?.capturedAt || !currentNdvi.rasterObjectKey) {
       setNdviRaster(null);
       setNdviRasterLoading(false);
       setNdviRasterError(null);
@@ -255,7 +283,7 @@ export function AgronomicMapExplorer() {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [satelliteLayer, selectedOrder, currentNdvi?.capturedAt]);
+  }, [satelliteLayer, selectedOrder, currentNdvi?.capturedAt, currentNdvi?.rasterObjectKey]);
 
   const points: MapPoint[] = useMemo(() => {
     const source = layer?.points ?? selectedOrder?.points ?? [];
@@ -365,9 +393,12 @@ export function AgronomicMapExplorer() {
               )}
               {satelliteLayer && (
                 ndviLoading ? <p><Icon name="clock" size={12}/> Carregando leitura de satélite…</p>
-                : currentNdvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster espacial real da aquisição Sentinel-2 de {new Date(currentNdvi.capturedAt).toLocaleDateString("pt-BR")} ({currentNdvi.source}){currentNdvi.cloudCoverPct != null ? `, ${Math.round(currentNdvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
-                : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
+                : currentNdvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster histórico arquivado da aquisição Sentinel-2 de {new Date(currentNdvi.capturedAt).toLocaleDateString("pt-BR")} ({currentNdvi.source}){currentNdvi.cloudCoverPct != null ? `, ${Math.round(currentNdvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
+                : ndviHasStatisticalHistory
+                  ? <p><strong>Raster NDVI ainda não arquivado.</strong> Existe histórico estatístico deste talhão, mas nenhuma aquisição desta janela pode ser mostrada como raster histórico imutável ainda. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Abra o Talhão 360° e use “Atualizar 120 dias”</Link> para arquivar as aquisições.</p>
+                  : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
               )}
+              {satelliteLayer && currentNdvi && ndviLatestNeedsArchive && <p><Icon name="warning" size={12}/> A aquisição estatística mais recente ainda não possui raster arquivado; o mapa está exibindo a aquisição arquivada mais recente disponível.</p>}
               {satelliteLayer && ndviRasterLoading && <p><Icon name="clock" size={12}/> Carregando raster NDVI espacial…</p>}
               {satelliteLayer && ndviRasterError && <p className="ndvi-panel-error"><strong>Raster espacial indisponível.</strong> {ndviRasterError} O contorno e os pontos reais permanecem visíveis; nenhuma faixa é inventada.</p>}
               {layerError && <p className="ndvi-panel-error"><strong>Camada agronômica indisponível.</strong> {layerError}</p>}
