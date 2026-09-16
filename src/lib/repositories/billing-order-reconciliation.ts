@@ -1,5 +1,5 @@
 import { withTenant } from "@/lib/db";
-import { amountInCents, parseRaizInvoiceExternalReference } from "@/lib/mercado-pago";
+import { amountInCents, normalizeMercadoPagoPaymentIds, parseRaizInvoiceExternalReference } from "@/lib/mercado-pago";
 import type { MercadoPagoOrder } from "@/lib/mercado-pago-orders";
 import { BillingReconciliationError } from "@/lib/repositories/billing";
 
@@ -52,6 +52,18 @@ export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder)
     );
   }
 
+  // Orders modela transactions.payments como uma coleção. Para a mensalidade RAIZ, a conciliação atual
+  // é deliberadamente 1 fatura -> 1 payment_id. Se o provedor devolver dois pagamentos distintos, escolher
+  // silenciosamente o primeiro perderia rastreabilidade financeira; o caso fica bloqueado para revisão.
+  const paymentIds = normalizeMercadoPagoPaymentIds(order.paymentIds);
+  if (paymentIds.length > 1) {
+    throw new BillingReconciliationError(
+      "Order retornou múltiplos payment_id distintos. A conciliação automática foi bloqueada para revisão manual.",
+      "MULTIPLE_PAYMENTS_REVIEW_REQUIRED",
+    );
+  }
+  const paymentId = paymentIds[0] ?? null;
+
   return withTenant({ tenantId: reference.tenantId }, async (client) => {
     const result = await client.query<{
       id: string;
@@ -80,7 +92,6 @@ export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder)
       throw new BillingReconciliationError("Fatura recebeu uma Order diferente da que foi persistida.", "ORDER_ID_MISMATCH");
     }
 
-    const paymentId = order.paymentIds[0] ?? null;
     if (status === "PAID" && !paymentId) {
       throw new BillingReconciliationError("Order processada sem payment_id disponível para conciliação.", "PAYMENT_ID_MISSING");
     }
