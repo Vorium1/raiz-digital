@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { LabImportPreview } from "@/domain/lab-import";
+import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 
 type Props = {
   method: string;
@@ -62,7 +63,11 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
       setError("Formatos aceitos: CSV, XLSX, PDF, JPG, PNG ou WEBP.");
       return;
     }
-    const maxSize = isImageOrPdf ? 8_500_000 : isSpreadsheet ? 4_500_000 : 3_500_000;
+    const maxSize = isImageOrPdf
+      ? LAB_UPLOAD_LIMITS.imageOrPdfBytes
+      : isSpreadsheet
+        ? LAB_UPLOAD_LIMITS.spreadsheetBytes
+        : LAB_UPLOAD_LIMITS.textBytes;
     if (file.size > maxSize) {
       setError(`O arquivo excede ${(maxSize / 1_000_000).toLocaleString("pt-BR")} MB. Divida por área ou laboratório nesta etapa do MVP.`);
       return;
