@@ -8,8 +8,9 @@ export type InputComparisonStatus = "OK" | "UNDER" | "OVER" | "UNIT_MISMATCH" | 
  *
  * A última linha promovida de cada insumo continua visível para rastreabilidade, porém uma recomendação
  * originada por IA só é comparável quando sua geração ainda é APPROVED, foi criada com o contexto atual
- * da safra e continua vinculada à interpretação determinística APPROVED mais recente. Caso contrário,
- * a UI recebe STALE_RECOMMENDATION e NÃO classifica a aplicação como abaixo/acima/conforme.
+ * da safra, continua vinculada à interpretação determinística APPROVED mais recente e essa interpretação
+ * ainda representa o laudo laboratorial corrente. Caso contrário, a UI recebe STALE_RECOMMENDATION e
+ * NÃO classifica a aplicação como abaixo/acima/conforme.
  */
 export async function getCurrentInputComparisonForAnalysis(tenantId: string, analysisId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
@@ -28,6 +29,8 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
       cropSeasonUpdatedAt: string;
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
+      latestInterpretationCreatedAt: string | null;
+      latestImportCommittedAt: string | null;
       appliedQuantity: number | null;
       appliedUnit: string | null;
       hasAnyApplication: boolean;
@@ -69,6 +72,8 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
               cs.updated_at::text AS "cropSeasonUpdatedAt",
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
+              li.created_at::text AS "latestInterpretationCreatedAt",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
               a.total_quantity::float8 AS "appliedQuantity",
               a.unit AS "appliedUnit",
               (aa.input_type IS NOT NULL) AS "hasAnyApplication"
@@ -78,12 +83,17 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
        LEFT JOIN ai_generations g
          ON g.tenant_id = $1::uuid AND g.id = r.source_generation_id AND g.kind = 'AGRONOMIC_PRESCRIPTION'
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status
+         SELECT i.id, i.status, i.created_at
          FROM interpretations i
          WHERE i.tenant_id = an.tenant_id AND i.analysis_id = an.id
          ORDER BY i.revision DESC
          LIMIT 1
        ) li ON true
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = an.tenant_id AND ai.analysis_id = an.id
+       ) latest_import ON true
        LEFT JOIN applied_totals a ON a.input_type = r.input_type AND a.unit = r.unit
        LEFT JOIN any_applied aa ON aa.input_type = r.input_type
        ORDER BY r.input_type`,
@@ -99,6 +109,8 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
         generationInterpretationId: row.generationInterpretationId,
         latestInterpretationId: row.latestInterpretationId,
         latestInterpretationStatus: row.latestInterpretationStatus,
+        latestInterpretationCreatedAt: row.latestInterpretationCreatedAt,
+        latestImportCommittedAt: row.latestImportCommittedAt,
       });
 
       let status: InputComparisonStatus;

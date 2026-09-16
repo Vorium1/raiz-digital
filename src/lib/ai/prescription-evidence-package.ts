@@ -58,6 +58,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
     const tenant = tenantResult.rows[0];
     if (!tenant) return null;
 
+    // Snapshot consistente: nova importação (FOR UPDATE em analyses) e edição da safra ficam esperando
+    // enquanto results + interpretação + contexto são lidos nesta mesma transação.
     const baseResult = await client.query(
       `SELECT a.id::text, a.code, a.status::text, a.created_at::text AS "createdAt",
               c.id::text AS "clientId", c.name AS "clientName",
@@ -80,7 +82,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
-       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       FOR SHARE OF a, cs`,
       [tenantId, analysisId],
     );
     const base = baseResult.rows[0];

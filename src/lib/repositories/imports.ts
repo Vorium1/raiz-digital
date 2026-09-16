@@ -134,17 +134,36 @@ export async function commitCsvImport(input: {
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    // Serializa mutações da evidência laboratorial com o cálculo/revisão/publicação da mesma análise.
+    // O parser e o arquivamento bruto acontecem antes, mas nenhuma linha persistida muda sem este lock.
+    // Assim, uma interpretação nunca pode ser criada "depois" de uma importação que ela na verdade não leu.
+    const analysisLock = await client.query<{ id: string }>(
+      `SELECT id::text FROM analyses
+       WHERE tenant_id = $1::uuid AND id = $2::uuid
+       FOR UPDATE`,
+      [input.tenantId, input.analysisId],
+    );
+    if (!analysisLock.rows[0]) throw new Error("Análise não encontrada para importação.");
+
+    // `clock_timestamp()` é deliberado: `now()` representa o início da transação e poderia ficar
+    // anterior a uma interpretação que terminou enquanto esta importação aguardava o lock da análise.
     const importResult = await client.query<{ id: string }>(
       `INSERT INTO analysis_imports
        (tenant_id, analysis_id, file_name, file_sha256, raw_object_key, source_format, status, detected_headers,
-        normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::import_status, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14::uuid)
+        normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by, committed_at)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::import_status, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14::uuid, clock_timestamp())
        ON CONFLICT (tenant_id, file_sha256, analysis_id)
-       DO UPDATE SET raw_object_key = COALESCE(analysis_imports.raw_object_key, EXCLUDED.raw_object_key),
+       DO UPDATE SET file_name = EXCLUDED.file_name,
+                     raw_object_key = COALESCE(analysis_imports.raw_object_key, EXCLUDED.raw_object_key),
+                     source_format = EXCLUDED.source_format,
+                     status = EXCLUDED.status,
+                     detected_headers = EXCLUDED.detected_headers,
+                     normalized_row_count = EXCLUDED.normalized_row_count,
                      blocker_count = EXCLUDED.blocker_count,
                      warning_count = EXCLUDED.warning_count,
                      confidence_score = EXCLUDED.confidence_score,
-                     validation_issues = EXCLUDED.validation_issues
+                     validation_issues = EXCLUDED.validation_issues,
+                     committed_at = clock_timestamp()
        RETURNING id::text`,
       [
         input.tenantId,

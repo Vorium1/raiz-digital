@@ -31,7 +31,9 @@ jobs:
         run: npm run typecheck
 
       - name: Rodar testes (lógica pura, sem banco de dados)
-        run: npm run test:handoff
+        run: |
+          npm run test:handoff
+          node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs
 
       - name: Validar preflight automático de homologação
         run: node --experimental-strip-types scripts/test-homologation-readiness.mjs

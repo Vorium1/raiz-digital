@@ -1,5 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { AiGenerationError, reviewAgronomicNarrative } from "@/lib/repositories/ai-generations";
+import { AiGenerationError } from "@/lib/repositories/ai-generations";
+import { reviewAgronomicNarrativeSafely } from "@/lib/repositories/agronomic-narrative-safety";
 
 const reviewRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const validDecisions = new Set(["APPROVED", "CHANGES_REQUESTED", "REJECTED"]);
@@ -14,7 +15,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const body = (await request.json()) as Record<string, unknown>;
     const decision = typeof body.decision === "string" ? body.decision : "";
     if (!validDecisions.has(decision)) return Response.json({ error: "Decisão inválida." }, { status: 400 });
-    const updated = await reviewAgronomicNarrative({ tenantId: session.tenantId, userId: session.userId, generationId: id, decision: decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED", note: typeof body.note === "string" ? body.note : null });
+    const updated = await reviewAgronomicNarrativeSafely({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      generationId: id,
+      decision: decision as "APPROVED" | "CHANGES_REQUESTED" | "REJECTED",
+      note: typeof body.note === "string" ? body.note : null,
+    });
     return Response.json({ generation: updated });
   } catch (error) {
     if (error instanceof AiGenerationError) return Response.json({ error: error.message }, { status: error.status });

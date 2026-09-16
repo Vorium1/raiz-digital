@@ -12,6 +12,7 @@ export type ReportPublicationGateInput = {
   prescriptionId: string | null;
   prescriptionStatus: string | null;
   interpretationIsLatest?: boolean;
+  interpretationEvidenceCurrent: boolean;
   prescriptionCurrent?: boolean;
   sourceVerificationRequired?: boolean;
   sourceHumanVerified?: boolean;
@@ -35,6 +36,15 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
     return {
       allowed: false,
       reason: "Esta interpretação foi superada por uma revisão mais recente. Publique somente a revisão atual aprovada.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (!input.interpretationEvidenceCurrent) {
+    return {
+      allowed: false,
+      reason: "O laudo laboratorial mudou depois desta interpretação. Recalcule e aprove uma nova interpretação antes da entrega oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,

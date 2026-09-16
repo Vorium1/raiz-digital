@@ -26,6 +26,7 @@ type Generation = {
 };
 
 type HistoryEntry = { id: string; status: string; createdAt: string; reviewedByName: string | null };
+type Freshness = { current: boolean; code: string; reason: string | null };
 
 const STATUS_META: Record<string, { label: string; tone: "success" | "review" | "waiting" | "danger" }> = {
   PENDING_REVIEW: { label: "Aguardando revisão profissional", tone: "waiting" },
@@ -36,12 +37,13 @@ const STATUS_META: Record<string, { label: string; tone: "success" | "review" | 
 
 /**
  * "Síntese assistida por IA" — visualmente separada dos fatos (laudo) e da
- * interpretação técnica (motor determinístico), como pedido: dado real,
- * classificação do motor e texto de IA nunca se misturam na tela.
+ * interpretação técnica (motor determinístico). Quando a evidência muda, a geração anterior permanece
+ * visível como histórico, mas deixa de poder ser aprovada ou apresentada como síntese corrente.
  */
 export function AgronomicNarrativePanel({ analysisId, hasClassifications, canRun, canReview }: { analysisId: string; hasClassifications: boolean; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Generation | null | undefined>(undefined);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [freshness, setFreshness] = useState<Freshness | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -51,6 +53,7 @@ export function AgronomicNarrativePanel({ analysisId, hasClassifications, canRun
     const data = await response.json().catch(() => ({}));
     setLatest(data.latest ?? null);
     setHistory(data.history ?? []);
+    setFreshness(data.freshness ?? null);
   }
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -84,14 +87,19 @@ export function AgronomicNarrativePanel({ analysisId, hasClassifications, canRun
   if (!hasClassifications) return null;
   if (latest === undefined) return <div className="agro-loading"><Icon name="clock" size={13}/>Carregando síntese assistida por IA…</div>;
 
+  const stale = Boolean(latest && freshness && !freshness.current);
+
   return (
     <section className="narrative-panel">
       <div className="narrative-panel-head">
         <div><span className="eyebrow">SÍNTESE ASSISTIDA POR IA</span><h3>Explicação em linguagem simples</h3></div>
-        {latest && <StatusBadge tone={STATUS_META[latest.status]?.tone ?? "waiting"}>{STATUS_META[latest.status]?.label ?? latest.status}</StatusBadge>}
+        {latest && (stale
+          ? <StatusBadge tone="danger">Histórica · evidência alterada</StatusBadge>
+          : <StatusBadge tone={STATUS_META[latest.status]?.tone ?? "waiting"}>{STATUS_META[latest.status]?.label ?? latest.status}</StatusBadge>)}
       </div>
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={14}/><span>{message.text}</span></div>}
+      {stale && <div className="agro-message danger"><Icon name="warning" size={14}/><span>{freshness?.reason ?? "A evidência mudou. Esta síntese permanece apenas como histórico e precisa ser regenerada."}</span></div>}
 
       {!latest ? (
         <div className="pending-engine" style={{ margin: 0 }}>
@@ -128,7 +136,7 @@ export function AgronomicNarrativePanel({ analysisId, hasClassifications, canRun
 
           {latest.reviewerNote && <p className="narrative-reviewer-note"><strong>Observação do revisor{latest.reviewedByName ? ` (${latest.reviewedByName})` : ""}:</strong> {latest.reviewerNote}</p>}
 
-          {canReview && latest.status === "PENDING_REVIEW" && (
+          {canReview && latest.status === "PENDING_REVIEW" && !stale && (
             <div className="narrative-review-form">
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação técnica (opcional)" rows={2}/>
               <div className="narrative-review-actions">
@@ -139,7 +147,7 @@ export function AgronomicNarrativePanel({ analysisId, hasClassifications, canRun
             </div>
           )}
 
-          {canRun && latest.status === "CHANGES_REQUESTED" && <button className="button ghost" disabled={busy} onClick={() => void generate()}>{busy ? "Gerando…" : "Gerar nova versão"}</button>}
+          {canRun && (latest.status === "CHANGES_REQUESTED" || stale) && <button className="button ghost" disabled={busy} onClick={() => void generate()}>{busy ? "Gerando…" : stale ? "Gerar síntese para a evidência atual" : "Gerar nova versão"}</button>}
 
           {history.length > 1 && (
             <details className="agro-history"><summary>Histórico de gerações ({history.length})</summary>
