@@ -47,6 +47,13 @@ const STATUS_LABEL: Record<string, string> = {
   PUBLISHED: "Publicada",
 };
 
+function formatDateOnly(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("pt-BR");
+}
+
 function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null {
   if (!raw) return null;
   const values = raw.split(",").map(Number);
@@ -393,7 +400,7 @@ export function AgronomicMapExplorer() {
               )}
               {satelliteLayer && (
                 ndviLoading ? <p><Icon name="clock" size={12}/> Carregando leitura de satélite…</p>
-                : currentNdvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster histórico arquivado da aquisição Sentinel-2 de {new Date(currentNdvi.capturedAt).toLocaleDateString("pt-BR")} ({currentNdvi.source}){currentNdvi.cloudCoverPct != null ? `, ${Math.round(currentNdvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
+                : currentNdvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster histórico arquivado da aquisição Sentinel-2 de {formatDateOnly(currentNdvi.capturedAt)} ({currentNdvi.source}){currentNdvi.cloudCoverPct != null ? `, ${Math.round(currentNdvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
                 : ndviHasStatisticalHistory
                   ? <p><strong>Raster NDVI ainda não arquivado.</strong> Existe histórico estatístico deste talhão, mas nenhuma aquisição desta janela pode ser mostrada como raster histórico imutável ainda. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Abra o Talhão 360° e use “Atualizar 120 dias”</Link> para arquivar as aquisições.</p>
                   : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
