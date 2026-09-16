@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { buildLabImportPreview } from "../src/domain/lab-import.ts";
-import { base64TransportBytes, LAB_UPLOAD_LIMITS } from "../src/domain/lab-upload-limits.ts";
+import {
+  base64TransportBytes,
+  compactLabImportPreview,
+  jsonTransportBytes,
+  LAB_UPLOAD_LIMITS,
+} from "../src/domain/lab-upload-limits.ts";
 
 const longCsv = `Amostra;Parametro;Valor;Unidade;Metodo
 P01;pH;5,4;indice;Agua 1:1
@@ -34,19 +39,31 @@ const comma = buildLabImportPreview(commaCsv, "comma.csv", { hasAgronomicContext
 assert.equal(comma.delimiter, ",");
 assert.equal(comma.rows[0]?.value, 10.5);
 
-// Regressão de transporte: o limite mostrado no navegador é medido em bytes do arquivo bruto,
-// enquanto PDF/XLSX viajam em base64. O teto HTTP precisa comportar o maior arquivo permitido + overhead.
+// Regressão de transporte: o navegador limita o arquivo bruto e o servidor limita o JSON transportado.
+// PDF/XLSX crescem ~4/3 em base64; os tetos precisam deixar margem para JSON e metadados sem prometer
+// arquivos que a Vercel recusaria na borda antes de a rota conseguir responder.
+assert.ok(LAB_UPLOAD_LIMITS.functionPayloadBytes < 4_500_000, "o teto interno deve manter folga abaixo dos 4,5 MB da Vercel");
 assert.ok(
-  base64TransportBytes(LAB_UPLOAD_LIMITS.imageOrPdfBytes) + 100_000 < LAB_UPLOAD_LIMITS.extractRequestBytes,
-  "o teto de /extract deve comportar 8,5 MB brutos depois da expansão base64",
+  base64TransportBytes(LAB_UPLOAD_LIMITS.imageOrPdfBytes) + 100_000 < LAB_UPLOAD_LIMITS.functionPayloadBytes,
+  "o maior PDF/foto permitido deve caber em base64 + overhead no teto interno",
 );
 assert.ok(
-  base64TransportBytes(LAB_UPLOAD_LIMITS.spreadsheetBytes) + 100_000 < LAB_UPLOAD_LIMITS.tabularRequestBytes,
-  "o teto de /validate e /commit deve comportar 4,5 MB brutos depois da expansão base64 + recibo",
+  base64TransportBytes(LAB_UPLOAD_LIMITS.spreadsheetBytes) + 100_000 < LAB_UPLOAD_LIMITS.functionPayloadBytes,
+  "o maior XLS/XLSX permitido deve caber em base64 + overhead no teto interno",
 );
 assert.ok(
-  LAB_UPLOAD_LIMITS.textBytes + 100_000 < LAB_UPLOAD_LIMITS.tabularRequestBytes,
-  "o teto tabular deve comportar o maior CSV/TXT permitido + JSON",
+  LAB_UPLOAD_LIMITS.textBytes + 100_000 < LAB_UPLOAD_LIMITS.functionPayloadBytes,
+  "o maior CSV/TXT permitido deve caber com overhead no teto interno",
 );
+assert.ok(jsonTransportBytes({ content: "x".repeat(1_000) }) > 1_000, "a medição deve incluir o envelope JSON, não só o conteúdo");
 
-console.log("lab-import: 4 cenários agronômicos + limites de transporte aprovados");
+const manyRows = Array.from({ length: LAB_UPLOAD_LIMITS.previewRows + 7 }, (_, index) => ({ index }));
+const manyIssues = Array.from({ length: LAB_UPLOAD_LIMITS.previewIssues + 9 }, (_, index) => ({ index }));
+const compact = compactLabImportPreview({ rows: manyRows, issues: manyIssues, marker: "preservado" });
+assert.equal(compact.normalizedRowCount, manyRows.length);
+assert.equal(compact.issueCount, manyIssues.length);
+assert.equal(compact.rows.length, LAB_UPLOAD_LIMITS.previewRows);
+assert.equal(compact.issues.length, LAB_UPLOAD_LIMITS.previewIssues);
+assert.equal(compact.marker, "preservado");
+
+console.log("lab-import: 4 cenários agronômicos + limites/compactação de transporte aprovados");
