@@ -20,6 +20,7 @@
     "cabeda:provenance": "node scripts/backfill-cabeda-source-provenance.mjs",
     "cabeda:geo": "node scripts/import-cabeda-real-geometry.mjs",
     "cabeda:audit-geo": "node --experimental-strip-types scripts/audit-cabeda-persisted-geometry.mjs",
+    "ndvi:audit-raster": "node --experimental-strip-types scripts/audit-ndvi-raster-custody.mjs",
     "cabeda:rehearse-area01": "node scripts/rehearse-cabeda-area01.mjs",
     "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
     "test:spatial-map": "node --experimental-strip-types scripts/test-spatial-map-contract.mjs",
