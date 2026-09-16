@@ -1,3 +1,4 @@
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { evaluateInterpretationReviewTransition, type InterpretationReviewStatus } from "@/domain/interpretation-review";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
@@ -8,6 +9,7 @@ import { InterpretationError } from "@/lib/repositories/interpretations";
  *
  * O registro alvo é bloqueado durante a decisão. A política impede:
  * - aprovar uma revisão antiga enquanto uma mais nova já existe;
+ * - aprovar/revisar uma interpretação calculada antes do laudo corrente;
  * - transformar CALCULATED (pendente) em IN_REVIEW/APPROVED por chamada de API;
  * - rebaixar APPROVED para IN_REVIEW;
  * - alterar PUBLISHED/SUPERSEDED;
@@ -26,11 +28,13 @@ export async function reviewInterpretationSafely(input: {
       analysisId: string;
       revision: number;
       latestRevision: number;
+      createdAt: string;
     }>(
       `SELECT i.id::text,
               i.status::text AS status,
               i.analysis_id::text AS "analysisId",
               i.revision,
+              i.created_at::text AS "createdAt",
               (SELECT max(i2.revision) FROM interpretations i2
                WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = i.analysis_id) AS "latestRevision"
        FROM interpretations i
@@ -40,6 +44,28 @@ export async function reviewInterpretationSafely(input: {
     );
     const current = locked.rows[0];
     if (!current) throw new InterpretationError("Interpretação não encontrada.", 404);
+
+    // Compartilha o mesmo lock lógico da importação. Além de verificar a data, isto impede que um novo
+    // laudo seja efetivado entre o gate de evidência e a decisão profissional nesta transação.
+    const evidenceState = await client.query<{ latestImportCommittedAt: string | null }>(
+      `SELECT latest_import.latest_import_at::text AS "latestImportCommittedAt"
+       FROM analyses a
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+       ) latest_import ON true
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       FOR SHARE OF a`,
+      [input.tenantId, current.analysisId],
+    );
+    const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
+      interpretationCreatedAt: current.createdAt,
+      latestImportCommittedAt: evidenceState.rows[0]?.latestImportCommittedAt ?? null,
+    });
+    if (!evidenceFreshness.current) {
+      throw new InterpretationError(evidenceFreshness.reason ?? "A interpretação não representa o laudo laboratorial corrente.", 409);
+    }
 
     const transition = evaluateInterpretationReviewTransition({
       currentStatus: current.status,
