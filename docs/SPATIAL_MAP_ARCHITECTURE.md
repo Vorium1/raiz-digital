@@ -74,6 +74,23 @@ O backend gera PNG georreferenciado pelo Copernicus Process API usando o limite 
 
 Essas classes são **zonas de vigor NDVI**, não “produtividade”. Para afirmar produtividade é necessário mapa de colheita ou metodologia multitemporal validada para esse fim.
 
+#### Cadeia de custódia do raster histórico
+
+A partir da migration `037_ndvi_raster_custody.sql`, um snapshot novo não depende mais de regenerar a imagem no futuro. O fluxo de atualização faz, na mesma operação lógica:
+
+1. consulta a série pela Statistical API;
+2. para cada data selecionada ainda sem artefato arquivado, gera o PNG pela Process API com a mesma política de mosaico `leastCC`;
+3. persiste o PNG em armazenamento durável/content-addressed **antes** de efetivar o snapshot auditável;
+4. grava no PostgreSQL a chave do objeto, SHA-256, número de bytes, `bbox`, largura, altura, versão do algoritmo, política de mosaico e horário de arquivamento;
+5. depois disso, a linha daquele `talhão + data + fonte` é preservada: refresh posterior não substitui estatística nem raster já arquivado;
+6. `/api/fields/[id]/ndvi/map` lê exclusivamente o objeto arquivado e confere tamanho + SHA-256 antes de servi-lo. Não existe fallback silencioso para uma nova chamada ao Copernicus.
+
+Snapshots antigos, criados antes dessa cadeia, continuam válidos como histórico estatístico, mas não podem ser apresentados como raster histórico imutável. A rota retorna `NDVI_RASTER_ARCHIVE_REQUIRED` até que o refresh promova aquela data para o novo contrato.
+
+Em runtime hospedado, armazenamento local não é aceito para essa custódia; é necessário o mesmo provider S3 durável usado para fontes brutas (`STORAGE_PROVIDER=s3`). Uma falha de storage interrompe a criação do snapshot com raster — a RAIZ não marca uma imagem temporária como evidência preservada.
+
+`provider_scene_id` pode continuar nulo quando a Statistical API não fornece um identificador inequívoco. A prova histórica passa a ser o próprio artefato binário arquivado + SHA-256 + metadados espaciais, sem inventar um scene-id que o provedor não entregou.
+
 ### Tendência NDVI
 
 Mostra mudança temporal calculada sobre a série do próprio talhão. Não colore o interior por pixel e não atribui causa agronômica.
@@ -96,14 +113,17 @@ Para Cabeda e qualquer importação espacial real, a aceitação final depende d
 
 - Google Maps falha: fallback Leaflet + OpenStreetMap automático.
 - A contingência não carrega Esri; portanto não reproduz deliberadamente a dependência associada ao defeito histórico dos quadrantes pretos.
-- Raster NDVI falha: talhão continua com contorno, mensagem explícita e nenhuma classe inventada.
+- Raster NDVI arquivado falha em integridade/recuperação: talhão continua com contorno, mensagem explícita e nenhuma imagem é regenerada para fingir continuidade histórica.
+- Snapshot legado sem artefato: solicita refresh antes de exibir mapa histórico.
 - Ponto planejado: marcador/descrição deixam explícito que não é coordenada medida em campo.
 - Fonte espacial real auditada: o mapa mantém essa proveniência mesmo sem `observed_position`.
 - Sem geometria: talhão não é desenhado e o dashboard informa a quantidade ausente.
 
 ## Proteção de quota
 
-A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez. A tela detalhada do Talhão 360° permanece disponível para os demais. Isso evita transformar a abertura do dashboard em uma explosão de chamadas ao Copernicus.
+A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez. A tela detalhada do Talhão 360° permanece disponível para os demais.
+
+O refresh temporal considera no máximo 18 aquisições recentes. A Process API só é chamada para datas que ainda não possuem raster arquivado; repetir um refresh preserva os artefatos existentes e não os regenera. Isso limita consumo do Copernicus e mantém a cadeia histórica estável.
 
 ## Checklist para vincular o Google Maps
 
@@ -120,7 +140,8 @@ A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez
 9. Validar em mobile e desktop:
    - mapa-base sem quadrantes pretos/vazios;
    - alternância Avaliação / Zonas NDVI / Tendência NDVI;
-   - raster alinhado ao contorno;
+   - raster arquivado alinhado ao contorno;
+   - hash/metadados do raster presentes no snapshot e rota servindo o mesmo objeto sem reconsulta ao Copernicus;
    - pontos GPS observados no local persistido;
    - pontos Cabeda de fonte auditada corretamente identificados como reais, não como planejados;
    - fallback OSM quando Google é propositalmente bloqueado.
