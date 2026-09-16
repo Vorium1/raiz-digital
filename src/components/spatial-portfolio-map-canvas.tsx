@@ -26,19 +26,11 @@ function LeafletPortfolioCanvas({ fields, height, onFieldClick, providerNote }: 
       const L = mod.default;
       map = L.map(containerRef.current, { attributionControl: true, preferCanvas: true }).setView([-15.7797, -47.9297], 4);
 
-      // Fundo de contingência sob a imagem aérea: evita quadrantes vazios/pretos quando um tile Esri falha.
+      // Fallback de disponibilidade: OSM somente. O bug histórico de quadrantes pretos ocorre em qualquer
+      // viewport; manter Esri acima de OSM não ajuda quando o tile preto chega como imagem válida/opaqua.
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
-      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri",
-      }).addTo(map);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19,
-        opacity: 0.85,
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
       }).addTo(map);
 
       const bounds: [number, number][] = [];
@@ -203,9 +195,9 @@ export function SpatialPortfolioMapCanvas({ fields, height = 420, onFieldClick }
   }
 
   const providerNote = googleFailed
-    ? "Google Satellite ficou indisponível nesta sessão; a RAIZ ativou o mapa-base de contingência sem alterar o raster NDVI nem as geometrias."
+    ? "Google Satellite ficou indisponível nesta sessão; a RAIZ ativou o mapa-base OSM de contingência. NDVI, contornos e coordenadas permanecem independentes do mapa-base."
     : resolution.reason === "GOOGLE_KEY_MISSING"
-      ? "Google Satellite está selecionado, mas a chave pública ainda não foi vinculada; usando mapa-base de contingência."
+      ? "Google Satellite está selecionado, mas a chave pública ainda não foi vinculada; usando OSM como mapa-base de contingência."
       : null;
   return <LeafletPortfolioCanvas fields={fields} height={height} onFieldClick={onFieldClick} providerNote={providerNote} />;
 }
