@@ -1,5 +1,10 @@
 import { withTenant } from "@/lib/db";
-import { amountInCents, normalizeMercadoPagoPaymentIds, parseRaizInvoiceExternalReference } from "@/lib/mercado-pago";
+import {
+  amountInCents,
+  isAutomaticPaymentStatusTransitionAllowed,
+  normalizeMercadoPagoPaymentIds,
+  parseRaizInvoiceExternalReference,
+} from "@/lib/mercado-pago";
 import type { MercadoPagoOrder } from "@/lib/mercado-pago-orders";
 import { BillingReconciliationError } from "@/lib/repositories/billing";
 
@@ -27,10 +32,6 @@ function mapOrderStatus(order: MercadoPagoOrder) {
   }
 }
 
-/**
- * Reconcilia o fluxo moderno da Orders API. O webhook apenas indica o `order_id`;
- * os campos abaixo já vieram de GET /v1/orders/{id} feito no backend da RAIZ.
- */
 export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder) {
   const reference = parseRaizInvoiceExternalReference(order.externalReference);
   if (!reference) return { kind: "ignored" as const, reason: "FOREIGN_REFERENCE" as const };
@@ -52,9 +53,6 @@ export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder)
     );
   }
 
-  // Orders modela transactions.payments como uma coleção. Para a mensalidade RAIZ, a conciliação atual
-  // é deliberadamente 1 fatura -> 1 payment_id. Se o provedor devolver dois pagamentos distintos, escolher
-  // silenciosamente o primeiro perderia rastreabilidade financeira; o caso fica bloqueado para revisão.
   const paymentIds = normalizeMercadoPagoPaymentIds(order.paymentIds);
   if (paymentIds.length > 1) {
     throw new BillingReconciliationError(
@@ -95,19 +93,32 @@ export async function reconcileOfficialMercadoPagoOrder(order: MercadoPagoOrder)
     if (status === "PAID" && !paymentId) {
       throw new BillingReconciliationError("Order processada sem payment_id disponível para conciliação.", "PAYMENT_ID_MISSING");
     }
-    if (invoice.status === "PAID" && paymentId && invoice.provider_charge_id && invoice.provider_charge_id !== paymentId) {
-      throw new BillingReconciliationError("Fatura já paga recebeu outro payment_id pela Order.", "DUPLICATE_PAYMENT");
+
+    if (
+      invoice.provider_charge_id &&
+      paymentId &&
+      invoice.provider_charge_id !== paymentId &&
+      (invoice.status === "PAID" || invoice.status === "REFUNDED")
+    ) {
+      throw new BillingReconciliationError(
+        "Fatura em estado terminal recebeu outro payment_id pela Order. Revisão manual obrigatória.",
+        "DUPLICATE_PAYMENT",
+      );
     }
 
-    // O FOR UPDATE serializa duas notificações concorrentes da mesma fatura. Depois que a primeira
-    // transação aplica exatamente esta Order/estado/payment, a segunda vira no-op e não gera outra
-    // auditoria. Se o estado oficial evoluiu (ex.: processing -> processed), a mudança continua aplicada.
     if (
       invoice.provider_order_id === order.id &&
       invoice.status === status &&
       (paymentId == null || invoice.provider_charge_id === paymentId)
     ) {
       return { kind: "ignored" as const, reason: "ALREADY_RECONCILED" as const };
+    }
+
+    if (!isAutomaticPaymentStatusTransitionAllowed(invoice.status, status)) {
+      throw new BillingReconciliationError(
+        `Transição financeira terminal bloqueada: ${invoice.status} -> ${status}. Revisão manual obrigatória.`,
+        "TERMINAL_STATUS_REGRESSION",
+      );
     }
 
     await client.query(
