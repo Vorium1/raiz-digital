@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import {
+  effectivePointCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
   type FieldMapProps,
@@ -97,11 +98,14 @@ export function GoogleFieldMap({
           type: "FeatureCollection",
           features: [
             { type: "Feature", properties: { kind: "boundary" }, geometry: boundary },
-            ...points.map((point) => ({
-              type: "Feature",
-              properties: { kind: "point", pointId: point.id },
-              geometry: { type: "Point", coordinates: [point.longitude, point.latitude] },
-            })),
+            ...points.map((point) => {
+              const effective = effectivePointCoordinates(point);
+              return {
+                type: "Feature",
+                properties: { kind: "point", pointId: point.id },
+                geometry: { type: "Point", coordinates: [effective.longitude, effective.latitude] },
+              };
+            }),
           ],
         };
         map.data.addGeoJson(featureCollection);
@@ -155,7 +159,10 @@ export function GoogleFieldMap({
 
         const bounds = new maps.LatLngBounds();
         for (const [longitude, latitude] of positions) bounds.extend({ lat: latitude, lng: longitude });
-        for (const point of points) bounds.extend({ lat: point.latitude, lng: point.longitude });
+        for (const point of points) {
+          const effective = effectivePointCoordinates(point);
+          bounds.extend({ lat: effective.latitude, lng: effective.longitude });
+        }
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds, 28);
           maps.event.addListenerOnce(map, "idle", () => {
@@ -185,6 +192,7 @@ export function GoogleFieldMap({
   const showAgronomicFields = selectedPoint && selectedPoint.value !== undefined;
   const hasPlannedOnlyPoints = points.some((point) => pointPositionKind(point) === "PLANNED");
   const hasAuditedSourcePoints = points.some((point) => pointPositionKind(point) === "AUDITED_SOURCE");
+  const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
     <div className="real-field-map">
@@ -195,7 +203,7 @@ export function GoogleFieldMap({
         {hasPlannedOnlyPoints && <span className="portfolio-map-note">Ponto sem GPS/fonte real = posição planejada</span>}
         <span className="real-field-map-hint">{hint}</span>
       </div>
-      {selectedPoint && (
+      {selectedPoint && selectedCoordinates && (
         <div className="real-field-map-panel">
           <div className="real-field-map-panel-head">
             <strong>{selectedPoint.code}</strong>
@@ -212,7 +220,7 @@ export function GoogleFieldMap({
               </>
             )}
             <div><dt>Posição exibida</dt><dd>{positionDescription(selectedPoint)}</dd></div>
-            <div><dt>Coordenadas</dt><dd>{selectedPoint.latitude.toFixed(7)}, {selectedPoint.longitude.toFixed(7)}</dd></div>
+            <div><dt>Coordenadas</dt><dd>{selectedCoordinates.latitude.toFixed(7)}, {selectedCoordinates.longitude.toFixed(7)}</dd></div>
             {pointPositionKind(selectedPoint) === "PLANNED" && <div><dt>Validação</dt><dd className="real-field-map-reason">Sem captura GPS observada nem fonte espacial real auditada. Esta coordenada é de planejamento e não deve ser tratada como posição medida em campo.</dd></div>}
             {pointPositionKind(selectedPoint) === "AUDITED_SOURCE" && <div><dt>Proveniência</dt><dd>Coordenada real importada de fonte espacial auditada; a origem declarada permanece registrada em “Origem GPS”.</dd></div>}
             <div><dt>Profundidade</dt><dd>{selectedPoint.depthFromCm}–{selectedPoint.depthToCm} cm</dd></div>
