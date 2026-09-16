@@ -62,7 +62,6 @@ export function verifyMercadoPagoWebhookSignature(input: {
   const dataId = input.dataId.trim();
   if (!requestId || !dataId || !input.secret) return false;
 
-  // Regra explícita da documentação do Mercado Pago para IDs alfanuméricos de Orders API.
   const signedDataId = dataId.toLowerCase();
   const manifest = `id:${signedDataId};request-id:${requestId};ts:${ts};`;
   const expectedHex = createHmac("sha256", input.secret).update(manifest).digest("hex");
@@ -99,6 +98,15 @@ export function amountInCents(value: number) {
   return Math.round((value + Number.EPSILON) * 100);
 }
 
+/**
+ * Normaliza a lista de pagamentos retornada dentro de uma Order. O provedor modela `transactions.payments`
+ * como array e pode representar múltiplas transações; duplicatas idênticas não devem criar um falso cenário
+ * de múltiplos pagamentos, mas IDs distintos nunca podem ser silenciosamente reduzidos ao primeiro item.
+ */
+export function normalizeMercadoPagoPaymentIds(paymentIds: readonly string[]) {
+  return [...new Set(paymentIds.map((id) => id.trim()).filter((id) => Boolean(id) && /^[A-Za-z0-9-]{1,80}$/.test(id)))];
+}
+
 function uuidToCompact(uuid: string) {
   const hex = uuid.replaceAll("-", "").toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(hex)) throw new Error("UUID inválido para referência financeira.");
@@ -113,11 +121,6 @@ function compactToUuid(value: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/**
- * Fica abaixo do limite de 64 caracteres e usa apenas caracteres aceitos pelo campo
- * external_reference. O tenant faz parte da referência para que a reconciliação possa
- * entrar no contexto RLS correto sem uma consulta global a invoices.
- */
 export function buildRaizInvoiceExternalReference(tenantId: string, invoiceId: string) {
   return `${EXTERNAL_REFERENCE_PREFIX}_${uuidToCompact(tenantId)}_${uuidToCompact(invoiceId)}`;
 }
