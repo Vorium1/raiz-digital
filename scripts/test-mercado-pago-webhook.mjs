@@ -8,6 +8,7 @@ import {
   amountInCents,
   buildRaizInvoiceExternalReference,
   mapMercadoPagoPaymentStatus,
+  normalizeMercadoPagoPaymentIds,
   parseRaizInvoiceExternalReference,
   verifyMercadoPagoWebhookSignature,
 } from "../src/lib/mercado-pago.ts";
@@ -41,8 +42,6 @@ assert.equal(
   "timestamp malformado deve ser rejeitado",
 );
 
-// Orders API: o provedor entrega data.id em maiúsculas, mas documenta que o manifesto HMAC deve
-// usar esse identificador em minúsculas. Este caso evita que webhooks reais de `order` sejam rejeitados.
 const orderDataId = "ORD01JQ4S4KY8HWQ6NA5PXB65B3D3";
 const orderManifest = `id:${orderDataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
 const orderHash = createHmac("sha256", secret).update(orderManifest).digest("hex");
@@ -51,6 +50,17 @@ assert.equal(
   verifyMercadoPagoWebhookSignature({ signature: orderSignature, requestId, dataId: orderDataId, secret }),
   true,
   "assinatura de order deve normalizar data.id alfanumérico para minúsculas",
+);
+
+assert.deepEqual(
+  normalizeMercadoPagoPaymentIds([" pay-1 ", "pay-1", "", "pay-2"]),
+  ["pay-1", "pay-2"],
+  "duplicatas idênticas não podem simular múltiplos pagamentos, mas IDs distintos devem ser preservados",
+);
+assert.deepEqual(
+  normalizeMercadoPagoPaymentIds(["pay_ilegível", "***", "ok-123"]),
+  ["ok-123"],
+  "IDs fora do formato financeiro aceito não devem chegar à reconciliação",
 );
 
 const tenantId = "0f0c1a7e-7c8f-4f2d-9e7b-8a3a2c7d6e5f";
@@ -106,4 +116,4 @@ assert.deepEqual(
   "flag sem credenciais deve falhar fechada",
 );
 
-console.log("✓ Mercado Pago: assinatura HMAC (payment + order), referência, valores, status, domínio e gate comercial validados");
+console.log("✓ Mercado Pago: assinatura HMAC, IDs de Order/payment, referência, valores, status, domínio e gate comercial validados");
