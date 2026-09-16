@@ -1,10 +1,11 @@
+import { evaluateAnalysisEvidenceFreshness } from "./analysis-evidence-freshness.ts";
 import { evaluatePrescriptionContextFreshness } from "./prescription-context-freshness.ts";
 
 export type OfficialRecommendationSourceKind = "AI" | "UNRESOLVED_AI" | "NON_AI";
 
 export type OfficialRecommendationFreshness = {
   current: boolean;
-  code: "CURRENT" | "SOURCE_UNRESOLVED" | "GENERATION_NOT_APPROVED" | "CONTEXT_CHANGED" | "INTERPRETATION_SUPERSEDED";
+  code: "CURRENT" | "SOURCE_UNRESOLVED" | "GENERATION_NOT_APPROVED" | "CONTEXT_CHANGED" | "INTERPRETATION_SUPERSEDED" | "LAB_EVIDENCE_CHANGED";
   reason: string | null;
 };
 
@@ -23,6 +24,8 @@ export function evaluateOfficialRecommendationFreshness(input: {
   generationInterpretationId?: string | null;
   latestInterpretationId?: string | null;
   latestInterpretationStatus?: string | null;
+  latestInterpretationCreatedAt?: string | null;
+  latestImportCommittedAt?: string | null;
 }): OfficialRecommendationFreshness {
   if (input.sourceKind === "NON_AI") return { current: true, code: "CURRENT", reason: null };
 
@@ -63,6 +66,18 @@ export function evaluateOfficialRecommendationFreshness(input: {
       current: false,
       code: "INTERPRETATION_SUPERSEDED",
       reason: "A interpretação determinística usada por esta recomendação foi superada ou deixou de ser a revisão APPROVED atual.",
+    };
+  }
+
+  const evidence = evaluateAnalysisEvidenceFreshness({
+    interpretationCreatedAt: input.latestInterpretationCreatedAt,
+    latestImportCommittedAt: input.latestImportCommittedAt,
+  });
+  if (!evidence.current) {
+    return {
+      current: false,
+      code: "LAB_EVIDENCE_CHANGED",
+      reason: evidence.reason ?? "O laudo laboratorial mudou depois da interpretação usada por esta recomendação.",
     };
   }
 

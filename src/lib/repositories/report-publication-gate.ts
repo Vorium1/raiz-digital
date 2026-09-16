@@ -1,3 +1,4 @@
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { withTenant } from "@/lib/db";
 import { evaluateReportPublicationGate, type ReportPublicationReadiness } from "@/domain/report-publication-gate";
 
@@ -15,8 +16,9 @@ export class ReportPublicationGateError extends Error {
 
 /**
  * Gate da entrega oficial. A recomendação precisa pertencer À MESMA interpretação que será publicada,
- * a interpretação precisa ser a revisão mais recente, a geração deve continuar compatível com o contexto
- * atual da safra e, quando a política do tenant exigir, o arquivo bruto precisa estar confirmado.
+ * a interpretação precisa ser a revisão mais recente e ainda representar o laudo corrente, a geração
+ * deve continuar compatível com o contexto atual da safra e, quando a política do tenant exigir, o
+ * arquivo bruto precisa estar confirmado.
  */
 export async function getReportPublicationReadiness(
   tenantId: string,
@@ -26,9 +28,11 @@ export async function getReportPublicationReadiness(
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT i.status::text AS "interpretationStatus",
+              i.created_at::text AS "interpretationCreatedAt",
               (latest_interpretation.id = i.id) AS "interpretationIsLatest",
               a.source_human_verified AS "sourceHumanVerified",
               t.require_source_human_verification AS "sourceVerificationRequired",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
               prescription.id::text AS "prescriptionId",
               prescription.status::text AS "prescriptionStatus",
               CASE
@@ -47,6 +51,11 @@ export async function getReportPublicationReadiness(
          LIMIT 1
        ) latest_interpretation ON true
        LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = i.tenant_id AND ai.analysis_id = i.analysis_id
+       ) latest_import ON true
+       LEFT JOIN LATERAL (
          SELECT ag.id, ag.status, ag.created_at
          FROM ai_generations ag
          WHERE ag.tenant_id=i.tenant_id
@@ -60,12 +69,19 @@ export async function getReportPublicationReadiness(
       [tenantId, interpretationId],
     );
     const row = result.rows[0];
+    const evidenceFreshness = row
+      ? evaluateAnalysisEvidenceFreshness({
+          interpretationCreatedAt: row.interpretationCreatedAt,
+          latestImportCommittedAt: row.latestImportCommittedAt,
+        })
+      : { current: false };
     return evaluateReportPublicationGate({
       interpretationExists: Boolean(row),
       interpretationStatus: row?.interpretationStatus ?? null,
       prescriptionId: row?.prescriptionId ?? null,
       prescriptionStatus: row?.prescriptionStatus ?? null,
       interpretationIsLatest: row?.interpretationIsLatest ?? false,
+      interpretationEvidenceCurrent: evidenceFreshness.current,
       prescriptionCurrent: row?.prescriptionCurrent ?? false,
       sourceVerificationRequired: row?.sourceVerificationRequired ?? false,
       sourceHumanVerified: row?.sourceHumanVerified ?? false,

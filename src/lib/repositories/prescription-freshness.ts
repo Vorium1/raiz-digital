@@ -1,10 +1,12 @@
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 import { withTenant } from "@/lib/db";
 
 /**
  * Estado corrente de uma geração já persistida. Uma prescrição deixa de ser corrente quando:
  * 1) a safra mudou depois da geração; OU
- * 2) ela não aponta mais para a revisão determinística mais recente e APPROVED.
+ * 2) ela não aponta mais para a revisão determinística mais recente e APPROVED; OU
+ * 3) o laudo laboratorial foi efetivado depois da interpretação que sustenta a geração.
  *
  * Isso é somente leitura: a geração histórica não é apagada nem reescrita.
  */
@@ -23,22 +25,31 @@ export async function getAgronomicPrescriptionFreshness(input: {
       cropSeasonUpdatedAt: string;
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
+      latestInterpretationCreatedAt: string | null;
+      latestImportCommittedAt: string | null;
     }>(
       `SELECT g.created_at::text AS "generationCreatedAt",
               g.interpretation_id::text AS "generationInterpretationId",
               cs.updated_at::text AS "cropSeasonUpdatedAt",
               li.id::text AS "latestInterpretationId",
-              li.status::text AS "latestInterpretationStatus"
+              li.status::text AS "latestInterpretationStatus",
+              li.created_at::text AS "latestInterpretationCreatedAt",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt"
        FROM ai_generations g
        JOIN analyses a ON a.tenant_id = g.tenant_id AND a.id = g.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status
+         SELECT i.id, i.status, i.created_at
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
          LIMIT 1
        ) li ON true
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+       ) latest_import ON true
        WHERE g.tenant_id = $1::uuid
          AND g.analysis_id = $2::uuid
          AND g.id = $3::uuid
@@ -64,6 +75,14 @@ export async function getAgronomicPrescriptionFreshness(input: {
         current: false,
         reason: "A interpretação determinística vinculada a esta geração foi superada ou deixou de ser a revisão APPROVED atual.",
       };
+    }
+
+    const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
+      interpretationCreatedAt: row.latestInterpretationCreatedAt,
+      latestImportCommittedAt: row.latestImportCommittedAt,
+    });
+    if (!evidenceFreshness.current) {
+      return { current: false, reason: evidenceFreshness.reason };
     }
 
     return { current: true, reason: null };

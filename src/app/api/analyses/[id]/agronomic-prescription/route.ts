@@ -2,10 +2,12 @@ import { getPlatformSession } from "@/lib/auth/session";
 import { buildAgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
-import { getLatestAgronomicPrescription, listAgronomicPrescriptionHistory, recordAgronomicPrescriptionGeneration } from "@/lib/repositories/ai-generations";
+import { getLatestAgronomicPrescription, listAgronomicPrescriptionHistory } from "@/lib/repositories/ai-generations";
+import { recordAgronomicPrescriptionGenerationSafely } from "@/lib/repositories/prescription-generation";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
@@ -31,12 +33,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id } = await context.params;
-  const [latest, history, usage, interpretation, recommendationContext] = await Promise.all([
+  const [latest, history, usage, interpretation, recommendationContext, analysisEvidence] = await Promise.all([
     getLatestAgronomicPrescription(session.tenantId, id, session.userId),
     listAgronomicPrescriptionHistory(session.tenantId, id, session.userId),
     getTenantPrescriptionUsage(session.tenantId),
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
   const prescriptionFreshness = await getAgronomicPrescriptionFreshness({
@@ -79,15 +82,17 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       })
     : null;
 
+  const evidenceCurrent = analysisEvidence.interpretationId === interpretation?.id && analysisEvidence.freshness.current;
   return Response.json({
     latest,
     history,
     usage,
     readiness: {
-      allowed: gate.allowed,
-      reason: gate.allowed ? null : gate.reason,
+      allowed: gate.allowed && evidenceCurrent,
+      reason: !gate.allowed ? gate.reason : evidenceCurrent ? null : analysisEvidence.freshness.reason,
       interpretationStatus: interpretation?.status ?? null,
       interpretationId: interpretation?.id ?? null,
+      interpretationEvidenceFreshness: analysisEvidence.freshness,
       prescriptionFreshness,
       prescriptionPkValidation,
       recommendationContext: {
@@ -123,21 +128,31 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: "Não há resultado de laboratório vinculado a esta análise ainda." }, { status: 409 });
   }
 
-  const [interpretation, contextBeforeProvider] = await Promise.all([
+  const [interpretation, contextBeforeProvider, evidenceBeforeProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   const gate = checkPrescriptionGate(interpretation?.status ?? null);
   if (!gate.allowed) {
     return Response.json({ error: gate.reason }, { status: 409 });
+  }
+  if (
+    !interpretation?.id
+    || evidenceBeforeProvider.interpretationId !== interpretation.id
+    || !evidenceBeforeProvider.freshness.current
+  ) {
+    return Response.json({
+      error: evidenceBeforeProvider.freshness.reason ?? "O laudo atual ainda não possui uma interpretação determinística corrente. Recalcule antes de gerar a prescrição.",
+    }, { status: 409 });
   }
 
   const beforeProvider = evaluatePrescriptionSnapshotConsistency({
     snapshotSeasonUpdatedAt: evidence.season.updatedAt,
     currentSeasonUpdatedAt: contextBeforeProvider.updatedAt,
     snapshotInterpretationId: evidence.deterministicInterpretation?.id,
-    currentInterpretationId: interpretation?.id,
-    currentInterpretationStatus: interpretation?.status,
+    currentInterpretationId: interpretation.id,
+    currentInterpretationStatus: interpretation.status,
   });
   if (!beforeProvider.current) {
     return Response.json({ error: `${beforeProvider.reason ?? "As evidências agronômicas mudaram."} Atualize a análise e gere novamente a partir do contexto atual.` }, { status: 409 });
@@ -152,9 +167,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: error instanceof Error ? error.message : "Falha ao gerar prescrição." }, { status: 502 });
   }
 
-  const [interpretationAfterProvider, contextAfterProvider] = await Promise.all([
+  const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider] = await Promise.all([
     getLatestInterpretation(session.tenantId, id, session.userId),
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   const afterProvider = evaluatePrescriptionSnapshotConsistency({
     snapshotSeasonUpdatedAt: evidence.season.updatedAt,
@@ -166,6 +182,15 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!afterProvider.current) {
     return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
   }
+  if (
+    !interpretationAfterProvider?.id
+    || evidenceAfterProvider.interpretationId !== interpretationAfterProvider.id
+    || !evidenceAfterProvider.freshness.current
+  ) {
+    return Response.json({
+      error: `${evidenceAfterProvider.freshness.reason ?? "O laudo laboratorial mudou durante a geração."} A resposta antiga foi descartada; recalcule a interpretação e gere novamente.`,
+    }, { status: 409 });
+  }
 
   // Prompt não é barreira de segurança. Antes de persistir, qualquer P2O5/K2O devolvido pelo provedor
   // é recalculado no servidor. Dose inventada, P/K elemental ambíguo, duplicidade ou tentativa de
@@ -173,7 +198,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const providerPkValidation = validatePrescriptionPkRecommendations({
     recommendations: result.prescription.recommendations,
     cropCode: contextAfterProvider.cropProfileCode,
-    interpretation: interpretationItems(interpretationAfterProvider?.structuredOutput),
+    interpretation: interpretationItems(interpretationAfterProvider.structuredOutput),
     yieldGoal: contextAfterProvider.yieldGoal,
     yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
     cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
@@ -191,20 +216,26 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   }
 
   const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);
-  const created = await recordAgronomicPrescriptionGeneration({
-    tenantId: session.tenantId,
-    userId: session.userId,
-    analysisId: id,
-    interpretationId: interpretationAfterProvider?.id ?? null,
-    provider: result.provider,
-    model: result.model,
-    promptVersion: result.promptVersion,
-    requestPayload: { evidence },
-    responsePayload: { prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel },
-    tokensUsed: result.tokensUsed ?? null,
-    costUsd: result.costUsd ?? null,
-    supersedes: previous?.status === "CHANGES_REQUESTED" ? previous.id : null,
-  });
-
-  return Response.json({ generation: created, prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel }, { status: 201 });
+  try {
+    const created = await recordAgronomicPrescriptionGenerationSafely({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      analysisId: id,
+      interpretationId: interpretationAfterProvider.id,
+      expectedSeasonUpdatedAt: contextAfterProvider.updatedAt,
+      provider: result.provider,
+      model: result.model,
+      promptVersion: result.promptVersion,
+      requestPayload: { evidence },
+      responsePayload: { prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel },
+      tokensUsed: result.tokensUsed ?? null,
+      costUsd: result.costUsd ?? null,
+      supersedes: previous?.status === "CHANGES_REQUESTED" ? previous.id : null,
+    });
+    return Response.json({ generation: created, prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel }, { status: 201 });
+  } catch (error) {
+    return Response.json({
+      error: error instanceof Error ? error.message : "As evidências mudaram antes de salvar a prescrição. Gere novamente.",
+    }, { status: error instanceof Error && "status" in error && typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 409 });
+  }
 }
