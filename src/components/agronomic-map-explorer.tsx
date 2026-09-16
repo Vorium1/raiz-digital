@@ -71,7 +71,9 @@ export function AgronomicMapExplorer() {
   const [satelliteLayer, setSatelliteLayerState] = useState(searchParams.get("satelite") === "1");
   const [layer, setLayer] = useState<MapLayerResponse | null>(null);
   const [layerLoading, setLayerLoading] = useState(false);
+  const [layerError, setLayerError] = useState<string | null>(null);
   const [ndvi, setNdvi] = useState<NdviSnapshot | null>(null);
+  const [ndviFieldId, setNdviFieldId] = useState<string | null>(null);
   const [ndviLoading, setNdviLoading] = useState(false);
   const [ndviRaster, setNdviRaster] = useState<MapImageOverlay | null>(null);
   const [ndviRasterLoading, setNdviRasterLoading] = useState(false);
@@ -85,8 +87,22 @@ export function AgronomicMapExplorer() {
     if (next.satelite !== undefined) { if (next.satelite) params.set("satelite", "1"); else params.delete("satelite"); }
     router.replace(`/mapas?${params.toString()}`, { scroll: false });
   }
-  function setSelectedOrderId(next: string) { setSelectedOrderIdState(next); updateUrl({ ordem: next }); }
-  function setParameter(next: string) { setParameterState(next); updateUrl({ parametro: next }); }
+  function setSelectedOrderId(next: string) {
+    setLayer(null);
+    setLayerError(null);
+    setNdvi(null);
+    setNdviFieldId(null);
+    setNdviRaster(null);
+    setNdviRasterError(null);
+    setSelectedOrderIdState(next);
+    updateUrl({ ordem: next });
+  }
+  function setParameter(next: string) {
+    setLayer(null);
+    setLayerError(null);
+    setParameterState(next);
+    updateUrl({ parametro: next });
+  }
   function setStatusFilter(next: "all" | "collected" | "pending") { setStatusFilterState(next); updateUrl({ status: next }); }
   function setSatelliteLayer(next: boolean) { setSatelliteLayerState(next); updateUrl({ satelite: next }); }
 
@@ -126,27 +142,53 @@ export function AgronomicMapExplorer() {
   }, [fieldGroups, search, selectedOrder]);
 
   useEffect(() => {
-    if (!selectedOrderId) { setLayer(null); return; }
+    if (!selectedOrderId) {
+      setLayer(null);
+      setLayerLoading(false);
+      setLayerError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setLayer(null);
     setLayerLoading(true);
+    setLayerError(null);
     const query = parameter ? `?parameter=${encodeURIComponent(parameter)}` : "";
-    void fetch(`/api/collection-orders/${selectedOrderId}/map-layer${query}`, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data: MapLayerResponse) => {
+    void fetch(`/api/collection-orders/${selectedOrderId}/map-layer${query}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? `Não foi possível carregar a camada do mapa (HTTP ${response.status}).`);
+        }
+        return response.json() as Promise<MapLayerResponse>;
+      })
+      .then((data) => {
+        if (controller.signal.aborted) return;
         setLayer(data);
         setLayerLoading(false);
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setLayer(null);
+        setLayerLoading(false);
+        setLayerError(caught instanceof Error ? caught.message : "Não foi possível carregar a camada do mapa.");
       });
+    return () => controller.abort();
   }, [selectedOrderId, parameter]);
 
   // A leitura temporal vem apenas do que já está salvo; ligar a camada nunca dispara aquisição externa.
   useEffect(() => {
     if (!satelliteLayer || !selectedOrder) {
       setNdvi(null);
+      setNdviFieldId(null);
       setNdviLoading(false);
       return;
     }
     const controller = new AbortController();
+    const fieldId = selectedOrder.fieldId;
+    setNdvi(null);
+    setNdviFieldId(null);
     setNdviLoading(true);
-    void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi`, { cache: "no-store", signal: controller.signal })
+    void fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Não foi possível carregar a leitura NDVI (HTTP ${response.status}).`);
         return response.json();
@@ -154,19 +196,23 @@ export function AgronomicMapExplorer() {
       .then((data) => {
         if (controller.signal.aborted) return;
         setNdvi(data.latest ?? null);
+        setNdviFieldId(fieldId);
         setNdviLoading(false);
       })
       .catch(() => {
         if (controller.signal.aborted) return;
         setNdvi(null);
+        setNdviFieldId(null);
         setNdviLoading(false);
       });
     return () => controller.abort();
   }, [satelliteLayer, selectedOrder]);
 
+  const currentNdvi = selectedOrder && ndviFieldId === selectedOrder.fieldId ? ndvi : null;
+
   // O raster espacial usa exatamente a aquisição salva selecionada acima. Nada é interpolado no frontend.
   useEffect(() => {
-    if (!satelliteLayer || !selectedOrder || !ndvi?.capturedAt) {
+    if (!satelliteLayer || !selectedOrder || !currentNdvi?.capturedAt) {
       setNdviRaster(null);
       setNdviRasterLoading(false);
       setNdviRasterError(null);
@@ -178,7 +224,7 @@ export function AgronomicMapExplorer() {
     setNdviRaster(null);
     setNdviRasterLoading(true);
     setNdviRasterError(null);
-    const date = ndvi.capturedAt.slice(0, 10);
+    const date = currentNdvi.capturedAt.slice(0, 10);
 
     void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi/map?date=${encodeURIComponent(date)}`, {
       cache: "no-store",
@@ -209,7 +255,7 @@ export function AgronomicMapExplorer() {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [satelliteLayer, selectedOrder, ndvi?.capturedAt]);
+  }, [satelliteLayer, selectedOrder, currentNdvi?.capturedAt]);
 
   const points: MapPoint[] = useMemo(() => {
     const source = layer?.points ?? selectedOrder?.points ?? [];
@@ -319,11 +365,12 @@ export function AgronomicMapExplorer() {
               )}
               {satelliteLayer && (
                 ndviLoading ? <p><Icon name="clock" size={12}/> Carregando leitura de satélite…</p>
-                : ndvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster espacial real da aquisição Sentinel-2 de {new Date(ndvi.capturedAt).toLocaleDateString("pt-BR")} ({ndvi.source}){ndvi.cloudCoverPct != null ? `, ${Math.round(ndvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
+                : currentNdvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster espacial real da aquisição Sentinel-2 de {new Date(currentNdvi.capturedAt).toLocaleDateString("pt-BR")} ({currentNdvi.source}){currentNdvi.cloudCoverPct != null ? `, ${Math.round(currentNdvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
                 : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
               )}
               {satelliteLayer && ndviRasterLoading && <p><Icon name="clock" size={12}/> Carregando raster NDVI espacial…</p>}
               {satelliteLayer && ndviRasterError && <p className="ndvi-panel-error"><strong>Raster espacial indisponível.</strong> {ndviRasterError} O contorno e os pontos reais permanecem visíveis; nenhuma faixa é inventada.</p>}
+              {layerError && <p className="ndvi-panel-error"><strong>Camada agronômica indisponível.</strong> {layerError}</p>}
             </div>
 
             {parameter && layer && layer.interpretationStatus && (
@@ -371,9 +418,9 @@ export function AgronomicMapExplorer() {
                 )}
               </div>
             )}
-            {satelliteLayer && ndvi && (
+            {satelliteLayer && currentNdvi && (
               <ul className="ndvi-zone-legend" style={{ padding: "0 4px" }}>
-                {Object.entries(ndvi.zoneBreakdownPct).filter(([, pct]) => (pct ?? 0) > 0).map(([zone, pct]) => (
+                {Object.entries(currentNdvi.zoneBreakdownPct).filter(([, pct]) => (pct ?? 0) > 0).map(([zone, pct]) => (
                   <li key={zone}><i style={{ background: NDVI_ZONE_COLOR[zone as keyof typeof NDVI_ZONE_COLOR] }}/>{VIGOR_ZONE_LABELS[zone as keyof typeof VIGOR_ZONE_LABELS] ?? zone} — {pct}%</li>
                 ))}
               </ul>
