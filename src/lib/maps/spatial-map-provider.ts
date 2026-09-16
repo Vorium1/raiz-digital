@@ -1,6 +1,6 @@
 "use client";
 
-import { hasGoogleMapsBrowserKey } from "@/lib/maps/google-maps-loader";
+import { hasGoogleMapsBrowserKey } from "./google-maps-loader.ts";
 
 export type SpatialMapProvider = "GOOGLE" | "LEAFLET";
 export type SpatialMapProviderResolution = {
