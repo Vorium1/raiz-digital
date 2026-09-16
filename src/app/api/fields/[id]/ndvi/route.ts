@@ -5,8 +5,13 @@ import {
   detectWithinFieldVariability,
 } from "@/domain/ndvi-engine";
 import { getPlatformSession } from "@/lib/auth/session";
+import {
+  NDVI_RASTER_ALGORITHM_VERSION,
+  NdviRasterPersistenceError,
+  saveRequiredNdviRasterArtifact,
+} from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getLatestNdviSnapshot, listNdviHistoryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
-import { copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const HISTORY_LOOKBACK_DAYS = 120;
@@ -20,10 +25,18 @@ function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnap
   };
 }
 
+function hasArchivedRaster(snapshot: any) {
+  return Boolean(
+    snapshot?.rasterObjectKey && snapshot?.rasterSha256 && snapshot?.rasterBytes &&
+    Array.isArray(snapshot?.rasterBbox) && snapshot.rasterBbox.length === 4 &&
+    snapshot?.rasterWidth && snapshot?.rasterHeight && snapshot?.rasterAlgorithm &&
+    snapshot?.rasterMosaickingOrder && snapshot?.rasterArchivedAt,
+  );
+}
+
 /**
  * GET nunca chama o provedor externo: só lê os snapshots já persistidos e calcula inteligência
- * determinística sobre eles. A geometria retornada já passa pelo mesmo escopo tenant/RLS e é usada
- * pelo cliente apenas para sobrepor o PNG NDVI real no mapa do próprio talhão.
+ * determinística sobre eles. A geometria retornada já passa pelo mesmo escopo tenant/RLS.
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -40,10 +53,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 }
 
 /**
- * POST atualiza o histórico do talhão em uma única consulta Statistical API de 120 dias. O provedor
- * devolve uma entrada diária válida; persistimos no máximo as 18 mais recentes por atualização para
- * limitar escrita/auditoria. O banco usa upsert por talhão+data+fonte, então repetir a atualização é
- * idempotente e nunca cria duas leituras para a mesma aquisição diária.
+ * POST atualiza o histórico do talhão pela Statistical API e, antes de efetivar cada snapshot novo,
+ * gera o PNG espacial correspondente pela Process API e o arquiva de forma content-addressed.
+ *
+ * Uma linha que já possui raster arquivado vira evidência imutável: refresh posterior preserva tanto
+ * a estatística quanto o artefato daquele dia. Linhas legadas sem raster podem ser promovidas uma única
+ * vez para o novo contrato. Assim a visualização histórica deixa de ser regenerada sob demanda.
  */
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -75,7 +90,47 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   }
 
   const selectedScenes = scenes.slice(-MAX_SCENES_PER_REFRESH);
+  const existingHistory = await listNdviHistoryForField(session.tenantId, fieldId, session.userId);
+  const archivedByDate = new Map(
+    existingHistory
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot))
+      .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
+  );
+
+  let archivedRasterCount = 0;
+  let preservedArchivedCount = 0;
+
   for (const scene of selectedScenes) {
+    if (archivedByDate.has(scene.capturedAt)) {
+      preservedArchivedCount += 1;
+      continue;
+    }
+
+    let raster;
+    try {
+      raster = await copernicusNdviProvider.fetchFieldNdviMap({
+        fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
+        capturedAt: scene.capturedAt,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao gerar o raster NDVI da aquisição.";
+      return Response.json({ error: message, capturedAt: scene.capturedAt, archivedRasterCount }, { status: 502 });
+    }
+
+    let storedRaster;
+    try {
+      storedRaster = await saveRequiredNdviRasterArtifact({
+        tenantId: session.tenantId,
+        fieldId,
+        capturedAt: scene.capturedAt,
+        bytes: Buffer.from(raster.bytes),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao arquivar o raster NDVI.";
+      const status = error instanceof NdviRasterPersistenceError ? 503 : 502;
+      return Response.json({ error: message, capturedAt: scene.capturedAt, archivedRasterCount }, { status });
+    }
+
     const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
     await saveNdviSnapshot({
       tenantId: session.tenantId,
@@ -91,7 +146,18 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       maxNdvi: scene.maxNdvi,
       stddevNdvi: scene.stddevNdvi,
       zoneBreakdownPct,
+      rasterArtifact: {
+        key: storedRaster.key,
+        sha256: storedRaster.sha256,
+        bytes: storedRaster.bytes,
+        bbox: raster.bbox,
+        width: raster.width,
+        height: raster.height,
+        algorithm: NDVI_RASTER_ALGORITHM_VERSION,
+        mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
+      },
     });
+    archivedRasterCount += 1;
   }
 
   const [latest, history] = await Promise.all([
@@ -105,7 +171,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       latest,
       history,
       fieldBoundary: boundary,
-      importedCount: selectedScenes.length,
+      importedCount: archivedRasterCount,
+      archivedRasterCount,
+      preservedArchivedCount,
+      consideredSceneCount: selectedScenes.length,
       requestedWindowDays: HISTORY_LOOKBACK_DAYS,
       ...intelligencePayload(latest, history),
     },
