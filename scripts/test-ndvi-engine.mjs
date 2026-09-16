@@ -6,7 +6,12 @@ import {
   computeZoneBreakdownPct,
   detectWithinFieldVariability,
 } from "../src/domain/ndvi-engine.ts";
-import { fieldGeometryBbox, summarizePixelValidity } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import {
+  COPERNICUS_NDVI_MOSAICKING_ORDER,
+  copernicusNdviDataFilter,
+  fieldGeometryBbox,
+  summarizePixelValidity,
+} from "../src/lib/satellite/copernicus-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -182,4 +187,11 @@ assert.equal(unknownQualityLatest.direction, "QUEDA");
 assert.equal(unknownQualityLatest.hasRelevantTemporalChange, false);
 assert.ok(unknownQualityLatest.note.includes("não dispara alerta"));
 
-console.log("ndvi-engine: 28 cenários aprovados (vigor, temporal, gate de qualidade, pixels válidos e envelope espacial)");
+// 29. Statistical e Process API usam uma única política de seleção de tiles.
+assert.equal(COPERNICUS_NDVI_MOSAICKING_ORDER, "leastCC");
+assert.deepEqual(copernicusNdviDataFilter(17), {
+  maxCloudCoverage: 17,
+  mosaickingOrder: "leastCC",
+});
+
+console.log("ndvi-engine: 29 cenários aprovados (vigor, temporal, gate de qualidade, pixels válidos, envelope espacial e mosaico Copernicus)");
