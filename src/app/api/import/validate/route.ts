@@ -1,10 +1,10 @@
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
-import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
+import { compactLabImportPreview, jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { RawImportPersistenceError, saveRequiredRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
 
-const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.tabularRequestBytes;
+const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.functionPayloadBytes;
 
 export async function POST(request: Request) {
   const database = isDatabaseMode();
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
-    return Response.json({ error: "Requisição do arquivo excede o limite desta etapa." }, { status: 413 });
+    return Response.json({ error: "Requisição do arquivo excede o limite seguro do ambiente atual." }, { status: 413 });
   }
 
   try {
@@ -38,11 +38,9 @@ export async function POST(request: Request) {
       : Buffer.byteLength(body.content, "utf8");
     const rawLimit = isSpreadsheet ? LAB_UPLOAD_LIMITS.spreadsheetBytes : LAB_UPLOAD_LIMITS.textBytes;
     if (rawBytes > rawLimit) {
-      return Response.json({ error: `Arquivo excede ${(rawLimit / 1_000_000).toLocaleString("pt-BR")} MB para este formato.` }, { status: 413 });
+      return Response.json({ error: `Arquivo excede ${(rawLimit / 1_000_000).toLocaleString("pt-BR")} MB no upload direto desta versão.` }, { status: 413 });
     }
 
-    // Mesmo a pré-validação é uma leitura agronômica do arquivo. Em modo real, o ORIGINAL precisa
-    // existir no storage durável antes de o parser examinar uma única célula/linha.
     const stored = session
       ? await saveRequiredRawImportFile({
           tenantId: session.tenantId,
@@ -61,8 +59,6 @@ export async function POST(request: Request) {
       ? buildLabImportPreviewFromXlsxBase64(body.content, fileName, importContext)
       : buildLabImportPreview(body.content, fileName, importContext);
 
-    // O cliente transporta este payload opaco até /commit. Ele está assinado e vinculado ao mesmo
-    // arquivo bruto que acabou de ser arquivado, evitando uma segunda versão silenciosa entre preview e commit.
     const transportContent = stored && session
       ? wrapExtractedLabContent(body.content, {
           key: stored.key,
@@ -73,7 +69,18 @@ export async function POST(request: Request) {
         }, session.tenantId)
       : body.content;
 
-    return Response.json({ ...preview, transportContent, sourceArchived: Boolean(stored) }, { status: 200 });
+    const responsePayload = {
+      ...compactLabImportPreview(preview),
+      transportContent,
+      sourceArchived: Boolean(stored),
+    };
+    if (jsonTransportBytes(responsePayload) > LAB_UPLOAD_LIMITS.functionPayloadBytes) {
+      return Response.json({
+        error: "O preview e o transporte do laudo excedem o limite de resposta do ambiente atual. Divida o arquivo por área ou laboratório.",
+      }, { status: 413 });
+    }
+
+    return Response.json(responsePayload, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível validar o arquivo.";
     const status = error instanceof RawImportPersistenceError ? 503 : 422;
