@@ -125,6 +125,38 @@ A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez
 
 O refresh temporal considera no máximo 18 aquisições recentes. A Process API só é chamada para datas que ainda não possuem raster arquivado; repetir um refresh preserva os artefatos existentes e não os regenera. Isso limita consumo do Copernicus e mantém a cadeia histórica estável.
 
+## Auditoria de homologação da custódia NDVI
+
+A prova externa do #84 deve ser feita em ambiente autorizado, sem copiar credenciais para chat, issue ou log. O repositório contém um auditor somente leitura:
+
+```bash
+HOMOLOGATION_DATABASE_URL=<banco-autorizado> \
+NDVI_AUDIT_TENANT_ID=<tenant-uuid> \
+NDVI_AUDIT_FIELD_ID=<field-uuid> \
+NDVI_AUDIT_DATE=2026-09-10 \
+STORAGE_PROVIDER=s3 \
+S3_ENDPOINT=<endpoint> \
+S3_BUCKET=<bucket> \
+S3_ACCESS_KEY=<access-key> \
+S3_SECRET_KEY=<secret-key> \
+npm run ndvi:audit-raster
+```
+
+`NDVI_AUDIT_DATE` é opcional; sem ela o auditor usa o snapshot Sentinel-2 mais recente do talhão. `NDVI_AUDIT_ACTOR_USER_ID` pode ser informado quando a política RLS do ambiente exigir identidade de usuário.
+
+O comando `ndvi:audit-raster`:
+
+- abre transação PostgreSQL `READ ONLY` e termina em `ROLLBACK`;
+- confirma que as colunas da migration 037 existem;
+- não escolhe tenant/talhão implicitamente;
+- exige `STORAGE_PROVIDER=s3` para a prova de homologação;
+- recupera o objeto já arquivado, sem chamar Copernicus;
+- valida SHA-256 e quantidade de bytes contra o snapshot;
+- valida presença de bbox/dimensões/algoritmo/mosaico;
+- não imprime bbox, latitude ou longitude do cliente.
+
+Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeção visual do raster alinhado ao talhão constitui a evidência técnica necessária para considerar o gate de custódia atendido. CI e Vercel `Ready` sozinhos não substituem essa prova.
+
 ## Checklist para vincular o Google Maps
 
 1. Criar/selecionar projeto no Google Cloud.
