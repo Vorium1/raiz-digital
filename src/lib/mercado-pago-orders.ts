@@ -1,5 +1,5 @@
 import { isMercadoPagoBrazilCheckoutUrl } from "@/domain/mercado-pago-checkout";
-import { buildRaizInvoiceExternalReference, MercadoPagoApiError } from "@/lib/mercado-pago";
+import { buildRaizInvoiceExternalReference, MercadoPagoApiError, normalizeMercadoPagoPaymentIds } from "@/lib/mercado-pago";
 
 const MERCADO_PAGO_API = "https://api.mercadopago.com";
 
@@ -46,11 +46,6 @@ function safeReturnUrl(path: string) {
   }
 }
 
-/**
- * Cria uma Order de Checkout Pro para uma fatura já existente na RAIZ.
- * A chamada não marca a fatura como paga; a autoridade continua sendo a
- * reconciliação assíncrona do webhook contra o recurso oficial do provedor.
- */
 export async function createMercadoPagoInvoiceCheckout(input: {
   tenantId: string;
   invoiceId: string;
@@ -151,13 +146,13 @@ export async function getMercadoPagoOrder(orderId: string): Promise<MercadoPagoO
     const transactions = payload.transactions && typeof payload.transactions === "object"
       ? payload.transactions as { payments?: unknown[] }
       : {};
-    const paymentIds = Array.isArray(transactions.payments)
+    const paymentIds = normalizeMercadoPagoPaymentIds(Array.isArray(transactions.payments)
       ? transactions.payments.flatMap((entry) => {
           if (!entry || typeof entry !== "object") return [];
           const paymentId = (entry as { id?: unknown }).id;
           return typeof paymentId === "string" && paymentId ? [paymentId] : [];
         })
-      : [];
+      : []);
 
     const totalAmount = Number(payload.total_amount);
     const totalPaidAmount = Number(payload.total_paid_amount ?? 0);
