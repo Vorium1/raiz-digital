@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
 import { Icon } from "@/components/icon";
 import {
+  effectivePointCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
   type FieldMapProps,
@@ -84,7 +85,8 @@ export function LeafletFieldMap({
       const palette = current.colorFor ? current.colorFor(point) : defaultColor(point);
       const positionKind = pointPositionKind(point);
       const trustedPosition = isMeasuredOrAudited(positionKind);
-      const marker = L.circleMarker([point.latitude, point.longitude], {
+      const effective = effectivePointCoordinates(point);
+      const marker = L.circleMarker([effective.latitude, effective.longitude], {
         radius: trustedPosition ? 7 : 6,
         color: palette.stroke,
         fillColor: palette.fill,
@@ -94,7 +96,7 @@ export function LeafletFieldMap({
       }).addTo(pointsLayer);
       marker.on("click", () => onSelectRef.current(point));
       marker.bindTooltip(`${point.code} · ${positionDescription(point)}`, { direction: "top", offset: [0, -8] });
-      bounds.push([point.latitude, point.longitude]);
+      bounds.push([effective.latitude, effective.longitude]);
     });
 
     if (bounds.length) {
@@ -160,6 +162,7 @@ export function LeafletFieldMap({
   const showAgronomicFields = selectedPoint && selectedPoint.value !== undefined;
   const hasPlannedOnlyPoints = points.some((point) => pointPositionKind(point) === "PLANNED");
   const hasAuditedSourcePoints = points.some((point) => pointPositionKind(point) === "AUDITED_SOURCE");
+  const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
     <div className="real-field-map">
@@ -171,7 +174,7 @@ export function LeafletFieldMap({
         {hasPlannedOnlyPoints && <span className="portfolio-map-note">Círculo tracejado = posição planejada, sem GPS/fonte real auditada</span>}
         <span className="real-field-map-hint">{hint}</span>
       </div>
-      {selectedPoint && (
+      {selectedPoint && selectedCoordinates && (
         <div className="real-field-map-panel">
           <div className="real-field-map-panel-head">
             <strong>{selectedPoint.code}</strong>
@@ -188,7 +191,7 @@ export function LeafletFieldMap({
               </>
             )}
             <div><dt>Posição exibida</dt><dd>{positionDescription(selectedPoint)}</dd></div>
-            <div><dt>Coordenadas</dt><dd>{selectedPoint.latitude.toFixed(7)}, {selectedPoint.longitude.toFixed(7)}</dd></div>
+            <div><dt>Coordenadas</dt><dd>{selectedCoordinates.latitude.toFixed(7)}, {selectedCoordinates.longitude.toFixed(7)}</dd></div>
             {pointPositionKind(selectedPoint) === "PLANNED" && <div><dt>Validação</dt><dd className="real-field-map-reason">Sem captura GPS observada nem fonte espacial real auditada. A posição exibida é de planejamento e não deve ser tratada como coordenada medida em campo.</dd></div>}
             {pointPositionKind(selectedPoint) === "AUDITED_SOURCE" && <div><dt>Proveniência</dt><dd>Coordenada real importada de fonte espacial auditada; a origem declarada permanece registrada em “Origem GPS”.</dd></div>}
             <div><dt>Profundidade</dt><dd>{selectedPoint.depthFromCm}–{selectedPoint.depthToCm} cm</dd></div>
