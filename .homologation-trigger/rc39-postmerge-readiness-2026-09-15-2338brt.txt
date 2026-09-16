@@ -1,0 +1,2 @@
+Target develop SHA: 510071d6b724ab7b164bed14cf6ad71405480d4a
+Reason: readiness pós-merge das correções RC39; nenhuma promoção para main autorizada.
