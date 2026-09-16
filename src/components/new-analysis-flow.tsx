@@ -41,6 +41,11 @@ type ContextData = {
   laboratories: Array<{ id: string; name: string; taxId: string | null }>;
 };
 
+type ImportPreviewWithCounts = LabImportPreview & {
+  normalizedRowCount?: number;
+  issueCount?: number;
+};
+
 const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [] };
 
 function importSourceType(fileName: string | undefined) {
@@ -60,7 +65,7 @@ export function NewAnalysisFlow({
   const router = useRouter();
   const [step, setStep] = useState(Math.min(Math.max(initialStep, 0), steps.length - 1));
   const [method, setMethod] = useState("Mehlich-1");
-  const [importPreview, setImportPreview] = useState<LabImportPreview | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreviewWithCounts | null>(null);
   const [importFile, setImportFile] = useState<{ fileName: string; content: string } | null>(null);
   const [analysisContextDraft, setAnalysisContextDraft] = useState<AnalysisContextDraft>(EMPTY_ANALYSIS_CONTEXT_DRAFT);
   const [context, setContext] = useState<ContextData>(emptyContext);
@@ -76,10 +81,11 @@ export function NewAnalysisFlow({
   const [labError, setLabError] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
+  const [createdAnalysisId, setCreatedAnalysisId] = useState<string | null>(null);
 
   async function createLaboratory() {
     const name = newLabName.trim();
-    if (!name) return;
+    if (!name || createdAnalysisId) return;
     setCreatingLab(true);
     setLabError("");
     try {
@@ -133,7 +139,7 @@ export function NewAnalysisFlow({
   const selectedSeason = context.seasons.find((item) => item.id === seasonId);
 
   useEffect(() => {
-    if (!databaseMode || !selectedSeason) return;
+    if (!databaseMode || !selectedSeason || createdAnalysisId) return;
     const registeredSoil = [selectedSeason.soilType, selectedSeason.soilTexture].filter(Boolean).join(" · ");
     setAnalysisContextDraft((current) => ({
       ...current,
@@ -141,9 +147,10 @@ export function NewAnalysisFlow({
       tillageSystem: selectedSeason.managementSystem?.trim() || current.tillageSystem,
       soilContextNotes: registeredSoil || current.soilContextNotes,
     }));
-  }, [databaseMode, selectedSeason]);
+  }, [databaseMode, selectedSeason, createdAnalysisId]);
 
   const importReady = Boolean(importPreview && importPreview.blockers === 0);
+  const totalImportRows = importPreview?.normalizedRowCount ?? importPreview?.rows.length ?? 0;
   const analysisOutcome = !importPreview ? "AWAITING_LAB" : importReady ? "IMPORTED" : "INCONSISTENT";
   const contextReady = databaseMode ? Boolean(clientId && propertyId && fieldId && seasonId) : true;
   const cropAvailable = databaseMode ? Boolean(selectedSeason?.nextCrop || selectedSeason?.currentCrop) : true;
@@ -168,17 +175,20 @@ export function NewAnalysisFlow({
   const spatialMissing = readiness.missing.filter((item) => item.blocks === "SPATIAL_ONLY");
 
   function chooseClient(value: string) {
+    if (createdAnalysisId) return;
     setClientId(value);
     setPropertyId("");
     setFieldId("");
     setSeasonId("");
   }
   function chooseProperty(value: string) {
+    if (createdAnalysisId) return;
     setPropertyId(value);
     setFieldId("");
     setSeasonId("");
   }
   function chooseField(value: string) {
+    if (createdAnalysisId) return;
     setFieldId(value);
     setSeasonId("");
   }
@@ -196,32 +206,36 @@ export function NewAnalysisFlow({
     }
 
     setFinishing(true);
+    let analysisId = createdAnalysisId;
     try {
-      const analysisResponse = await fetch("/api/analyses", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cropSeasonId: seasonId,
-          laboratoryId: laboratoryId || undefined,
-          sourceType: importSourceType(importFile?.fileName),
-          analysisDepth: analysisDepthId,
-          analysisContext: {
-            schemaVersion: 1,
-            draft: analysisContextDraft,
-            evidence,
-            readiness: {
-              effectiveLayer: readiness.effectiveLayer,
-              completeForRequestedDepth: readiness.completeForRequestedDepth,
-              spatialReady: readiness.spatialReady,
-              missingCodes: readiness.missing.map((item) => item.code),
-              limitations: readiness.limitations,
+      if (!analysisId) {
+        const analysisResponse = await fetch("/api/analyses", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            cropSeasonId: seasonId,
+            laboratoryId: laboratoryId || undefined,
+            sourceType: importSourceType(importFile?.fileName),
+            analysisDepth: analysisDepthId,
+            analysisContext: {
+              schemaVersion: 1,
+              draft: analysisContextDraft,
+              evidence,
+              readiness: {
+                effectiveLayer: readiness.effectiveLayer,
+                completeForRequestedDepth: readiness.completeForRequestedDepth,
+                spatialReady: readiness.spatialReady,
+                missingCodes: readiness.missing.map((item) => item.code),
+                limitations: readiness.limitations,
+              },
             },
-          },
-        }),
-      });
-      const analysisPayload = await analysisResponse.json().catch(() => ({}));
-      if (!analysisResponse.ok) throw new Error(analysisPayload.error ?? "Não foi possível criar a análise.");
-      const analysisId = analysisPayload.analysis.id as string;
+          }),
+        });
+        const analysisPayload = await analysisResponse.json().catch(() => ({}));
+        if (!analysisResponse.ok) throw new Error(analysisPayload.error ?? "Não foi possível criar a análise.");
+        analysisId = analysisPayload.analysis.id as string;
+        setCreatedAnalysisId(analysisId);
+      }
 
       if (importFile) {
         const commitResponse = await fetch("/api/import/commit", {
@@ -244,7 +258,9 @@ export function NewAnalysisFlow({
       router.push(`/analises/${analysisId}`);
       router.refresh();
     } catch (error) {
-      setFinishError(error instanceof Error ? error.message : "Não foi possível concluir o fluxo.");
+      const message = error instanceof Error ? error.message : "Não foi possível concluir o fluxo.";
+      setFinishError(analysisId && importFile ? `${message} O registro da análise já existe e será reutilizado na próxima tentativa; nenhuma análise duplicada será criada.` : message);
+      if (analysisId) setStep(3);
     } finally {
       setFinishing(false);
     }
@@ -255,7 +271,7 @@ export function NewAnalysisFlow({
       <ol className="stepper">
         {steps.map((item, index) => (
           <li key={item.label} className={index === step ? "active" : index < step ? "done" : ""}>
-            <button type="button" onClick={() => setStep(index)} aria-label={`Ir para ${item.label}`}>
+            <button type="button" disabled={Boolean(createdAnalysisId) && index < 2} onClick={() => setStep(index)} aria-label={`Ir para ${item.label}`}>
               <span>{index < step ? <Icon name="check" size={15} /> : index + 1}</span>
               <div><small>ETAPA {index + 1}</small><strong>{item.label}</strong></div>
             </button>
@@ -277,10 +293,10 @@ export function NewAnalysisFlow({
             <div className="form-grid">
               {databaseMode ? (
                 <>
-                  <label><span>Cliente *</span><select value={clientId} onChange={(event) => chooseClient(event.target.value)}><option value="">Selecione o cliente</option>{context.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-                  <label><span>Propriedade *</span><select value={propertyId} onChange={(event) => chooseProperty(event.target.value)} disabled={!clientId}><option value="">Selecione a propriedade</option>{properties.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.municipality}/{item.state}</option>)}</select></label>
-                  <label><span>Talhão *</span><select value={fieldId} onChange={(event) => chooseField(event.target.value)} disabled={!propertyId}><option value="">Selecione o talhão</option>{fields.map((item) => <option key={item.id} value={item.id}>{item.name} · {Number(item.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</option>)}</select></label>
-                  <label><span>Safra *</span><select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} disabled={!fieldId}><option value="">Selecione a safra</option>{seasons.map((item) => <option key={item.id} value={item.id}>{item.seasonLabel}</option>)}</select></label>
+                  <label><span>Cliente *</span><select value={clientId} onChange={(event) => chooseClient(event.target.value)} disabled={Boolean(createdAnalysisId)}><option value="">Selecione o cliente</option>{context.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+                  <label><span>Propriedade *</span><select value={propertyId} onChange={(event) => chooseProperty(event.target.value)} disabled={!clientId || Boolean(createdAnalysisId)}><option value="">Selecione a propriedade</option>{properties.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.municipality}/{item.state}</option>)}</select></label>
+                  <label><span>Talhão *</span><select value={fieldId} onChange={(event) => chooseField(event.target.value)} disabled={!propertyId || Boolean(createdAnalysisId)}><option value="">Selecione o talhão</option>{fields.map((item) => <option key={item.id} value={item.id}>{item.name} · {Number(item.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</option>)}</select></label>
+                  <label><span>Safra *</span><select value={seasonId} onChange={(event) => !createdAnalysisId && setSeasonId(event.target.value)} disabled={!fieldId || Boolean(createdAnalysisId)}><option value="">Selecione a safra</option>{seasons.map((item) => <option key={item.id} value={item.id}>{item.seasonLabel}</option>)}</select></label>
                   <label><span>Cultura atual</span><input value={selectedSeason?.currentCrop ?? ""} readOnly placeholder="Definida na safra" /></label>
                   <label><span>Próxima cultura</span><input value={selectedSeason?.nextCrop ?? ""} readOnly placeholder="Definida na safra" /></label>
                   <label><span>Meta produtiva</span><input value={selectedSeason?.yieldGoal != null ? `${selectedSeason.yieldGoal} ${selectedSeason.yieldGoalUnit ?? ""}` : ""} readOnly placeholder="Não informada" /></label>
@@ -311,10 +327,10 @@ export function NewAnalysisFlow({
           <div className="form-section">
             <div className="form-heading"><span className="eyebrow">RESULTADOS</span><h2>Importe o laudo do laboratório.</h2><p>CSV ou XLSX são lidos e validados. Um arquivo inconsistente não é tratado como evidência válida só para completar o nível escolhido.</p></div>
             <div className="import-options">
-              <div><Icon name="flask" /><span><strong>Laboratório</strong>{databaseMode ? <select value={laboratoryId} onChange={(event) => setLaboratoryId(event.target.value)}><option value="">Não identificado</option>{context.laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.name}</option>)}</select> : <select defaultValue=""><option value="">Identificar / selecionar</option><option>LabSolo</option></select>}</span></div>
+              <div><Icon name="flask" /><span><strong>Laboratório</strong>{databaseMode ? <select value={laboratoryId} onChange={(event) => !createdAnalysisId && setLaboratoryId(event.target.value)} disabled={Boolean(createdAnalysisId)}><option value="">Não identificado</option>{context.laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.name}</option>)}</select> : <select defaultValue=""><option value="">Identificar / selecionar</option><option>LabSolo</option></select>}</span></div>
               <div><Icon name="layers" /><span><strong>Extrator principal P/K</strong><select value={method} onChange={(event) => setMethod(event.target.value)}><option value="">Não informado</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></span></div>
             </div>
-            {databaseMode && <div className="new-lab-inline"><input value={newLabName} onChange={(event) => setNewLabName(event.target.value)} placeholder="Cadastrar novo laboratório pelo nome" disabled={creatingLab} /><button type="button" className="button secondary" disabled={creatingLab || !newLabName.trim()} onClick={() => void createLaboratory()}>{creatingLab ? "Salvando…" : "Cadastrar"}</button></div>}
+            {databaseMode && !createdAnalysisId && <div className="new-lab-inline"><input value={newLabName} onChange={(event) => setNewLabName(event.target.value)} placeholder="Cadastrar novo laboratório pelo nome" disabled={creatingLab} /><button type="button" className="button secondary" disabled={creatingLab || !newLabName.trim()} onClick={() => void createLaboratory()}>{creatingLab ? "Salvando…" : "Cadastrar"}</button></div>}
             {labError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível cadastrar</strong><small>{labError}</small></div></div>}
             <LabImporter method={method} onPreviewChange={setImportPreview} onFileReady={setImportFile} />
           </div>
@@ -327,7 +343,7 @@ export function NewAnalysisFlow({
               <div className="review-summary"><span>Área</span><strong>{databaseMode ? selectedField?.name || "Não selecionada" : "Talhão Norte"}</strong><small>{databaseMode ? `${selectedClient?.name ?? "—"} · ${selectedField ? Number(selectedField.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "0"} ha` : "Fazenda Horizonte · 42,8 ha"}</small></div>
               <div className="review-summary"><span>Cultura</span><strong>{databaseMode ? `${selectedSeason?.currentCrop ?? "—"} → ${selectedSeason?.nextCrop ?? "—"}` : "Soja → Milho"}</strong><small>{databaseMode ? selectedSeason?.seasonLabel ?? "Safra não selecionada" : "Safra 2026/27"}</small></div>
               <div className="review-summary"><span>Profundidade do diagnóstico</span><strong>{readiness.effectiveLayer}/4</strong><small>{readiness.completeForRequestedDepth ? "Dados mínimos do nível solicitado declarados" : `${levelMissing.length} item(ns) mínimo(s) faltando`}</small></div>
-              <div className="review-summary"><span>Laudo</span><strong>{importPreview ? `${importPreview.sampleCount} amostras` : "Ainda não importado"}</strong><small>{importPreview ? `${importPreview.rows.length} resultados · confiança ${importPreview.confidence.score}/100` : "Pode ser anexado depois; a análise ficará incompleta"}</small></div>
+              <div className="review-summary"><span>Laudo</span><strong>{importPreview ? `${importPreview.sampleCount} amostras` : "Ainda não importado"}</strong><small>{importPreview ? `${totalImportRows} resultados · confiança ${importPreview.confidence.score}/100` : "Pode ser anexado depois; a análise ficará incompleta"}</small></div>
             </div>
 
             <div className="validation-list">
@@ -342,13 +358,14 @@ export function NewAnalysisFlow({
             </div>
 
             <div className="workflow-decision"><Icon name="shield" size={19} /><div><span>Estado inicial do laudo</span><strong>{analysisOutcome}</strong><small>Profundidade escolhida e profundidade efetiva são persistidas separadamente. A IA não completa lacunas.</small></div></div>
+            {createdAnalysisId && <div className="import-message review"><Icon name="shield" /><div><strong>Análise já criada</strong><small>Se a importação falhar, a próxima tentativa reutiliza este mesmo registro. Cliente, área e contexto ficam travados para impedir duplicidade ou troca silenciosa do vínculo.</small></div></div>}
             {finishError && <div className="import-message danger"><Icon name="warning" /><div><strong>Não foi possível concluir</strong><small>{finishError}</small></div></div>}
           </div>
         )}
 
         <footer className="wizard-footer">
-          <button className="button ghost" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0 || finishing}>Voltar</button>
-          <div><span>Etapa {step + 1} de {steps.length}</span><button className="button primary" disabled={finishing} onClick={() => step < steps.length - 1 ? setStep((current) => current + 1) : void finishAnalysis()}>{finishing ? "Salvando…" : step === steps.length - 1 ? (databaseMode ? "Criar análise" : "Validar demonstração") : "Continuar"}<Icon name="arrow" size={16} /></button></div>
+          <button className="button ghost" onClick={() => setStep((current) => Math.max(createdAnalysisId ? 2 : 0, current - 1))} disabled={step === 0 || finishing || Boolean(createdAnalysisId && step <= 2)}>Voltar</button>
+          <div><span>Etapa {step + 1} de {steps.length}</span><button className="button primary" disabled={finishing} onClick={() => step < steps.length - 1 ? setStep((current) => current + 1) : void finishAnalysis()}>{finishing ? "Salvando…" : step === steps.length - 1 ? (databaseMode ? (createdAnalysisId ? "Tentar novamente" : "Criar análise") : "Validar demonstração") : "Continuar"}<Icon name="arrow" size={16} /></button></div>
         </footer>
       </section>
     </div>
