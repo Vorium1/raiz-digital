@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  effectivePointCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
 } from "../src/components/spatial-map-types.ts";
@@ -46,14 +47,28 @@ assert.equal(
   "PLANNED",
   "importação genérica não pode virar fonte real auditada por inferência",
 );
+
+const observedPoint = point({
+  gpsSource: "SHAPEFILE_REAL_GPS_LONLAT",
+  latitude: -28.25,
+  longitude: -52.4,
+  observedLatitude: -28.2507777,
+  observedLongitude: -52.4008888,
+});
 assert.equal(
-  pointPositionKind(point({
-    gpsSource: "SHAPEFILE_REAL_GPS_LONLAT",
-    observedLatitude: -28.250001,
-    observedLongitude: -52.400001,
-  })),
+  pointPositionKind(observedPoint),
   "OBSERVED",
   "captura observada em campo deve prevalecer sobre a proveniência histórica",
+);
+assert.deepEqual(
+  effectivePointCoordinates(observedPoint),
+  { latitude: -28.2507777, longitude: -52.4008888 },
+  "mapas devem renderizar a posição observada, não a posição-base, quando ambas existem",
+);
+assert.deepEqual(
+  effectivePointCoordinates(point({ gpsSource: "SHAPEFILE_REAL_EPSG4326", latitude: -28.1234567, longitude: -52.7654321 })),
+  { latitude: -28.1234567, longitude: -52.7654321 },
+  "fonte real auditada sem observed_position deve renderizar a posição importada preservada",
 );
 
 const geometry = {
@@ -111,4 +126,4 @@ assert.ok(GOOGLE_MAPS_LOAD_TIMEOUT_MS >= 10_000, "loader deve ter timeout explí
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS >= 8_000, "saúde dos tiles deve esperar tempo suficiente antes do fallback");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS < GOOGLE_MAPS_LOAD_TIMEOUT_MS, "health check de tiles deve ser limitado e inferior ao teto do loader");
 
-console.log("OK — mapa espacial: proveniência de coordenadas, MultiPolygon, seleção de provider e timeouts fail-closed.");
+console.log("OK — mapa espacial: coordenada efetiva, proveniência, MultiPolygon, provider e timeouts fail-closed.");
