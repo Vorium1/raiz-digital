@@ -9,6 +9,8 @@ import { getAnalysisById } from "@/lib/repositories/analyses";
 
 export const metadata = { title: "Importar laudo" };
 
+const IMPORT_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
 function hasAgronomicContext(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const readiness = (value as { readiness?: unknown }).readiness;
@@ -22,6 +24,8 @@ export default async function ExistingAnalysisImportPage({ params }: { params: P
 
   const { id } = await params;
   const session = await requirePlatformSession();
+  if (!IMPORT_ROLES.has(session.role)) notFound();
+
   const analysis = await getAnalysisById(session.tenantId, id, session.userId);
   if (!analysis) notFound();
 
