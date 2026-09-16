@@ -11,9 +11,8 @@ const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"
  * Leitura de laudo (PDF/foto) por IA.
  *
  * Em modo real, o arquivo ORIGINAL é arquivado de forma durável ANTES de qualquer chamada de IA ou
- * construção de preview. O CSV transcrito leva apenas um envelope opaco de proveniência, que será removido
- * e conferido novamente no commit. Se o arquivo bruto não puder ser persistido, o fluxo falha fechado e a
- * IA não recebe o documento.
+ * construção de preview. O CSV transcrito leva um recibo de proveniência assinado que o vincula ao
+ * arquivo bruto e ao tenant; qualquer alteração entre extração e commit invalida a cadeia de custódia.
  */
 export async function POST(request: Request) {
   const database = isDatabaseMode();
@@ -55,14 +54,14 @@ export async function POST(request: Request) {
       spatialLinked: true,
     });
 
-    const csvContent = stored
+    const csvContent = stored && session
       ? wrapExtractedLabContent(extraction.csvContent, {
           key: stored.key,
           bytes: stored.bytes,
           sha256: stored.sha256,
           fileName: originalFileName,
           sourceType: "PDF_OCR",
-        })
+        }, session.tenantId)
       : extraction.csvContent;
 
     return Response.json({
