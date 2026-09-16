@@ -1,0 +1,46 @@
+name: Debug Schema Repair 035-037
+
+on:
+  push:
+    branches:
+      - debug/dashboard-runtime-20260916
+    paths:
+      - ".github/workflows/debug-schema-repair.yml"
+      - "scripts/repair-schema-035-037.mjs"
+      - "src/lib/admin/schema-repair.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL: require
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify database credential exists
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not configured for this repository."
+            exit 2
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply idempotent schema repair 035-037
+        run: node --experimental-strip-types scripts/repair-schema-035-037.mjs
