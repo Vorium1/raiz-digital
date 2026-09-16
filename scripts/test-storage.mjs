@@ -49,8 +49,40 @@ try {
   assert.equal(unwrapped.source?.key, source.key);
   assert.equal(unwrapped.source?.sha256, source.sha256);
   assert.equal(unwrapped.source?.fileName, source.fileName);
+  assert.equal(unwrapped.source?.sourceType, "PDF_OCR");
   assert.match(unwrapped.source?.extractedSha256 ?? "", /^[a-f0-9]{64}$/);
   assert.match(unwrapped.source?.signature ?? "", /^[a-f0-9]{64}$/);
+
+  // CSV/XLSX também usam o mesmo transporte assinado: a pré-validação real não pode acontecer sobre
+  // uma versão do arquivo e o commit receber silenciosamente outra.
+  const csvSource = {
+    key: "s3:v1:imports/tenant/sources/def-laudo.csv",
+    bytes: Buffer.byteLength(csv),
+    sha256: "b".repeat(64),
+    fileName: "laudo.csv",
+    sourceType: "CSV",
+  };
+  const transportedCsv = wrapExtractedLabContent(csv, csvSource, "tenant");
+  const unwrappedCsv = unwrapExtractedLabContent(transportedCsv, "tenant");
+  assert.equal(unwrappedCsv.content, csv);
+  assert.equal(unwrappedCsv.source?.sourceType, "CSV");
+  assert.equal(unwrappedCsv.source?.fileName, "laudo.csv");
+  assert.throws(
+    () => unwrapExtractedLabContent(transportedCsv.replace("A1,P,12", "A1,P,13"), "tenant"),
+    /proveniência/,
+    "CSV alterado depois do preview deve invalidar o recibo assinado",
+  );
+
+  const xlsxSource = {
+    key: "s3:v1:imports/tenant/sources/ghi-laudo.xlsx",
+    bytes: 321,
+    sha256: "c".repeat(64),
+    fileName: "laudo.xlsx",
+    sourceType: "XLSX",
+  };
+  const fakeXlsxBase64 = "UEsDBAoAAAAAAFRFU1Q=";
+  const transportedXlsx = wrapExtractedLabContent(fakeXlsxBase64, xlsxSource, "tenant");
+  assert.equal(unwrapExtractedLabContent(transportedXlsx, "tenant").source?.sourceType, "XLSX");
 
   assert.deepEqual(unwrapExtractedLabContent(csv, "tenant"), { content: csv, source: null });
 
@@ -69,7 +101,7 @@ try {
     "recibo de proveniência deve ser vinculado ao tenant que arquivou o original",
   );
 
-  // Envelopes V1 não assinados são deliberadamente recusados: refazer a extração é mais seguro do que
+  // Envelopes V1 não assinados são deliberadamente recusados: refazer a validação é mais seguro do que
   // aceitar uma cadeia de custódia que o cliente conseguiria editar livremente.
   assert.throws(
     () => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor", "tenant"),
@@ -91,7 +123,7 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline + proveniência HMAC + anti-tampering + persistência bruta fail-closed.");
+  console.log("OK — storage: snapshot inline + proveniência HMAC para PDF/CSV/XLSX + anti-tampering + persistência bruta fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;
