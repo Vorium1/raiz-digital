@@ -6,18 +6,13 @@ import type * as Leaflet from "leaflet";
 import { Icon } from "@/components/icon";
 import {
   pointPositionKind,
+  spatialGeometryPositions,
   type FieldMapProps,
   type MapLegendEntry,
   type MapPoint,
 } from "@/components/spatial-map-types";
 
 const NEUTRAL = "#9AA79F";
-
-function geometryRings(geometry: FieldMapProps["boundary"]): [number, number][][] {
-  const toLatLng = (ring: number[][]) => ring.map(([lon, lat]) => [lat, lon] as [number, number]);
-  if (geometry.type === "Polygon") return (geometry.coordinates as number[][][]).map(toLatLng);
-  return (geometry.coordinates as number[][][][]).flatMap((polygon) => polygon.map(toLatLng));
-}
 
 function positionDescription(point: MapPoint) {
   return pointPositionKind(point) === "OBSERVED" ? "GPS observado" : "Posição planejada";
@@ -58,7 +53,7 @@ export function LeafletFieldMap({
     pointsLayer.clearLayers();
 
     const current = latestRef.current;
-    const rings = geometryRings(current.boundary);
+    const boundaryPositions = spatialGeometryPositions(current.boundary);
 
     if (current.imageOverlay) {
       L.imageOverlay(current.imageOverlay.url, current.imageOverlay.bounds, {
@@ -67,16 +62,16 @@ export function LeafletFieldMap({
       }).addTo(rasterLayer);
     }
 
-    rings.forEach((ring) => {
-      L.polygon(ring, {
+    L.geoJSON({ type: "Feature", properties: {}, geometry: current.boundary } as any, {
+      style: {
         color: current.boundaryFillColor ?? "#00C4D6",
         weight: 3,
         fillColor: current.boundaryFillColor ?? "#00C4D6",
         fillOpacity: current.imageOverlay ? 0 : current.boundaryFillColor ? 0.35 : 0.08,
-      }).addTo(boundaryLayer);
-    });
+      },
+    }).addTo(boundaryLayer);
 
-    const bounds: [number, number][] = [...rings.flat()];
+    const bounds: [number, number][] = boundaryPositions.map(([longitude, latitude]) => [latitude, longitude]);
     current.points.forEach((point) => {
       const palette = current.colorFor ? current.colorFor(point) : defaultColor(point);
       const observed = pointPositionKind(point) === "OBSERVED";
