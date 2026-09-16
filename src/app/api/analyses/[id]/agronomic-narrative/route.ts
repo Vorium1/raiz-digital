@@ -47,6 +47,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   ]);
   if (
     !interpretation?.id
+    || evidence.interpretation?.id !== interpretation.id
     || evidenceBeforeProvider.interpretationId !== interpretation.id
     || !evidenceBeforeProvider.freshness.current
   ) {
@@ -73,6 +74,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   ]);
   if (
     !interpretationAfterProvider?.id
+    || evidence.interpretation?.id !== interpretationAfterProvider.id
     || interpretationAfterProvider.id !== interpretation.id
     || evidenceAfterProvider.interpretationId !== interpretationAfterProvider.id
     || !evidenceAfterProvider.freshness.current
