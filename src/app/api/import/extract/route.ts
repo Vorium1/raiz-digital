@@ -1,11 +1,11 @@
 import { buildLabImportPreview } from "@/domain/lab-import";
-import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
+import { compactLabImportPreview, jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { geminiLabExtractionProvider } from "@/lib/ai/providers/gemini-lab-extraction-provider";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { RawImportPersistenceError, saveRequiredRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
 
-const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.extractRequestBytes;
+const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.functionPayloadBytes;
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
 /**
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
-    return Response.json({ error: "Requisição do arquivo excede o limite desta etapa." }, { status: 413 });
+    return Response.json({ error: "Requisição do arquivo excede o limite seguro do ambiente atual." }, { status: 413 });
   }
 
   try {
@@ -35,17 +35,13 @@ export async function POST(request: Request) {
       return Response.json({ error: "Tipo de arquivo não suportado para leitura por IA -- use PDF, JPG, PNG ou WEBP." }, { status: 400 });
     }
 
-    // O navegador envia binários em base64. O teto HTTP é maior para acomodar a expansão ~4/3,
-    // mas o limite funcional continua sendo medido sobre os bytes ORIGINAIS do arquivo.
     const rawBytes = Buffer.from(body.content, "base64").length;
     if (rawBytes > LAB_UPLOAD_LIMITS.imageOrPdfBytes) {
-      return Response.json({ error: `PDF/foto excede ${(LAB_UPLOAD_LIMITS.imageOrPdfBytes / 1_000_000).toLocaleString("pt-BR")} MB.` }, { status: 413 });
+      return Response.json({ error: `PDF/foto excede ${(LAB_UPLOAD_LIMITS.imageOrPdfBytes / 1_000_000).toLocaleString("pt-BR")} MB no upload direto desta versão.` }, { status: 413 });
     }
 
     const originalFileName = body.fileName?.trim() || "laudo-original";
 
-    // Cadeia de custódia: no runtime com banco, nenhum byte segue para IA antes de existir uma cópia
-    // persistente e endereçada por hash do arquivo original.
     const stored = session
       ? await saveRequiredRawImportFile({
           tenantId: session.tenantId,
@@ -72,14 +68,21 @@ export async function POST(request: Request) {
         }, session.tenantId)
       : extraction.csvContent;
 
-    return Response.json({
-      ...preview,
+    const responsePayload = {
+      ...compactLabImportPreview(preview),
       aiExtracted: true,
       aiProvider: extraction.provider,
       aiModel: extraction.model,
       csvContent,
       sourceArchived: Boolean(stored),
-    }, { status: 200 });
+    };
+    if (jsonTransportBytes(responsePayload) > LAB_UPLOAD_LIMITS.functionPayloadBytes) {
+      return Response.json({
+        error: "A transcrição ficou grande demais para o limite de resposta do ambiente atual. Divida o laudo por área/laboratório ou use um arquivo tabular menor.",
+      }, { status: 413 });
+    }
+
+    return Response.json(responsePayload, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível ler o arquivo com IA.";
     const status = error instanceof RawImportPersistenceError ? 503 : 422;
