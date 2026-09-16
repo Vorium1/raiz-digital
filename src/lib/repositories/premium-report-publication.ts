@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { withTenant } from "@/lib/db";
 import { saveReportSnapshot } from "@/lib/storage";
 import { writeAudit } from "@/lib/repositories/audit";
@@ -52,7 +53,9 @@ export type PremiumReportSnapshotV3 = {
 type CurrentPublicationState = {
   analysisId: string;
   interpretationStatus: string;
+  interpretationCreatedAt: string;
   latestInterpretationId: string | null;
+  latestImportCommittedAt: string | null;
   sourceHumanVerified: boolean;
   sourceVerificationRequired: boolean;
   cropSeasonUpdatedAt: string;
@@ -68,7 +71,9 @@ async function assertCurrentPublicationState(
   const result = await client.query<CurrentPublicationState>(
     `SELECT i.analysis_id::text AS "analysisId",
             i.status::text AS "interpretationStatus",
+            i.created_at::text AS "interpretationCreatedAt",
             latest_i.id::text AS "latestInterpretationId",
+            latest_import.latest_import_at::text AS "latestImportCommittedAt",
             a.source_human_verified AS "sourceHumanVerified",
             t.require_source_human_verification AS "sourceVerificationRequired",
             cs.updated_at::text AS "cropSeasonUpdatedAt",
@@ -87,6 +92,11 @@ async function assertCurrentPublicationState(
        LIMIT 1
      ) latest_i ON true
      LEFT JOIN LATERAL (
+       SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+       FROM analysis_imports ai
+       WHERE ai.tenant_id=i.tenant_id AND ai.analysis_id=i.analysis_id
+     ) latest_import ON true
+     LEFT JOIN LATERAL (
        SELECT ag.id, ag.status, ag.created_at
        FROM ai_generations ag
        WHERE ag.tenant_id=i.tenant_id
@@ -97,7 +107,8 @@ async function assertCurrentPublicationState(
        LIMIT 1
      ) prescription ON true
      WHERE i.tenant_id=$1::uuid AND i.id=$2::uuid
-     LIMIT 1`,
+     LIMIT 1
+     FOR SHARE OF a, cs`,
     [input.tenantId, input.interpretationId],
   );
   const state = result.rows[0];
@@ -108,6 +119,18 @@ async function assertCurrentPublicationState(
   if (state.latestInterpretationId !== input.interpretationId) {
     throw new ReportError("Esta interpretação foi superada por uma revisão mais recente. Publique somente a revisão atual aprovada.", 409);
   }
+
+  const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
+    interpretationCreatedAt: state.interpretationCreatedAt,
+    latestImportCommittedAt: state.latestImportCommittedAt,
+  });
+  if (!evidenceFreshness.current) {
+    throw new ReportError(
+      evidenceFreshness.reason ?? "O laudo laboratorial mudou depois desta interpretação. Recalcule antes de publicar.",
+      409,
+    );
+  }
+
   if (state.sourceVerificationRequired && !state.sourceHumanVerified) {
     throw new ReportError("A política desta empresa exige conferência humana do arquivo original do laudo antes da publicação.", 409);
   }
@@ -128,9 +151,10 @@ async function assertCurrentPublicationState(
  * APROVADA da mesma interpretação, eventual síntese aprovada, contorno do talhão e pontos de amostragem.
  * Assim, reabrir a versão oficial não precisa buscar conteúdo vivo para reconstruir o que foi entregue.
  *
- * A entrega falha fechada se a interpretação, a recomendação, o contexto da safra ou a confirmação de
- * fonte mudarem durante o processo. O snapshot no storage é imutável; se a evidência mudar exatamente
- * durante a gravação externa, o objeto eventualmente órfão não vira registro oficial em `reports`.
+ * A entrega falha fechada se a interpretação, o laudo, a recomendação, o contexto da safra ou a
+ * confirmação de fonte mudarem durante o processo. O lock compartilhado de análise/safra permanece
+ * pela transação inteira e conflita com nova importação/edição. O snapshot no storage é imutável; se
+ * uma falha ocorrer na gravação externa, nenhum registro oficial incompleto nasce em `reports`.
  */
 export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
