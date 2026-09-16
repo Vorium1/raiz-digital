@@ -10,7 +10,12 @@ type Props = {
   onFileReady?: (file: { fileName: string; content: string } | null) => void;
 };
 
-type PreviewWithSource = LabImportPreview & { aiExtracted?: boolean; csvContent?: string };
+type PreviewWithSource = LabImportPreview & {
+  aiExtracted?: boolean;
+  csvContent?: string;
+  transportContent?: string;
+  sourceArchived?: boolean;
+};
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 const MIME_BY_EXTENSION: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
@@ -76,9 +81,8 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
         if (!response.ok) throw new Error(payload.error ?? "Falha ao ler o arquivo com IA.");
         setPreview(payload as PreviewWithSource);
         onPreviewChange(payload as LabImportPreview);
-        // O que será persistido não é o PDF/foto original, e sim o CSV que a
-        // IA transcreveu (já validado acima pelo mesmo motor do upload
-        // manual) -- é esse texto que a etapa de confirmação reenvia.
+        // O ORIGINAL já foi arquivado antes da IA. O payload abaixo é o CSV transcrito acompanhado por
+        // um recibo de proveniência assinado; a etapa de confirmação apenas o transporta até /commit.
         onFileReady?.({ fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`, content: (payload as PreviewWithSource).csvContent ?? "" });
         return;
       }
@@ -98,7 +102,9 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
       if (!response.ok) throw new Error(payload.error ?? "Falha ao validar o arquivo.");
       setPreview(payload as PreviewWithSource);
       onPreviewChange(payload as LabImportPreview);
-      onFileReady?.({ fileName: file.name, content });
+      // Em modo real, /validate já arquivou o CSV/XLSX antes do parser e devolveu um transporte assinado.
+      // Em demo, o fallback é o conteúdo original, pois não há persistência comercial.
+      onFileReady?.({ fileName: file.name, content: (payload as PreviewWithSource).transportContent ?? content });
     } catch (processingError) {
       setError(processingError instanceof Error ? processingError.message : "Não foi possível processar o arquivo.");
     } finally {
@@ -117,14 +123,14 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
 
       {error && <div className="import-message danger"><Icon name="warning" size={18}/><div><strong>Arquivo não processado</strong><small>{error}</small></div></div>}
 
-      {preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>Confira CADA valor abaixo contra o laudo original antes de continuar -- leitura automática de PDF/foto pode errar um número ou uma unidade. Nada é salvo até a etapa de confirmação.</small></div></div>}
+      {preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>O original já foi arquivado antes da leitura automática. Revise o preview e, após criar a análise, abra o arquivo original no painel de proveniência para fazer a conferência humana antes da entrega oficial.</small></div></div>}
 
       {preview && <div className="import-preview">
         <div className="import-preview-head">
           <div>
             <span className="eyebrow">PRÉ-VALIDAÇÃO REAL</span>
             <h3>{preview.blockers ? "Há bloqueios para interpretação" : "Arquivo pronto para conferência"}</h3>
-            <p>O arquivo já foi lido, normalizado e validado no servidor. Nenhuma recomendação agronômica é publicada nesta etapa.</p>
+            <p>O original foi preservado antes desta leitura em modo real. Os dados abaixo foram normalizados e validados no servidor; nenhuma recomendação agronômica é publicada nesta etapa.</p>
           </div>
           <div className={`confidence-orb ${preview.confidence.level.toLowerCase()}`}>
             <strong>{preview.confidence.score}</strong><span>/100</span><small>{levelLabel[preview.confidence.level]}</small>
@@ -152,7 +158,7 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
           {preview.issues.length > visibleIssues.length && <small className="more-issues">+ {preview.issues.length - visibleIssues.length} ocorrências adicionais</small>}
         </div>}
 
-        <div className="human-check-note"><Icon name="shield" size={17}/><span><strong>Conferência humana obrigatória</strong><small>Unidades ou métodos inferidos aparecem com *. O agrônomo deve validar antes do motor técnico usar estes dados.</small></span></div>
+        <div className="human-check-note"><Icon name="shield" size={17}/><span><strong>Conferência humana obrigatória</strong><small>Unidades ou métodos inferidos aparecem com *. O agrônomo deve validar a fonte original no painel de proveniência antes da entrega oficial.</small></span></div>
       </div>}
     </div>
   );
