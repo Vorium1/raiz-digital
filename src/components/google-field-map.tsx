@@ -10,7 +10,11 @@ import {
   type MapPoint,
   type PointPositionKind,
 } from "@/components/spatial-map-types";
-import { loadGoogleMaps } from "@/lib/maps/google-maps-loader";
+import {
+  GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS,
+  loadGoogleMaps,
+  subscribeGoogleMapsAuthFailure,
+} from "@/lib/maps/google-maps-loader";
 
 function positionDescription(point: MapPoint) {
   const kind = pointPositionKind(point);
@@ -48,8 +52,17 @@ export function GoogleFieldMap({
     let map: any = null;
     let groundOverlay: any = null;
     let clickListener: any = null;
+    let tilesLoadedListener: any = null;
+    let tileHealthTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeAuthFailure: () => void = () => {};
+
+    const failProvider = (error: Error) => {
+      if (!cancelled) onProviderFailure?.(error);
+    };
 
     setSelectedPoint(null);
+    unsubscribeAuthFailure = subscribeGoogleMapsAuthFailure(failProvider);
+
     void loadGoogleMaps()
       .then((loadedMaps) => {
         if (cancelled || !containerRef.current) return;
@@ -68,6 +81,17 @@ export function GoogleFieldMap({
           gestureHandling: "greedy",
           backgroundColor: "#0c1512",
         });
+
+        let tilesConfirmed = false;
+        tilesLoadedListener = maps.event.addListenerOnce(map, "tilesloaded", () => {
+          tilesConfirmed = true;
+          if (tileHealthTimer) clearTimeout(tileHealthTimer);
+        });
+        tileHealthTimer = setTimeout(() => {
+          if (!tilesConfirmed) {
+            failProvider(new Error("Google Satellite não confirmou o carregamento dos tiles dentro do limite; usando contingência."));
+          }
+        }, GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS);
 
         const featureCollection = {
           type: "FeatureCollection",
@@ -141,12 +165,14 @@ export function GoogleFieldMap({
         }
       })
       .catch((caught) => {
-        if (cancelled) return;
-        onProviderFailure?.(caught instanceof Error ? caught : new Error("Falha ao carregar Google Maps."));
+        failProvider(caught instanceof Error ? caught : new Error("Falha ao carregar Google Maps."));
       });
 
     return () => {
       cancelled = true;
+      if (tileHealthTimer) clearTimeout(tileHealthTimer);
+      unsubscribeAuthFailure();
+      try { tilesLoadedListener?.remove?.(); } catch { /* noop */ }
       try { clickListener?.remove?.(); } catch { /* noop */ }
       try { groundOverlay?.setMap?.(null); } catch { /* noop */ }
       try { if (maps && map) maps.event?.clearInstanceListeners?.(map); } catch { /* noop */ }
