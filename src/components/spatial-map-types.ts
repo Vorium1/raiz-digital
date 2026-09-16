@@ -75,6 +75,19 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
 }
 
 /**
+ * Coordenada efetivamente renderizada. `observed_position` é autoridade quando existe;
+ * `latitude/longitude` permanecem como posição-base (planejada ou importada/auditada).
+ * Centralizar esta escolha impede que uma tela mostre o ponto planejado enquanto outra
+ * mostra a captura GPS do mesmo ponto.
+ */
+export function effectivePointCoordinates(point: MapPoint): { latitude: number; longitude: number } {
+  if (point.observedLatitude != null && point.observedLongitude != null) {
+    return { latitude: point.observedLatitude, longitude: point.observedLongitude };
+  }
+  return { latitude: point.latitude, longitude: point.longitude };
+}
+
+/**
  * `observed_position` é a captura feita durante a coleta corrente. Alguns datasets históricos/auditados,
  * como Cabeda, preservam a coordenada real diretamente em `position` e registram a proveniência em
  * `gps_source`; nesses casos não podemos rebaixar a coordenada para "planejada" só porque
