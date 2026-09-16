@@ -51,16 +51,17 @@ function LeafletPortfolioCanvas({ fields, height, onFieldClick, providerNote }: 
         }
         const positions = spatialGeometryPositions(field.boundary);
         if (!positions.length) continue;
-        const latLngs = positions.map(([longitude, latitude]) => [latitude, longitude] as [number, number]);
-        const polygon = L.polygon(latLngs, {
-          color: field.strokeColor,
-          weight: 2.5,
-          fillColor: field.fillColor,
-          fillOpacity: field.rasterOverlay ? 0 : field.fillOpacity,
+        const polygon = L.geoJSON({ type: "Feature", properties: {}, geometry: field.boundary } as any, {
+          style: {
+            color: field.strokeColor,
+            weight: 2.5,
+            fillColor: field.fillColor,
+            fillOpacity: field.rasterOverlay ? 0 : field.fillOpacity,
+          },
         }).addTo(map);
         polygon.bindTooltip(`${field.name} — ${field.label}`, { direction: "top" });
         polygon.on("click", () => onFieldClick(field.id));
-        bounds.push(...latLngs);
+        bounds.push(...positions.map(([longitude, latitude]) => [latitude, longitude] as [number, number]));
       }
       if (bounds.length) {
         const latLngBounds = L.latLngBounds(bounds);
