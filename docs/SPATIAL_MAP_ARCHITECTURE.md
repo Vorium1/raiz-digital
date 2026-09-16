@@ -85,6 +85,8 @@ A partir da migration `037_ndvi_raster_custody.sql`, um snapshot novo não depen
 5. depois disso, a linha daquele `talhão + data + fonte` é preservada: refresh posterior não substitui estatística nem raster já arquivado;
 6. `/api/fields/[id]/ndvi/map` lê exclusivamente o objeto arquivado e confere tamanho + SHA-256 antes de servi-lo. Não existe fallback silencioso para uma nova chamada ao Copernicus.
 
+A imutabilidade também é protegida no próprio PostgreSQL, não apenas no código TypeScript. A migration 037 instala um trigger `BEFORE UPDATE OR DELETE` que rejeita qualquer alteração ou exclusão de uma linha cujo `raster_object_key` já esteja preenchido. Uma linha legada sem raster pode ser promovida uma única vez para receber o artefato; depois disso, torna-se imutável no banco. O privilégio `DELETE` também é revogado do papel de runtime `raiz_app`.
+
 Snapshots antigos, criados antes dessa cadeia, continuam válidos como histórico estatístico, mas não podem ser apresentados como raster histórico imutável. A rota retorna `NDVI_RASTER_ARCHIVE_REQUIRED` até que o refresh promova aquela data para o novo contrato.
 
 Em runtime hospedado, armazenamento local não é aceito para essa custódia; é necessário o mesmo provider S3 durável usado para fontes brutas (`STORAGE_PROVIDER=s3`). Uma falha de storage interrompe a criação do snapshot com raster — a RAIZ não marca uma imagem temporária como evidência preservada.
@@ -148,6 +150,7 @@ O comando `ndvi:audit-raster`:
 
 - abre transação PostgreSQL `READ ONLY` e termina em `ROLLBACK`;
 - confirma que as colunas da migration 037 existem;
+- confirma que o trigger de imutabilidade `UPDATE/DELETE` está instalado e que `raiz_app` não possui privilégio efetivo de `DELETE` na tabela de snapshots;
 - não escolhe tenant/talhão implicitamente;
 - exige `STORAGE_PROVIDER=s3` para a prova de homologação;
 - recupera o objeto já arquivado, sem chamar Copernicus;
@@ -172,6 +175,7 @@ Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeçã
 9. Validar em mobile e desktop:
    - mapa-base sem quadrantes pretos/vazios;
    - alternância Avaliação / Zonas NDVI / Tendência NDVI;
+   - migration 037 aplicada com trigger de imutabilidade ativo e sem `DELETE` efetivo para `raiz_app`;
    - raster arquivado alinhado ao contorno;
    - hash/metadados do raster presentes no snapshot e rota servindo o mesmo objeto sem reconsulta ao Copernicus;
    - pontos GPS observados no local persistido;
