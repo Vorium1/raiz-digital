@@ -82,17 +82,20 @@ export async function commitCsvImport(input: {
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
 }) {
-  // PDF/foto chega como CSV transcrito com um recibo de proveniência assinado pelo servidor no /extract.
-  // O recibo vincula tenant + original arquivado + hash exato do CSV; qualquer alteração no transporte é
-  // rejeitada antes de o parser agronômico ver os dados.
+  // O fluxo normal chega com recibo de proveniência assinado: PDF/foto traz o CSV extraído; CSV/XLSX
+  // traz o próprio conteúdo validado. Em ambos os casos o recibo vincula tenant + original arquivado +
+  // hash exato do conteúdo entregue ao parser. Chamadas diretas sem recibo continuam fail-closed: o
+  // original é arquivado aqui antes de qualquer parsing.
   const transported = unwrapExtractedLabContent(input.content, input.tenantId);
   const sourceReceipt = transported.source;
   const normalizedContent = transported.content;
-  const isSpreadsheet = !sourceReceipt && isSpreadsheetFileName(input.fileName);
   const originalFileName = sourceReceipt?.fileName ?? input.fileName;
+  const isSpreadsheet = sourceReceipt
+    ? sourceReceipt.sourceType === "XLSX"
+    : isSpreadsheetFileName(input.fileName);
 
   // Cadeia de custódia fail-closed: a fonte original precisa existir e ter integridade confirmada antes
-  // de o parser/validador agronômico examinar o conteúdo ou qualquer linha poder ser promovida.
+  // de o parser agronômico examinar o conteúdo ou qualquer linha poder ser promovida.
   const stored = sourceReceipt
     ? await (async () => {
         await verifyRawImportArchive({ tenantId: input.tenantId, source: sourceReceipt });
@@ -112,20 +115,21 @@ export async function commitCsvImport(input: {
     spatialLinked: input.spatialLinked,
   };
   const preview = isSpreadsheet
-    ? buildLabImportPreviewFromXlsxBase64(normalizedContent, input.fileName, importContext)
-    : buildLabImportPreview(normalizedContent, input.fileName, importContext);
+    ? buildLabImportPreviewFromXlsxBase64(normalizedContent, originalFileName, importContext)
+    : buildLabImportPreview(normalizedContent, originalFileName, importContext);
 
-  const sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR" = sourceReceipt
+  const sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR" = sourceReceipt?.sourceType === "PDF_OCR"
     ? "PDF_OCR"
     : isSpreadsheet
       ? "XLSX"
       : preview.format === "LONG"
         ? "CSV_LONG"
         : "CSV_WIDE";
-  const analysisSourceType: "CSV" | "XLSX" | "PDF_OCR" = sourceReceipt ? "PDF_OCR" : isSpreadsheet ? "XLSX" : "CSV";
+  const analysisSourceType: "CSV" | "XLSX" | "PDF_OCR" = sourceReceipt?.sourceType
+    ?? (isSpreadsheet ? "XLSX" : "CSV");
 
-  // O hash e a chave agora vêm obrigatoriamente do arquivo original já persistido. Não existe mais
-  // caminho de produção que promova resultados com `raw_object_key` nulo.
+  // O hash e a chave vêm obrigatoriamente do arquivo original persistido e, quando o preview ocorreu
+  // antes, do mesmo recibo assinado que foi emitido após esse arquivamento.
   const sourceSha256 = stored.sha256;
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
 
