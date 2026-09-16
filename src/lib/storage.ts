@@ -20,13 +20,14 @@ const RAW_SOURCE_ENVELOPE_PREFIX = "#RAIZ_SOURCE_V2 ";
 const LEGACY_RAW_SOURCE_ENVELOPE_PREFIX = "#RAIZ_SOURCE_V1 ";
 const MAX_INLINE_REPORT_BYTES = 1_500_000;
 
+export type LabRawSourceType = "CSV" | "XLSX" | "PDF_OCR";
 export type StoredFile = { key: string; bytes: number; sha256: string };
 export type RawSourceReceipt = {
   key: string;
   bytes: number;
   sha256: string;
   fileName: string;
-  sourceType: "PDF_OCR";
+  sourceType: LabRawSourceType;
   extractedSha256: string;
   signature: string;
 };
@@ -68,7 +69,7 @@ function reportProvider() {
 function provenanceSecret() {
   const secret = process.env.AUTH_SECRET?.trim() ?? "";
   if (secret.length < 32) {
-    throw new RawImportPersistenceError("Cadeia de custódia indisponível: AUTH_SECRET precisa ter ao menos 32 caracteres antes de transportar uma extração de laudo.");
+    throw new RawImportPersistenceError("Cadeia de custódia indisponível: AUTH_SECRET precisa ter ao menos 32 caracteres antes de transportar um laudo validado.");
   }
   return secret;
 }
@@ -88,7 +89,7 @@ function provenanceManifest(input: {
   bytes: number;
   sha256: string;
   fileName: string;
-  sourceType: "PDF_OCR";
+  sourceType: LabRawSourceType;
   extractedSha256: string;
 }) {
   // Campos delimitados por JSON em ordem fixa para evitar ambiguidades de concatenação.
@@ -157,29 +158,31 @@ export async function saveRequiredRawImportFile(input: RawImportFileInput): Prom
 }
 
 /**
- * PDF/foto passa por IA antes do commit. O servidor arquiva o ORIGINAL antes da IA e depois assina um
- * recibo que vincula: tenant + arquivo bruto + hash/bytes + nome + hash exato do CSV extraído. O cliente
- * pode transportar o payload, mas não consegue trocar o CSV nem apontar para outro arquivo sem invalidar
- * a assinatura HMAC. Isso fecha a cadeia de custódia entre /extract e /commit.
+ * Depois que o arquivo original foi arquivado, o servidor assina um recibo que vincula tenant + arquivo
+ * bruto + hash/bytes + nome + tipo de fonte + hash exato do conteúdo que será entregue ao parser no commit.
+ *
+ * Em PDF/foto esse conteúdo é o CSV extraído pela IA. Em CSV/XLSX ele é o próprio conteúdo bruto já
+ * arquivado. Assim o cliente pode transportar o payload entre validação e commit, mas não pode alterá-lo
+ * nem apontar para outro arquivo sem invalidar a assinatura HMAC.
  */
 export function wrapExtractedLabContent(
-  csvContent: string,
+  content: string,
   source: Omit<RawSourceReceipt, "extractedSha256" | "signature">,
   tenantId: string,
 ) {
-  const extractedSha256 = sha256(Buffer.from(csvContent, "utf8"));
+  const extractedSha256 = sha256(Buffer.from(content, "utf8"));
   const unsigned = { ...source, extractedSha256 };
   const receipt: RawSourceReceipt = {
     ...unsigned,
     signature: signProvenance({ tenantId, ...unsigned }),
   };
   const encoded = Buffer.from(JSON.stringify(receipt), "utf8").toString("base64url");
-  return `${RAW_SOURCE_ENVELOPE_PREFIX}${encoded}\n${csvContent}`;
+  return `${RAW_SOURCE_ENVELOPE_PREFIX}${encoded}\n${content}`;
 }
 
 export function unwrapExtractedLabContent(content: string, tenantId: string): { content: string; source: RawSourceReceipt | null } {
   if (content.startsWith(LEGACY_RAW_SOURCE_ENVELOPE_PREFIX)) {
-    throw new Error("Envelope legado de proveniência sem assinatura. Refaça a leitura do PDF/foto antes de importar.");
+    throw new Error("Envelope legado de proveniência sem assinatura. Refaça a leitura/validação do arquivo antes de importar.");
   }
   if (!content.startsWith(RAW_SOURCE_ENVELOPE_PREFIX)) return { content, source: null };
 
@@ -196,13 +199,13 @@ export function unwrapExtractedLabContent(content: string, tenantId: string): { 
       typeof parsed.extractedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(parsed.extractedSha256) ||
       typeof parsed.signature !== "string" || !/^[a-f0-9]{64}$/i.test(parsed.signature) ||
       typeof parsed.bytes !== "number" || !Number.isSafeInteger(parsed.bytes) || parsed.bytes < 0 ||
-      parsed.sourceType !== "PDF_OCR"
+      !new Set<LabRawSourceType>(["CSV", "XLSX", "PDF_OCR"]).has(parsed.sourceType as LabRawSourceType)
     ) throw new Error("metadados inválidos");
 
-    const csvContent = content.slice(newline + 1);
-    const actualExtractedSha256 = sha256(Buffer.from(csvContent, "utf8"));
+    const transportedContent = content.slice(newline + 1);
+    const actualExtractedSha256 = sha256(Buffer.from(transportedContent, "utf8"));
     if (actualExtractedSha256 !== parsed.extractedSha256.toLowerCase()) {
-      throw new Error("conteúdo extraído foi alterado após a leitura do arquivo original");
+      throw new Error("conteúdo transportado foi alterado depois da validação da fonte original");
     }
 
     const expectedSignature = signProvenance({
@@ -211,14 +214,14 @@ export function unwrapExtractedLabContent(content: string, tenantId: string): { 
       bytes: parsed.bytes,
       sha256: parsed.sha256,
       fileName: parsed.fileName,
-      sourceType: parsed.sourceType,
+      sourceType: parsed.sourceType as LabRawSourceType,
       extractedSha256: parsed.extractedSha256,
     });
     if (!safeEqualHex(expectedSignature, parsed.signature)) {
       throw new Error("assinatura de proveniência não confere");
     }
 
-    return { content: csvContent, source: parsed as RawSourceReceipt };
+    return { content: transportedContent, source: parsed as RawSourceReceipt };
   } catch (error) {
     if (error instanceof RawImportPersistenceError) throw error;
     throw new Error("Envelope de proveniência do laudo é inválido.");
