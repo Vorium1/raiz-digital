@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import type { LabImportPreview } from "@/domain/lab-import";
-import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
+import { jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 
 type Props = {
   method: string;
@@ -16,6 +16,8 @@ type PreviewWithSource = LabImportPreview & {
   csvContent?: string;
   transportContent?: string;
   sourceArchived?: boolean;
+  normalizedRowCount?: number;
+  issueCount?: number;
 };
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
@@ -31,6 +33,13 @@ function readAsBase64(file: File) {
     reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
     reader.readAsDataURL(file);
   });
+}
+
+function serializedBody(payload: unknown) {
+  if (jsonTransportBytes(payload) > LAB_UPLOAD_LIMITS.functionPayloadBytes) {
+    throw new Error("O arquivo excede o limite de transporte do ambiente atual. Divida o laudo por área ou laboratório.");
+  }
+  return JSON.stringify(payload);
 }
 
 const levelLabel: Record<LabImportPreview["confidence"]["level"], string> = {
@@ -77,38 +86,37 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
     try {
       if (isImageOrPdf) {
         const content = await readAsBase64(file);
+        const requestPayload = { content, mimeType: file.type || MIME_BY_EXTENSION[extension], fileName: file.name, fallbackMethod: method || undefined };
         const response = await fetch("/api/import/extract", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ content, mimeType: file.type || MIME_BY_EXTENSION[extension], fileName: file.name, fallbackMethod: method || undefined }),
+          body: serializedBody(requestPayload),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? "Falha ao ler o arquivo com IA.");
         setPreview(payload as PreviewWithSource);
         onPreviewChange(payload as LabImportPreview);
-        // O ORIGINAL já foi arquivado antes da IA. O payload abaixo é o CSV transcrito acompanhado por
-        // um recibo de proveniência assinado; a etapa de confirmação apenas o transporta até /commit.
         onFileReady?.({ fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`, content: (payload as PreviewWithSource).csvContent ?? "" });
         return;
       }
+
       const content = isSpreadsheet ? await readAsBase64(file) : await file.text();
+      const requestPayload = {
+        content,
+        fileName: file.name,
+        fallbackMethod: method || undefined,
+        hasAgronomicContext: true,
+        spatialLinked: true,
+      };
       const response = await fetch("/api/import/validate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          content,
-          fileName: file.name,
-          fallbackMethod: method || undefined,
-          hasAgronomicContext: true,
-          spatialLinked: true,
-        }),
+        body: serializedBody(requestPayload),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Falha ao validar o arquivo.");
       setPreview(payload as PreviewWithSource);
       onPreviewChange(payload as LabImportPreview);
-      // Em modo real, /validate já arquivou o CSV/XLSX antes do parser e devolveu um transporte assinado.
-      // Em demo, o fallback é o conteúdo original, pois não há persistência comercial.
       onFileReady?.({ fileName: file.name, content: (payload as PreviewWithSource).transportContent ?? content });
     } catch (processingError) {
       setError(processingError instanceof Error ? processingError.message : "Não foi possível processar o arquivo.");
@@ -117,13 +125,16 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
     }
   }
 
+  const normalizedRowCount = preview?.normalizedRowCount ?? preview?.rows.length ?? 0;
+  const totalIssueCount = preview?.issueCount ?? preview?.issues.length ?? 0;
+
   return (
     <div className="lab-importer">
       <label className={`upload-zone ${preview ? "has-file" : ""} ${error ? "has-error" : ""}`}>
         <input type="file" accept=".csv,.txt,.xlsx,.xls,.pdf,.jpg,.jpeg,.png,.webp" onChange={(event) => void processFile(event.target.files?.[0])}/>
         <div className="upload-icon"><Icon name={preview ? "check" : loading ? "clock" : "upload"} size={27}/></div>
         <strong>{loading ? (preview === null && fileName ? "Lendo o laudo…" : "Validando estrutura e resultados…") : fileName || "Arraste o laudo (CSV, XLSX, PDF ou foto) ou clique para selecionar"}</strong>
-        <small>{preview ? `${preview.rows.length} resultados normalizados · ${preview.sampleCount} amostras` : "CSV/XLSX (leitura exata) ou PDF/foto (leitura por IA, com conferência obrigatória)"}</small>
+        <small>{preview ? `${normalizedRowCount} resultados normalizados · ${preview.sampleCount} amostras` : "CSV/XLSX (leitura exata) ou PDF/foto (leitura por IA, com conferência obrigatória)"}</small>
       </label>
 
       {error && <div className="import-message danger"><Icon name="warning" size={18}/><div><strong>Arquivo não processado</strong><small>{error}</small></div></div>}
@@ -160,7 +171,7 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
 
         {visibleIssues.length > 0 && <div className="import-issues">
           {visibleIssues.map((issue, index) => <div key={`${issue.code}-${issue.line ?? 0}-${index}`} className={issue.severity === "BLOCKER" ? "blocker" : "warning"}><Icon name={issue.severity === "BLOCKER" ? "warning" : "shield"} size={15}/><span><strong>{issue.severity === "BLOCKER" ? "Bloqueio" : "Conferir"}{issue.line ? ` · linha ${issue.line}` : ""}</strong><small>{issue.message}</small></span></div>)}
-          {preview.issues.length > visibleIssues.length && <small className="more-issues">+ {preview.issues.length - visibleIssues.length} ocorrências adicionais</small>}
+          {totalIssueCount > visibleIssues.length && <small className="more-issues">+ {totalIssueCount - visibleIssues.length} ocorrências adicionais</small>}
         </div>}
 
         <div className="human-check-note"><Icon name="shield" size={17}/><span><strong>Conferência humana obrigatória</strong><small>Unidades ou métodos inferidos aparecem com *. O agrônomo deve validar a fonte original no painel de proveniência antes da entrega oficial.</small></span></div>
