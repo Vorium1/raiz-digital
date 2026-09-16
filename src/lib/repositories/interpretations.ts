@@ -19,11 +19,16 @@ export class InterpretationError extends Error {
  */
 export async function runInterpretationForAnalysis(input: { tenantId: string; userId: string; analysisId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    // Mesmo lock usado pela importação: o motor não pode ler lab_results enquanto um novo laudo da
+    // mesma análise está sendo promovido. Se a importação chegou primeiro, esperamos e lemos a nova
+    // evidência; se o cálculo chegou primeiro, a importação espera e, ao concluir depois, torna esta
+    // revisão histórica/stale pelos gates de freshness.
     const analysisResult = await client.query<{ cropSeasonId: string; cropProfileId: string | null }>(
       `SELECT a.crop_season_id::text AS "cropSeasonId", cs.crop_profile_id::text AS "cropProfileId"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       FOR UPDATE OF a`,
       [input.tenantId, input.analysisId],
     );
     const analysis = analysisResult.rows[0];
