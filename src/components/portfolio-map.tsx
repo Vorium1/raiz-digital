@@ -23,6 +23,7 @@ type SatelliteSignal = {
   latestQuality: "ALTA" | "MODERADA" | "BAIXA" | "INDETERMINADA";
   deltaFromBaseline: number | null;
   baselineCount: number;
+  latestArchivedRasterCapturedAt: string | null;
 };
 type MapMode = "AVALIACAO" | "NDVI_ESPACIAL" | "TENDENCIA";
 type SatelliteDisplayStatus = SatelliteStatus | "SEM_LEITURA";
@@ -92,8 +93,8 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
 /**
  * Mapa da carteira com três leituras separadas para não misturar conceitos:
  * 1) estado agronômico do fluxo;
- * 2) raster espacial NDVI real do Sentinel-2, com classes de vigor;
- * 3) tendência temporal agregada do NDVI.
+ * 2) raster espacial NDVI real do Sentinel-2, somente quando já existe artefato histórico arquivado;
+ * 3) tendência temporal agregada do NDVI, que pode incluir estatística mais recente ainda sem raster.
  *
  * Google/Leaflet são apenas mapa-base. Raster, talhões e posições continuam sob controle da RAIZ.
  */
@@ -152,11 +153,11 @@ export function PortfolioMap({ fields, height = 420 }: { fields: PortfolioMapFie
 
     const candidates = withGeometry
       .map((field) => ({ field, signal: signalsByField.get(field.id) }))
-      .filter((item): item is { field: PortfolioMapField & { boundary: SpatialGeometry }; signal: SatelliteSignal } => Boolean(item.signal))
+      .filter((item): item is { field: PortfolioMapField & { boundary: SpatialGeometry }; signal: SatelliteSignal } => Boolean(item.signal?.latestArchivedRasterCapturedAt))
       .slice(0, MAX_DASHBOARD_RASTERS);
 
     void Promise.allSettled(candidates.map(async ({ field, signal }) => {
-      const date = signal.latestCapturedAt.slice(0, 10);
+      const date = signal.latestArchivedRasterCapturedAt!;
       const response = await fetch(`/api/fields/${field.id}/ndvi/map?date=${encodeURIComponent(date)}`, { signal: controller.signal });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -220,6 +221,7 @@ export function PortfolioMap({ fields, height = 420 }: { fields: PortfolioMapFie
     }
 
     const overlay = rasterOverlays[field.id] ?? null;
+    const archivedDate = signal?.latestArchivedRasterCapturedAt ?? null;
     return {
       id: field.id,
       name: field.name,
@@ -228,9 +230,11 @@ export function PortfolioMap({ fields, height = 420 }: { fields: PortfolioMapFie
       fillColor: overlay ? "#00C4D6" : "#7C8791",
       fillOpacity: overlay ? 0 : 0.12,
       label: signal
-        ? overlay
-          ? `Zonas de vigor NDVI · ${formatDateOnly(signal.latestCapturedAt)}`
-          : `NDVI ${formatDateOnly(signal.latestCapturedAt)} · raster indisponível`
+        ? archivedDate
+          ? overlay
+            ? `Zonas de vigor NDVI · raster arquivado ${formatDateOnly(archivedDate)}`
+            : `Raster arquivado ${formatDateOnly(archivedDate)} · indisponível agora`
+          : `NDVI estatístico ${formatDateOnly(signal.latestCapturedAt)} · raster ainda não arquivado`
         : "Sem leitura Sentinel-2",
       rasterOverlay: overlay,
     };
@@ -241,8 +245,15 @@ export function PortfolioMap({ fields, height = 420 }: { fields: PortfolioMapFie
   }, [mode, router]);
 
   const rasterErrorCount = Object.keys(rasterErrors).length;
+  const fieldsWithArchivedRaster = withGeometry.filter((field) => Boolean(signalsByField.get(field.id)?.latestArchivedRasterCapturedAt));
+  const pendingRasterArchiveCount = mode === "NDVI_ESPACIAL"
+    ? withGeometry.filter((field) => {
+        const signal = signalsByField.get(field.id);
+        return Boolean(signal && !signal.latestArchivedRasterCapturedAt);
+      }).length
+    : 0;
   const omittedRasterCount = mode === "NDVI_ESPACIAL"
-    ? Math.max(0, withGeometry.filter((field) => signalsByField.has(field.id)).length - MAX_DASHBOARD_RASTERS)
+    ? Math.max(0, fieldsWithArchivedRaster.length - MAX_DASHBOARD_RASTERS)
     : 0;
 
   return (
@@ -255,13 +266,14 @@ export function PortfolioMap({ fields, height = 420 }: { fields: PortfolioMapFie
 
       {mode === "NDVI_ESPACIAL" && (
         <p className="ndvi-panel-limitation">
-          Zonas de vigor espectral do Sentinel-2 dentro do limite real do talhão. As cores representam classes de NDVI, não produtividade medida e não substituem mapa de colheita.
+          Zonas de vigor espectral do Sentinel-2 dentro do limite real do talhão. Esta visão carrega somente rasters históricos já arquivados e validados por integridade. As cores representam classes de NDVI, não produtividade medida e não substituem mapa de colheita.
         </p>
       )}
-      {mode === "TENDENCIA" && <p className="ndvi-panel-limitation">Tendência temporal do NDVI do próprio talhão. Esta leitura não atribui causa agronômica nem produtividade.</p>}
+      {mode === "TENDENCIA" && <p className="ndvi-panel-limitation">Tendência temporal do NDVI do próprio talhão. Esta leitura pode usar estatística mais recente ainda sem raster arquivado; não atribui causa agronômica nem produtividade.</p>}
       {satelliteError && mode !== "AVALIACAO" && <p className="ndvi-panel-error">{satelliteError}</p>}
-      {mode === "NDVI_ESPACIAL" && rasterLoading && <p className="ndvi-panel-meta">Carregando rasters NDVI reais do filtro atual…</p>}
-      {mode === "NDVI_ESPACIAL" && rasterErrorCount > 0 && <p className="ndvi-panel-error">{rasterErrorCount} talhão(ões) possuem leitura temporal, mas o raster espacial não pôde ser carregado agora. O contorno permanece visível e nenhuma faixa é inventada.</p>}
+      {mode === "NDVI_ESPACIAL" && rasterLoading && <p className="ndvi-panel-meta">Carregando rasters NDVI históricos arquivados do filtro atual…</p>}
+      {mode === "NDVI_ESPACIAL" && rasterErrorCount > 0 && <p className="ndvi-panel-error">{rasterErrorCount} talhão(ões) possuem raster arquivado, mas o objeto espacial não pôde ser carregado agora. O contorno permanece visível e nenhuma faixa é inventada.</p>}
+      {pendingRasterArchiveCount > 0 && <p className="ndvi-panel-limitation">{pendingRasterArchiveCount} talhão(ões) possuem histórico estatístico Sentinel-2, mas ainda não possuem raster histórico arquivado. Abra o talhão e use “Atualizar 120 dias” para promover as aquisições à cadeia de custódia.</p>}
       {omittedRasterCount > 0 && <p className="ndvi-panel-limitation">Para proteger quota e desempenho, esta visão carrega até {MAX_DASHBOARD_RASTERS} rasters por vez. Abra um talhão para visualizar os demais com detalhe.</p>}
 
       <SpatialPortfolioMapCanvas fields={canvasFields} height={height} onFieldClick={handleFieldClick} />
