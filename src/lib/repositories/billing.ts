@@ -1,6 +1,7 @@
 import { query, withTenant } from "@/lib/db";
 import {
   amountInCents,
+  isAutomaticPaymentStatusTransitionAllowed,
   mapMercadoPagoPaymentStatus,
   parseRaizInvoiceExternalReference,
   type MercadoPagoPayment,
@@ -65,14 +66,6 @@ export type PaymentReconciliationResult =
   | { kind: "ignored"; reason: "FOREIGN_REFERENCE" | "ALREADY_RECONCILED" }
   | { kind: "updated"; tenantId: string; invoiceId: string; previousStatus: string; status: string };
 
-/**
- * A notificação nunca é autoridade de estado. Esta função recebe somente o recurso
- * consultado novamente na API oficial do Mercado Pago.
- *
- * Também não altera subscriptions/tenants nem bloqueia acesso: o primeiro estágio da
- * integração financeira apenas reconcilia a fatura e registra auditoria. Política de
- * carência/bloqueio será ativada separadamente, após homologação comercial.
- */
 export async function reconcileOfficialMercadoPagoPayment(payment: MercadoPagoPayment): Promise<PaymentReconciliationResult> {
   const reference = parseRaizInvoiceExternalReference(payment.external_reference);
   if (!reference) return { kind: "ignored", reason: "FOREIGN_REFERENCE" };
@@ -115,18 +108,28 @@ export async function reconcileOfficialMercadoPagoPayment(payment: MercadoPagoPa
 
     const status = mapMercadoPagoPaymentStatus(payment.status);
 
-    // O lock da fatura torna a conciliação idempotente também sob duas entregas simultâneas.
-    // A segunda transação espera a primeira; se o mesmo payment_id e o mesmo estado oficial já
-    // tiverem sido aplicados, ela encerra sem novo UPDATE e, principalmente, sem duplicar auditoria.
     if (current.provider_charge_id === payment.id && current.status === status) {
       return { kind: "ignored" as const, reason: "ALREADY_RECONCILED" as const };
     }
 
-    // Uma tentativa rejeitada/cancelada pode ser substituída por uma nova tentativa de pagamento.
-    // Uma fatura já PAID nunca aceita silenciosamente outro payment_id: potencial pagamento duplo vai
-    // para revisão manual, em vez de a plataforma esconder a divergência.
-    if (current.provider_charge_id && current.provider_charge_id !== payment.id && current.status === "PAID") {
-      throw new BillingReconciliationError("Fatura já paga recebeu outro payment_id. Revisão manual obrigatória.", "DUPLICATE_PAYMENT");
+    if (!isAutomaticPaymentStatusTransitionAllowed(current.status, status)) {
+      throw new BillingReconciliationError(
+        `Transição financeira terminal bloqueada: ${current.status} -> ${status}. Revisão manual obrigatória.`,
+        "TERMINAL_STATUS_REGRESSION",
+      );
+    }
+
+    // Uma nova tentativa pode substituir uma tentativa pendente/rejeitada/cancelada. Depois de PAID ou
+    // REFUNDED, porém, um payment_id diferente é sempre uma divergência financeira que exige revisão.
+    if (
+      current.provider_charge_id &&
+      current.provider_charge_id !== payment.id &&
+      (current.status === "PAID" || current.status === "REFUNDED")
+    ) {
+      throw new BillingReconciliationError(
+        "Fatura em estado terminal recebeu outro payment_id. Revisão manual obrigatória.",
+        "DUPLICATE_PAYMENT",
+      );
     }
 
     const paidAt = status === "PAID" ? (payment.date_approved ?? new Date().toISOString()) : null;
