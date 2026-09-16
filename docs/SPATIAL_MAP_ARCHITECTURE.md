@@ -74,23 +74,27 @@ Essas classes são **zonas de vigor NDVI**, não “produtividade”. Para afirm
 
 Mostra mudança temporal calculada sobre a série do próprio talhão. Não colore o interior por pixel e não atribui causa agronômica.
 
-## Pontos e precisão
+## Pontos, proveniência e precisão
 
-A posição exibida segue esta prioridade:
+A posição renderizada continua sendo a posição efetiva devolvida pela camada PostGIS, mas a interface distingue três estados de proveniência:
 
-1. `sample_points.observed_position` — GPS realmente observado;
-2. `sample_points.position` — ponto planejado, somente quando não existe posição observada.
+1. **GPS observado em campo** — existe `sample_points.observed_position`; esta captura prevalece sobre a posição-base.
+2. **Coordenada real importada e auditada** — a posição real está preservada em `sample_points.position` e `gps_source` identifica uma fonte espacial previamente auditada, como `SHAPEFILE_REAL_GPS_LONLAT` ou `SHAPEFILE_REAL_EPSG4326`.
+3. **Posição planejada** — não há `observed_position` nem uma fonte real auditada; a coordenada não pode ser apresentada como medição de campo.
 
-O mapa identifica explicitamente quando está usando posição planejada. Casas decimais adicionais não são apresentadas como “precisão”; a precisão real é `accuracy_m`, acompanhada de `gps_source`.
+Essa distinção é necessária porque os datasets Cabeda auditados preservam as coordenadas reais do shapefile em `position`, acompanhadas do `gps_source` e audit trail. Classificá-los como “planejados” apenas por não possuírem `observed_position` destruiria a própria proveniência que queremos mostrar.
 
-Para Cabeda e qualquer importação espacial real, a aceitação depende da auditoria persistida de PostGIS. Visualmente “parecer no lugar” não substitui prova de proveniência.
+Casas decimais adicionais não são tratadas como “precisão”. Quando existe medição de acurácia do dispositivo, a precisão operacional continua sendo `accuracy_m`; a origem é `gps_source`. Uma coordenada importada pode ter boa proveniência espacial mesmo sem `accuracy_m`, mas isso não autoriza inventar uma incerteza em metros que a fonte não forneceu.
+
+Para Cabeda e qualquer importação espacial real, a aceitação final depende da auditoria persistida de PostGIS. Visualmente “parecer no lugar” não substitui prova de proveniência.
 
 ## Comportamento em falhas
 
 - Google Maps falha: fallback Leaflet automático.
-- Tile Esri falha no fallback: OSM permanece abaixo, evitando quadrante vazio/preto.
+- Tile Esri falha no fallback: OSM permanece abaixo, evitando quadrante vazio/preto quando a falha for ausência/transparência do tile.
 - Raster NDVI falha: talhão continua com contorno, mensagem explícita e nenhuma classe inventada.
-- Ponto sem GPS observado: marcador/descrição deixa claro que é posição planejada.
+- Ponto planejado: marcador/descrição deixam explícito que não é coordenada medida em campo.
+- Fonte espacial real auditada: o mapa mantém essa proveniência mesmo sem `observed_position`.
 - Sem geometria: talhão não é desenhado e o dashboard informa a quantidade ausente.
 
 ## Proteção de quota
@@ -113,7 +117,8 @@ A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez
    - mosaico sem quadrantes vazios;
    - alternância Avaliação / Zonas NDVI / Tendência NDVI;
    - raster alinhado ao contorno;
-   - pontos observados no local persistido;
+   - pontos GPS observados no local persistido;
+   - pontos Cabeda de fonte auditada corretamente identificados como reais, não como planejados;
    - fallback quando Google é propositalmente bloqueado.
 
 ## Fora de escopo desta integração
@@ -122,4 +127,5 @@ A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez
 - cálculo de NDVI pelo Google;
 - geocodificação para “corrigir” ponto de amostragem;
 - transformar NDVI em produtividade sem evidência;
+- inventar `accuracy_m` quando a fonte espacial não a fornece;
 - alterar regra agronômica por causa do mapa-base.
