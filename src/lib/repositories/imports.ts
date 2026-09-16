@@ -82,10 +82,10 @@ export async function commitCsvImport(input: {
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
 }) {
-  // PDF/foto chega como CSV transcrito, mas pode carregar um envelope de proveniência criado pelo servidor
-  // no /api/import/extract. O envelope nunca entra no parser agronômico; ele só referencia o original já
-  // arquivado, que é relido e conferido por hash/bytes antes de qualquer interpretação no commit.
-  const transported = unwrapExtractedLabContent(input.content);
+  // PDF/foto chega como CSV transcrito com um recibo de proveniência assinado pelo servidor no /extract.
+  // O recibo vincula tenant + original arquivado + hash exato do CSV; qualquer alteração no transporte é
+  // rejeitada antes de o parser agronômico ver os dados.
+  const transported = unwrapExtractedLabContent(input.content, input.tenantId);
   const sourceReceipt = transported.source;
   const normalizedContent = transported.content;
   const isSpreadsheet = !sourceReceipt && isSpreadsheetFileName(input.fileName);
