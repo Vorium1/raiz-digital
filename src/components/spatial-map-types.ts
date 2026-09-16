@@ -55,6 +55,10 @@ export type PortfolioCanvasField = {
   rasterOverlay?: MapImageOverlay | null;
 };
 
+export type PointPositionKind = "OBSERVED" | "AUDITED_SOURCE" | "PLANNED";
+
+const AUDITED_REAL_SOURCE_PREFIXES = ["SHAPEFILE_REAL_GPS_LONLAT", "SHAPEFILE_REAL_EPSG4326"] as const;
+
 export function collectSpatialPositions(value: unknown, positions: Array<[number, number]>) {
   if (!Array.isArray(value)) return;
   if (value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number") {
@@ -70,6 +74,15 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
   return positions.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
 }
 
-export function pointPositionKind(point: MapPoint): "OBSERVED" | "PLANNED" {
-  return point.observedLatitude != null && point.observedLongitude != null ? "OBSERVED" : "PLANNED";
+/**
+ * `observed_position` é a captura feita durante a coleta corrente. Alguns datasets históricos/auditados,
+ * como Cabeda, preservam a coordenada real diretamente em `position` e registram a proveniência em
+ * `gps_source`; nesses casos não podemos rebaixar a coordenada para "planejada" só porque
+ * `observed_position` é nulo.
+ */
+export function pointPositionKind(point: MapPoint): PointPositionKind {
+  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
+  const source = (point.gpsSource ?? "").toUpperCase();
+  if (AUDITED_REAL_SOURCE_PREFIXES.some((prefix) => source.startsWith(prefix))) return "AUDITED_SOURCE";
+  return "PLANNED";
 }
