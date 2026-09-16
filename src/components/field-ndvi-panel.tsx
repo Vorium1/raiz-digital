@@ -250,7 +250,12 @@ export function FieldNdviPanel({
       const res = await fetch(`/api/fields/${fieldId}/ndvi`, { method: "POST" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(payload.error ?? "Não foi possível buscar a leitura de satélite.");
+        const archivedBeforeError = Number(payload.archivedRasterCount ?? 0);
+        const pendingAfterError = Number(payload.pendingArchiveCount ?? 0);
+        const progress = archivedBeforeError > 0 || pendingAfterError > 0
+          ? ` ${archivedBeforeError} raster(s) já foram arquivados nesta tentativa; ${pendingAfterError} ainda permanecem pendentes.`
+          : "";
+        setError(`${payload.error ?? "Não foi possível buscar a leitura de satélite."}${progress}`);
         return;
       }
       const nextLatest = (payload.latest ?? payload.snapshot ?? null) as Snapshot | null;
@@ -261,11 +266,22 @@ export function FieldNdviPanel({
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
-      setRefreshNote(
-        payload.importedCount
-          ? `${payload.importedCount} aquisições Sentinel-2 recentes foram atualizadas na série temporal deste talhão.`
-          : "Série temporal atualizada.",
-      );
+
+      const archivedCount = Number(payload.archivedRasterCount ?? payload.importedCount ?? 0);
+      const pendingCount = Number(payload.pendingArchiveCount ?? 0);
+      if (pendingCount > 0) {
+        setRefreshNote(
+          `${archivedCount} raster(s) Sentinel-2 foram arquivados nesta etapa. Ainda faltam ${pendingCount} aquisição(ões) da janela selecionada; use “Atualizar 120 dias” novamente para continuar a cadeia de custódia.`,
+        );
+      } else if (archivedCount > 0) {
+        setRefreshNote(
+          `${archivedCount} raster(s) Sentinel-2 foram arquivados nesta etapa. A janela selecionada não possui raster pendente.`,
+        );
+      } else if (payload.archiveCompleteForSelectedWindow === true) {
+        setRefreshNote("Série temporal verificada: a janela selecionada não possui raster pendente.");
+      } else {
+        setRefreshNote("Série temporal atualizada.");
+      }
       onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
     } finally {
       setFetching(false);
@@ -310,7 +326,7 @@ export function FieldNdviPanel({
           {fetching ? "Buscando série…" : latest ? "Atualizar 120 dias" : "Buscar histórico"}
         </button>
       </div>
-      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa é um raster NDVI real servido sob demanda; não é interpolação do laboratório e não representa produtividade.</p>
+      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa usa o raster NDVI histórico arquivado e validado por integridade; não é interpolação do laboratório e não representa produtividade.</p>
 
       {error && <p className="ndvi-panel-error"><Icon name="warning" size={14} />{error}</p>}
       {refreshNote && <p className="ndvi-panel-meta"><Icon name="check" size={14} />{refreshNote}</p>}
