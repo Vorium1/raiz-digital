@@ -89,7 +89,7 @@ export function LeafletFieldMap({
         color: palette.stroke,
         fillColor: palette.fill,
         fillOpacity: trustedPosition ? palette.fillOpacity : Math.min(palette.fillOpacity, 0.55),
-        weight: trustedPosition ? 2 : 2,
+        weight: 2,
         dashArray: positionKind === "PLANNED" ? "4 3" : undefined,
       }).addTo(pointsLayer);
       marker.on("click", () => onSelectRef.current(point));
@@ -113,19 +113,12 @@ export function LeafletFieldMap({
       const L = mod.default;
       const map = L.map(containerRef.current, { attributionControl: true, preferCanvas: true }).setView([-15.7797, -47.9297], 4);
 
-      // Fundo de contingência: se um tile de imagem aérea falhar, o mapa não vira um quadrante preto.
+      // Contingência deliberadamente SEM Esri. O bug histórico de quadrantes pretos ocorre em qualquer
+      // viewport e pode vir de tile opaco inválido (HTTP 200), caso em que uma camada inferior não aparece.
+      // O fallback precisa priorizar disponibilidade, não manter imagem aérea a qualquer custo.
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
-      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri",
-      }).addTo(map);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19,
-        opacity: 0.85,
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
       }).addTo(map);
 
       layersRef.current.raster = L.layerGroup().addTo(map);
