@@ -38,9 +38,13 @@ Documentação oficial:
 - https://developers.google.com/maps/documentation/javascript/reference/image-overlay
 - https://developers.google.com/maps/documentation/javascript/datalayer
 
-### Contingência — Leaflet
+### Contingência — Leaflet + OpenStreetMap
 
-Se Google não estiver configurado ou falhar em runtime, o mapa continua operacional com Leaflet. A pilha de contingência usa OpenStreetMap por baixo da imagem aérea Esri e rótulos CARTO. Assim, falha pontual de tile de imagem aérea não deixa o usuário diante de quadrantes pretos.
+O defeito histórico de quadrantes pretos foi observado pelo usuário em qualquer tipo de tela, não apenas mobile. Isso reduz a probabilidade de ser somente um problema de responsividade/`invalidateSize` e torna inadequado depender da mesma camada aérea Esri no fallback.
+
+Por isso, se Google não estiver configurado ou falhar em runtime, o mapa continua operacional com **Leaflet + OpenStreetMap**, sem Esri. O objetivo da contingência é disponibilidade e leitura espacial estável; imagem aérea permanece responsabilidade do Google Satellite no caminho principal.
+
+Essa decisão também cobre o caso em que um servidor de imagem devolve um tile preto como PNG aparentemente válido (HTTP 200): nesse cenário, ter OSM abaixo não resolve porque o tile opaco continua cobrindo a base.
 
 A contingência não muda:
 
@@ -90,8 +94,8 @@ Para Cabeda e qualquer importação espacial real, a aceitação final depende d
 
 ## Comportamento em falhas
 
-- Google Maps falha: fallback Leaflet automático.
-- Tile Esri falha no fallback: OSM permanece abaixo, evitando quadrante vazio/preto quando a falha for ausência/transparência do tile.
+- Google Maps falha: fallback Leaflet + OpenStreetMap automático.
+- A contingência não carrega Esri; portanto não reproduz deliberadamente a dependência associada ao defeito histórico dos quadrantes pretos.
 - Raster NDVI falha: talhão continua com contorno, mensagem explícita e nenhuma classe inventada.
 - Ponto planejado: marcador/descrição deixam explícito que não é coordenada medida em campo.
 - Fonte espacial real auditada: o mapa mantém essa proveniência mesmo sem `observed_position`.
@@ -114,12 +118,12 @@ A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<chave>`
 8. Fazer novo deploy, pois variáveis `NEXT_PUBLIC_*` são incorporadas ao bundle do frontend.
 9. Validar em mobile e desktop:
-   - mosaico sem quadrantes vazios;
+   - mapa-base sem quadrantes pretos/vazios;
    - alternância Avaliação / Zonas NDVI / Tendência NDVI;
    - raster alinhado ao contorno;
    - pontos GPS observados no local persistido;
    - pontos Cabeda de fonte auditada corretamente identificados como reais, não como planejados;
-   - fallback quando Google é propositalmente bloqueado.
+   - fallback OSM quando Google é propositalmente bloqueado.
 
 ## Fora de escopo desta integração
 
