@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
+import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/real-field-map";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { classificationColor } from "@/lib/classification-colors";
 import { computeParameterDistribution } from "@/domain/parameter-distribution";
-import { dominantZoneColor, NDVI_ZONE_COLOR } from "@/components/field-ndvi-panel";
+import { NDVI_ZONE_COLOR } from "@/components/field-ndvi-panel";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
@@ -40,6 +40,15 @@ const STATUS_LABEL: Record<string, string> = {
   PUBLISHED: "Publicada",
 };
 
+function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null {
+  if (!raw) return null;
+  const values = raw.split(",").map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) return null;
+  const [minLon, minLat, maxLon, maxLat] = values;
+  if (minLon >= maxLon || minLat >= maxLat) return null;
+  return [[minLat, minLon], [maxLat, maxLon]];
+}
+
 /**
  * Explorador de mapas como área de trabalho (RAIZ 2.0 Fase 2, Bloco A): lista pesquisável + mapa com
  * espaço dominante + painel de detalhe (embutido no próprio RealFieldMap) + controles de camada com
@@ -64,6 +73,9 @@ export function AgronomicMapExplorer() {
   const [layerLoading, setLayerLoading] = useState(false);
   const [ndvi, setNdvi] = useState<NdviSnapshot | null>(null);
   const [ndviLoading, setNdviLoading] = useState(false);
+  const [ndviRaster, setNdviRaster] = useState<MapImageOverlay | null>(null);
+  const [ndviRasterLoading, setNdviRasterLoading] = useState(false);
+  const [ndviRasterError, setNdviRasterError] = useState<string | null>(null);
 
   function updateUrl(next: { ordem?: string; parametro?: string; status?: string; satelite?: boolean }) {
     const params = new URLSearchParams(searchParams.toString());
@@ -106,8 +118,6 @@ export function AgronomicMapExplorer() {
     return Array.from(map.values());
   }, [orders]);
 
-  // Fase 2, Bloco A: lista pesquisável -- filtra por talhão, propriedade ou cliente (nunca esconde um
-  // talhão que já está selecionado, mesmo que a busca digitada não bata mais com ele).
   const filteredFieldGroups = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return fieldGroups;
@@ -127,15 +137,79 @@ export function AgronomicMapExplorer() {
       });
   }, [selectedOrderId, parameter]);
 
-  // Camada "Satélite (talhão inteiro)": só busca quando ligada, e só o que já está salvo (GET, nunca
-  // consulta o provedor externo automaticamente) -- consistente com o painel de NDVI do Talhão 360°.
+  // A leitura temporal vem apenas do que já está salvo; ligar a camada nunca dispara aquisição externa.
   useEffect(() => {
-    if (!satelliteLayer || !selectedOrder) { setNdvi(null); return; }
+    if (!satelliteLayer || !selectedOrder) {
+      setNdvi(null);
+      setNdviLoading(false);
+      return;
+    }
+    const controller = new AbortController();
     setNdviLoading(true);
-    void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data) => { setNdvi(data.latest ?? null); setNdviLoading(false); });
+    void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Não foi possível carregar a leitura NDVI (HTTP ${response.status}).`);
+        return response.json();
+      })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setNdvi(data.latest ?? null);
+        setNdviLoading(false);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setNdvi(null);
+        setNdviLoading(false);
+      });
+    return () => controller.abort();
   }, [satelliteLayer, selectedOrder]);
+
+  // O raster espacial usa exatamente a aquisição salva selecionada acima. Nada é interpolado no frontend.
+  useEffect(() => {
+    if (!satelliteLayer || !selectedOrder || !ndvi?.capturedAt) {
+      setNdviRaster(null);
+      setNdviRasterLoading(false);
+      setNdviRasterError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setNdviRaster(null);
+    setNdviRasterLoading(true);
+    setNdviRasterError(null);
+    const date = ndvi.capturedAt.slice(0, 10);
+
+    void fetch(`/api/fields/${selectedOrder.fieldId}/ndvi/map?date=${encodeURIComponent(date)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? `Raster NDVI indisponível (HTTP ${response.status}).`);
+        }
+        const bounds = parseRasterBounds(response.headers.get("x-raiz-ndvi-bbox"));
+        if (!bounds) throw new Error("Raster NDVI sem envelope geográfico válido.");
+        const blob = await response.blob();
+        if (!blob.type.includes("image/png")) throw new Error("Raster NDVI retornado em formato inesperado.");
+        objectUrl = URL.createObjectURL(blob);
+        if (controller.signal.aborted) return;
+        setNdviRaster({ url: objectUrl, bounds, opacity: 0.78 });
+        setNdviRasterLoading(false);
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setNdviRaster(null);
+        setNdviRasterLoading(false);
+        setNdviRasterError(caught instanceof Error ? caught.message : "Não foi possível carregar o raster NDVI espacial.");
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [satelliteLayer, selectedOrder, ndvi?.capturedAt]);
 
   const points: MapPoint[] = useMemo(() => {
     const source = layer?.points ?? selectedOrder?.points ?? [];
@@ -163,7 +237,6 @@ export function AgronomicMapExplorer() {
   }, [parameter, layer]);
 
   const distribution = useMemo(() => (parameter && layer ? computeParameterDistribution(parameter, layer.points) : null), [parameter, layer]);
-  const boundaryFillColor = satelliteLayer && ndvi ? dominantZoneColor(ndvi.zoneBreakdownPct) : undefined;
 
   function selectField(orderId: string) {
     setSelectedOrderId(orderId);
@@ -197,7 +270,6 @@ export function AgronomicMapExplorer() {
                 <span><strong>{group.fieldName}</strong><small>{group.clientName} · {group.propertyName}{group.orders.length > 1 ? ` · ${group.orders.length} ordens` : ""}{group.orders[0]?.seasonLabel ? ` · ${group.orders[0].seasonLabel}` : ""}</small></span>
                 <b>{totalCollected}/{totalPlanned}</b>
               </button>
-              {/* Atalho real pra Talhão 360° (Fase 1, Etapa 5) direto da lista de talhões do mapa. */}
               <Link href={`/talhoes/${group.fieldId}`} className="map-explorer-field-360" title="Abrir Talhão 360°"><Icon name="sparkles" size={13}/>Visão 360°</Link>
               {active && group.orders.length > 1 && (
                 <div className="map-explorer-order-subpicker">
@@ -234,24 +306,24 @@ export function AgronomicMapExplorer() {
               </div>
               <label className="map-explorer-satellite-toggle">
                 <input type="checkbox" checked={satelliteLayer} onChange={(e) => setSatelliteLayer(e.target.checked)}/>
-                <span>Satélite (talhão inteiro)</span>
+                <span>NDVI espacial (Sentinel-2)</span>
               </label>
               {layer?.analysisId && <Link href={`/analises/${layer.analysisId}`} className="button ghost small">Análise de origem</Link>}
             </div>
 
-            {/* Fase 2, Bloco A: cada camada ativa informa o que representa, unidade, data, fonte, método e
-                limitações -- nunca um toggle "mudo" sem contexto de leitura. */}
             <div className="map-explorer-layer-info">
               {!parameter ? (
                 <p><strong>Camada: status de coleta.</strong> Representa se o ponto planejado já foi visitado em campo. Sem unidade. Fonte: pontos de amostragem reais (PostGIS). Sem limitação além da posição (ver detalhe de GPS ao clicar num ponto).</p>
               ) : (
-                <p><strong>Camada: {parameter}.</strong> Representa o valor laboratorial observado em cada ponto e, quando existe faixa homologada, a classificação agronômica. Unidade: {distribution?.unit ?? "varia por ponto — ver detalhe"}. Fonte: laudo laboratorial (lab_results). Método: varia por ponto — clique no ponto pra ver o método exato. Limitação: cinza = sem classificação (falta faixa homologada ou parâmetro não coberto), não significa "adequado".</p>
+                <p><strong>Camada: {parameter}.</strong> Representa o valor laboratorial observado em cada ponto e, quando existe faixa homologada, a classificação agronômica. Unidade: {distribution?.unit ?? "varia por ponto — ver detalhe"}. Fonte: laudo laboratorial (lab_results). Método: varia por ponto — clique no ponto pra ver o método exato. Limitação: cinza = sem classificação (falta faixa homologada ou parâmetro não coberto), não significa &quot;adequado&quot;.</p>
               )}
               {satelliteLayer && (
                 ndviLoading ? <p><Icon name="clock" size={12}/> Carregando leitura de satélite…</p>
-                : ndvi ? <p><strong>Camada: satélite (talhão inteiro).</strong> Representa a faixa de vigor NDVI dominante de {new Date(ndvi.capturedAt).toLocaleDateString("pt-BR")} ({ndvi.source}){ndvi.cloudCoverPct != null ? `, ${Math.round(ndvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. <strong>Limitação:</strong> é uma aproximação de talhão inteiro (esta instância só guarda estatística agregada, não raster) — a cor preenche o contorno todo, não representa variação espacial real dentro do talhão.</p>
+                : ndvi ? <p><strong>Camada: zonas de vigor NDVI.</strong> Raster espacial real da aquisição Sentinel-2 de {new Date(ndvi.capturedAt).toLocaleDateString("pt-BR")} ({ndvi.source}){ndvi.cloudCoverPct != null ? `, ${Math.round(ndvi.cloudCoverPct)}% da área sem pixel válido nesta cena` : ""}. As cores mostram classes de vigor espectral dentro do talhão; não representam produtividade medida nem interpolação de laboratório.</p>
                 : <p>Nenhuma leitura de satélite salva ainda para este talhão. <Link href={`/talhoes/${selectedOrder.fieldId}`}>Buscar no Talhão 360°</Link>.</p>
               )}
+              {satelliteLayer && ndviRasterLoading && <p><Icon name="clock" size={12}/> Carregando raster NDVI espacial…</p>}
+              {satelliteLayer && ndviRasterError && <p className="ndvi-panel-error"><strong>Raster espacial indisponível.</strong> {ndviRasterError} O contorno e os pontos reais permanecem visíveis; nenhuma faixa é inventada.</p>}
             </div>
 
             {parameter && layer && layer.interpretationStatus && (
@@ -262,12 +334,6 @@ export function AgronomicMapExplorer() {
               </div>
             )}
 
-            {/* Bug real corrigido (fechamento Fase 1): antes, clicar em "Interpolação" substituía o mapa
-                inteiro por um texto -- o contorno e os pontos reais somem da tela. O briefing pede o
-                oposto: preservar o mapa de base e explicar o impedimento no controle da camada, não
-                trocar o mapa por um aviso. Agora o mapa real continua sempre visível (mostrando os
-                pontos, nunca uma zona interpolada inventada); o aviso aparece junto do próprio seletor
-                de camada, perto de onde o usuário clicou. */}
             {layerMode === "interpolation" && (
               <div className="map-explorer-layer-notice">
                 <Icon name="shield" size={15}/>
@@ -277,7 +343,15 @@ export function AgronomicMapExplorer() {
             {layerLoading ? (
               <div className="agro-loading"><Icon name="clock" size={15}/>Carregando camada…</div>
             ) : (
-              <RealFieldMap boundary={layer?.fieldBoundary ?? selectedOrder.fieldBoundary} points={points} height={420} colorFor={colorFor} legend={legend} boundaryFillColor={boundaryFillColor ?? undefined} hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}/>
+              <RealFieldMap
+                boundary={layer?.fieldBoundary ?? selectedOrder.fieldBoundary}
+                points={points}
+                height={420}
+                colorFor={colorFor}
+                legend={legend}
+                imageOverlay={satelliteLayer ? ndviRaster : null}
+                hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}
+              />
             )}
 
             {parameter && distribution && (
