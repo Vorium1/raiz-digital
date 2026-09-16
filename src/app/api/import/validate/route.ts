@@ -1,9 +1,10 @@
 import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
+import { LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { RawImportPersistenceError, saveRequiredRawImportFile, wrapExtractedLabContent } from "@/lib/storage";
 
-const MAX_BODY_BYTES = 6_000_000;
+const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.tabularRequestBytes;
 
 export async function POST(request: Request) {
   const database = isDatabaseMode();
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
-    return Response.json({ error: "Arquivo excede o limite desta etapa do MVP." }, { status: 413 });
+    return Response.json({ error: "Requisição do arquivo excede o limite desta etapa." }, { status: 413 });
   }
 
   try {
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
 
     const fileName = body.fileName ?? "laudo.csv";
     const isSpreadsheet = isSpreadsheetFileName(fileName);
+    const rawBytes = isSpreadsheet
+      ? Buffer.from(body.content, "base64").length
+      : Buffer.byteLength(body.content, "utf8");
+    const rawLimit = isSpreadsheet ? LAB_UPLOAD_LIMITS.spreadsheetBytes : LAB_UPLOAD_LIMITS.textBytes;
+    if (rawBytes > rawLimit) {
+      return Response.json({ error: `Arquivo excede ${(rawLimit / 1_000_000).toLocaleString("pt-BR")} MB para este formato.` }, { status: 413 });
+    }
 
     // Mesmo a pré-validação é uma leitura agronômica do arquivo. Em modo real, o ORIGINAL precisa
     // existir no storage durável antes de o parser examinar uma única célula/linha.
