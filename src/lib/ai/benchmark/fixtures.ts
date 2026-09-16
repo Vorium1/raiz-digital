@@ -62,6 +62,7 @@ export const syntheticAnalysisEvidence: AgronomicEvidencePackage = {
   season: { id: SEASON_ID, label: "2026/27", crop: "Soja", cropGroup: "VERAO", cultivar: "BMX Potência", managementSystem: "Plantio direto", soilTexture: "Argiloso", yieldGoal: 3600, yieldGoalUnit: "kg/ha" },
   region: { code: "RS-PLANALTO" },
   analysis: { id: ANALYSIS_ID, code: "AN-SINTETICA-01", status: "AWAITING_REVIEW", createdAt: "2026-08-10T00:00:00.000Z" },
+  interpretation: { id: "00000000-0000-4000-8000-000000000008", createdAt: "2026-08-10T01:00:00.000Z" },
   results: [{ sampleCode: "SQC-001", parameterCode: "P", value: 8.2, unit: "mg/dm3", method: "Mehlich-1" }],
   classifications: [
     { sampleCode: "SQC-001", parameterCode: "P", interpretable: true, classification: "BAIXO", reason: null },
