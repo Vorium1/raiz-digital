@@ -1,3 +1,4 @@
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { evaluatePrescriptionReviewTransition, type PrescriptionReviewDecision, type PrescriptionReviewStatus } from "@/domain/agronomic-prescription-review";
 import { evaluatePrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 import { validatePrescriptionPkRecommendations } from "@/domain/prescription-pk-validation";
@@ -68,7 +69,9 @@ export async function reviewAgronomicPrescriptionSafely(input: {
         cropProfileCode: string | null;
         latestInterpretationId: string | null;
         latestInterpretationStatus: string | null;
+        latestInterpretationCreatedAt: string | null;
         latestStructuredOutput: unknown;
+        latestImportCommittedAt: string | null;
       }>(
         `SELECT cs.updated_at::text AS "updatedAt",
                 cs.yield_goal::float8 AS "yieldGoal",
@@ -77,17 +80,24 @@ export async function reviewAgronomicPrescriptionSafely(input: {
                 cp.code AS "cropProfileCode",
                 li.id::text AS "latestInterpretationId",
                 li.status::text AS "latestInterpretationStatus",
-                li.structured_output AS "latestStructuredOutput"
+                li.created_at::text AS "latestInterpretationCreatedAt",
+                li.structured_output AS "latestStructuredOutput",
+                latest_import.latest_import_at::text AS "latestImportCommittedAt"
          FROM analyses a
          JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
          LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
          LEFT JOIN LATERAL (
-           SELECT i.id, i.status, i.structured_output
+           SELECT i.id, i.status, i.created_at, i.structured_output
            FROM interpretations i
            WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
            ORDER BY i.revision DESC
            LIMIT 1
          ) li ON true
+         LEFT JOIN LATERAL (
+           SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+           FROM analysis_imports ai
+           WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+         ) latest_import ON true
          WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
          LIMIT 1
          FOR SHARE OF a, cs`,
@@ -108,6 +118,17 @@ export async function reviewAgronomicPrescriptionSafely(input: {
       ) {
         throw new AiGenerationError(
           "A interpretação determinística vinculada a esta prescrição não é mais a revisão APPROVED atual. Gere uma nova prescrição antes de aprovar ou promover doses.",
+          409,
+        );
+      }
+
+      const labEvidenceFreshness = evaluateAnalysisEvidenceFreshness({
+        interpretationCreatedAt: state?.latestInterpretationCreatedAt,
+        latestImportCommittedAt: state?.latestImportCommittedAt,
+      });
+      if (!labEvidenceFreshness.current) {
+        throw new AiGenerationError(
+          labEvidenceFreshness.reason ?? "O laudo laboratorial mudou depois da interpretação desta prescrição. Recalcule antes de aprovar.",
           409,
         );
       }
