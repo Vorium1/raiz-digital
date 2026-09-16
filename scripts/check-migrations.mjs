@@ -29,6 +29,7 @@ const ruleExecutions = await readFile(new URL("../db/migrations/031_agronomic_ru
 const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_recommendation_context.sql", import.meta.url), "utf8");
 const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
 const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
+const ndviRasterCustody = await readFile(new URL("../db/migrations/037_ndvi_raster_custody.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -125,4 +126,11 @@ assert.match(commercialPlanSnapshots, /GRANT SELECT, INSERT ON commercial_plan_s
 assert.match(commercialPlanSnapshots, /REVOKE UPDATE, DELETE ON commercial_plan_snapshots FROM raiz_app/i);
 assert.doesNotMatch(commercialPlanSnapshots, /GRANT[^;]*(UPDATE|DELETE)[^;]*commercial_plan_snapshots/i);
 
-console.log("migrations: contratos estruturais críticos 001-034 aprovados");
+assert.match(ndviRasterCustody, /ADD COLUMN raster_object_key text/i);
+assert.match(ndviRasterCustody, /field_ndvi_raster_metadata_all_or_none/i);
+assert.match(ndviRasterCustody, /IF OLD\.raster_object_key IS NOT NULL THEN/i);
+assert.match(ndviRasterCustody, /CREATE TRIGGER field_ndvi_snapshots_protect_archived/i);
+assert.match(ndviRasterCustody, /BEFORE UPDATE OR DELETE ON field_ndvi_snapshots/i);
+assert.match(ndviRasterCustody, /REVOKE DELETE ON field_ndvi_snapshots FROM raiz_app/i);
+
+console.log("migrations: contratos estruturais críticos 001-037 aprovados");
