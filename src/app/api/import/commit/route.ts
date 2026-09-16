@@ -1,7 +1,9 @@
+import { compactLabImportPreview, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { getPlatformSession } from "@/lib/auth/session";
 import { commitCsvImport } from "@/lib/repositories/imports";
+import { RawImportPersistenceError } from "@/lib/storage";
 
-const MAX_BODY_BYTES = 6_000_000;
+const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.functionPayloadBytes;
 
 export async function POST(request: Request) {
   const session = await getPlatformSession();
@@ -12,7 +14,7 @@ export async function POST(request: Request) {
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_BODY_BYTES) {
-    return Response.json({ error: "Arquivo excede o limite desta etapa do MVP." }, { status: 413 });
+    return Response.json({ error: "Requisição do arquivo excede o limite seguro do ambiente atual." }, { status: 413 });
   }
 
   try {
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
     };
 
     if (!body.analysisId || typeof body.content !== "string" || !body.content.trim()) {
-      return Response.json({ error: "Análise e conteúdo CSV são obrigatórios." }, { status: 400 });
+      return Response.json({ error: "Análise e conteúdo do laudo são obrigatórios." }, { status: 400 });
     }
 
     const result = await commitCsvImport({
@@ -40,9 +42,12 @@ export async function POST(request: Request) {
       spatialLinked: body.spatialLinked,
     });
 
-    return Response.json(result, { status: 201 });
+    // O commit processa/persiste todas as linhas, mas a resposta HTTP devolve somente uma amostra do
+    // preview. Isso evita estourar o limite de resposta da Vercel depois que o banco já foi atualizado.
+    return Response.json({ ...result, preview: compactLabImportPreview(result.preview) }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao persistir a importação.";
-    return Response.json({ error: message }, { status: 422 });
+    const status = error instanceof RawImportPersistenceError ? 503 : 422;
+    return Response.json({ error: message }, { status });
   }
 }

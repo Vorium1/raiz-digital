@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getS3Object, putS3Object } from "./s3-object-storage.ts";
@@ -16,17 +16,35 @@ import { getS3Object, putS3Object } from "./s3-object-storage.ts";
 const LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_ROOT?.trim() || path.join(process.cwd(), "storage");
 const INLINE_REPORT_PREFIX = "inline:v1:";
 const S3_RAW_PREFIX = "s3:v1:";
-const RAW_SOURCE_ENVELOPE_PREFIX = "#RAIZ_SOURCE_V1 ";
+const RAW_SOURCE_ENVELOPE_PREFIX = "#RAIZ_SOURCE_V2 ";
+const LEGACY_RAW_SOURCE_ENVELOPE_PREFIX = "#RAIZ_SOURCE_V1 ";
 const MAX_INLINE_REPORT_BYTES = 1_500_000;
 
+export type LabRawSourceType = "CSV" | "XLSX" | "PDF_OCR";
 export type StoredFile = { key: string; bytes: number; sha256: string };
 export type RawSourceReceipt = {
   key: string;
   bytes: number;
   sha256: string;
   fileName: string;
-  sourceType: "PDF_OCR";
+  sourceType: LabRawSourceType;
+  extractedSha256: string;
+  signature: string;
 };
+export type RawImportFileInput = {
+  tenantId: string;
+  analysisId?: string;
+  fileName: string;
+  content: string;
+  encoding: "utf8" | "base64";
+};
+
+export class RawImportPersistenceError extends Error {
+  constructor(message = "Persistência obrigatória do arquivo original indisponível. Configure um armazenamento bruto durável antes de analisar ou importar o laudo.") {
+    super(message);
+    this.name = "RawImportPersistenceError";
+  }
+}
 
 function sha256(buffer: Buffer) {
   return createHash("sha256").update(buffer).digest("hex");
@@ -48,6 +66,14 @@ function reportProvider() {
   return provider;
 }
 
+function provenanceSecret() {
+  const secret = process.env.AUTH_SECRET?.trim() ?? "";
+  if (secret.length < 32) {
+    throw new RawImportPersistenceError("Cadeia de custódia indisponível: AUTH_SECRET precisa ter ao menos 32 caracteres antes de transportar um laudo validado.");
+  }
+  return secret;
+}
+
 function rawObjectKey(input: { tenantId: string; fileName: string; sha256: string }) {
   return `imports/${input.tenantId}/sources/${input.sha256}-${sanitizeFileName(input.fileName)}`;
 }
@@ -57,6 +83,39 @@ function rawKeyBelongsToTenant(key: string, tenantId: string) {
   return rawKey.startsWith(`imports/${tenantId}/sources/`) && !rawKey.includes("../") && !rawKey.includes("..\\");
 }
 
+function provenanceManifest(input: {
+  tenantId: string;
+  key: string;
+  bytes: number;
+  sha256: string;
+  fileName: string;
+  sourceType: LabRawSourceType;
+  extractedSha256: string;
+}) {
+  // Campos delimitados por JSON em ordem fixa para evitar ambiguidades de concatenação.
+  return JSON.stringify({
+    version: 2,
+    tenantId: input.tenantId,
+    key: input.key,
+    bytes: input.bytes,
+    sha256: input.sha256.toLowerCase(),
+    fileName: input.fileName,
+    sourceType: input.sourceType,
+    extractedSha256: input.extractedSha256.toLowerCase(),
+  });
+}
+
+function signProvenance(input: Parameters<typeof provenanceManifest>[0]) {
+  return createHmac("sha256", provenanceSecret()).update(provenanceManifest(input)).digest("hex");
+}
+
+function safeEqualHex(expectedHex: string, receivedHex: string) {
+  if (!/^[a-f0-9]{64}$/i.test(receivedHex)) return false;
+  const expected = Buffer.from(expectedHex, "hex");
+  const received = Buffer.from(receivedHex, "hex");
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
 /**
  * Guarda os bytes originais recebidos do laboratório/usuário.
  *
@@ -64,13 +123,7 @@ function rawKeyBelongsToTenant(key: string, tenantId: string) {
  * devolve `null`; o preflight comercial exige `STORAGE_PROVIDER=s3`, portanto produção não pode ser
  * promovida com essa lacuna escondida.
  */
-export async function saveRawImportFile(input: {
-  tenantId: string;
-  analysisId?: string;
-  fileName: string;
-  content: string;
-  encoding: "utf8" | "base64";
-}): Promise<StoredFile | null> {
+export async function saveRawImportFile(input: RawImportFileInput): Promise<StoredFile | null> {
   const provider = configuredProvider();
   if (provider === "inline") return null;
   if (provider === "local" && process.env.VERCEL) return null;
@@ -95,19 +148,47 @@ export async function saveRawImportFile(input: {
 }
 
 /**
- * PDF/foto passa por IA antes do commit. Para não perder a ligação com o ORIGINAL, o endpoint de extração
- * arquiva o arquivo primeiro e devolve o CSV com este envelope opaco na primeira linha. O cliente apenas
- * transporta o conteúdo; no commit o servidor remove o envelope e verifica novamente key/hash/bytes.
+ * Variante fail-closed para qualquer fluxo que vá interpretar, normalizar ou promover dados agronômicos.
+ * Nenhuma análise pode começar se os bytes originais ainda não tiverem sido persistidos de forma durável.
  */
-export function wrapExtractedLabContent(csvContent: string, source: RawSourceReceipt) {
-  const encoded = Buffer.from(JSON.stringify(source), "utf8").toString("base64url");
-  return `${RAW_SOURCE_ENVELOPE_PREFIX}${encoded}\n${csvContent}`;
+export async function saveRequiredRawImportFile(input: RawImportFileInput): Promise<StoredFile> {
+  const stored = await saveRawImportFile(input);
+  if (!stored) throw new RawImportPersistenceError();
+  return stored;
 }
 
-export function unwrapExtractedLabContent(content: string): { content: string; source: RawSourceReceipt | null } {
+/**
+ * Depois que o arquivo original foi arquivado, o servidor assina um recibo que vincula tenant + arquivo
+ * bruto + hash/bytes + nome + tipo de fonte + hash exato do conteúdo que será entregue ao parser no commit.
+ *
+ * Em PDF/foto esse conteúdo é o CSV extraído pela IA. Em CSV/XLSX ele é o próprio conteúdo bruto já
+ * arquivado. Assim o cliente pode transportar o payload entre validação e commit, mas não pode alterá-lo
+ * nem apontar para outro arquivo sem invalidar a assinatura HMAC.
+ */
+export function wrapExtractedLabContent(
+  content: string,
+  source: Omit<RawSourceReceipt, "extractedSha256" | "signature">,
+  tenantId: string,
+) {
+  const extractedSha256 = sha256(Buffer.from(content, "utf8"));
+  const unsigned = { ...source, extractedSha256 };
+  const receipt: RawSourceReceipt = {
+    ...unsigned,
+    signature: signProvenance({ tenantId, ...unsigned }),
+  };
+  const encoded = Buffer.from(JSON.stringify(receipt), "utf8").toString("base64url");
+  return `${RAW_SOURCE_ENVELOPE_PREFIX}${encoded}\n${content}`;
+}
+
+export function unwrapExtractedLabContent(content: string, tenantId: string): { content: string; source: RawSourceReceipt | null } {
+  if (content.startsWith(LEGACY_RAW_SOURCE_ENVELOPE_PREFIX)) {
+    throw new Error("Envelope legado de proveniência sem assinatura. Refaça a leitura/validação do arquivo antes de importar.");
+  }
   if (!content.startsWith(RAW_SOURCE_ENVELOPE_PREFIX)) return { content, source: null };
+
   const newline = content.indexOf("\n");
   if (newline < 0) throw new Error("Envelope de proveniência do laudo está incompleto.");
+
   try {
     const encoded = content.slice(RAW_SOURCE_ENVELOPE_PREFIX.length, newline).trim();
     const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Partial<RawSourceReceipt>;
@@ -115,11 +196,34 @@ export function unwrapExtractedLabContent(content: string): { content: string; s
       typeof parsed.key !== "string" || !parsed.key ||
       typeof parsed.fileName !== "string" || !parsed.fileName ||
       typeof parsed.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(parsed.sha256) ||
+      typeof parsed.extractedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(parsed.extractedSha256) ||
+      typeof parsed.signature !== "string" || !/^[a-f0-9]{64}$/i.test(parsed.signature) ||
       typeof parsed.bytes !== "number" || !Number.isSafeInteger(parsed.bytes) || parsed.bytes < 0 ||
-      parsed.sourceType !== "PDF_OCR"
+      !new Set<LabRawSourceType>(["CSV", "XLSX", "PDF_OCR"]).has(parsed.sourceType as LabRawSourceType)
     ) throw new Error("metadados inválidos");
-    return { content: content.slice(newline + 1), source: parsed as RawSourceReceipt };
-  } catch {
+
+    const transportedContent = content.slice(newline + 1);
+    const actualExtractedSha256 = sha256(Buffer.from(transportedContent, "utf8"));
+    if (actualExtractedSha256 !== parsed.extractedSha256.toLowerCase()) {
+      throw new Error("conteúdo transportado foi alterado depois da validação da fonte original");
+    }
+
+    const expectedSignature = signProvenance({
+      tenantId,
+      key: parsed.key,
+      bytes: parsed.bytes,
+      sha256: parsed.sha256,
+      fileName: parsed.fileName,
+      sourceType: parsed.sourceType as LabRawSourceType,
+      extractedSha256: parsed.extractedSha256,
+    });
+    if (!safeEqualHex(expectedSignature, parsed.signature)) {
+      throw new Error("assinatura de proveniência não confere");
+    }
+
+    return { content: transportedContent, source: parsed as RawSourceReceipt };
+  } catch (error) {
+    if (error instanceof RawImportPersistenceError) throw error;
     throw new Error("Envelope de proveniência do laudo é inválido.");
   }
 }

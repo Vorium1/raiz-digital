@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   readRawStoredFile,
   saveRawImportFile,
+  saveRequiredRawImportFile,
   saveReportSnapshot,
   unwrapExtractedLabContent,
   wrapExtractedLabContent,
@@ -10,10 +11,12 @@ import {
 const previousStorage = process.env.STORAGE_PROVIDER;
 const previousReportStorage = process.env.REPORT_STORAGE_PROVIDER;
 const previousVercel = process.env.VERCEL;
+const previousAuthSecret = process.env.AUTH_SECRET;
 
 try {
   delete process.env.VERCEL;
   process.env.STORAGE_PROVIDER = "inline";
+  process.env.AUTH_SECRET = "test-auth-secret-with-at-least-32-characters";
   delete process.env.REPORT_STORAGE_PROVIDER;
 
   const content = JSON.stringify({ reportSnapshotVersion: 2, field: "Área 01", facts: [{ p: 11, k: 229.9 }] });
@@ -26,6 +29,11 @@ try {
 
   const raw = await saveRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" });
   assert.equal(raw, null, "arquivos brutos não devem usar inline");
+  await assert.rejects(
+    () => saveRequiredRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" }),
+    /Persistência obrigatória do arquivo original indisponível/,
+    "fluxos agronômicos devem falhar fechado quando não há persistência bruta durável",
+  );
 
   const source = {
     key: "s3:v1:imports/tenant/sources/abc-laudo.pdf",
@@ -35,12 +43,79 @@ try {
     sourceType: "PDF_OCR",
   };
   const csv = "amostra,parametro,valor\nA1,P,12";
-  const transported = wrapExtractedLabContent(csv, source);
-  const unwrapped = unwrapExtractedLabContent(transported);
+  const transported = wrapExtractedLabContent(csv, source, "tenant");
+  const unwrapped = unwrapExtractedLabContent(transported, "tenant");
   assert.equal(unwrapped.content, csv);
-  assert.deepEqual(unwrapped.source, source);
-  assert.deepEqual(unwrapExtractedLabContent(csv), { content: csv, source: null });
-  assert.throws(() => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor"), /proveniência/);
+  assert.equal(unwrapped.source?.key, source.key);
+  assert.equal(unwrapped.source?.sha256, source.sha256);
+  assert.equal(unwrapped.source?.fileName, source.fileName);
+  assert.equal(unwrapped.source?.sourceType, "PDF_OCR");
+  assert.match(unwrapped.source?.extractedSha256 ?? "", /^[a-f0-9]{64}$/);
+  assert.match(unwrapped.source?.signature ?? "", /^[a-f0-9]{64}$/);
+
+  // CSV/XLSX também usam o mesmo transporte assinado: a pré-validação real não pode acontecer sobre
+  // uma versão do arquivo e o commit receber silenciosamente outra.
+  const csvSource = {
+    key: "s3:v1:imports/tenant/sources/def-laudo.csv",
+    bytes: Buffer.byteLength(csv),
+    sha256: "b".repeat(64),
+    fileName: "laudo.csv",
+    sourceType: "CSV",
+  };
+  const transportedCsv = wrapExtractedLabContent(csv, csvSource, "tenant");
+  const unwrappedCsv = unwrapExtractedLabContent(transportedCsv, "tenant");
+  assert.equal(unwrappedCsv.content, csv);
+  assert.equal(unwrappedCsv.source?.sourceType, "CSV");
+  assert.equal(unwrappedCsv.source?.fileName, "laudo.csv");
+  assert.throws(
+    () => unwrapExtractedLabContent(transportedCsv.replace("A1,P,12", "A1,P,13"), "tenant"),
+    /proveniência/,
+    "CSV alterado depois do preview deve invalidar o recibo assinado",
+  );
+
+  const xlsxSource = {
+    key: "s3:v1:imports/tenant/sources/ghi-laudo.xlsx",
+    bytes: 321,
+    sha256: "c".repeat(64),
+    fileName: "laudo.xlsx",
+    sourceType: "XLSX",
+  };
+  const fakeXlsxBase64 = "UEsDBAoAAAAAAFRFU1Q=";
+  const transportedXlsx = wrapExtractedLabContent(fakeXlsxBase64, xlsxSource, "tenant");
+  assert.equal(unwrapExtractedLabContent(transportedXlsx, "tenant").source?.sourceType, "XLSX");
+
+  assert.deepEqual(unwrapExtractedLabContent(csv, "tenant"), { content: csv, source: null });
+
+  // O cliente não pode trocar um único valor do CSV depois que /extract assinou a proveniência.
+  const tamperedCsv = transported.replace("A1,P,12", "A1,P,99");
+  assert.throws(
+    () => unwrapExtractedLabContent(tamperedCsv, "tenant"),
+    /proveniência/,
+    "alterar o CSV depois da extração deve invalidar o recibo assinado",
+  );
+
+  // O mesmo recibo também não pode ser reaproveitado por outro tenant.
+  assert.throws(
+    () => unwrapExtractedLabContent(transported, "outro-tenant"),
+    /proveniência/,
+    "recibo de proveniência deve ser vinculado ao tenant que arquivou o original",
+  );
+
+  // Envelopes V1 não assinados são deliberadamente recusados: refazer a validação é mais seguro do que
+  // aceitar uma cadeia de custódia que o cliente conseguiria editar livremente.
+  assert.throws(
+    () => unwrapExtractedLabContent("#RAIZ_SOURCE_V1 nao-e-base64\namostra,parametro,valor", "tenant"),
+    /legado|proveniência/,
+  );
+
+  const signedWithoutSecret = transported;
+  delete process.env.AUTH_SECRET;
+  assert.throws(
+    () => unwrapExtractedLabContent(signedWithoutSecret, "tenant"),
+    /AUTH_SECRET|cadeia de custódia/i,
+    "servidor sem segredo de proveniência deve falhar fechado",
+  );
+  process.env.AUTH_SECRET = "test-auth-secret-with-at-least-32-characters";
 
   process.env.REPORT_STORAGE_PROVIDER = "provider-inexistente";
   await assert.rejects(
@@ -48,9 +123,10 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline + envelope de proveniência + providers fail-closed.");
+  console.log("OK — storage: snapshot inline + proveniência HMAC para PDF/CSV/XLSX + anti-tampering + persistência bruta fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;
   if (previousVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = previousVercel;
+  if (previousAuthSecret === undefined) delete process.env.AUTH_SECRET; else process.env.AUTH_SECRET = previousAuthSecret;
 }

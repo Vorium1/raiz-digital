@@ -37,14 +37,6 @@ function parseSignatureHeader(signature: string) {
   return { ts: parts.get("ts") ?? null, v1: parts.get("v1") ?? null };
 }
 
-/**
- * Valida a assinatura de Webhook conforme o manifesto documentado pelo Mercado Pago:
- * id:<data.id>;request-id:<x-request-id>;ts:<ts>;
- *
- * A RAIZ exige data.id e x-request-id em vez de aceitar um manifesto parcial. Isso deixa
- * o recurso financeiro explicitamente vinculado à assinatura e evita processar um corpo
- * alterado usando apenas request-id/timestamp.
- */
 export function verifyMercadoPagoWebhookSignature(input: {
   signature: string;
   requestId: string;
@@ -54,9 +46,12 @@ export function verifyMercadoPagoWebhookSignature(input: {
   const { ts, v1 } = parseSignatureHeader(input.signature);
   if (!ts || !/^\d{10,16}$/.test(ts)) return false;
   if (!v1 || !/^[a-f0-9]{64}$/i.test(v1)) return false;
-  if (!input.requestId.trim() || !input.dataId.trim() || !input.secret) return false;
+  const requestId = input.requestId.trim();
+  const dataId = input.dataId.trim();
+  if (!requestId || !dataId || !input.secret) return false;
 
-  const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${ts};`;
+  const signedDataId = dataId.toLowerCase();
+  const manifest = `id:${signedDataId};request-id:${requestId};ts:${ts};`;
   const expectedHex = createHmac("sha256", input.secret).update(manifest).digest("hex");
   const expected = Buffer.from(expectedHex, "hex");
   const received = Buffer.from(v1, "hex");
@@ -86,9 +81,24 @@ export function mapMercadoPagoPaymentStatus(status: string): InternalPaymentStat
   }
 }
 
+/**
+ * Protege estados financeiros terminais contra regressões silenciosas. Uma fatura confirmada como paga
+ * só pode permanecer paga ou evoluir para reembolso. Depois de reembolsada, nenhuma reabertura automática
+ * é aceita. Demais estados continuam podendo evoluir conforme uma tentativa válida de pagamento.
+ */
+export function isAutomaticPaymentStatusTransitionAllowed(current: string, next: InternalPaymentStatus) {
+  if (current === "REFUNDED") return next === "REFUNDED";
+  if (current === "PAID") return next === "PAID" || next === "REFUNDED";
+  return true;
+}
+
 export function amountInCents(value: number) {
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round((value + Number.EPSILON) * 100);
+}
+
+export function normalizeMercadoPagoPaymentIds(paymentIds: readonly string[]) {
+  return [...new Set(paymentIds.map((id) => id.trim()).filter((id) => Boolean(id) && /^[A-Za-z0-9-]{1,80}$/.test(id)))];
 }
 
 function uuidToCompact(uuid: string) {
@@ -105,11 +115,6 @@ function compactToUuid(value: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/**
- * Fica abaixo do limite de 64 caracteres e usa apenas caracteres aceitos pelo campo
- * external_reference. O tenant faz parte da referência para que a reconciliação possa
- * entrar no contexto RLS correto sem uma consulta global a invoices.
- */
 export function buildRaizInvoiceExternalReference(tenantId: string, invoiceId: string) {
   return `${EXTERNAL_REFERENCE_PREFIX}_${uuidToCompact(tenantId)}_${uuidToCompact(invoiceId)}`;
 }
