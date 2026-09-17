@@ -34,7 +34,7 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
           <Icon name="shield" size={21}/><span>Revisar</span>
         </Link>
       ) : (
-        <Link href="/relatorios" className={isActive("/relatorios") ? "active" : ""}>
+        <Link href="/resultados" className={isActive("/resultados") ? "active" : ""}>
           <Icon name="file" size={21}/><span>Resultados</span>
         </Link>
       )}
