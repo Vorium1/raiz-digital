@@ -15,7 +15,6 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
     const path = href.split("?")[0];
     if (path === "/inicio") return pathname === "/inicio" || pathname === "/dashboard";
     if (path === "/analises/nova") return pathname.startsWith("/analises/nova");
-    if (path === "/analises" && href.includes("status=revisao")) return pathname.startsWith("/analises") && !pathname.startsWith("/analises/nova");
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
@@ -31,7 +30,7 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
         <span><Icon name="upload" size={23}/></span><b>Enviar</b>
       </Link>
       {canReview ? (
-        <Link href="/analises?status=revisao" className={isActive("/analises?status=revisao") ? "active" : ""}>
+        <Link href="/revisar" className={isActive("/revisar") ? "active" : ""}>
           <Icon name="shield" size={21}/><span>Revisar</span>
         </Link>
       ) : (
