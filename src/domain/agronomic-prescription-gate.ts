@@ -1,26 +1,42 @@
 /**
- * Gate de governança da prescrição/recomendação assistida (auditoria RAIZ_2.0/Cabeda, 2026-09-11, item 1).
- * Módulo puro (sem banco) pra ser testável isoladamente com `node --experimental-strip-types` -- a lógica
- * em si é pequena, mas é exatamente o tipo de decisão que precisa de teste explícito, não só revisão de
- * código, porque uma versão anterior deste gate aceitava `IN_REVIEW` também (errado: `IN_REVIEW` é
- * "calculado, aguardando revisão", nunca "aprovado por um profissional").
+ * Governança da recomendação assistida RAIZ.
  *
- * Fluxo correto que este gate impõe:
- *   interpretação determinística -> revisão profissional (reviewInterpretation) -> APPROVED
- *     -> prescrição/recomendação assistida (só passa daqui pra frente)
- *     -> revisão/aprovação da prescrição (reviewAgronomicPrescription, já existente)
+ * UX 2.0 separa duas permissões que antes estavam misturadas:
  *
- * `interpretationStatus` é `null` quando não existe nenhuma interpretação persistida pra esta análise
- * (nunca rodou o motor) -- bloqueado, igual a qualquer status diferente de `APPROVED`.
+ * 1. PREPARAR RASCUNHO: a recomendação pode ser gerada enquanto a interpretação atual está
+ *    `IN_REVIEW`. Ela nasce `PENDING_REVIEW`, não alimenta `input_recommendations`, não pode ser
+ *    publicada e continua sujeita aos validadores determinísticos do servidor.
+ *
+ * 2. PROMOVER/ENTREGAR: só uma interpretação `APPROVED` pode autorizar aprovação da prescrição,
+ *    promoção de doses oficiais e publicação. Essa barreira permanece em `prescription-review.ts`
+ *    e `report-publication-gate.ts`.
+ *
+ * Isso permite o fluxo aprovado de experiência — dados -> análise -> recomendação pronta -> revisão
+ * final — sem voltar ao bug antigo em que conteúdo não revisado podia virar recomendação oficial.
  */
 export type PrescriptionGateResult = { allowed: true } | { allowed: false; reason: string };
 
 export const PRESCRIPTION_GATE_BLOCKED_REASON =
-  "É necessário ter uma interpretação técnica aprovada por um profissional (revisão concluída) antes de gerar uma prescrição assistida.";
+  "É necessário ter uma interpretação técnica aprovada por um profissional antes de promover ou entregar uma recomendação oficial.";
 
+export const PRESCRIPTION_DRAFT_GATE_BLOCKED_REASON =
+  "A RAIZ precisa de uma interpretação determinística corrente e interpretável antes de preparar o rascunho da recomendação.";
+
+/** Gate estrito para qualquer ação que possa transformar a recomendação em decisão oficial. */
 export function checkPrescriptionGate(interpretationStatus: string | null): PrescriptionGateResult {
   if (interpretationStatus !== "APPROVED") {
     return { allowed: false, reason: PRESCRIPTION_GATE_BLOCKED_REASON };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Gate de preparação: `IN_REVIEW` é suficiente apenas para GERAR um rascunho a ser mostrado na mesma
+ * revisão profissional. `CALCULATED`, ausência de interpretação ou status inesperado continuam fechados.
+ */
+export function checkPrescriptionDraftGate(interpretationStatus: string | null): PrescriptionGateResult {
+  if (interpretationStatus !== "IN_REVIEW" && interpretationStatus !== "APPROVED") {
+    return { allowed: false, reason: PRESCRIPTION_DRAFT_GATE_BLOCKED_REASON };
   }
   return { allowed: true };
 }
