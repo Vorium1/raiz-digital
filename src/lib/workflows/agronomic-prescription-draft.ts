@@ -1,5 +1,6 @@
 import { buildAgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
+import { deterministicLimitedPrescriptionProvider } from "@/lib/ai/providers/deterministic-limited-prescription-provider";
 import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
@@ -21,14 +22,11 @@ export async function prepareAgronomicPrescriptionDraft(input: {
   userId: string;
   analysisId: string;
 }) {
-  const provider = resolveAgronomicPrescriptionProvider();
+  let provider = resolveAgronomicPrescriptionProvider();
   if (provider.isRealLanguageModel) {
     const usage = await getTenantPrescriptionUsage(input.tenantId);
     if (usage.usedThisMonth >= usage.monthlyLimit) {
-      throw new AiGenerationError(
-        `Limite mensal de prescrições por IA atingido (${usage.usedThisMonth}/${usage.monthlyLimit} este mês). Fale com o responsável pela plataforma para ajustar o plano.`,
-        429,
-      );
+      provider = deterministicLimitedPrescriptionProvider;
     }
   }
 
@@ -76,7 +74,11 @@ export async function prepareAgronomicPrescriptionDraft(input: {
   try {
     result = await provider.prescribe({ evidence });
   } catch (error) {
-    throw new AiGenerationError(error instanceof Error ? error.message : "Falha ao gerar prescrição.", 502);
+    if (!provider.isRealLanguageModel) {
+      throw new AiGenerationError(error instanceof Error ? error.message : "Falha ao preparar a conclusão técnica.", 502);
+    }
+    provider = deterministicLimitedPrescriptionProvider;
+    result = await provider.prescribe({ evidence });
   }
 
   const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider] = await Promise.all([
