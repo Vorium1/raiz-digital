@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   evaluatePrescriptionDraftSnapshotConsistency,
   evaluatePrescriptionSnapshotConsistency,
@@ -50,4 +51,17 @@ assert.equal(evaluatePrescriptionDraftSnapshotConsistency({
   snapshotSeasonUpdatedAt: null,
 }).current, false);
 
-console.log("prescription-snapshot-consistency: draft aceita IN_REVIEW/APPROVED; política oficial segue exigindo APPROVED; mudanças falham fechadas");
+// Contrato da corrida com o provedor: depois da chamada externa, contexto e laudo são relidos antes de persistir.
+const workflowSource = readFileSync(new URL("../src/lib/workflows/agronomic-prescription-draft.ts", import.meta.url), "utf8");
+const providerIndex = workflowSource.indexOf("await provider.prescribe");
+const afterProviderIndex = workflowSource.indexOf("interpretationAfterProvider");
+const persistIndex = workflowSource.indexOf("recordAgronomicPrescriptionGenerationSafely({");
+assert.ok(providerIndex >= 0, "workflow deve chamar o provedor");
+assert.ok(afterProviderIndex > providerIndex, "evidências devem ser relidas depois do provedor");
+assert.ok(persistIndex > afterProviderIndex, "persistência só pode ocorrer depois da revalidação pós-provedor");
+assert.match(workflowSource, /evidenceAfterProvider\.freshness\.current/);
+assert.match(workflowSource, /A resposta antiga foi descartada/);
+assert.match(workflowSource, /validatePrescriptionPkRecommendations/);
+assert.match(workflowSource, /A geração foi descartada e nada foi salvo/);
+
+console.log("prescription-snapshot-consistency: draft aceita IN_REVIEW/APPROVED; mudanças durante o provedor são descartadas antes de persistir");
