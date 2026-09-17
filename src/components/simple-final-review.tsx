@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { SimpleRecommendationContext } from "@/components/simple-recommendation-context";
+import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
 
 type Interpretation = {
   id: string;
@@ -128,7 +129,15 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   }
 
   if (finalApproved) {
-    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Revisão concluída</strong><p>A decisão foi aprovada. A publicação continua sendo uma ação separada.</p></div><Link href={`/relatorios/talhao/${analysisId}`}>Concluir entrega <Icon name="arrow" size={14}/></Link></section>;
+    return (
+      <section className="simple-final-review done">
+        <span><Icon name="check" size={24}/></span>
+        <div><strong>Revisão concluída</strong><p>A decisão foi aprovada. Publique a versão oficial para ela aparecer em Resultados.</p></div>
+        {canReview
+          ? <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretationId}/>
+          : <small className="simple-review-help">Um responsável técnico autorizado precisa publicar este resultado.</small>}
+      </section>
+    );
   }
 
   if (prescription && !prescriptionCurrent) {
