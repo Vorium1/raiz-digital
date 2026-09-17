@@ -105,7 +105,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   }
 
   if (published) {
-    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Resultado publicado</strong><p>Esta decisão já está pronta para consulta e entrega.</p></div><Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Ver resultado <Icon name="arrow" size={14}/></Link></section>;
+    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Resultado publicado</strong><p>Esta decisão já está pronta para consulta e entrega.</p></div><Link href={`/resultado/${analysisId}`}>Ver resultado <Icon name="arrow" size={14}/></Link></section>;
   }
 
   if (finalApproved) {
