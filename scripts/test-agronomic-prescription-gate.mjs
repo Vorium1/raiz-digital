@@ -3,11 +3,16 @@ import {
   checkPrescriptionDraftGate,
   checkPrescriptionGate,
   PRESCRIPTION_DRAFT_GATE_BLOCKED_REASON,
+  PRESCRIPTION_DRAFT_STATUS,
   PRESCRIPTION_GATE_BLOCKED_REASON,
 } from "../src/domain/agronomic-prescription-gate.ts";
 
 let n = 0;
 function scenario(name, fn) { fn(); n++; }
+
+scenario("rascunho sempre nasce PENDING_REVIEW", () => {
+  assert.equal(PRESCRIPTION_DRAFT_STATUS, "PENDING_REVIEW");
+});
 
 scenario("sem interpretação -> ambos bloqueados", () => {
   assert.deepEqual(checkPrescriptionGate(null), { allowed: false, reason: PRESCRIPTION_GATE_BLOCKED_REASON });
