@@ -17,7 +17,7 @@ export default async function AtencaoPage() {
   ]);
 
   const canReview = REVIEW_ROLES.has(session.role);
-  const reviewCount = canReview ? snapshot.awaitingReview + snapshot.inconsistent : 0;
+  const reviewCount = canReview ? snapshot.awaitingReview : 0;
   const actionable = userActionAlerts(alerts);
   const total = reviewCount + actionable.length;
 
