@@ -25,7 +25,7 @@ export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
   const items = [
     { href: "/inicio", label: "Início", icon: "home" as const },
     { href: SEND_HREF, label: "Enviar", icon: "upload" as const },
-    { href: "/coletas", label: "Talhões", icon: "layers" as const },
+    { href: "/talhoes", label: "Talhões", icon: "layers" as const },
     ...(canReview ? [{ href: "/analises?status=revisao", label: "Revisar", icon: "shield" as const }] : []),
     { href: "/relatorios", label: "Resultados", icon: "file" as const },
   ];
