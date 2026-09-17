@@ -1,17 +1,14 @@
-import { getPlatformSession } from "@/lib/auth/session";
-import { buildAgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
-import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
-import { getLatestInterpretation } from "@/lib/repositories/interpretations";
-import { getLatestAgronomicPrescription, listAgronomicPrescriptionHistory } from "@/lib/repositories/ai-generations";
-import { recordAgronomicPrescriptionGenerationSafely } from "@/lib/repositories/prescription-generation";
-import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
-import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
-import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
-import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
-import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
-import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
+import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
+import { getPlatformSession } from "@/lib/auth/session";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
+import { AiGenerationError, getLatestAgronomicPrescription, listAgronomicPrescriptionHistory } from "@/lib/repositories/ai-generations";
+import { getLatestInterpretation } from "@/lib/repositories/interpretations";
+import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
+import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
+import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
+import { prepareAgronomicPrescriptionDraft } from "@/lib/workflows/agronomic-prescription-draft";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
@@ -117,125 +114,15 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!runRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode gerar prescrição assistida por IA." }, { status: 403 });
   const { id } = await context.params;
 
-  const usage = await getTenantPrescriptionUsage(session.tenantId);
-  if (usage.usedThisMonth >= usage.monthlyLimit) {
-    return Response.json({ error: `Limite mensal de prescrições por IA atingido (${usage.usedThisMonth}/${usage.monthlyLimit} este mês). Fale com o responsável pela plataforma para ajustar o plano.` }, { status: 429 });
-  }
-
-  const evidence = await buildAgronomicPrescriptionEvidencePackage(session.tenantId, session.userId, id);
-  if (!evidence) return Response.json({ error: "Análise não encontrada." }, { status: 404 });
-  if (evidence.results.length === 0) {
-    return Response.json({ error: "Não há resultado de laboratório vinculado a esta análise ainda." }, { status: 409 });
-  }
-
-  const [interpretation, contextBeforeProvider, evidenceBeforeProvider] = await Promise.all([
-    getLatestInterpretation(session.tenantId, id, session.userId),
-    getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
-    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
-  ]);
-  const gate = checkPrescriptionDraftGate(interpretation?.status ?? null);
-  if (!gate.allowed) {
-    return Response.json({ error: gate.reason }, { status: 409 });
-  }
-  if (
-    !interpretation?.id
-    || evidenceBeforeProvider.interpretationId !== interpretation.id
-    || !evidenceBeforeProvider.freshness.current
-  ) {
-    return Response.json({
-      error: evidenceBeforeProvider.freshness.reason ?? "O laudo atual ainda não possui uma interpretação determinística corrente. Recalcule antes de gerar a prescrição.",
-    }, { status: 409 });
-  }
-
-  const beforeProvider = evaluatePrescriptionDraftSnapshotConsistency({
-    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
-    currentSeasonUpdatedAt: contextBeforeProvider.updatedAt,
-    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
-    currentInterpretationId: interpretation.id,
-    currentInterpretationStatus: interpretation.status,
-  });
-  if (!beforeProvider.current) {
-    return Response.json({ error: `${beforeProvider.reason ?? "As evidências agronômicas mudaram."} Atualize a análise e gere novamente a partir do contexto atual.` }, { status: 409 });
-  }
-
-  const provider = resolveAgronomicPrescriptionProvider();
-
-  let result;
   try {
-    result = await provider.prescribe({ evidence });
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Falha ao gerar prescrição." }, { status: 502 });
-  }
-
-  const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider] = await Promise.all([
-    getLatestInterpretation(session.tenantId, id, session.userId),
-    getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
-    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
-  ]);
-  const afterProvider = evaluatePrescriptionDraftSnapshotConsistency({
-    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
-    currentSeasonUpdatedAt: contextAfterProvider.updatedAt,
-    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
-    currentInterpretationId: interpretationAfterProvider?.id,
-    currentInterpretationStatus: interpretationAfterProvider?.status,
-  });
-  if (!afterProvider.current) {
-    return Response.json({ error: `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.` }, { status: 409 });
-  }
-  if (
-    !interpretationAfterProvider?.id
-    || evidenceAfterProvider.interpretationId !== interpretationAfterProvider.id
-    || !evidenceAfterProvider.freshness.current
-  ) {
-    return Response.json({
-      error: `${evidenceAfterProvider.freshness.reason ?? "O laudo laboratorial mudou durante a geração."} A resposta antiga foi descartada; recalcule a interpretação e gere novamente.`,
-    }, { status: 409 });
-  }
-
-  // Prompt não é barreira de segurança. Antes de persistir, qualquer P2O5/K2O devolvido pelo provedor
-  // é recalculado no servidor. Dose inventada, P/K elemental ambíguo, duplicidade ou tentativa de
-  // contornar heterogeneidade descarta a resposta inteira; nada chega a PENDING_REVIEW.
-  const providerPkValidation = validatePrescriptionPkRecommendations({
-    recommendations: result.prescription.recommendations,
-    cropCode: contextAfterProvider.cropProfileCode,
-    interpretation: interpretationItems(interpretationAfterProvider.structuredOutput),
-    yieldGoal: contextAfterProvider.yieldGoal,
-    yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
-    cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
-  });
-  if (!providerPkValidation.allowed) {
-    return Response.json({
-      error: "A resposta do provedor tentou propor P/K fora do motor determinístico da RAIZ. A geração foi descartada e nada foi salvo.",
-      blockers: providerPkValidation.failures.map((failure) => ({
-        inputType: failure.inputType,
-        nutrient: failure.nutrient,
-        blockers: failure.blockers,
-        expected: failure.validation?.expected ?? null,
-      })),
-    }, { status: 502 });
-  }
-
-  const previous = await getLatestAgronomicPrescription(session.tenantId, id, session.userId);
-  try {
-    const created = await recordAgronomicPrescriptionGenerationSafely({
+    const result = await prepareAgronomicPrescriptionDraft({
       tenantId: session.tenantId,
       userId: session.userId,
       analysisId: id,
-      interpretationId: interpretationAfterProvider.id,
-      expectedSeasonUpdatedAt: contextAfterProvider.updatedAt,
-      provider: result.provider,
-      model: result.model,
-      promptVersion: result.promptVersion,
-      requestPayload: { evidence },
-      responsePayload: { prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel },
-      tokensUsed: result.tokensUsed ?? null,
-      costUsd: result.costUsd ?? null,
-      supersedes: previous?.status === "CHANGES_REQUESTED" ? previous.id : null,
     });
-    return Response.json({ generation: created, prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel }, { status: 201 });
+    return Response.json(result, { status: 201 });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : "As evidências mudaram antes de salvar a prescrição. Gere novamente.",
-    }, { status: error instanceof Error && "status" in error && typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 409 });
+    if (error instanceof AiGenerationError) return Response.json({ error: error.message }, { status: error.status });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível preparar o rascunho da recomendação." }, { status: 422 });
   }
 }
