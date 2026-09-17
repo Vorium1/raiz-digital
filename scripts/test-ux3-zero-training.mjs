@@ -42,6 +42,8 @@ assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
 assert.match(field, /`\/analise\/\$\{latest\.id\}`/);
 assert.match(field, /Detalhes técnicos/);
 assert.match(results, /href=\{`\/resultado\/\$\{report\.analysisId\}`\}/);
+assert.match(results, /const seenAnalyses = new Set<string>\(\)/);
+assert.match(results, /const latestResults = published\.filter/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
