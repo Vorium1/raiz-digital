@@ -54,7 +54,7 @@ export default async function InicioPage() {
         </Link>
 
         {canReview && (
-          <Link href="/analises?status=revisao" className="simple-action-card">
+          <Link href="/revisar" className="simple-action-card">
             <span><Icon name="shield" size={28}/></span>
             <div><strong>Revisar</strong><small>{reviewCount > 0 ? `${reviewCount} ${reviewCount === 1 ? "item esperando" : "itens esperando"}` : "Nada esperando agora"}</small></div>
             <Icon name="arrow" size={18}/>
@@ -74,7 +74,7 @@ export default async function InicioPage() {
           <strong>{attentionCount > 0 ? "Tem algo para você conferir" : "Tudo certo por aqui"}</strong>
           <small>{attentionCount > 0 ? "Abra o aviso e resolva quando puder. O restante da operação continua funcionando normalmente." : "Nenhuma ação urgente agora."}</small>
         </div>
-        {attentionCount > 0 && <Link href={canReview && reviewCount > 0 ? "/analises?status=revisao" : "/alertas"}>Ver agora <Icon name="arrow" size={15}/></Link>}
+        {attentionCount > 0 && <Link href={canReview && reviewCount > 0 ? "/revisar" : "/alertas"}>Ver agora <Icon name="arrow" size={15}/></Link>}
       </section>
 
       <section className="simple-fields-section">
