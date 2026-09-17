@@ -10,6 +10,7 @@ import "./ux2-concept-shell-fixes.css";
 import "./ux3-simple.css";
 import "./ux3-simple-fields.css";
 import "./ux3-simple-review.css";
+import "./ux3-simple-results.css";
 
 // Tipografia oficial do Guia de Marca (docs/brand/Guia_de_Marca_Raiz_Digital.pdf):
 // Sora para títulos/institucional, Inter para o restante da plataforma.
