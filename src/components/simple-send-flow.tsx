@@ -188,7 +188,7 @@ export function SimpleSendFlow() {
         <div className="simple-send-number">1</div>
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Envie o que você recebeu</h2><p>Laudo, planilha, PDF ou foto. A RAIZ lê e organiza.</p></div>
-          <LabImporter method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
+          <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
           {importReady && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
           <details className="simple-send-options"><summary>Opções do arquivo</summary><div><label>Laboratório<select value={laboratoryId} onChange={(event) => setLaboratoryId(event.target.value)}><option value="">Não preciso informar agora</option>{context.laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.name}</option>)}</select></label><label>Método, somente se estiver faltando no arquivo<select value={method} onChange={(event) => setMethod(event.target.value)}><option value="">Não assumir</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></label></div></details>
         </div>
