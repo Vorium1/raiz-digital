@@ -10,7 +10,7 @@ import { userActionAlerts } from "@/domain/user-attention";
 export const metadata = { title: "Início" };
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
-const SEND_HREF = "/analises/nova?etapa=laudo&nivel=interpretacao-rapida";
+const SEND_HREF = "/enviar";
 
 export default async function InicioPage() {
   if (!isDatabaseMode()) return <DemoInicio/>;
