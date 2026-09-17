@@ -26,7 +26,7 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
     stateTitle = "Resultado pronto";
     stateText = "O resultado desta área já está disponível.";
     stateIcon = "check";
-    actionHref = `/relatorios/talhao/${latestReport.analysisId}`;
+    actionHref = `/resultado/${latestReport.analysisId}`;
     actionLabel = "Ver resultado";
   } else if (latest?.latestInterpretationStatus === "APPROVED") {
     stateTitle = "Revisão concluída";
