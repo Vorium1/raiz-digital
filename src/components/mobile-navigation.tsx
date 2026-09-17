@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { visibleNavigationSections } from "@/lib/navigation";
 
-const PRIMARY_HREFS = ["/dashboard", "/clientes", "/analises"];
+const SEND_HREF = "/analises/nova?etapa=laudo&nivel=interpretacao-rapida";
 
 export function MobileNavigation({ role, isPlatformCurator }: { role?: string; isPlatformCurator?: boolean }) {
   const pathname = usePathname();
@@ -23,8 +23,13 @@ export function MobileNavigation({ role, isPlatformCurator }: { role?: string; i
 
   const sections = visibleNavigationSections(role, isPlatformCurator);
   const allItems = sections.flatMap((section) => section.items.map((item) => ({ ...item, section: section.label })));
-  const primaryItems = PRIMARY_HREFS.map((href) => allItems.find((item) => item.href === href)).filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const moreSections = sections.map((section) => ({ ...section, items: section.items.filter((item) => !PRIMARY_HREFS.includes(item.href)) })).filter((section) => section.items.length > 0);
+  const start = allItems.find((item) => item.href === "/inicio");
+  const map = allItems.find((item) => item.href === "/mapas");
+  const review = allItems.find((item) => item.label === "Revisões") ?? allItems.find((item) => item.href === "/analises");
+  const excluded = new Set([start?.href, map?.href, review?.href, SEND_HREF].filter(Boolean));
+  const moreSections = sections
+    .map((section) => ({ ...section, items: section.items.filter((item) => !excluded.has(item.href)) }))
+    .filter((section) => section.items.length > 0);
   const moreActive = moreSections.some((section) => section.items.some((item) => isActive(item.href)));
 
   return (
@@ -42,8 +47,8 @@ export function MobileNavigation({ role, isPlatformCurator }: { role?: string; i
         <div className="mobile-sheet-handle" aria-hidden="true" />
         <div className="mobile-sheet-heading">
           <div>
-            <span className="eyebrow">MAIS OPÇÕES</span>
-            <h2>O que você quer fazer?</h2>
+            <span className="eyebrow">RAIZ UX 2.0</span>
+            <h2>Mais opções</h2>
           </div>
           <button type="button" className="icon-button" aria-label="Fechar menu" onClick={() => setMoreOpen(false)}>
             <Icon name="close" size={18} />
@@ -65,19 +70,25 @@ export function MobileNavigation({ role, isPlatformCurator }: { role?: string; i
         </nav>
       </section>
 
-      <nav className="mobile-bottom-nav" aria-label="Navegação principal no celular">
-        {primaryItems[0] && <Link href={primaryItems[0].href} className={isActive(primaryItems[0].href) ? "active" : ""} aria-current={isActive(primaryItems[0].href) ? "page" : undefined}>
-          <Icon name={primaryItems[0].icon} size={21} /><span>{primaryItems[0].label}</span>
-        </Link>}
-        {primaryItems[1] && <Link href={primaryItems[1].href} className={isActive(primaryItems[1].href) ? "active" : ""} aria-current={isActive(primaryItems[1].href) ? "page" : undefined}>
-          <Icon name={primaryItems[1].icon} size={21} /><span>{primaryItems[1].label}</span>
-        </Link>}
-        <Link href="/analises/nova" className={`mobile-create-action ${isActive("/analises/nova") ? "active" : ""}`} aria-label="Criar nova análise">
-          <span><Icon name="plus" size={25} /></span><b>Criar</b>
+      <nav className="mobile-bottom-nav ux2-bottom-nav" aria-label="Navegação principal no celular">
+        {start && (
+          <Link href={start.href} className={isActive(start.href) ? "active" : ""} aria-current={isActive(start.href) ? "page" : undefined}>
+            <Icon name="home" size={21} /><span>Início</span>
+          </Link>
+        )}
+        {map && (
+          <Link href={map.href} className={isActive(map.href) ? "active" : ""} aria-current={isActive(map.href) ? "page" : undefined}>
+            <Icon name="map" size={21} /><span>Mapa</span>
+          </Link>
+        )}
+        <Link href={SEND_HREF} className={`mobile-create-action ux2-send-action ${isActive("/analises/nova") ? "active" : ""}`} aria-label="Enviar dados para a RAIZ">
+          <span><Icon name="upload" size={24} /></span><b>Enviar</b>
         </Link>
-        {primaryItems[2] && <Link href={primaryItems[2].href} className={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "active" : ""} aria-current={isActive(primaryItems[2].href) && !isActive("/analises/nova") ? "page" : undefined}>
-          <Icon name={primaryItems[2].icon} size={21} /><span>{primaryItems[2].label}</span>
-        </Link>}
+        {review && (
+          <Link href={review.href} className={isActive(review.href) && !isActive("/analises/nova") ? "active" : ""} aria-current={isActive(review.href) ? "page" : undefined}>
+            <Icon name={review.icon} size={21} /><span>{review.label === "Revisões" ? "Revisões" : "Operações"}</span>
+          </Link>
+        )}
         <button
           type="button"
           className={moreOpen || moreActive ? "active" : ""}
