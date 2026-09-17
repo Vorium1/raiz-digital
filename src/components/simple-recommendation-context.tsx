@@ -68,7 +68,7 @@ export function SimpleRecommendationContext({
 
   return (
     <div className="simple-context-question">
-      <div className="simple-context-question-head"><span><Icon name="sparkles" size={18}/></span><div><strong>{missingGroupCount === 1 ? "Falta só uma informação" : "Faltam duas informações"}</strong><small>A RAIZ precisa disso para calcular fósforo e potássio com segurança. Não vamos estimar por você.</small></div></div>
+      <div className="simple-context-question-head"><span><Icon name="sparkles" size={18}/></span><div><strong>Para incluir dose de fósforo e potássio</strong><small>{missingGroupCount === 1 ? "Há uma informação opcional que libera essa dose." : "Há duas informações opcionais que liberam essas doses."} Se você não tiver esses dados, a RAIZ conclui o relatório sem estimar a dose.</small></div></div>
       <div className="simple-context-fields">
         {needsYield && <label><span>Meta de produtividade</span><div className="simple-context-input"><input inputMode="decimal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Ex.: 4,0"/><b>t/ha</b></div></label>}
         {needsOrder && <label><span>Esta é qual safra depois desta análise de solo?</span><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="">Escolha</option><option value="1">Primeira safra</option><option value="2">Segunda safra</option></select></label>}
