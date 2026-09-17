@@ -10,7 +10,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const snapshot = session ? await getDashboardSnapshot(session.tenantId, session.userId) : null;
   const pendingAnalyses = snapshot ? snapshot.awaitingReview + snapshot.inconsistent : undefined;
   return (
-    <div className="app-shell">
+    <div className="app-shell ux2-shell">
       <Sidebar
         tenantName={session?.tenantName}
         userName={session?.name}
