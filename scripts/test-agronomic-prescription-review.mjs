@@ -82,7 +82,7 @@ assert.match(premiumPublicationSource, /prescription_generation_id/);
 
 // A migration transforma o vínculo exato da decisão em contrato de banco: backfill dos v3 já auditados,
 // FK tenant-safe e unicidade por interpretação + prescrição. Relatórios legados continuam NULL/fail-closed.
-const reportPublicationMigration = readFileSync(new URL("../db/migrations/039_report_snapshot_republication.sql", import.meta.url), "utf8");
+const reportPublicationMigration = readFileSync(new URL("../db/migrations/038_report_snapshot_republication.sql", import.meta.url), "utf8");
 assert.match(reportPublicationMigration, /ADD COLUMN IF NOT EXISTS prescription_generation_id uuid/i);
 assert.match(reportPublicationMigration, /approvedPrescriptionId/);
 assert.match(reportPublicationMigration, /FOREIGN KEY \(tenant_id, prescription_generation_id\)/i);
