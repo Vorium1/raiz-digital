@@ -21,6 +21,7 @@ const simpleRecommendationContext = read("src/components/simple-recommendation-c
 const interpretationsRepository = read("src/lib/repositories/interpretations.ts");
 const prescriptionProvider = read("src/lib/ai/agronomic-prescription-provider.ts");
 const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-prescription-provider.ts");
+const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 
@@ -79,6 +80,11 @@ assert.match(deterministicFallback, /recommendations:\s*\[\]/);
 assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
 assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
 assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem evidência suficiente/);
+assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
+assert.ok(
+  prescriptionWorkflow.indexOf("if (provider.isRealLanguageModel)") < prescriptionWorkflow.indexOf("getTenantPrescriptionUsage"),
+  "cota de IA só pode ser verificada dentro do caminho de LLM real",
+);
 assert.match(simplePublish, /\/api\/interpretations\/\$\{interpretationId\}\/publish-report/);
 assert.match(simplePublish, /method:\s*"POST"/);
 assert.match(simplePublish, /router\.push\(`\/resultado\/\$\{analysisId\}`\)/);
