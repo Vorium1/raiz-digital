@@ -8,6 +8,8 @@ const mobile = read("src/components/mobile-navigation.tsx");
 const home = read("src/app/(platform)/inicio/page.tsx");
 const dashboard = read("src/app/(platform)/dashboard/page.tsx");
 const send = read("src/components/simple-send-flow.tsx");
+const existingUpload = read("src/components/simple-existing-analysis-upload.tsx");
+const labImporter = read("src/components/lab-importer.tsx");
 const reviewInbox = read("src/app/(platform)/revisar/page.tsx");
 const field = read("src/components/simple-field-overview.tsx");
 const results = read("src/app/(platform)/resultados/page.tsx");
@@ -29,6 +31,10 @@ assert.match(send, /readiness:\s*\{/);
 assert.match(send, /hasAgronomicContext:\s*readiness\.effectiveLayer >= 2/);
 assert.match(send, /router\.push\(`\/analise\/\$\{analysisId\}`\)/);
 assert.doesNotMatch(send, /publish-report/);
+assert.match(send, /<LabImporter simple /);
+assert.match(existingUpload, /<LabImporter simple /);
+assert.match(labImporter, /simple && preview && preview\.blockers > 0/);
+assert.match(labImporter, /!simple && preview && <div className="import-preview"/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
