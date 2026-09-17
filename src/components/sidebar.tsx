@@ -26,7 +26,7 @@ export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
     { href: "/inicio", label: "Início", icon: "home" as const },
     { href: SEND_HREF, label: "Enviar", icon: "upload" as const },
     { href: "/talhoes", label: "Talhões", icon: "layers" as const },
-    ...(canReview ? [{ href: "/analises?status=revisao", label: "Revisar", icon: "shield" as const }] : []),
+    ...(canReview ? [{ href: "/revisar", label: "Revisar", icon: "shield" as const }] : []),
     { href: "/relatorios", label: "Resultados", icon: "file" as const },
   ];
 
@@ -34,7 +34,6 @@ export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
     const path = href.split("?")[0];
     if (path === "/inicio") return pathname === "/inicio" || pathname === "/dashboard";
     if (path === "/analises/nova") return pathname.startsWith("/analises/nova");
-    if (path === "/analises" && href.includes("status=revisao")) return pathname.startsWith("/analises") && !pathname.startsWith("/analises/nova");
     return pathname === path || pathname.startsWith(`${path}/`);
   }
 
