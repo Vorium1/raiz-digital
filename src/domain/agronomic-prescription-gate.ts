@@ -16,6 +16,8 @@
  */
 export type PrescriptionGateResult = { allowed: true } | { allowed: false; reason: string };
 
+export const PRESCRIPTION_DRAFT_STATUS = "PENDING_REVIEW" as const;
+
 export const PRESCRIPTION_GATE_BLOCKED_REASON =
   "É necessário ter uma interpretação técnica aprovada por um profissional antes de promover ou entregar uma recomendação oficial.";
 
