@@ -98,6 +98,7 @@ export function SimpleSendFlow() {
   function chooseField(value: string) { setFieldId(value); setSeasonId(""); }
 
   const importReady = Boolean(preview && preview.blockers === 0 && file);
+  const fileNeedsAttention = Boolean(preview && preview.blockers > 0);
   const areaReady = Boolean(clientId && propertyId && fieldId && seasonId);
   const rowCount = preview?.normalizedRowCount ?? preview?.rows.length ?? 0;
 
@@ -198,7 +199,7 @@ export function SimpleSendFlow() {
         <div className="simple-send-number">2</div>
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ÁREA</span><h2>De onde são estes dados?</h2><p>Confirme a área. Só isso.</p></div>
-          {!importReady ? <div className="simple-send-wait"><Icon name="upload" size={18}/> Primeiro envie o arquivo acima.</div> : contextLoading ? <div className="simple-send-wait"><Icon name="clock" size={18}/> Carregando suas áreas…</div> : contextError ? <div className="simple-send-error">{contextError}</div> : context.clients.length === 0 ? <div className="simple-send-error">Nenhuma área cadastrada ainda.</div> : (
+          {!importReady ? <div className="simple-send-wait"><Icon name={fileNeedsAttention ? "warning" : "upload"} size={18}/>{fileNeedsAttention ? "Confira o aviso do arquivo acima antes de continuar." : "Primeiro envie o arquivo acima."}</div> : contextLoading ? <div className="simple-send-wait"><Icon name="clock" size={18}/> Carregando suas áreas…</div> : contextError ? <div className="simple-send-error">{contextError}</div> : context.clients.length === 0 ? <div className="simple-send-error">Nenhuma área cadastrada ainda.</div> : (
             <div className="simple-area-picker">
               {context.clients.length > 1 && <label><span>Cliente</span><select value={clientId} onChange={(event) => chooseClient(event.target.value)}><option value="">Escolha</option>{context.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
               {clientId && properties.length > 1 && <label><span>Fazenda</span><select value={propertyId} onChange={(event) => chooseProperty(event.target.value)}><option value="">Escolha</option>{properties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
