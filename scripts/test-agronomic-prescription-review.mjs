@@ -39,4 +39,21 @@ assert.doesNotMatch(finalReviewSource, /reviewInterpretationSafely/);
 assert.doesNotMatch(finalReviewSource, /reviewAgronomicPrescriptionSafely/);
 assert.match(finalReviewSource, /prescriptionInterpretationId !== input\.interpretationId/);
 
-console.log("agronomic-prescription-review: transições protegidas + promoção APPROVED + revisão final em transação única");
+// Solicitar ajustes pertence à mesma revisão final, mas deve acontecer antes de qualquer aprovação da interpretação.
+const changesBranchIndex = finalReviewSource.indexOf('if (input.decision === "CHANGES_REQUESTED")');
+const interpretationApprovalIndex = finalReviewSource.indexOf("reviewInterpretationWithClient(client");
+assert.ok(changesBranchIndex >= 0);
+assert.ok(interpretationApprovalIndex > changesBranchIndex);
+assert.match(finalReviewSource, /decision:\s*"CHANGES_REQUESTED"/);
+assert.match(finalReviewSource, /return \{ decision: input\.decision, interpretation: null, prescription \}/);
+
+const finalReviewRouteSource = readFileSync(new URL("../src/app/api/analyses/[id]/final-review/route.ts", import.meta.url), "utf8");
+assert.match(finalReviewRouteSource, /reviewFinalTechnicalReviewSafely/);
+assert.match(finalReviewRouteSource, /body\.decision === "CHANGES_REQUESTED"/);
+
+const ux2ReviewSource = readFileSync(new URL("../src/components/ux2-technical-review.tsx", import.meta.url), "utf8");
+assert.match(ux2ReviewSource, /decision:\s*"APPROVED"/);
+assert.match(ux2ReviewSource, /decision:\s*"CHANGES_REQUESTED"/);
+assert.doesNotMatch(ux2ReviewSource, /\/api\/agronomic-prescriptions\//);
+
+console.log("agronomic-prescription-review: transições protegidas + promoção APPROVED + decisão final unificada e transacional");

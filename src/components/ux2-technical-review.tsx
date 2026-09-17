@@ -203,7 +203,7 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
       const response = await fetch(`/api/analyses/${analysisId}/final-review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interpretationId: interpretation.id, prescriptionId: prescription.id }),
+        body: JSON.stringify({ decision: "APPROVED", interpretationId: interpretation.id, prescriptionId: prescription.id }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível concluir a revisão final.");
@@ -218,14 +218,19 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
   }
 
   async function requestPrescriptionChanges() {
-    if (!prescription || prescription.status !== "PENDING_REVIEW" || !canReview) return;
+    if (!interpretation || !prescription || prescription.status !== "PENDING_REVIEW" || !canReview) return;
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/agronomic-prescriptions/${prescription.id}/review`, {
+      const response = await fetch(`/api/analyses/${analysisId}/final-review`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision: "CHANGES_REQUESTED", note: "Ajustes solicitados na revisão final UX 2.0." }),
+        body: JSON.stringify({
+          decision: "CHANGES_REQUESTED",
+          interpretationId: interpretation.id,
+          prescriptionId: prescription.id,
+          note: "Ajustes solicitados na revisão final UX 2.0.",
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível solicitar ajustes.");
