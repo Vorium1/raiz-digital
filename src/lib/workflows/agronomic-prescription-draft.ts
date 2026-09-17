@@ -21,12 +21,15 @@ export async function prepareAgronomicPrescriptionDraft(input: {
   userId: string;
   analysisId: string;
 }) {
-  const usage = await getTenantPrescriptionUsage(input.tenantId);
-  if (usage.usedThisMonth >= usage.monthlyLimit) {
-    throw new AiGenerationError(
-      `Limite mensal de prescrições por IA atingido (${usage.usedThisMonth}/${usage.monthlyLimit} este mês). Fale com o responsável pela plataforma para ajustar o plano.`,
-      429,
-    );
+  const provider = resolveAgronomicPrescriptionProvider();
+  if (provider.isRealLanguageModel) {
+    const usage = await getTenantPrescriptionUsage(input.tenantId);
+    if (usage.usedThisMonth >= usage.monthlyLimit) {
+      throw new AiGenerationError(
+        `Limite mensal de prescrições por IA atingido (${usage.usedThisMonth}/${usage.monthlyLimit} este mês). Fale com o responsável pela plataforma para ajustar o plano.`,
+        429,
+      );
+    }
   }
 
   const evidence = await buildAgronomicPrescriptionEvidencePackage(input.tenantId, input.userId, input.analysisId);
@@ -69,7 +72,6 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     );
   }
 
-  const provider = resolveAgronomicPrescriptionProvider();
   let result;
   try {
     result = await provider.prescribe({ evidence });
