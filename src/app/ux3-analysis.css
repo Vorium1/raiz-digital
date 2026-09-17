@@ -50,6 +50,15 @@
 .simple-analysis-empty p { color:#77857c; font-size:11px; margin:3px 0 0; }
 .simple-analysis-empty > a { align-items:center; background:#2f7d45; border-radius:12px; color:#fff; display:inline-flex; font-size:11px; font-weight:800; gap:6px; padding:10px 13px; text-decoration:none; }
 
+
+.simple-refresh-analysis { align-items:center; background:#f3f8f1; border:1px solid #dbe8d8; border-radius:20px; display:grid; gap:14px; grid-template-columns:46px minmax(0,1fr) auto; margin-bottom:24px; padding:17px; }
+.simple-refresh-analysis-icon { align-items:center; background:#fff; border-radius:14px; color:#2f7d45; display:flex; height:46px; justify-content:center; width:46px; }
+.simple-refresh-analysis strong { color:#244b30; display:block; font-size:14px; }
+.simple-refresh-analysis p { color:#6f8076; font-size:11px; line-height:1.45; margin:3px 0 0; }
+.simple-refresh-analysis small { color:#9a5a4c; display:block; font-size:9px; margin-top:6px; }
+.simple-refresh-analysis button { align-items:center; background:#2f7d45; border:0; border-radius:12px; color:#fff; cursor:pointer; display:inline-flex; font:inherit; font-size:11px; font-weight:800; gap:6px; padding:11px 14px; }
+.simple-refresh-analysis button:disabled { cursor:not-allowed; opacity:.55; }
+
 .simple-final-review { background:#fff; border:1px solid #dfe7dd; border-radius:22px; box-shadow:0 10px 28px rgba(45,70,53,.045); margin-bottom:24px; padding:20px; }
 .simple-final-review.done { align-items:center; background:#f2f8f0; border-color:#d9ead6; display:grid; gap:14px; grid-template-columns:46px minmax(0,1fr) auto; }
 .simple-final-review.done > span { align-items:center; background:#fff; border-radius:14px; color:#2f7d45; display:flex; height:46px; justify-content:center; width:46px; }
@@ -108,6 +117,8 @@
   .simple-analysis-progress>div>span{grid-row:auto}
   .simple-analysis-progress small{line-height:1.2}
   .simple-analysis-finding-grid{grid-template-columns:1fr 1fr}
+  .simple-refresh-analysis{align-items:flex-start;grid-template-columns:42px minmax(0,1fr)}
+  .simple-refresh-analysis button{grid-column:2;justify-content:center;width:100%}
   .simple-final-review.done{grid-template-columns:42px minmax(0,1fr)}
   .simple-final-review.done>a{grid-column:2}
   .simple-final-review.done .simple-publish-result{align-items:flex-start;grid-column:2}
