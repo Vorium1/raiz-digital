@@ -33,6 +33,7 @@ export async function getReportPublicationReadiness(
               a.source_human_verified AS "sourceHumanVerified",
               t.require_source_human_verification AS "sourceVerificationRequired",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               prescription.id::text AS "prescriptionId",
               prescription.status::text AS "prescriptionStatus",
               CASE
@@ -42,6 +43,7 @@ export async function getReportPublicationReadiness(
        FROM interpretations i
        JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        JOIN tenants t ON t.id = i.tenant_id
        LEFT JOIN LATERAL (
          SELECT li.id
@@ -55,6 +57,11 @@ export async function getReportPublicationReadiness(
          FROM analysis_imports ai
          WHERE ai.tenant_id = i.tenant_id AND ai.analysis_id = i.analysis_id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        LEFT JOIN LATERAL (
          SELECT ag.id, ag.status, ag.created_at
          FROM ai_generations ag
@@ -73,6 +80,7 @@ export async function getReportPublicationReadiness(
       ? evaluateAnalysisEvidenceFreshness({
           interpretationCreatedAt: row.interpretationCreatedAt,
           latestImportCommittedAt: row.latestImportCommittedAt,
+          latestRuleUpdatedAt: row.latestRuleUpdatedAt,
         })
       : { current: false };
     return evaluateReportPublicationGate({
