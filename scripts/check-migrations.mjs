@@ -30,6 +30,8 @@ const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_re
 const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
 const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
 const ndviRasterCustody = await readFile(new URL("../db/migrations/037_ndvi_raster_custody.sql", import.meta.url), "utf8");
+const auditEntityActionIndex = await readFile(new URL("../db/migrations/038_audit_entity_action_index.sql", import.meta.url), "utf8");
+const reportSnapshotRepublication = await readFile(new URL("../db/migrations/039_report_snapshot_republication.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -133,4 +135,12 @@ assert.match(ndviRasterCustody, /CREATE TRIGGER field_ndvi_snapshots_protect_arc
 assert.match(ndviRasterCustody, /BEFORE UPDATE OR DELETE ON field_ndvi_snapshots/i);
 assert.match(ndviRasterCustody, /REVOKE DELETE ON field_ndvi_snapshots FROM raiz_app/i);
 
-console.log("migrations: contratos estruturais críticos 001-037 aprovados");
+assert.match(auditEntityActionIndex, /CREATE INDEX IF NOT EXISTS audit_events_entity_action_idx/i);
+assert.match(auditEntityActionIndex, /ON audit_events \(tenant_id, entity_type, entity_id, action\)/i);
+assert.match(auditEntityActionIndex, /WHERE entity_id IS NOT NULL/i);
+
+assert.match(reportSnapshotRepublication, /DROP CONSTRAINT IF EXISTS reports_tenant_id_interpretation_id_revision_key/i);
+assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_interpretation_published_idx/i);
+assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, published_at DESC\)/i);
+
+console.log("migrations: contratos estruturais críticos 001-039 aprovados");
