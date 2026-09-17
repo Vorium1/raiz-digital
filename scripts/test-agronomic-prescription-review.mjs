@@ -69,17 +69,16 @@ assert.match(ux2ReviewSource, /\/relatorios\/talhao\/\$\{analysisId\}/);
 assert.doesNotMatch(ux2ReviewSource, /publish-report/);
 
 // Um relatório antigo da mesma interpretação não pode fingir que já publicou uma prescrição regenerada.
-// O estado de entrega só conta REPORT_PUBLISHED cujo metadata referencia exatamente a prescrição mais recente.
+// A relação oficial é nativa em reports; o audit log segue evidência secundária, não fonte primária.
 const deliveryStatusSource = readFileSync(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
-assert.match(deliveryStatusSource, /audit_events/);
-assert.match(deliveryStatusSource, /REPORT_PUBLISHED/);
-assert.match(deliveryStatusSource, /approvedPrescriptionId/);
-assert.match(deliveryStatusSource, /ae\.metadata->>'approvedPrescriptionId'=prescription\.id::text/);
+assert.match(deliveryStatusSource, /r\.prescription_generation_id=prescription\.id/);
+assert.doesNotMatch(deliveryStatusSource, /audit_events/);
 assert.match(deliveryStatusSource, /interpretationFreshness\.current\s*&&\s*prescriptionCurrent/);
 
 const premiumPublicationSource = readFileSync(new URL("../src/lib/repositories/premium-report-publication.ts", import.meta.url), "utf8");
 assert.match(premiumPublicationSource, /approvedPrescriptionId:\s*approvedPrescription\.id/);
 assert.match(premiumPublicationSource, /approvedPrescription/);
+assert.match(premiumPublicationSource, /prescription_generation_id/);
 
 // A rota oficial não pode regredir para o publisher v2 legado que não congela a prescrição aprovada.
 const publishRouteSource = readFileSync(new URL("../src/app/api/interpretations/[id]/publish-report/route.ts", import.meta.url), "utf8");
@@ -87,12 +86,12 @@ assert.match(publishRouteSource, /publishPremiumFieldAnalysisReport/);
 assert.doesNotMatch(publishRouteSource, /publishFieldAnalysisReport/);
 
 // Publicação oficial da mesma decisão é concorrente-segura no servidor, não apenas escondida na UI.
-// O lock exclusivo da interpretação serializa requests iguais; a segunda request encontra o audit da
-// primeira e falha ANTES de tocar o storage novamente.
+// O lock exclusivo da interpretação serializa requests iguais; a segunda request encontra o vínculo nativo
+// da primeira e falha ANTES de tocar o storage novamente. O índice UNIQUE reforça isso no PostgreSQL.
 assert.match(premiumPublicationSource, /FOR UPDATE OF i/);
 assert.match(premiumPublicationSource, /FOR SHARE OF a, cs/);
 assert.match(premiumPublicationSource, /async function assertDecisionNotAlreadyPublished/);
-assert.match(premiumPublicationSource, /ae\.metadata->>'approvedPrescriptionId'=\$3/);
+assert.match(premiumPublicationSource, /r\.prescription_generation_id=\$3::uuid/);
 assert.match(premiumPublicationSource, /já possui uma versão oficial publicada/i);
 const duplicateGuardIndex = premiumPublicationSource.indexOf("await assertDecisionNotAlreadyPublished(client");
 const storageWriteIndex = premiumPublicationSource.indexOf("const stored = await saveReportSnapshot");
