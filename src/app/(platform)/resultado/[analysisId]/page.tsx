@@ -77,7 +77,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     );
   }
 
-  const snapshot = published.snapshot;
+  const snapshot: unknown = published.snapshot;
   const v3 = isV3(snapshot) ? snapshot : null;
   const v2 = isV2(snapshot) ? snapshot : null;
   const context = v3?.publishedContext ?? v2?.publishedContext ?? null;
