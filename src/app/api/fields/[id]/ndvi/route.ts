@@ -66,6 +66,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
  * Uma linha que já possui raster arquivado vira evidência imutável: refresh posterior preserva tanto
  * a estatística quanto o artefato daquele dia. Linhas legadas sem raster podem ser promovidas uma única
  * vez para o novo contrato. Assim a visualização histórica deixa de ser regenerada sob demanda.
+ *
+ * O lote pode concluir parcialmente: se um raster posterior falhar depois que outros já foram gravados,
+ * a resposta devolve o estado persistido atual com `partialFailure` e a contagem real ainda pendente.
+ * Se nenhum raster foi arquivado, a falha continua retornando HTTP de erro e não é mascarada como sucesso.
  */
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -106,9 +110,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
   const missingScenes = selectedScenes.filter((scene) => !archivedByDate.has(scene.capturedAt));
   const scenesToArchive = missingScenes.slice(-MAX_RASTERS_TO_ARCHIVE_PER_REQUEST);
-  const pendingArchiveCount = Math.max(0, missingScenes.length - scenesToArchive.length);
+  const pendingOutsideThisBatch = Math.max(0, missingScenes.length - scenesToArchive.length);
   const preservedArchivedCount = selectedScenes.length - missingScenes.length;
   let archivedRasterCount = 0;
+  let partialFailure: { error: string; capturedAt: string; status: number } | null = null;
 
   for (const scene of scenesToArchive) {
     let raster;
@@ -118,13 +123,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
         capturedAt: scene.capturedAt,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao gerar o raster NDVI da aquisição.";
-      return Response.json({
-        error: message,
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao gerar o raster NDVI da aquisição.",
         capturedAt: scene.capturedAt,
-        archivedRasterCount,
-        pendingArchiveCount: pendingArchiveCount + (scenesToArchive.length - archivedRasterCount),
-      }, { status: 502 });
+        status: 502,
+      };
+      break;
     }
 
     let storedRaster;
@@ -136,66 +140,96 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
         bytes: Buffer.from(raster.bytes),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao arquivar o raster NDVI.";
-      const status = error instanceof NdviRasterPersistenceError ? 503 : 502;
-      return Response.json({
-        error: message,
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao arquivar o raster NDVI.",
         capturedAt: scene.capturedAt,
-        archivedRasterCount,
-        pendingArchiveCount: pendingArchiveCount + (scenesToArchive.length - archivedRasterCount),
-      }, { status });
+        status: error instanceof NdviRasterPersistenceError ? 503 : 502,
+      };
+      break;
     }
 
     const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
-    await saveNdviSnapshot({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      fieldId,
-      capturedAt: scene.capturedAt,
-      source: "SENTINEL_2",
-      providerSceneId: scene.sceneId,
-      cloudCoverPct: scene.cloudCoverPct,
-      pixelCount: scene.pixelCount,
-      meanNdvi: scene.meanNdvi,
-      minNdvi: scene.minNdvi,
-      maxNdvi: scene.maxNdvi,
-      stddevNdvi: scene.stddevNdvi,
-      zoneBreakdownPct,
-      rasterArtifact: {
-        key: storedRaster.key,
-        sha256: storedRaster.sha256,
-        bytes: storedRaster.bytes,
-        bbox: raster.bbox,
-        width: raster.width,
-        height: raster.height,
-        algorithm: NDVI_RASTER_ALGORITHM_VERSION,
-        mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
-      },
-    });
+    try {
+      await saveNdviSnapshot({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        fieldId,
+        capturedAt: scene.capturedAt,
+        source: "SENTINEL_2",
+        providerSceneId: scene.sceneId,
+        cloudCoverPct: scene.cloudCoverPct,
+        pixelCount: scene.pixelCount,
+        meanNdvi: scene.meanNdvi,
+        minNdvi: scene.minNdvi,
+        maxNdvi: scene.maxNdvi,
+        stddevNdvi: scene.stddevNdvi,
+        zoneBreakdownPct,
+        rasterArtifact: {
+          key: storedRaster.key,
+          sha256: storedRaster.sha256,
+          bytes: storedRaster.bytes,
+          bbox: raster.bbox,
+          width: raster.width,
+          height: raster.height,
+          algorithm: NDVI_RASTER_ALGORITHM_VERSION,
+          mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
+        },
+      });
+    } catch (error) {
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao persistir o snapshot NDVI após arquivar o objeto.",
+        capturedAt: scene.capturedAt,
+        status: 500,
+      };
+      break;
+    }
     archivedRasterCount += 1;
   }
+
+  const pendingArchiveCount = partialFailure
+    ? pendingOutsideThisBatch + (scenesToArchive.length - archivedRasterCount)
+    : pendingOutsideThisBatch;
 
   const [latest, history] = await Promise.all([
     getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
   ]);
 
-  return Response.json(
-    {
-      snapshot: latest,
-      latest,
-      history,
-      fieldBoundary: boundary,
-      importedCount: archivedRasterCount,
-      archivedRasterCount,
-      preservedArchivedCount,
-      pendingArchiveCount,
-      archiveCompleteForSelectedWindow: pendingArchiveCount === 0,
-      maxRastersArchivedPerRequest: MAX_RASTERS_TO_ARCHIVE_PER_REQUEST,
-      consideredSceneCount: selectedScenes.length,
-      requestedWindowDays: HISTORY_LOOKBACK_DAYS,
-      ...intelligencePayload(latest, history),
-    },
-    { status: 201 },
-  );
+  const responsePayload = {
+    snapshot: latest,
+    latest,
+    history,
+    fieldBoundary: boundary,
+    importedCount: archivedRasterCount,
+    archivedRasterCount,
+    preservedArchivedCount,
+    pendingArchiveCount,
+    archiveCompleteForSelectedWindow: pendingArchiveCount === 0 && !partialFailure,
+    maxRastersArchivedPerRequest: MAX_RASTERS_TO_ARCHIVE_PER_REQUEST,
+    consideredSceneCount: selectedScenes.length,
+    requestedWindowDays: HISTORY_LOOKBACK_DAYS,
+    ...(partialFailure
+      ? {
+          partialFailure: {
+            code: "NDVI_ARCHIVE_PARTIAL_FAILURE",
+            error: partialFailure.error,
+            capturedAt: partialFailure.capturedAt,
+          },
+        }
+      : {}),
+    ...intelligencePayload(latest, history),
+  };
+
+  if (partialFailure && archivedRasterCount === 0) {
+    return Response.json(
+      {
+        ...responsePayload,
+        error: partialFailure.error,
+        capturedAt: partialFailure.capturedAt,
+      },
+      { status: partialFailure.status },
+    );
+  }
+
+  return Response.json(responsePayload, { status: 201 });
 }
