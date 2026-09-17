@@ -81,6 +81,11 @@ const premiumPublicationSource = readFileSync(new URL("../src/lib/repositories/p
 assert.match(premiumPublicationSource, /approvedPrescriptionId:\s*approvedPrescription\.id/);
 assert.match(premiumPublicationSource, /approvedPrescription/);
 
+// A rota oficial não pode regredir para o publisher v2 legado que não congela a prescrição aprovada.
+const publishRouteSource = readFileSync(new URL("../src/app/api/interpretations/[id]/publish-report/route.ts", import.meta.url), "utf8");
+assert.match(publishRouteSource, /publishPremiumFieldAnalysisReport/);
+assert.doesNotMatch(publishRouteSource, /publishFieldAnalysisReport/);
+
 // Publicação oficial da mesma decisão é concorrente-segura no servidor, não apenas escondida na UI.
 // O lock exclusivo da interpretação serializa requests iguais; a segunda request encontra o audit da
 // primeira e falha ANTES de tocar o storage novamente.
