@@ -148,7 +148,11 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
 
         {prescription ? (
           <section className="simple-result-section recommendation">
-            <div className="simple-result-section-head"><span>O QUE FAZER</span><h2>Recomendação aprovada</h2>{prescription.summary && <p>{prescription.summary}</p>}</div>
+            <div className="simple-result-section-head">
+              <span>{(prescription.recommendations?.length ?? 0) > 0 ? "O QUE FAZER" : "CONCLUSÃO TÉCNICA"}</span>
+              <h2>{(prescription.recommendations?.length ?? 0) > 0 ? "Recomendação aprovada" : "Conclusão técnica aprovada"}</h2>
+              {prescription.summary && <p>{prescription.summary}</p>}
+            </div>
             {(prescription.recommendations?.length ?? 0) > 0 && (
               <div className="simple-result-recommendations">
                 {prescription.recommendations!.map((item, index) => (
