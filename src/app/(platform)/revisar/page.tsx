@@ -25,7 +25,7 @@ export default async function RevisarPage() {
           {pending.map((item: any) => {
             const needsData = item.status === "INCONSISTENT";
             return (
-              <Link href={`/analises/${item.id}`} key={item.id} className="simple-review-row">
+              <Link href={`/analise/${item.id}`} key={item.id} className="simple-review-row">
                 <span className={`simple-review-icon ${needsData ? "attention" : "ready"}`}><Icon name={needsData ? "warning" : "shield"} size={21}/></span>
                 <div className="simple-review-copy">
                   <strong>{item.fieldName}</strong>
