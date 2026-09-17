@@ -87,7 +87,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const canFinalize = canReview && accepted && Boolean(prescription?.id)
     && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED")
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
-    && prescriptionCurrent && pkValid && !needsPkContext;
+    && prescriptionCurrent && pkValid;
 
   async function prepare() {
     setBusy(true); setMessage(null);
@@ -164,7 +164,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
     return (
       <section className="simple-final-review">
         <div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar recomendação</strong><p>A análise já existe; a RAIZ pode organizar a proposta para você revisar.</p></div></div>
-        {needsPkContext && recommendationContext ? (
+        {needsPkContext && recommendationContext && (
           <SimpleRecommendationContext
             cropSeasonId={recommendationContext.cropSeasonId}
             blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
@@ -173,11 +173,13 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
             cultivationOrderAfterSoilAnalysis={recommendationContext.cultivationOrderAfterSoilAnalysis}
             onSaved={load}
           />
-        ) : <>
-          {message && <div className="simple-review-message">{message}</div>}
-          <button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>{busy ? "Preparando…" : "Preparar recomendação"}</button>
-          {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma recomendação.</small>}
-        </>}
+        )}
+        {message && <div className="simple-review-message">{message}</div>}
+        <button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>
+          {busy ? "Preparando…" : needsPkContext ? "Preparar com os dados disponíveis" : "Preparar recomendação"}
+        </button>
+        {needsPkContext && <small className="simple-review-help">Sem esse contexto, a RAIZ não inclui dose de fósforo ou potássio. O restante do relatório pode seguir normalmente.</small>}
+        {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma recomendação.</small>}
       </section>
     );
   }
