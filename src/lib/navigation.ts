@@ -11,17 +11,18 @@ export type NavItem = {
 export type NavSection = { label: string; items: NavItem[] };
 
 /**
- * RAIZ UX 2.0 — a navegação deixa de espelhar módulos internos e passa a seguir a jornada real:
- * receber dados -> processar/analisar -> revisar -> entregar. Rotas técnicas continuam existindo,
- * mas ficam agrupadas de acordo com o trabalho que o usuário quer concluir.
+ * UX 2.0: a navegação apresenta tarefas do usuário, não etapas internas do motor.
+ * O fluxo conceitual continua: Receber dados -> Processamento automático -> Análise ->
+ * Recomendação -> Revisão do agrônomo -> Entrega. Processamento e recomendação vivem
+ * dentro da operação e não precisam ocupar itens próprios no menu.
  */
 export const navigationSections: NavSection[] = [
   {
     label: "FLUXO PRINCIPAL",
     items: [
       { href: "/inicio", label: "Início", icon: "home" },
-      { href: "/analises/nova?etapa=laudo&nivel=interpretacao-rapida", label: "Enviar dados", icon: "upload" },
-      { href: "/analises", label: "Operações", icon: "flask" },
+      { href: "/analises/nova?etapa=laudo&nivel=interpretacao-rapida", label: "Receber dados", icon: "upload" },
+      { href: "/analises", label: "Análises", icon: "flask" },
       { href: "/analises?status=revisao", label: "Revisões", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
       { href: "/relatorios", label: "Entregas", icon: "file" },
     ],
@@ -29,8 +30,8 @@ export const navigationSections: NavSection[] = [
   {
     label: "CAMPO",
     items: [
-      { href: "/mapas", label: "Mapa", icon: "map" },
       { href: "/coletas", label: "Talhões & Coletas", icon: "layers" },
+      { href: "/mapas", label: "Mapas", icon: "map" },
       { href: "/alertas", label: "Alertas", icon: "warning" },
     ],
   },
@@ -38,14 +39,14 @@ export const navigationSections: NavSection[] = [
     label: "GESTÃO",
     items: [
       { href: "/clientes", label: "Clientes", icon: "users" },
-      { href: "/inteligencia", label: "Inteligência Agronômica", icon: "sparkles" },
       { href: "/historico", label: "Histórico", icon: "history" },
       { href: "/comparativos", label: "Comparativos", icon: "layers" },
     ],
   },
   {
-    label: "ADMINISTRAÇÃO",
+    label: "RECURSOS TÉCNICOS",
     items: [
+      { href: "/inteligencia", label: "Inteligência Agronômica", icon: "sparkles" },
       { href: "/biblioteca-tecnica", label: "Biblioteca Técnica", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
       { href: "/configuracoes#equipe", label: "Usuários & Permissões", icon: "users", roles: ["SUPER_ADMIN", "TENANT_ADMIN"] },
       { href: "/operacao-sistema", label: "Saúde do sistema", icon: "shield", platformCuratorOnly: true },
