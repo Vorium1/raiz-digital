@@ -70,8 +70,10 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   if (interpretation === undefined) return <div className="simple-review-loading"><Icon name="clock" size={18}/> Preparando a revisão…</div>;
   if (!interpretation) return null;
 
+  const interpretationId = interpretation.id;
+  const interpretationStatus = interpretation.status;
   const draft = prescription?.responsePayload?.prescription ?? null;
-  const finalApproved = interpretation.status === "APPROVED" && prescription?.status === "APPROVED";
+  const finalApproved = interpretationStatus === "APPROVED" && prescription?.status === "APPROVED";
   const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
   const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
   const pkValid = readiness?.prescriptionPkValidation?.allowed !== false;
@@ -82,7 +84,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
     && (recommendationContext?.pkDoseReadiness?.blockers.length ?? 0) > 0,
   );
   const canFinalize = canReview && accepted && Boolean(prescription?.id)
-    && (interpretation.status === "IN_REVIEW" || interpretation.status === "APPROVED")
+    && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED")
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
     && prescriptionCurrent && pkValid && !needsPkContext;
 
@@ -107,7 +109,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           decision,
-          interpretationId: interpretation.id,
+          interpretationId,
           prescriptionId: prescription.id,
           ...(decision === "CHANGES_REQUESTED" ? { note: "Ajustes solicitados na revisão final." } : {}),
         }),
