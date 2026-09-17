@@ -81,8 +81,9 @@ assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
 assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
 assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem evidência suficiente/);
 assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
-assert.ok(
-  prescriptionWorkflow.indexOf("if (provider.isRealLanguageModel)") < prescriptionWorkflow.indexOf("getTenantPrescriptionUsage"),
+assert.match(
+  prescriptionWorkflow,
+  /if \(provider\.isRealLanguageModel\) \{[\s\S]*?await getTenantPrescriptionUsage\(input\.tenantId\)/,
   "cota de IA só pode ser verificada dentro do caminho de LLM real",
 );
 assert.match(simplePublish, /\/api\/interpretations\/\$\{interpretationId\}\/publish-report/);
