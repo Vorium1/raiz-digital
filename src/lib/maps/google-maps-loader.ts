@@ -14,6 +14,7 @@ export const GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS = 12_000;
 
 let loadPromise: Promise<GoogleMapsNamespace> | null = null;
 let authFailureHookInstalled = false;
+let authFailureLatched = false;
 const authFailureListeners = new Set<GoogleMapsFailureListener>();
 
 export function googleMapsBrowserKey(): string {
@@ -24,13 +25,27 @@ export function hasGoogleMapsBrowserKey(): boolean {
   return googleMapsBrowserKey().length > 0;
 }
 
+/**
+ * A namespace global pode continuar existindo depois de `gm_authFailure`. Nessa situação reutilizar
+ * `window.google.maps` faria uma nova montagem voltar para uma API cuja chave já foi rejeitada.
+ * Este contrato puro fica separado para que a regressão seja testável fora do browser.
+ */
+export function shouldReuseLoadedGoogleMaps(namespaceReady: boolean, authenticationFailed: boolean): boolean {
+  return namespaceReady && !authenticationFailed;
+}
+
+function googleMapsAuthenticationError() {
+  return new Error("Google Maps rejeitou a autenticação da chave ou a configuração de billing/API nesta sessão; usando contingência até a página ser recarregada após a correção da configuração.");
+}
+
 function ensureGoogleMapsAuthFailureHook() {
   if (typeof window === "undefined" || authFailureHookInstalled) return;
   const browserWindow = window as unknown as GoogleWindow;
   const previous = typeof browserWindow.gm_authFailure === "function" ? browserWindow.gm_authFailure.bind(browserWindow) : null;
 
   browserWindow.gm_authFailure = () => {
-    const error = new Error("Google Maps rejeitou a autenticação da chave ou a configuração de billing/API.");
+    const error = googleMapsAuthenticationError();
+    authFailureLatched = true;
     loadPromise = null;
     for (const listener of [...authFailureListeners]) {
       try { listener(error); } catch { /* listener isolado */ }
@@ -57,15 +72,20 @@ export function subscribeGoogleMapsAuthFailure(listener: GoogleMapsFailureListen
  * A chave NEXT_PUBLIC é deliberadamente pública; em produção ela deve ser restrita
  * por HTTP referrer e limitada à Maps JavaScript API no Google Cloud Console.
  *
- * Falha fechado: erro de rede, autenticação ou script que fica pendurado além do timeout
- * libera `loadPromise` para que a fachada espacial possa cair para OSM e tentar novamente
- * em uma futura montagem, sem deixar o usuário preso num mapa vazio.
+ * Falha fechado: erro de rede ou script pendurado libera `loadPromise` para uma futura tentativa.
+ * Falha de autenticação é diferente: fica latched pela sessão, porque `window.google.maps` pode continuar
+ * presente mesmo depois de a chave ter sido rejeitada. Nesse caso novas montagens permanecem em OSM até
+ * recarregar a página depois de corrigir chave/referrer/billing.
  */
 export function loadGoogleMaps(): Promise<GoogleMapsNamespace> {
   if (typeof window === "undefined") return Promise.reject(new Error("Google Maps só pode ser carregado no navegador."));
   const browserWindow = window as unknown as GoogleWindow;
   ensureGoogleMapsAuthFailureHook();
-  if (browserWindow.google?.maps?.Map) return Promise.resolve(browserWindow.google.maps);
+
+  if (authFailureLatched) return Promise.reject(googleMapsAuthenticationError());
+  if (shouldReuseLoadedGoogleMaps(Boolean(browserWindow.google?.maps?.Map), authFailureLatched)) {
+    return Promise.resolve(browserWindow.google!.maps!);
+  }
   if (loadPromise) return loadPromise;
 
   const key = googleMapsBrowserKey();
@@ -102,6 +122,10 @@ export function loadGoogleMaps(): Promise<GoogleMapsNamespace> {
 
     browserWindow[callbackName] = () => {
       if (settled) return;
+      if (authFailureLatched) {
+        fail(googleMapsAuthenticationError());
+        return;
+      }
       if (!browserWindow.google?.maps?.Map) {
         fail(new Error("Google Maps carregou sem expor a biblioteca de mapas."));
         return;
