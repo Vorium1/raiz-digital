@@ -7,7 +7,7 @@ import { getDashboardSnapshot } from "@/lib/repositories/dashboard";
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = isDatabaseMode() ? await requirePlatformSession() : null;
   const snapshot = session ? await getDashboardSnapshot(session.tenantId, session.userId) : null;
-  const pendingAnalyses = snapshot ? snapshot.awaitingReview + snapshot.inconsistent : undefined;
+  const pendingAnalyses = snapshot ? snapshot.awaitingReview : undefined;
 
   return (
     <div className="app-shell ux2-shell simple-shell">
