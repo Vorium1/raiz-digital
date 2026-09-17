@@ -284,14 +284,51 @@
 
 @media (max-width: 700px) {
   .ux2-review-heading { align-items: flex-start; flex-direction: column; padding: 18px; }
+  .ux2-review-heading p { font-size: 12px; line-height: 1.55; }
   .ux2-review-workspace > .agro-message { margin: 12px 18px 0; }
   .ux2-review-flow { grid-template-columns: 1fr 1fr; padding: 12px 18px; }
+  .ux2-review-flow > div { align-items: flex-start; }
   .ux2-review-flow > div::after { display: none !important; }
+  .ux2-review-flow small { font-size: 9px; line-height: 1.3; overflow-wrap: anywhere; white-space: normal; }
   .ux2-review-section,
   .ux2-audit-footer { padding: 18px; }
-  .ux2-dose-item { grid-template-columns: 36px 1fr; }
-  .ux2-dose-origin { grid-column: 2; text-align: left; }
+  .ux2-review-section-head { gap: 10px; }
+  .ux2-draft-badge { font-size: 9px; }
+  .ux2-review-help { font-size: 11px; }
+  .ux2-dose-item { grid-template-columns: 36px minmax(0, 1fr); }
+  .ux2-dose-item small,
+  .ux2-dose-item span { font-size: 10px; }
+  .ux2-dose-origin { grid-column: 2; min-width: 0; text-align: left; }
+  .ux2-dose-origin code { font-size: 9px; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
   .ux2-finding-summary { grid-template-columns: 1fr 1fr; }
+  .ux2-finding-summary span,
+  .ux2-finding-summary small { font-size: 9px; }
+  .ux2-finding-summary strong { font-size: 11px; }
+  .ux2-review-warning { flex-wrap: wrap; font-size: 10px; }
+  .ux2-review-warning .button { flex: 1 0 100%; min-height: 44px; width: 100%; }
   .ux2-audit-list > div { grid-template-columns: 1fr; }
-  .ux2-audit-list dd { text-align: left; }
+  .ux2-audit-list dt,
+  .ux2-audit-list dd { font-size: 10px; text-align: left; }
+  .ux2-audit-sources h4,
+  .ux2-audit-sources strong { font-size: 10px; }
+  .ux2-audit-sources code,
+  .ux2-audit-sources small,
+  .ux2-audit-sources p,
+  .ux2-audit-blockers summary,
+  .ux2-audit-blockers li strong,
+  .ux2-audit-blockers li span { font-size: 9px; overflow-wrap: anywhere; }
+  .ux2-signoff-check { font-size: 11px; }
+  .ux2-signoff-check input { flex: 0 0 18px; height: 18px; width: 18px; }
+  .ux2-signoff .button { min-height: 44px; width: 100%; }
+  .ux2-signoff > small { font-size: 9px; }
+  .ux2-review-placeholder { align-items: flex-start; flex-wrap: wrap; font-size: 10px; }
+  .ux2-review-placeholder .button { flex: 1 0 100%; min-height: 44px; width: 100%; }
+  .ux2-approved-box > div { min-width: 0; width: 100%; }
+  .ux2-approved-box strong { font-size: 11px; }
+  .ux2-approved-box small,
+  .ux2-approved-box span { font-size: 10px; line-height: 1.45; }
+  .ux2-approved-box .button { margin-top: 10px; min-height: 44px; width: 100%; }
+  .ux2-technical-details > summary { align-items: flex-start; flex-wrap: wrap; }
+  .ux2-technical-details > summary strong { font-size: 11px; }
+  .ux2-technical-details > summary span { flex-basis: 100%; font-size: 10px; line-height: 1.4; margin-left: 25px; }
 }
