@@ -56,6 +56,7 @@ type CurrentPublicationState = {
   interpretationCreatedAt: string;
   latestInterpretationId: string | null;
   latestImportCommittedAt: string | null;
+  latestRuleUpdatedAt: string | null;
   sourceHumanVerified: boolean;
   sourceVerificationRequired: boolean;
   cropSeasonUpdatedAt: string;
@@ -74,6 +75,7 @@ async function assertCurrentPublicationState(
             i.created_at::text AS "interpretationCreatedAt",
             latest_i.id::text AS "latestInterpretationId",
             latest_import.latest_import_at::text AS "latestImportCommittedAt",
+            rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
             a.source_human_verified AS "sourceHumanVerified",
             t.require_source_human_verification AS "sourceVerificationRequired",
             cs.updated_at::text AS "cropSeasonUpdatedAt",
@@ -83,6 +85,7 @@ async function assertCurrentPublicationState(
      FROM interpretations i
      JOIN analyses a ON a.tenant_id=i.tenant_id AND a.id=i.analysis_id
      JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+     LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
      JOIN tenants t ON t.id=i.tenant_id
      LEFT JOIN LATERAL (
        SELECT li.id
@@ -96,6 +99,11 @@ async function assertCurrentPublicationState(
        FROM analysis_imports ai
        WHERE ai.tenant_id=i.tenant_id AND ai.analysis_id=i.analysis_id
      ) latest_import ON true
+     LEFT JOIN LATERAL (
+       SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+       FROM crop_profile_parameters cpp
+       WHERE cpp.crop_profile_id=cp.id
+     ) rule_state ON cp.id IS NOT NULL
      LEFT JOIN LATERAL (
        SELECT ag.id, ag.status, ag.created_at
        FROM ai_generations ag
@@ -124,10 +132,11 @@ async function assertCurrentPublicationState(
   const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: state.interpretationCreatedAt,
     latestImportCommittedAt: state.latestImportCommittedAt,
+    latestRuleUpdatedAt: state.latestRuleUpdatedAt,
   });
   if (!evidenceFreshness.current) {
     throw new ReportError(
-      evidenceFreshness.reason ?? "O laudo laboratorial mudou depois desta interpretação. Recalcule antes de publicar.",
+      evidenceFreshness.reason ?? "Os dados ou as regras agronômicas mudaram depois desta análise. Atualize antes de publicar.",
       409,
     );
   }
@@ -136,13 +145,13 @@ async function assertCurrentPublicationState(
     throw new ReportError("A política desta empresa exige conferência humana do arquivo original do laudo antes da publicação.", 409);
   }
   if (!state.prescriptionId || state.prescriptionStatus !== "APPROVED") {
-    throw new ReportError("A Recomendação Assistida RAIZ mais recente da mesma interpretação precisa estar aprovada antes da publicação.", 409);
+    throw new ReportError("A conclusão técnica mais recente da mesma interpretação precisa estar aprovada antes da publicação.", 409);
   }
   if (input.expectedPrescriptionId && state.prescriptionId !== input.expectedPrescriptionId) {
-    throw new ReportError("A recomendação mudou durante a publicação. Atualize a análise e tente novamente.", 409);
+    throw new ReportError("A conclusão técnica mudou durante a publicação. Atualize a análise e tente novamente.", 409);
   }
   if (!state.prescriptionCreatedAt || new Date(state.prescriptionCreatedAt).getTime() < new Date(state.cropSeasonUpdatedAt).getTime()) {
-    throw new ReportError("A recomendação aprovada foi gerada com um contexto agronômico anterior. Gere e aprove uma nova versão antes de publicar.", 409);
+    throw new ReportError("A conclusão técnica aprovada foi preparada com um contexto agronômico anterior. Prepare e aprove uma nova versão antes de publicar.", 409);
   }
   return state;
 }
@@ -163,7 +172,7 @@ async function assertDecisionNotAlreadyPublished(
   );
   if (duplicate.rows[0]) {
     throw new ReportError(
-      "Esta decisão técnica já possui uma versão oficial publicada. Só publique novamente depois de uma nova recomendação aprovada.",
+      "Esta decisão técnica já possui uma versão oficial publicada. Só publique novamente depois de uma nova conclusão técnica aprovada.",
       409,
     );
   }
@@ -189,7 +198,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     });
     const currentPrescriptionId = initialState.prescriptionId;
     if (!currentPrescriptionId) {
-      throw new ReportError("A decisão atual não possui recomendação aprovada para publicação.", 409);
+      throw new ReportError("A decisão atual não possui conclusão técnica aprovada para publicação.", 409);
     }
 
     // A interpretação está sob FOR UPDATE desde a leitura acima. Publicações concorrentes da mesma
@@ -225,7 +234,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     );
     const approvedPrescription = prescriptionResult.rows[0] as FrozenReviewedGeneration | undefined;
     if (!approvedPrescription || approvedPrescription.status !== "APPROVED") {
-      throw new ReportError("A Recomendação Assistida RAIZ atual deixou de estar aprovada durante a publicação.", 409);
+      throw new ReportError("A conclusão técnica atual deixou de estar aprovada durante a publicação.", 409);
     }
 
     const narrativeResult = await client.query(
