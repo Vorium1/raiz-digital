@@ -1,0 +1,141 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Icon } from "@/components/icon";
+
+type Interpretation = {
+  id: string;
+  status: string;
+  structuredOutput?: { interpretation?: Array<{ parameterCode: string; interpretable: boolean; classification?: string; classificationRole?: "TARGET" | "AUXILIARY" }> } | null;
+};
+
+type Prescription = {
+  id: string;
+  status: string;
+  responsePayload?: { prescription?: {
+    summary?: string;
+    recommendations?: Array<{ inputType: string; quantity: number; unit: string; rationale: string }>;
+    managementPractices?: string[];
+    missingInformation?: string[];
+  } } | null;
+};
+
+type Readiness = {
+  allowed?: boolean;
+  reason?: string | null;
+  prescriptionFreshness?: { current?: boolean };
+  prescriptionPkValidation?: { allowed?: boolean } | null;
+};
+
+type Delivery = { currentReportCount?: number };
+
+export function SimpleFinalReview({ analysisId, canReview }: { analysisId: string; canReview: boolean }) {
+  const [interpretation, setInterpretation] = useState<Interpretation | null | undefined>(undefined);
+  const [prescription, setPrescription] = useState<Prescription | null>(null);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function load() {
+    const [iRes, pRes, dRes] = await Promise.all([
+      fetch(`/api/analyses/${analysisId}/interpretation`, { cache: "no-store" }),
+      fetch(`/api/analyses/${analysisId}/agronomic-prescription`, { cache: "no-store" }),
+      fetch(`/api/analyses/${analysisId}/delivery-status`, { cache: "no-store" }),
+    ]);
+    const i = await iRes.json().catch(() => ({}));
+    const p = await pRes.json().catch(() => ({}));
+    const d = await dRes.json().catch(() => ({}));
+    setInterpretation(i.latest ?? null);
+    setPrescription(p.latest ?? null);
+    setReadiness(p.readiness ?? null);
+    setDelivery(d.delivery ?? null);
+  }
+
+  useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (interpretation === undefined) return <div className="simple-review-loading"><Icon name="clock" size={18}/> Preparando a revisão…</div>;
+  if (!interpretation) return null;
+
+  const draft = prescription?.responsePayload?.prescription ?? null;
+  const finalApproved = interpretation.status === "APPROVED" && prescription?.status === "APPROVED";
+  const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
+  const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
+  const pkValid = readiness?.prescriptionPkValidation?.allowed !== false;
+  const canFinalize = canReview && accepted && Boolean(prescription?.id)
+    && (interpretation.status === "IN_REVIEW" || interpretation.status === "APPROVED")
+    && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
+    && prescriptionCurrent && pkValid;
+
+  async function prepare() {
+    setBusy(true); setMessage(null);
+    try {
+      const response = await fetch(`/api/analyses/${analysisId}/agronomic-prescription`, { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível preparar a recomendação.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível preparar a recomendação.");
+    } finally { setBusy(false); }
+  }
+
+  async function decide(decision: "APPROVED" | "CHANGES_REQUESTED") {
+    if (!prescription) return;
+    setBusy(true); setMessage(null);
+    try {
+      const response = await fetch(`/api/analyses/${analysisId}/final-review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          interpretationId: interpretation.id,
+          prescriptionId: prescription.id,
+          ...(decision === "CHANGES_REQUESTED" ? { note: "Ajustes solicitados na revisão final." } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível concluir esta ação.");
+      setAccepted(false);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível concluir esta ação.");
+    } finally { setBusy(false); }
+  }
+
+  if (published) {
+    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Resultado publicado</strong><p>Esta decisão já está pronta para consulta e entrega.</p></div><Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Ver resultado <Icon name="arrow" size={14}/></Link></section>;
+  }
+
+  if (finalApproved) {
+    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Revisão concluída</strong><p>A decisão foi aprovada. A publicação continua sendo uma ação separada.</p></div><Link href={`/relatorios/talhao/${analysisId}`}>Concluir entrega <Icon name="arrow" size={14}/></Link></section>;
+  }
+
+  if (!prescription) {
+    return <section className="simple-final-review"><div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar recomendação</strong><p>A análise já existe; a RAIZ pode organizar a proposta para você revisar.</p></div></div>{message && <div className="simple-review-message">{message}</div>}<button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>{busy ? "Preparando…" : "Preparar recomendação"}</button>{readiness?.allowed === false && <small className="simple-review-help">Ainda falta informação para preparar esta recomendação.</small>}</section>;
+  }
+
+  return (
+    <section className="simple-final-review" id="revisar">
+      <div className="simple-final-review-head"><span><Icon name="shield" size={22}/></span><div><strong>Revisão final</strong><p>Confira a recomendação preparada pela RAIZ e decida.</p></div></div>
+
+      {draft?.summary && <div className="simple-review-summary"><span>RESUMO</span><p>{draft.summary}</p></div>}
+
+      {(draft?.recommendations?.length ?? 0) > 0 && <div className="simple-review-recommendations"><span>RECOMENDAÇÃO</span>{draft!.recommendations!.map((item, index) => <div key={`${item.inputType}-${index}`}><strong>{item.inputType}</strong><b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b><small>{item.rationale}</small></div>)}</div>}
+
+      {(draft?.managementPractices?.length ?? 0) > 0 && <div className="simple-review-practices"><span>MANEJO</span><ul>{draft!.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+
+      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="warning" size={17}/><div><strong>Ainda falta informação</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
+
+      {message && <div className="simple-review-message">{message}</div>}
+
+      {canReview ? <>
+        <label className="simple-review-confirm"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi os dados, a recomendação e as limitações apresentadas.</span></label>
+        <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar revisão"}</button></div>
+      </> : <p className="simple-review-help">A revisão final precisa ser feita por um perfil técnico autorizado.</p>}
+
+      <details className="simple-review-more"><summary>Ver informações técnicas da revisão</summary><Link href={`/analises/${analysisId}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></details>
+    </section>
+  );
+}
