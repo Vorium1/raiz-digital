@@ -154,7 +154,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   if (prescription && !pkValid) {
     return (
       <section className="simple-final-review blocked">
-        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a recomendação preparada e o cálculo determinístico. Nada será corrigido automaticamente.</p></div></div>
+        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a recomendação preparada e o cálculo validado. Nada será alterado automaticamente.</p></div></div>
         <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>
       </section>
     );
