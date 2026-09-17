@@ -19,9 +19,9 @@ export type DecisionDeliveryStatus = {
  * posteriores à interpretação e separa histórico de estado CORRENTE: novo laudo torna interpretação,
  * prescrição e relatórios anteriores históricos, sem apagá-los nem fingir que a decisão continua válida.
  *
- * Um relatório só conta como entrega corrente quando o evento auditável REPORT_PUBLISHED prova que
- * ele congelou exatamente a recomendação mais recente. Isso evita tratar um snapshot antigo da mesma
- * interpretação como se já contivesse uma prescrição regenerada/aprovada depois.
+ * Um relatório só conta como entrega corrente quando `reports.prescription_generation_id` aponta para
+ * exatamente a recomendação mais recente da mesma interpretação. Snapshots legados ficam com vínculo
+ * nulo e continuam históricos; o audit log segue como evidência, não como relacionamento primário.
  */
 export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds: string[], userId?: string): Promise<DecisionDeliveryStatus[]> {
   if (analysisIds.length === 0) return [];
@@ -88,15 +88,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
          FROM reports r
          WHERE r.tenant_id=a.tenant_id
            AND r.interpretation_id=latest_i.id
-           AND EXISTS (
-             SELECT 1
-             FROM audit_events ae
-             WHERE ae.tenant_id=r.tenant_id
-               AND ae.action='REPORT_PUBLISHED'
-               AND ae.entity_type='report'
-               AND ae.entity_id=r.id
-               AND ae.metadata->>'approvedPrescriptionId'=prescription.id::text
-           )
+           AND r.prescription_generation_id=prescription.id
        ) current_report_stats ON true
        WHERE a.tenant_id=$1::uuid AND a.id=ANY($2::uuid[])`,
       [tenantId, analysisIds],
