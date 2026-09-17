@@ -14,6 +14,7 @@ const reviewInbox = read("src/app/(platform)/revisar/page.tsx");
 const field = read("src/components/simple-field-overview.tsx");
 const results = read("src/app/(platform)/resultados/page.tsx");
 const simpleReview = read("src/components/simple-final-review.tsx");
+const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 
 // A navegação principal é um app de tarefas, não uma árvore de módulos/ERP.
@@ -42,7 +43,12 @@ assert.match(field, /`\/analise\/\$\{latest\.id\}`/);
 assert.match(field, /Detalhes técnicos/);
 assert.match(results, /href=\{`\/resultado\/\$\{report\.analysisId\}`\}/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
+assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
+assert.match(simplePublish, /\/api\/interpretations\/\$\{interpretationId\}\/publish-report/);
+assert.match(simplePublish, /method:\s*"POST"/);
+assert.match(simplePublish, /router\.push\(`\/resultado\/\$\{analysisId\}`\)/);
+assert.doesNotMatch(simplePublish, /useEffect/);
 
 // A visualização simples de resultado só usa snapshot publicado validado; nunca reconstrói a versão
 // oficial a partir de prescrição viva ou publica por conta própria.
