@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
+import { SimpleRecommendationContext } from "@/components/simple-recommendation-context";
 
 type Interpretation = {
   id: string;
@@ -21,11 +22,21 @@ type Prescription = {
   } } | null;
 };
 
+type RecommendationContext = {
+  cropSeasonId: string;
+  yieldGoal: number | null;
+  yieldGoalUnit: string | null;
+  cultivationOrderAfterSoilAnalysis: number | null;
+  pkDoseReadiness?: { ready: boolean; blockers: string[] };
+  uniformPkReadiness?: { ready: boolean };
+};
+
 type Readiness = {
   allowed?: boolean;
   reason?: string | null;
   prescriptionFreshness?: { current?: boolean };
   prescriptionPkValidation?: { allowed?: boolean } | null;
+  recommendationContext?: RecommendationContext;
 };
 
 type Delivery = { currentReportCount?: number };
@@ -64,10 +75,16 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
   const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
   const pkValid = readiness?.prescriptionPkValidation?.allowed !== false;
+  const recommendationContext = readiness?.recommendationContext ?? null;
+  const needsPkContext = Boolean(
+    recommendationContext?.uniformPkReadiness?.ready === true
+    && recommendationContext?.pkDoseReadiness?.ready === false
+    && (recommendationContext?.pkDoseReadiness?.blockers.length ?? 0) > 0,
+  );
   const canFinalize = canReview && accepted && Boolean(prescription?.id)
     && (interpretation.status === "IN_REVIEW" || interpretation.status === "APPROVED")
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
-    && prescriptionCurrent && pkValid;
+    && prescriptionCurrent && pkValid && !needsPkContext;
 
   async function prepare() {
     setBusy(true); setMessage(null);
@@ -112,13 +129,62 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
     return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Revisão concluída</strong><p>A decisão foi aprovada. A publicação continua sendo uma ação separada.</p></div><Link href={`/relatorios/talhao/${analysisId}`}>Concluir entrega <Icon name="arrow" size={14}/></Link></section>;
   }
 
+  if (prescription && !prescriptionCurrent) {
+    return (
+      <section className="simple-final-review blocked">
+        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>A recomendação precisa ser atualizada</strong><p>Alguma informação da área mudou depois que esta versão foi preparada.</p></div></div>
+        {message && <div className="simple-review-message">{message}</div>}
+        <button type="button" onClick={prepare} disabled={busy || !canReview}>{busy ? "Atualizando…" : "Atualizar recomendação"}</button>
+        <small className="simple-review-help">A versão anterior não pode ser aprovada como se ainda estivesse atual.</small>
+      </section>
+    );
+  }
+
+  if (prescription && !pkValid) {
+    return (
+      <section className="simple-final-review blocked">
+        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a recomendação preparada e o cálculo determinístico. Nada será corrigido automaticamente.</p></div></div>
+        <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>
+      </section>
+    );
+  }
+
   if (!prescription) {
-    return <section className="simple-final-review"><div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar recomendação</strong><p>A análise já existe; a RAIZ pode organizar a proposta para você revisar.</p></div></div>{message && <div className="simple-review-message">{message}</div>}<button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>{busy ? "Preparando…" : "Preparar recomendação"}</button>{readiness?.allowed === false && <small className="simple-review-help">Ainda falta informação para preparar esta recomendação.</small>}</section>;
+    return (
+      <section className="simple-final-review">
+        <div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar recomendação</strong><p>A análise já existe; a RAIZ pode organizar a proposta para você revisar.</p></div></div>
+        {needsPkContext && recommendationContext ? (
+          <SimpleRecommendationContext
+            cropSeasonId={recommendationContext.cropSeasonId}
+            blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
+            yieldGoal={recommendationContext.yieldGoal}
+            yieldGoalUnit={recommendationContext.yieldGoalUnit}
+            cultivationOrderAfterSoilAnalysis={recommendationContext.cultivationOrderAfterSoilAnalysis}
+            onSaved={load}
+          />
+        ) : <>
+          {message && <div className="simple-review-message">{message}</div>}
+          <button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>{busy ? "Preparando…" : "Preparar recomendação"}</button>
+          {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma recomendação.</small>}
+        </>}
+      </section>
+    );
   }
 
   return (
     <section className="simple-final-review" id="revisar">
       <div className="simple-final-review-head"><span><Icon name="shield" size={22}/></span><div><strong>Revisão final</strong><p>Confira a recomendação preparada pela RAIZ e decida.</p></div></div>
+
+      {needsPkContext && recommendationContext && (
+        <SimpleRecommendationContext
+          cropSeasonId={recommendationContext.cropSeasonId}
+          blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
+          yieldGoal={recommendationContext.yieldGoal}
+          yieldGoalUnit={recommendationContext.yieldGoalUnit}
+          cultivationOrderAfterSoilAnalysis={recommendationContext.cultivationOrderAfterSoilAnalysis}
+          onSaved={load}
+        />
+      )}
 
       {draft?.summary && <div className="simple-review-summary"><span>RESUMO</span><p>{draft.summary}</p></div>}
 
