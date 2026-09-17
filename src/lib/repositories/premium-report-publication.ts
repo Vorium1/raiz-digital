@@ -156,15 +156,7 @@ async function assertDecisionNotAlreadyPublished(
      FROM reports r
      WHERE r.tenant_id=$1::uuid
        AND r.interpretation_id=$2::uuid
-       AND EXISTS (
-         SELECT 1
-         FROM audit_events ae
-         WHERE ae.tenant_id=r.tenant_id
-           AND ae.action='REPORT_PUBLISHED'
-           AND ae.entity_type='report'
-           AND ae.entity_id=r.id
-           AND ae.metadata->>'approvedPrescriptionId'=$3
-       )
+       AND r.prescription_generation_id=$3::uuid
      ORDER BY r.published_at DESC
      LIMIT 1`,
     [input.tenantId, input.interpretationId, input.prescriptionId],
@@ -185,8 +177,9 @@ async function assertDecisionNotAlreadyPublished(
  * A entrega falha fechada se a interpretação, o laudo, a recomendação, o contexto da safra ou a
  * confirmação de fonte mudarem durante o processo. A interpretação fica bloqueada para atualização pela
  * transação inteira, serializando publicações concorrentes da mesma decisão; análise/safra permanecem
- * protegidas por lock compartilhado. O snapshot no storage é imutável; se uma falha ocorrer na gravação
- * externa, nenhum registro oficial incompleto nasce em `reports`.
+ * protegidas por lock compartilhado. `reports.prescription_generation_id` e seu índice UNIQUE reforçam
+ * no banco que uma mesma decisão só nasce uma vez. O snapshot no storage é imutável; se uma falha ocorrer
+ * na gravação externa, nenhum registro oficial incompleto nasce em `reports`.
  */
 export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -200,7 +193,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     }
 
     // A interpretação está sob FOR UPDATE desde a leitura acima. Publicações concorrentes da mesma
-    // decisão ficam serializadas e a segunda requisição enxerga o audit da primeira antes de tocar storage.
+    // decisão ficam serializadas e a segunda requisição encontra o vínculo nativo antes de tocar storage.
     await assertDecisionNotAlreadyPublished(client, {
       tenantId: input.tenantId,
       interpretationId: input.interpretationId,
@@ -329,10 +322,10 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     });
 
     const result = await client.query(
-      `INSERT INTO reports (tenant_id, interpretation_id, revision, storage_key, sha256, published_at, published_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz, $7::uuid)
+      `INSERT INTO reports (tenant_id, interpretation_id, prescription_generation_id, revision, storage_key, sha256, published_at, published_by)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::timestamptz, $8::uuid)
        RETURNING id::text, revision, storage_key AS "storageKey", published_at::text AS "publishedAt"`,
-      [input.tenantId, interpretation.id, interpretation.revision, stored.key, sha256, publishedAt, input.userId],
+      [input.tenantId, interpretation.id, approvedPrescription.id, interpretation.revision, stored.key, sha256, publishedAt, input.userId],
     );
     const report = result.rows[0];
     await writeAudit(client, {
