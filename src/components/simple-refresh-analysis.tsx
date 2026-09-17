@@ -1,0 +1,80 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Icon } from "@/components/icon";
+import type { AnalysisEvidenceFreshnessCode } from "@/domain/analysis-evidence-freshness";
+
+const COPY: Record<AnalysisEvidenceFreshnessCode, { title: string; text: string; button: string }> = {
+  CURRENT: {
+    title: "Análise atualizada",
+    text: "Os dados e as regras desta análise estão atuais.",
+    button: "Atualizar análise",
+  },
+  INTERPRETATION_TIMESTAMP_MISSING: {
+    title: "Análise precisa ser concluída",
+    text: "Os dados já estão aqui. Execute a análise para continuar.",
+    button: "Analisar agora",
+  },
+  INVALID_TRACE_TIMESTAMPS: {
+    title: "Precisamos recalcular esta análise",
+    text: "A rastreabilidade desta versão não pôde ser confirmada.",
+    button: "Recalcular análise",
+  },
+  LAB_EVIDENCE_CHANGED: {
+    title: "Os dados mudaram",
+    text: "Há dados mais recentes do que esta análise. Atualize para continuar.",
+    button: "Atualizar análise",
+  },
+  AGRONOMIC_RULES_CHANGED: {
+    title: "Atualização disponível",
+    text: "A RAIZ tem regras agronômicas mais atuais para esta cultura. Atualize a análise para usar a versão atual.",
+    button: "Atualizar análise",
+  },
+};
+
+export function SimpleRefreshAnalysis({
+  analysisId,
+  freshnessCode,
+}: {
+  analysisId: string;
+  freshnessCode: AnalysisEvidenceFreshnessCode;
+}) {
+  const router = useRouter();
+  const copy = COPY[freshnessCode] ?? COPY.INTERPRETATION_TIMESTAMP_MISSING;
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function refreshAnalysis() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/analyses/${analysisId}/interpret`, { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar esta análise.");
+      if (payload.prescriptionDraftError) {
+        sessionStorage.setItem(`raiz:ux3:auto:${analysisId}`, String(payload.prescriptionDraftError));
+      }
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível atualizar esta análise.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="simple-refresh-analysis">
+      <span className="simple-refresh-analysis-icon"><Icon name="sparkles" size={22}/></span>
+      <div>
+        <strong>{copy.title}</strong>
+        <p>{copy.text}</p>
+        {message && <small role="alert">{message}</small>}
+      </div>
+      <button type="button" onClick={() => void refreshAnalysis()} disabled={busy}>
+        {busy ? "Atualizando…" : copy.button}
+        <Icon name="arrow" size={14}/>
+      </button>
+    </section>
+  );
+}
