@@ -2,7 +2,8 @@ export type AnalysisEvidenceFreshnessCode =
   | "CURRENT"
   | "INTERPRETATION_TIMESTAMP_MISSING"
   | "INVALID_TRACE_TIMESTAMPS"
-  | "LAB_EVIDENCE_CHANGED";
+  | "LAB_EVIDENCE_CHANGED"
+  | "AGRONOMIC_RULES_CHANGED";
 
 export type AnalysisEvidenceFreshness = {
   current: boolean;
@@ -25,9 +26,18 @@ export type AnalysisEvidenceFreshness = {
 export function evaluateAnalysisEvidenceFreshness(input: {
   interpretationCreatedAt: string | null | undefined;
   latestImportCommittedAt: string | null | undefined;
+  latestRuleUpdatedAt?: string | null | undefined;
 }): AnalysisEvidenceFreshness {
-  if (!input.latestImportCommittedAt) {
-    return { current: true, code: "CURRENT", reason: null };
+  if (!input.latestImportCommittedAt && !input.latestRuleUpdatedAt) {
+    if (ruleAt != null && interpretationAt < ruleAt) {
+    return {
+      current: false,
+      code: "AGRONOMIC_RULES_CHANGED",
+      reason: "As regras agronômicas desta cultura foram atualizadas depois desta análise. Atualize a análise para usar as regras atuais.",
+    };
+  }
+
+  return { current: true, code: "CURRENT", reason: null };
   }
 
   if (!input.interpretationCreatedAt) {
@@ -39,8 +49,13 @@ export function evaluateAnalysisEvidenceFreshness(input: {
   }
 
   const interpretationAt = new Date(input.interpretationCreatedAt).getTime();
-  const importAt = new Date(input.latestImportCommittedAt).getTime();
-  if (!Number.isFinite(interpretationAt) || !Number.isFinite(importAt)) {
+  const importAt = input.latestImportCommittedAt ? new Date(input.latestImportCommittedAt).getTime() : null;
+  const ruleAt = input.latestRuleUpdatedAt ? new Date(input.latestRuleUpdatedAt).getTime() : null;
+  if (
+    !Number.isFinite(interpretationAt)
+    || (importAt != null && !Number.isFinite(importAt))
+    || (ruleAt != null && !Number.isFinite(ruleAt))
+  ) {
     return {
       current: false,
       code: "INVALID_TRACE_TIMESTAMPS",
@@ -48,7 +63,7 @@ export function evaluateAnalysisEvidenceFreshness(input: {
     };
   }
 
-  if (interpretationAt < importAt) {
+  if (importAt != null && interpretationAt < importAt) {
     return {
       current: false,
       code: "LAB_EVIDENCE_CHANGED",
