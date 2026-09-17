@@ -1,14 +1,17 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { getFieldBoundaryGeoJson, listNdviHistoryForField } from "@/lib/repositories/ndvi";
-import { copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import { NdviRasterPersistenceError, readNdviRasterArtifact } from "@/lib/ndvi-raster-storage";
+import { getFieldBoundaryGeoJson, getNdviSnapshotForDate } from "@/lib/repositories/ndvi";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Serve um PNG NDVI real do Sentinel-2 já vinculado a uma aquisição persistida da RAIZ.
- * O cliente nunca escolhe uma data arbitrária do provedor: ela precisa existir no histórico do
- * próprio talhão/tenant. Isso limita abuso de quota e mantém a visualização auditável em relação à
- * série temporal já registrada.
+ * Serve exclusivamente o PNG arquivado junto ao snapshot histórico. Não existe fallback para uma nova
+ * chamada ao Copernicus: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
+ * fechado. Isso impede que uma visualização regenerada no futuro seja apresentada como a mesma evidência.
+ *
+ * O artefato é imutável, mas a autorização do usuário não é. Por isso a resposta não pode ficar
+ * armazenada por longo prazo no cache privado do navegador: cada leitura precisa voltar a passar pela
+ * sessão e pelo escopo tenant/RLS.
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -19,36 +22,66 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     return Response.json({ error: "Informe uma data de aquisição válida no formato YYYY-MM-DD." }, { status: 400 });
   }
 
-  const [boundary, history] = await Promise.all([
+  const [boundary, snapshot] = await Promise.all([
     getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
-    listNdviHistoryForField(session.tenantId, fieldId, session.userId),
+    getNdviSnapshotForDate({
+      tenantId: session.tenantId,
+      fieldId,
+      capturedAt: requestedDate,
+      userId: session.userId,
+      source: "SENTINEL_2",
+    }),
   ]);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
-
-  const snapshot = history.find((item) => String(item.capturedAt).slice(0, 10) === requestedDate);
   if (!snapshot) {
     return Response.json({ error: "A data solicitada não pertence ao histórico NDVI registrado deste talhão." }, { status: 404 });
   }
 
+  const bbox = snapshot.rasterBbox;
+  const hasCompleteArchive = Boolean(
+    snapshot.rasterObjectKey && snapshot.rasterSha256 && snapshot.rasterBytes &&
+    Array.isArray(bbox) && bbox.length === 4 && bbox.every((value: unknown) => typeof value === "number" && Number.isFinite(value)) &&
+    snapshot.rasterWidth && snapshot.rasterHeight && snapshot.rasterAlgorithm &&
+    snapshot.rasterMosaickingOrder && snapshot.rasterArchivedAt,
+  );
+
+  if (!hasCompleteArchive) {
+    return Response.json(
+      {
+        error: "Este snapshot NDVI é legado e ainda não possui raster histórico arquivado. Atualize o histórico do talhão para criar a cadeia de custódia antes de exibi-lo como mapa histórico.",
+        code: "NDVI_RASTER_ARCHIVE_REQUIRED",
+      },
+      { status: 409 },
+    );
+  }
+
   try {
-    const raster = await copernicusNdviProvider.fetchFieldNdviMap({
-      fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
-      capturedAt: requestedDate,
+    const raster = await readNdviRasterArtifact({
+      tenantId: session.tenantId,
+      fieldId,
+      key: snapshot.rasterObjectKey,
+      sha256: snapshot.rasterSha256,
+      bytes: snapshot.rasterBytes,
     });
 
-    return new Response(raster.bytes, {
+    return new Response(new Uint8Array(raster), {
       status: 200,
       headers: {
         "content-type": "image/png",
-        "cache-control": "private, max-age=3600",
-        "x-raiz-ndvi-date": raster.capturedAt,
-        "x-raiz-ndvi-bbox": raster.bbox.join(","),
-        "x-raiz-ndvi-size": `${raster.width}x${raster.height}`,
-        "x-raiz-ndvi-source": "SENTINEL_2_COPERNICUS_PROCESS_API",
+        "cache-control": "private, no-store",
+        etag: `"${snapshot.rasterSha256}"`,
+        "x-raiz-ndvi-date": requestedDate,
+        "x-raiz-ndvi-bbox": bbox.join(","),
+        "x-raiz-ndvi-size": `${snapshot.rasterWidth}x${snapshot.rasterHeight}`,
+        "x-raiz-ndvi-source": "SENTINEL_2_ARCHIVED_RASTER",
+        "x-raiz-ndvi-sha256": snapshot.rasterSha256,
+        "x-raiz-ndvi-algorithm": snapshot.rasterAlgorithm,
+        "x-raiz-ndvi-mosaicking-order": snapshot.rasterMosaickingOrder,
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Não foi possível gerar o mapa NDVI desta aquisição.";
-    return Response.json({ error: message }, { status: 502 });
+    const message = error instanceof Error ? error.message : "Não foi possível recuperar o raster NDVI arquivado.";
+    const status = error instanceof NdviRasterPersistenceError ? 503 : 502;
+    return Response.json({ error: message, code: "NDVI_RASTER_ARCHIVE_UNAVAILABLE" }, { status });
   }
 }

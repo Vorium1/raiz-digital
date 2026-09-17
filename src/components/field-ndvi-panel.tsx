@@ -16,6 +16,7 @@ type Snapshot = {
   minNdvi?: number | null;
   maxNdvi?: number | null;
   pixelCount?: number | null;
+  rasterObjectKey?: string | null;
   zoneBreakdownPct: Partial<Record<VigorZone, number>>;
 };
 
@@ -73,6 +74,10 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
   return [[minLat, minLon], [maxLat, maxLon]];
 }
 
+function hasArchivedRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot {
+  return Boolean(snapshot?.rasterObjectKey);
+}
+
 /**
  * Centro de inteligência Sentinel-2 do talhão. Combina raster NDVI espacial real, distribuição de
  * vigor, qualidade, série temporal e variabilidade. Também permite sobrepor pontos laboratoriais
@@ -127,10 +132,12 @@ export function FieldNdviPanel({
         return;
       }
       const nextLatest = (payload.latest ?? null) as Snapshot | null;
+      const nextHistory = (payload.history ?? []) as Snapshot[];
+      const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
       setLatest(nextLatest);
-      setHistory(payload.history ?? []);
+      setHistory(nextHistory);
       setFieldBoundary(payload.fieldBoundary ?? null);
-      setSelectedRasterDate(nextLatest?.capturedAt.slice(0, 10) ?? "");
+      setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
@@ -250,22 +257,40 @@ export function FieldNdviPanel({
       const res = await fetch(`/api/fields/${fieldId}/ndvi`, { method: "POST" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(payload.error ?? "Não foi possível buscar a leitura de satélite.");
+        const archivedBeforeError = Number(payload.archivedRasterCount ?? 0);
+        const pendingAfterError = Number(payload.pendingArchiveCount ?? 0);
+        const progress = archivedBeforeError > 0 || pendingAfterError > 0
+          ? ` ${archivedBeforeError} raster(s) já foram arquivados nesta tentativa; ${pendingAfterError} ainda permanecem pendentes.`
+          : "";
+        setError(`${payload.error ?? "Não foi possível buscar a leitura de satélite."}${progress}`);
         return;
       }
       const nextLatest = (payload.latest ?? payload.snapshot ?? null) as Snapshot | null;
+      const nextHistory = (payload.history ?? []) as Snapshot[];
+      const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
       setLatest(nextLatest);
-      setHistory(payload.history ?? []);
+      setHistory(nextHistory);
       setFieldBoundary(payload.fieldBoundary ?? fieldBoundary);
-      setSelectedRasterDate(nextLatest?.capturedAt.slice(0, 10) ?? "");
+      setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
-      setRefreshNote(
-        payload.importedCount
-          ? `${payload.importedCount} aquisições Sentinel-2 recentes foram atualizadas na série temporal deste talhão.`
-          : "Série temporal atualizada.",
-      );
+
+      const archivedCount = Number(payload.archivedRasterCount ?? payload.importedCount ?? 0);
+      const pendingCount = Number(payload.pendingArchiveCount ?? 0);
+      if (pendingCount > 0) {
+        setRefreshNote(
+          `${archivedCount} raster(s) Sentinel-2 foram arquivados nesta etapa. Ainda faltam ${pendingCount} aquisição(ões) da janela selecionada; use “Atualizar 120 dias” novamente para continuar a cadeia de custódia.`,
+        );
+      } else if (archivedCount > 0) {
+        setRefreshNote(
+          `${archivedCount} raster(s) Sentinel-2 foram arquivados nesta etapa. A janela selecionada não possui raster pendente.`,
+        );
+      } else if (payload.archiveCompleteForSelectedWindow === true) {
+        setRefreshNote("Série temporal verificada: a janela selecionada não possui raster pendente.");
+      } else {
+        setRefreshNote("Série temporal atualizada.");
+      }
       onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
     } finally {
       setFetching(false);
@@ -276,10 +301,12 @@ export function FieldNdviPanel({
     () => [...history].sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime()),
     [history],
   );
-  const rasterHistory = useMemo(() => [...chartHistory].reverse(), [chartHistory]);
+  const rasterHistory = useMemo(() => [...chartHistory].filter(hasArchivedRaster).reverse(), [chartHistory]);
   const selectedRasterSnapshot = useMemo(
-    () => history.find((item) => item.capturedAt.slice(0, 10) === selectedRasterDate) ?? latest,
-    [history, latest, selectedRasterDate],
+    () => selectedRasterDate
+      ? history.find((item) => hasArchivedRaster(item) && item.capturedAt.slice(0, 10) === selectedRasterDate) ?? null
+      : null,
+    [history, selectedRasterDate],
   );
   const rasterLegend = useMemo(
     () => ZONE_ORDER.map((zone) => ({ label: `NDVI · ${VIGOR_ZONE_LABELS[zone]}`, color: NDVI_ZONE_COLOR[zone] })),
@@ -297,7 +324,10 @@ export function FieldNdviPanel({
     if (soilPoints.some((point) => !point.interpretable)) entries.push({ label: `${soilParameter} · sem faixa/classificação`, color: "#9AA79F" });
     return entries;
   }, [soilParameter, soilPoints]);
-  const mapLegend = soilParameter ? [...rasterLegend, ...soilLegend] : rasterLegend;
+  const mapLegend = [
+    ...(rasterOverlay ? rasterLegend : []),
+    ...(soilParameter ? soilLegend : []),
+  ];
 
   if (loading) return <div className="ndvi-panel card"><p className="ndvi-panel-meta"><Icon name="clock" size={14} /> Carregando vigor por satélite…</p></div>;
 
@@ -310,7 +340,7 @@ export function FieldNdviPanel({
           {fetching ? "Buscando série…" : latest ? "Atualizar 120 dias" : "Buscar histórico"}
         </button>
       </div>
-      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa é um raster NDVI real servido sob demanda; não é interpolação do laboratório e não representa produtividade.</p>
+      <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa usa o raster NDVI histórico arquivado e validado por integridade; não é interpolação do laboratório e não representa produtividade.</p>
 
       {error && <p className="ndvi-panel-error"><Icon name="warning" size={14} />{error}</p>}
       {refreshNote && <p className="ndvi-panel-meta"><Icon name="check" size={14} />{refreshNote}</p>}
@@ -333,7 +363,7 @@ export function FieldNdviPanel({
                 <div><span className="eyebrow">MAPA NDVI REAL</span><h2>Vigor dentro do limite do talhão</h2></div>
                 {rasterHistory.length > 1 && (
                   <label className="field-overview-depth-context">
-                    <span>Aquisição</span>
+                    <span>Aquisição arquivada</span>
                     <select value={selectedRasterDate} onChange={(event) => setSelectedRasterDate(event.target.value)}>
                       {rasterHistory.map((snapshot) => (
                         <option key={snapshot.id} value={snapshot.capturedAt.slice(0, 10)}>
@@ -344,6 +374,10 @@ export function FieldNdviPanel({
                   </label>
                 )}
               </div>
+
+              {rasterHistory.length === 0 && (
+                <p className="ndvi-panel-meta"><Icon name="warning" size={14}/>O histórico estatístico existe, mas nenhum raster histórico desta janela foi arquivado ainda. Use “Atualizar 120 dias” para promover aquisições ao contrato de custódia antes de visualizá-las no mapa.</p>
+              )}
 
               {effectiveCollectionOrderId && soilAvailableParameters.length > 0 && (
                 <div className="field-overview-parameter-toolbar">
@@ -357,7 +391,7 @@ export function FieldNdviPanel({
                   {fallbackSoilContext && !collectionOrderId && <span className="field-overview-depth-context">{fallbackSoilContext.collectionOrderCode} · {fallbackSoilContext.seasonLabel} · {fallbackSoilContext.depthFromCm}–{fallbackSoilContext.depthToCm} cm</span>}
                 </div>
               )}
-              {soilParameter && <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>Cruzamento visual apenas: o fundo mostra NDVI da aquisição escolhida e os círculos mostram resultados do solo nas coordenadas de coleta. Coincidência espacial não prova relação causal e não gera prescrição automática.</p>}
+              {soilParameter && <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>Cruzamento visual apenas: o fundo mostra NDVI da aquisição escolhida quando existe raster arquivado, e os círculos mostram resultados do solo nas coordenadas de coleta. Coincidência espacial não prova relação causal e não gera prescrição automática.</p>}
               {soilLoading && effectiveCollectionOrderId && <p className="ndvi-panel-meta"><Icon name="clock" size={14}/>Carregando evidência de solo…</p>}
               {soilError && <p className="ndvi-panel-error"><Icon name="warning" size={14}/>{soilError}</p>}
               {selectedRasterSnapshot && (
@@ -374,7 +408,13 @@ export function FieldNdviPanel({
                 height={420}
                 colorFor={soilParameter ? soilColorFor : undefined}
                 legend={mapLegend}
-                hint={soilParameter ? `Fundo: NDVI ${formatDateOnly(selectedRasterDate)} · pontos: ${soilParameter}` : rasterOverlay ? `Raster NDVI · ${formatDateOnly(selectedRasterDate)}` : "Imagem-base real do talhão; raster NDVI aguardando disponibilidade"}
+                hint={soilParameter
+                  ? selectedRasterDate
+                    ? `Fundo: NDVI ${formatDateOnly(selectedRasterDate)} · pontos: ${soilParameter}`
+                    : `Pontos: ${soilParameter} · raster NDVI histórico ainda não arquivado`
+                  : rasterOverlay
+                    ? `Raster NDVI · ${formatDateOnly(selectedRasterDate)}`
+                    : "Imagem-base real do talhão; raster NDVI histórico aguardando arquivamento/disponibilidade"}
                 imageOverlay={rasterOverlay}
               />
             </div>
@@ -422,6 +462,7 @@ export function FieldNdviPanel({
             {[...chartHistory].reverse().map((snapshot) => {
               const zone = classifyNdviValue(snapshot.meanNdvi);
               const date = snapshot.capturedAt.slice(0, 10);
+              const rasterArchived = hasArchivedRaster(snapshot);
               return (
                 <li key={snapshot.id}>
                   <i style={{ background: NDVI_ZONE_COLOR[zone] }} />
@@ -429,8 +470,8 @@ export function FieldNdviPanel({
                   <span>NDVI médio {snapshot.meanNdvi.toFixed(2)}</span>
                   <span>{VIGOR_ZONE_LABELS[zone]}</span>
                   <span className="ndvi-history-quality">{snapshot.cloudCoverPct != null ? `${Math.round(snapshot.cloudCoverPct)}% sem pixel válido` : "qualidade não informada"}</span>
-                  <button type="button" className="button ghost small" onClick={() => setSelectedRasterDate(date)} disabled={selectedRasterDate === date}>
-                    {selectedRasterDate === date ? "No mapa" : "Ver mapa"}
+                  <button type="button" className="button ghost small" onClick={() => setSelectedRasterDate(date)} disabled={!rasterArchived || selectedRasterDate === date}>
+                    {!rasterArchived ? "Arquivar no refresh" : selectedRasterDate === date ? "No mapa" : "Ver mapa"}
                   </button>
                 </li>
               );

@@ -17,6 +17,8 @@ export type PortfolioSatelliteSignal = {
   latestQuality: NdviObservationQuality;
   deltaFromBaseline: number | null;
   baselineCount: number;
+  /** Data mais recente que pode ser exibida como raster histórico imutável. */
+  latestArchivedRasterCapturedAt: string | null;
 };
 
 type SnapshotRow = {
@@ -24,12 +26,16 @@ type SnapshotRow = {
   capturedAt: string;
   meanNdvi: number;
   cloudCoverPct: number | null;
+  latestArchivedRasterCapturedAt: string | null;
 };
 
 /**
  * Um sinal satélite por talhão para a visão de carteira. Busca no máximo as seis aquisições mais
  * recentes de cada talhão em uma única consulta e reaproveita exatamente o mesmo motor temporal do
- * Talhão 360°. Não existe interpretação paralela no dashboard e não há N+1 por talhão.
+ * Talhão 360°. Em paralelo, uma window function resolve a data mais recente que possui raster
+ * arquivado entre TODO o histórico do talhão, antes do corte das seis leituras temporais. Assim a
+ * tendência pode usar a leitura estatística mais recente sem fingir que ela já possui imagem de
+ * custódia, e o dashboard não precisa fazer N+1 para descobrir qual raster pode exibir.
  */
 export async function listPortfolioSatelliteSignals(
   tenantId: string,
@@ -40,11 +46,13 @@ export async function listPortfolioSatelliteSignals(
       `WITH ranked AS (
          SELECT field_id::text AS "fieldId", captured_at::text AS "capturedAt",
                 mean_ndvi::float8 AS "meanNdvi", cloud_cover_pct::float8 AS "cloudCoverPct",
+                (MAX(captured_at) FILTER (WHERE raster_object_key IS NOT NULL)
+                  OVER (PARTITION BY field_id))::text AS "latestArchivedRasterCapturedAt",
                 row_number() OVER (PARTITION BY field_id ORDER BY captured_at DESC, created_at DESC) AS rn
          FROM field_ndvi_snapshots
          WHERE tenant_id = $1::uuid
        )
-       SELECT "fieldId", "capturedAt", "meanNdvi", "cloudCoverPct"
+       SELECT "fieldId", "capturedAt", "meanNdvi", "cloudCoverPct", "latestArchivedRasterCapturedAt"
        FROM ranked
        WHERE rn <= 6
        ORDER BY "fieldId", "capturedAt"`,
@@ -79,6 +87,7 @@ export async function listPortfolioSatelliteSignals(
         latestQuality: temporal.latestQuality,
         deltaFromBaseline: temporal.deltaFromBaseline,
         baselineCount: temporal.baselineCount,
+        latestArchivedRasterCapturedAt: history.at(-1)?.latestArchivedRasterCapturedAt ?? null,
       });
     }
 

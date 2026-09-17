@@ -12,6 +12,20 @@ const STATISTICS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics";
 const PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process";
 const CRS84 = "http://www.opengis.net/def/crs/OGC/1.3/CRS84";
 
+/**
+ * Statistical API e Process API precisam usar a mesma política de mosaico. Sem isso, duas chamadas
+ * para a mesma data podem escolher tiles diferentes quando há sobreposição, quebrando a coerência
+ * entre a estatística persistida e o raster espacial regenerado para aquela data.
+ */
+export const COPERNICUS_NDVI_MOSAICKING_ORDER = "leastCC" as const;
+
+export function copernicusNdviDataFilter(maxCloudCoverage = 30) {
+  return {
+    maxCloudCoverage,
+    mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
+  } as const;
+}
+
 const NDVI_EVALSCRIPT = `//VERSION=3
 function setup() {
   return {
@@ -234,7 +248,7 @@ async function fetchSeries(input: FetchFieldNdviInput): Promise<NdviSceneResult[
       data: [
         {
           type: "sentinel-2-l2a",
-          dataFilter: { maxCloudCoverage: input.maxCloudCoverPct ?? 30 },
+          dataFilter: copernicusNdviDataFilter(input.maxCloudCoverPct ?? 30),
         },
       ],
     },
@@ -285,8 +299,7 @@ async function fetchMap(input: { fieldBoundaryGeoJson: FieldGeometry; capturedAt
           type: "sentinel-2-l2a",
           dataFilter: {
             timeRange: { from: `${input.capturedAt}T00:00:00Z`, to: `${input.capturedAt}T23:59:59Z` },
-            mosaickingOrder: "leastCC",
-            maxCloudCoverage: input.maxCloudCoverPct ?? 30,
+            ...copernicusNdviDataFilter(input.maxCloudCoverPct ?? 30),
           },
         },
       ],
