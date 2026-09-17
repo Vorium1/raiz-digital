@@ -51,6 +51,8 @@ assert.match(send, /sourceFileName:\s*file\.originalFileName/);
 assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
 assert.match(field, /`\/analise\/\$\{latest\.id\}`/);
 assert.match(field, /Detalhes técnicos/);
+assert.doesNotMatch(field, /Falta uma informação para a RAIZ concluir esta análise/);
+assert.match(field, /Análise precisa continuar/);
 assert.match(field, /<SimpleFieldVigor fieldId=\{field\.id\}/);
 assert.match(fieldVigor, /raiz:ndvi:auto:\$\{fieldId\}/);
 assert.match(fieldVigor, /\/api\/fields\/\$\{fieldId\}\/ndvi/);
