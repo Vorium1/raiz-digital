@@ -19,7 +19,7 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
   let stateTitle = "Ainda não analisado";
   let stateText = "Envie os dados desta área e a RAIZ organiza o restante.";
   let stateIcon: "upload" | "clock" | "shield" | "check" = "upload";
-  let actionHref = "/analises/nova?etapa=laudo&nivel=interpretacao-rapida";
+  let actionHref = "/enviar";
   let actionLabel = "Enviar dados";
 
   if (latestReport) {
