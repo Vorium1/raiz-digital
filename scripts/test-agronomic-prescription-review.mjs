@@ -81,4 +81,13 @@ const premiumPublicationSource = readFileSync(new URL("../src/lib/repositories/p
 assert.match(premiumPublicationSource, /approvedPrescriptionId:\s*approvedPrescription\.id/);
 assert.match(premiumPublicationSource, /approvedPrescription/);
 
+// A própria página do relatório precisa comparar o snapshot v3 com a prescrição viva antes de afirmar
+// que a decisão atual já foi publicada. A mesma revisão de interpretação, sozinha, não é evidência suficiente.
+const reportPageSource = readFileSync(new URL("../src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx", import.meta.url), "utf8");
+assert.match(reportPageSource, /publishedSnapshotV3\.approvedPrescription\.id === prescription\.id/);
+assert.match(reportPageSource, /sameDecisionAsPublished/);
+assert.match(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
+assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
+assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
+
 console.log("agronomic-prescription-review: revisão final protegida + publicação vinculada à prescrição exata do snapshot");

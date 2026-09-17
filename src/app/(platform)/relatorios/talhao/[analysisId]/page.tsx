@@ -61,12 +61,12 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
   const requestedView = query.versao === "publicada" && canShowPublishedView ? "publicada" : "atual";
   const viewingPublished = requestedView === "publicada";
-  const sameRevisionAsPublished = data.isShowingPublishedVersion && canShowPublishedView;
+  const publishedInterpretationIsCurrent = data.isShowingPublishedVersion && canShowPublishedView;
 
   // Snapshots v3 congelam a decisão completa (contexto, pontos, síntese/recomendação aprovadas). V2 congela
   // contexto e interpretação, mas não os artefatos posteriores. V1 legado não recebe dados vivos por
   // conveniência: o que não foi congelado permanece explicitamente indisponível.
-  const rawPublishedSnapshot = viewingPublished
+  const rawPublishedSnapshot = canShowPublishedView
     ? (publishedInfo?.snapshot as unknown as { reportSnapshotVersion?: number; structuredOutput?: unknown } | null)
     : null;
   const publishedSnapshotV3 = rawPublishedSnapshot?.reportSnapshotVersion === 3
@@ -76,6 +76,12 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
     ? (rawPublishedSnapshot as unknown as ReportSnapshotV2)
     : null;
   const isPremiumPublishedSnapshot = publishedSnapshotV3 != null;
+  const publishedPrescriptionMatchesCurrent = Boolean(
+    publishedSnapshotV3
+    && prescription?.id
+    && publishedSnapshotV3.approvedPrescription.id === prescription.id,
+  );
+  const sameDecisionAsPublished = publishedInterpretationIsCurrent && publishedPrescriptionMatchesCurrent;
   const hasFrozenContext = publishedSnapshotV3 != null || publishedSnapshotV2 != null;
   const displayContext: PublishedReportContext | PremiumReportSnapshotV3["publishedContext"] | typeof analysis =
     publishedSnapshotV3?.publishedContext ?? publishedSnapshotV2?.publishedContext ?? analysis;
@@ -108,7 +114,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
         <div className="report-toolbar no-print">
           <span className="report-empty-note">Entrega técnica construída com dados persistidos, regras homologadas e revisão profissional.</span>
           <div style={{ display: "flex", gap: 10 }}>
-            {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id}/>}
+            {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && !sameDecisionAsPublished && <PublishReportButton interpretationId={interpretation.id}/>}
             {!(query.versao === "publicada" && integrityFailed) && <PrintButton/>}
           </div>
         </div>
@@ -140,10 +146,12 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> Mostrando o snapshot IMUTÁVEL publicado em {new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR")} por {publishedInfo!.report.publishedByName ?? "—"} — revisão #{publishedInfo!.report.revision}. Integridade: hash verificado.{isPremiumPublishedSnapshot ? " Esta entrega congela contexto, interpretação, pontos, marca e a recomendação aprovada da mesma revisão." : contextUnavailable ? " Este snapshot é legado e não continha contexto/marca congelados; esses campos permanecem indisponíveis." : " Este snapshot anterior congela contexto e interpretação; artefatos posteriores que não faziam parte dele permanecem indisponíveis."}</span></div>
         ) : !canShowPublishedView && publishedInfo?.readError ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}), mas o snapshot não pôde ser lido de volta agora ({publishedInfo.readError}) — mostrando o dado atual, que pode não ser idêntico ao publicado.</span></div>
-        ) : !sameRevisionAsPublished ? (
+        ) : !publishedInterpretationIsCurrent ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Esta tela mostra o dado ATUAL por padrão — use "Versão publicada" acima para ver exatamente o que foi publicado.</span></div>
+        ) : !sameDecisionAsPublished ? (
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> {isPremiumPublishedSnapshot ? "A interpretação atual é a mesma da versão publicada, mas a recomendação atual é diferente da recomendação congelada naquele snapshot. Esta decisão atual continua como rascunho até uma nova publicação passar pelos gates oficiais." : "A interpretação atual coincide com uma publicação legada, mas esse formato não congelava a recomendação aprovada. Por segurança, não tratamos a decisão atual como já publicada; gere uma nova versão oficial no formato atual."}</span></div>
         ) : (
-          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A revisão técnica atual (#{interpretation?.revision}) é a mesma que foi publicada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"}. Para consultar a entrega oficial congelada e verificar sua integridade, use "Versão publicada".</span></div>
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A decisão técnica atual (interpretação #{interpretation?.revision} + recomendação aprovada corrente) é a mesma que foi congelada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"}. Para consultar a entrega oficial e verificar sua integridade, use "Versão publicada".</span></div>
         )}
 
         <article className="report-doc">
@@ -152,7 +160,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
             <div className="report-header-meta">
               <span>Gerado em</span><strong>{viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}</strong>
               <span style={{ marginTop: 6 }}>Código</span><strong>{contextUnavailable ? "—" : displayContext.code}</strong>
-              <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : sameRevisionAsPublished ? "Rascunho (revisão igual à publicada)" : "Rascunho (mais recente que o publicado)"}</strong>
+              <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : sameDecisionAsPublished ? "Rascunho (decisão igual à publicada)" : "Rascunho (decisão atual difere da publicada)"}</strong>
             </div>
           </header>
 
@@ -186,7 +194,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
             sampleCount={reportSampleCount}
             interpretationStatus={viewingPublished ? "APPROVED" : interpretation?.status ?? null}
             prescriptionStatus={displayPrescription?.status ?? null}
-            reportPublished={Boolean(publishedReport)}
+            reportPublished={viewingPublished || sameDecisionAsPublished}
             viewingPublished={viewingPublished}
             confidence={displayConfidence ?? null}
             narrativeSummary={displayNarrative?.responsePayload?.narrative?.summary ?? null}
