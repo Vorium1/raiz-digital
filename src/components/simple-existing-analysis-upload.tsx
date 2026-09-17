@@ -60,7 +60,7 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
         <div className="simple-send-number">1</div>
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Escolha o laudo</h2><p>A RAIZ lê, organiza e continua esta análise.</p></div>
-          <LabImporter method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
+          <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
           {ready && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
           <details className="simple-send-options"><summary>Opções do arquivo</summary><div className="single"><label>Método, somente se estiver faltando no arquivo<select value={method} onChange={(event) => setMethod(event.target.value)}><option value="">Não assumir</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></label></div></details>
         </div>
