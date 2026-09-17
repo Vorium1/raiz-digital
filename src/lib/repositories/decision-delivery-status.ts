@@ -32,6 +32,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
       latestInterpretationId: string | null;
       latestInterpretationCreatedAt: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
       prescriptionId: string | null;
       prescriptionStatus: DecisionDeliveryStatus["prescriptionStatus"];
       prescriptionCreatedAt: string | null;
@@ -46,6 +47,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
               latest_i.id::text AS "latestInterpretationId",
               latest_i.created_at::text AS "latestInterpretationCreatedAt",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               prescription.id::text AS "prescriptionId",
               prescription.status::text AS "prescriptionStatus",
               prescription.created_at::text AS "prescriptionCreatedAt",
@@ -56,6 +58,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
               current_report_stats.latest_report_at::text AS "latestDecisionReportAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
        LEFT JOIN LATERAL (
          SELECT i.id, i.created_at
          FROM interpretations i
@@ -68,6 +71,11 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
          FROM analysis_imports ai
          WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id=cp.id
+       ) rule_state ON cp.id IS NOT NULL
        LEFT JOIN LATERAL (
          SELECT ag.id, ag.status, ag.created_at, ag.interpretation_id
          FROM ai_generations ag
@@ -99,6 +107,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
         ? evaluateAnalysisEvidenceFreshness({
             interpretationCreatedAt: row.latestInterpretationCreatedAt,
             latestImportCommittedAt: row.latestImportCommittedAt,
+            latestRuleUpdatedAt: row.latestRuleUpdatedAt,
           })
         : { current: false, reason: null };
       const prescriptionCurrent = Boolean(
