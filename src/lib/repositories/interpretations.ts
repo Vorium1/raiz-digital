@@ -2,6 +2,7 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/domain/agronomic-engine";
 import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
+import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
 
 export class InterpretationError extends Error {
   constructor(message: string, public status = 400) {
@@ -70,7 +71,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
        ORDER BY ls.laboratory_code, lr.parameter_code`,
       [input.tenantId, input.analysisId],
     );
-    const labResults = resultsResult.rows.map((row) => ({ ...row, depthFromCm: row.depthFromCm ?? null, depthToCm: row.depthToCm ?? null }));
+    const labResults = resultsResult.rows.map((row) => ({
+      ...row,
+      unit: normalizeUnit(row.parameterCode, row.unit),
+      method: normalizeAnalyticalMethod(row.parameterCode, row.method),
+      depthFromCm: row.depthFromCm ?? null,
+      depthToCm: row.depthToCm ?? null,
+    }));
     if (labResults.length === 0) {
       throw new InterpretationError("Não há resultados de laboratório persistidos para esta análise. Importe e confira o laudo antes de interpretar.", 409);
     }
