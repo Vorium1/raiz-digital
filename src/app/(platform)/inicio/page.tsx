@@ -24,7 +24,7 @@ export default async function InicioPage() {
 
   const firstName = session.name.trim().split(/\s+/)[0] || "você";
   const canReview = REVIEW_ROLES.has(session.role);
-  const reviewCount = snapshot.awaitingReview + snapshot.inconsistent;
+  const reviewCount = snapshot.awaitingReview;
   const actionableAlerts = userActionAlerts(alerts);
   const attentionCount = actionableAlerts.length + (canReview ? reviewCount : 0);
 
@@ -51,7 +51,7 @@ export default async function InicioPage() {
 
         <Link href="/talhoes" className="simple-action-card">
           <span><Icon name="layers" size={28}/></span>
-          <div><strong>Meus talhões</strong><small>Veja áreas, coletas e histórico</small></div>
+          <div><strong>Meus talhões</strong><small>Veja suas áreas e histórico</small></div>
           <Icon name="arrow" size={18}/>
         </Link>
 
@@ -65,7 +65,7 @@ export default async function InicioPage() {
 
         <Link href="/resultados" className="simple-action-card">
           <span><Icon name="file" size={28}/></span>
-          <div><strong>Resultados</strong><small>Relatórios e entregas</small></div>
+          <div><strong>Resultados</strong><small>Relatórios prontos</small></div>
           <Icon name="arrow" size={18}/>
         </Link>
       </section>
@@ -74,14 +74,14 @@ export default async function InicioPage() {
         <span className="simple-attention-icon"><Icon name={attentionCount > 0 ? "warning" : "check"} size={21}/></span>
         <div>
           <strong>{attentionCount > 0 ? "Tem algo para você conferir" : "Tudo certo por aqui"}</strong>
-          <small>{attentionCount > 0 ? "Abra o aviso e resolva quando puder. O restante da operação continua funcionando normalmente." : "Nenhuma ação urgente agora."}</small>
+          <small>{attentionCount > 0 ? "Abra o aviso e resolva quando puder." : "Nenhuma ação urgente agora."}</small>
         </div>
         {attentionCount > 0 && <Link href="/atencao">Ver agora <Icon name="arrow" size={15}/></Link>}
       </section>
 
       <section className="simple-fields-section">
         <div className="simple-section-head">
-          <div><span>SEUS TALHÕES</span><h2>Mapa da sua carteira</h2><p>Clique em uma área para abrir.</p></div>
+          <div><span>SEUS TALHÕES</span><h2>Suas áreas</h2><p>Clique em uma área para abrir.</p></div>
           <Link href="/talhoes">Ver todos <Icon name="arrow" size={15}/></Link>
         </div>
         {fields.length > 0 ? (
