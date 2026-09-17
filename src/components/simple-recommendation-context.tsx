@@ -22,6 +22,7 @@ export function SimpleRecommendationContext({
 }: Props) {
   const needsYield = blockers.some((item) => item.startsWith("YIELD_GOAL") || item.startsWith("YIELD_UNIT"));
   const needsOrder = blockers.some((item) => item.startsWith("POST_ANALYSIS_CULTIVATION_ORDER"));
+  const missingGroupCount = Number(needsYield) + Number(needsOrder);
   const [goal, setGoal] = useState(yieldGoal != null && yieldGoal > 0 && yieldGoalUnit?.toLowerCase().includes("t") ? String(yieldGoal) : "");
   const [order, setOrder] = useState(cultivationOrderAfterSoilAnalysis === 1 || cultivationOrderAfterSoilAnalysis === 2 ? String(cultivationOrderAfterSoilAnalysis) : "");
   const [busy, setBusy] = useState(false);
@@ -67,7 +68,7 @@ export function SimpleRecommendationContext({
 
   return (
     <div className="simple-context-question">
-      <div className="simple-context-question-head"><span><Icon name="sparkles" size={18}/></span><div><strong>Falta só uma informação</strong><small>A RAIZ precisa disso para calcular fósforo e potássio com segurança. Não vamos estimar por você.</small></div></div>
+      <div className="simple-context-question-head"><span><Icon name="sparkles" size={18}/></span><div><strong>{missingGroupCount === 1 ? "Falta só uma informação" : "Faltam duas informações"}</strong><small>A RAIZ precisa disso para calcular fósforo e potássio com segurança. Não vamos estimar por você.</small></div></div>
       <div className="simple-context-fields">
         {needsYield && <label><span>Meta de produtividade</span><div className="simple-context-input"><input inputMode="decimal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Ex.: 4,0"/><b>t/ha</b></div></label>}
         {needsOrder && <label><span>Esta é qual safra depois desta análise de solo?</span><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="">Escolha</option><option value="1">Primeira safra</option><option value="2">Segunda safra</option></select></label>}
