@@ -27,6 +27,22 @@ assert.equal(stale.current, false);
 assert.equal(stale.code, "LAB_EVIDENCE_CHANGED");
 assert.match(stale.reason, /laudo laboratorial foi alterado/i);
 
+const ruleCurrent = evaluateAnalysisEvidenceFreshness({
+  interpretationCreatedAt: "2026-09-16T02:10:00.000Z",
+  latestImportCommittedAt: null,
+  latestRuleUpdatedAt: "2026-09-16T02:00:00.000Z",
+});
+assert.deepEqual(ruleCurrent, { current: true, code: "CURRENT", reason: null });
+
+const staleRules = evaluateAnalysisEvidenceFreshness({
+  interpretationCreatedAt: "2026-09-07T14:08:30.377Z",
+  latestImportCommittedAt: null,
+  latestRuleUpdatedAt: "2026-09-10T01:45:06.730Z",
+});
+assert.equal(staleRules.current, false);
+assert.equal(staleRules.code, "AGRONOMIC_RULES_CHANGED");
+assert.match(staleRules.reason, /regras agronômicas.*atualizadas/i);
+
 const missingInterpretationDate = evaluateAnalysisEvidenceFreshness({
   interpretationCreatedAt: null,
   latestImportCommittedAt: "2026-09-16T02:10:00.000Z",
@@ -41,4 +57,4 @@ const invalid = evaluateAnalysisEvidenceFreshness({
 assert.equal(invalid.current, false);
 assert.equal(invalid.code, "INVALID_TRACE_TIMESTAMPS");
 
-console.log("analysis evidence freshness: novo laudo invalida interpretação anterior de forma fail-closed");
+console.log("analysis evidence freshness: novo laudo ou regra agronômica atualizada invalidam interpretação anterior");
