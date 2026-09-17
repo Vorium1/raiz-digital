@@ -101,6 +101,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     .slice(0, 8);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
+  const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
 
   return (
     <div className="simple-result-page">
@@ -124,9 +125,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </div>
         </section>
 
-        {Boolean(v3?.publishedContext.fieldBoundary) && (
+        {Boolean(publishedBoundary) && (
           <section className="simple-result-map">
-            <RealFieldMap boundary={v3.publishedContext.fieldBoundary as any} points={[]} height={310} hint="Área deste resultado"/>
+            <RealFieldMap boundary={publishedBoundary as any} points={[]} height={310} hint="Área deste resultado"/>
           </section>
         )}
 
