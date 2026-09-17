@@ -11,55 +11,36 @@ export type NavItem = {
 export type NavSection = { label: string; items: NavItem[] };
 
 /**
- * Reorganizado em 2026-09-10 (RAIZ 2.0, Fase 1, Etapa 3) pro percurso pedido pelo diretor: CARTEIRA ->
- * TALHÃO -> EVIDÊNCIA -> PRÓXIMA AÇÃO. Nenhuma rota nova foi criada aqui -- é reorganização das mesmas
- * páginas que já existiam (histórico da estrutura anterior, 3 seções + Administração, preservado abaixo
- * pra quem for comparar). As 5 entradas pedidas:
- *
- * 1. Central de Decisão -- painel + clientes + alertas (o que precisa de atenção agora, carteira toda)
- * 2. Talhões -- ponto de entrada único pra explorar/gerenciar um talhão específico
- * 3. Operação -- laudo, laboratório, lista bruta de análises (o trabalho do dia a dia)
- * 4. Inteligência -- as visões já sintetizadas/interpretadas (mapas, histórico, comparativos)
- * 5. Entregas -- o que sai pro cliente final (relatórios)
- *
- * Biblioteca Técnica e Configurações continuam em navegação secundária de gestão (seção Administração,
- * já era assim, só não é uma das 5 entradas principais).
+ * RAIZ UX 2.0 — a navegação deixa de espelhar módulos internos e passa a seguir a jornada real:
+ * receber dados -> processar/analisar -> revisar -> entregar. Rotas técnicas continuam existindo,
+ * mas ficam agrupadas de acordo com o trabalho que o usuário quer concluir.
  */
 export const navigationSections: NavSection[] = [
   {
-    label: "CENTRAL DE DECISÃO",
+    label: "FLUXO PRINCIPAL",
     items: [
-      { href: "/dashboard", label: "Painel", icon: "home" },
-      { href: "/clientes", label: "Clientes", icon: "users" },
+      { href: "/inicio", label: "Início", icon: "home" },
+      { href: "/analises/nova?etapa=laudo&nivel=interpretacao-rapida", label: "Enviar dados", icon: "upload" },
+      { href: "/analises", label: "Operações", icon: "flask" },
+      { href: "/analises?status=revisao", label: "Revisões", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
+      { href: "/relatorios", label: "Entregas", icon: "file" },
+    ],
+  },
+  {
+    label: "CAMPO",
+    items: [
+      { href: "/mapas", label: "Mapa", icon: "map" },
+      { href: "/coletas", label: "Talhões & Coletas", icon: "layers" },
       { href: "/alertas", label: "Alertas", icon: "warning" },
     ],
   },
   {
-    label: "TALHÕES",
+    label: "GESTÃO",
     items: [
-      { href: "/coletas", label: "Propriedades & Talhões", icon: "map" },
-    ],
-  },
-  {
-    label: "OPERAÇÃO",
-    items: [
-      { href: "/analises", label: "Análises", icon: "flask" },
-      { href: "/analises/nova?etapa=laudo", label: "Laboratório", icon: "upload" },
-    ],
-  },
-  {
-    label: "INTELIGÊNCIA",
-    items: [
+      { href: "/clientes", label: "Clientes", icon: "users" },
       { href: "/inteligencia", label: "Inteligência Agronômica", icon: "sparkles" },
-      { href: "/mapas", label: "Mapas", icon: "map" },
-      { href: "/historico", label: "Histórico & Evolução", icon: "history" },
+      { href: "/historico", label: "Histórico", icon: "history" },
       { href: "/comparativos", label: "Comparativos", icon: "layers" },
-    ],
-  },
-  {
-    label: "ENTREGAS",
-    items: [
-      { href: "/relatorios", label: "Relatórios", icon: "file" },
     ],
   },
   {
