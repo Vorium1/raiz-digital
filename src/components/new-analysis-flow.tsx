@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnalysisContextIntake } from "@/components/analysis-context-intake";
 import { Icon } from "@/components/icon";
-import { LabImporter } from "@/components/lab-importer";
+import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
 import {
   buildAnalysisEvidence,
   EMPTY_ANALYSIS_CONTEXT_DRAFT,
@@ -66,7 +66,7 @@ export function NewAnalysisFlow({
   const [step, setStep] = useState(Math.min(Math.max(initialStep, 0), steps.length - 1));
   const [method, setMethod] = useState("");
   const [importPreview, setImportPreview] = useState<ImportPreviewWithCounts | null>(null);
-  const [importFile, setImportFile] = useState<{ fileName: string; content: string } | null>(null);
+  const [importFile, setImportFile] = useState<LabImporterReadyFile | null>(null);
   const [analysisContextDraft, setAnalysisContextDraft] = useState<AnalysisContextDraft>(EMPTY_ANALYSIS_CONTEXT_DRAFT);
   const [context, setContext] = useState<ContextData>(emptyContext);
   const [contextLoading, setContextLoading] = useState(databaseMode);
@@ -221,7 +221,7 @@ export function NewAnalysisFlow({
           body: JSON.stringify({
             cropSeasonId: seasonId,
             laboratoryId: laboratoryId || undefined,
-            sourceType: importSourceType(importFile.fileName),
+            sourceType: importFile.sourceType ?? importSourceType(importFile.fileName),
             analysisDepth: analysisDepthId,
             analysisContext: {
               schemaVersion: 1,
