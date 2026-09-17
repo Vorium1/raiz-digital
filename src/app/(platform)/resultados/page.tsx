@@ -12,13 +12,13 @@ export default async function ResultadosPage() {
   return (
     <div className="simple-home simple-results-page">
       <header className="simple-home-head">
-        <div><span>RESULTADOS</span><h1>Resultados prontos</h1><p>Abra, baixe ou compartilhe o que já foi aprovado.</p></div>
+        <div><span>RESULTADOS</span><h1>Resultados prontos</h1><p>Abra o que já foi revisado e publicado.</p></div>
       </header>
 
       {published.length > 0 ? (
         <section className="simple-results-grid">
           {published.map((report: any) => (
-            <Link href={`/relatorios/talhao/${report.analysisId}?versao=publicada`} key={report.id} className="simple-result-card">
+            <Link href={`/resultado/${report.analysisId}`} key={report.id} className="simple-result-card">
               <span className="simple-result-icon"><Icon name="file" size={24}/></span>
               <div>
                 <strong>{report.fieldName}</strong>
