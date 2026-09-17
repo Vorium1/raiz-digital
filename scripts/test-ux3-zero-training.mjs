@@ -36,6 +36,9 @@ assert.match(send, /<LabImporter simple /);
 assert.match(existingUpload, /<LabImporter simple /);
 assert.match(labImporter, /simple && preview && preview\.blockers > 0/);
 assert.match(labImporter, /!simple && preview && <div className="import-preview"/);
+assert.match(labImporter, /sourceType:\s*"PDF_OCR"/);
+assert.match(send, /sourceType:\s*file\.sourceType/);
+assert.match(send, /sourceFileName:\s*file\.originalFileName/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
