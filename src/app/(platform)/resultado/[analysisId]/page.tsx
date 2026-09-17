@@ -102,6 +102,23 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
+  const publishedPoints = (v3?.pointsSnapshot ?? []).map((point) => ({
+    id: point.id,
+    code: point.code,
+    sequence: null,
+    latitude: point.latitude,
+    longitude: point.longitude,
+    observedLatitude: null,
+    observedLongitude: null,
+    collectedAt: point.collectedAt,
+    depthFromCm: point.depthFromCm,
+    depthToCm: point.depthToCm,
+    subsampleCount: null,
+    accuracyM: null,
+    gpsSource: point.gpsSource,
+    notes: null,
+    labResultCount: 0,
+  }));
 
   return (
     <div className="simple-result-page">
@@ -121,13 +138,14 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             <div><small>Área</small><strong>{Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
             <div><small>Safra</small><strong>{context.seasonLabel}</strong></div>
             <div><small>Cultura</small><strong>{context.currentCrop || "Não informada"}</strong></div>
+            {publishedPoints.length > 0 && <div><small>Pontos de coleta</small><strong>{publishedPoints.length}</strong></div>}
             {reviewer && <div><small>Responsável pela revisão</small><strong>{reviewer}</strong></div>}
           </div>
         </section>
 
         {Boolean(publishedBoundary) && (
           <section className="simple-result-map">
-            <RealFieldMap boundary={publishedBoundary as any} points={[]} height={310} hint="Área deste resultado"/>
+            <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
           </section>
         )}
 
