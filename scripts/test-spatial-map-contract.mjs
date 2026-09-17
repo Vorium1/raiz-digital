@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   effectivePointCoordinates,
   pointPositionKind,
@@ -154,8 +155,20 @@ assert.equal(
   "namespace incompleta nunca deve ser tratada como carregada",
 );
 
+const ndviRasterRouteSource = readFileSync(new URL("../src/app/api/fields/[id]/ndvi/map/route.ts", import.meta.url), "utf8");
+assert.match(
+  ndviRasterRouteSource,
+  /["']cache-control["']\s*:\s*["']private, no-store["']/,
+  "raster NDVI autenticado não pode ficar armazenado por longo prazo no cache do navegador",
+);
+assert.doesNotMatch(
+  ndviRasterRouteSource,
+  /max-age\s*=\s*31536000|immutable/i,
+  "imutabilidade do artefato não pode tornar imutável a autorização de acesso no navegador",
+);
+
 assert.ok(GOOGLE_MAPS_LOAD_TIMEOUT_MS >= 10_000, "loader deve ter timeout explícito e conservador");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS >= 8_000, "saúde dos tiles deve esperar tempo suficiente antes do fallback");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS < GOOGLE_MAPS_LOAD_TIMEOUT_MS, "health check de tiles deve ser limitado e inferior ao teto do loader");
 
-console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, auth latch, provider e timeouts fail-closed.");
+console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, auth latch, cache privado e timeouts fail-closed.");
