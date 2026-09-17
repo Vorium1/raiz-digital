@@ -1,0 +1,154 @@
+import { buildAgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
+import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
+import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
+import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
+import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
+import { AiGenerationError, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
+import { getLatestInterpretation } from "@/lib/repositories/interpretations";
+import { recordAgronomicPrescriptionGenerationSafely } from "@/lib/repositories/prescription-generation";
+import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
+import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
+
+function interpretationItems(structuredOutput: unknown) {
+  if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
+  const value = (structuredOutput as { interpretation?: unknown }).interpretation;
+  return Array.isArray(value) ? value : [];
+}
+
+export async function prepareAgronomicPrescriptionDraft(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+}) {
+  const usage = await getTenantPrescriptionUsage(input.tenantId);
+  if (usage.usedThisMonth >= usage.monthlyLimit) {
+    throw new AiGenerationError(
+      `Limite mensal de prescrições por IA atingido (${usage.usedThisMonth}/${usage.monthlyLimit} este mês). Fale com o responsável pela plataforma para ajustar o plano.`,
+      429,
+    );
+  }
+
+  const evidence = await buildAgronomicPrescriptionEvidencePackage(input.tenantId, input.userId, input.analysisId);
+  if (!evidence) throw new AiGenerationError("Análise não encontrada.", 404);
+  if (evidence.results.length === 0) {
+    throw new AiGenerationError("Não há resultado de laboratório vinculado a esta análise ainda.", 409);
+  }
+
+  const [interpretation, contextBeforeProvider, evidenceBeforeProvider] = await Promise.all([
+    getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
+    getRecommendationContextByAnalysis({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+    getAnalysisEvidenceState({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+  ]);
+
+  const gate = checkPrescriptionDraftGate(interpretation?.status ?? null);
+  if (!gate.allowed) throw new AiGenerationError(gate.reason, 409);
+  if (
+    !interpretation?.id
+    || evidenceBeforeProvider.interpretationId !== interpretation.id
+    || !evidenceBeforeProvider.freshness.current
+  ) {
+    throw new AiGenerationError(
+      evidenceBeforeProvider.freshness.reason
+        ?? "O laudo atual ainda não possui uma interpretação determinística corrente. Recalcule antes de gerar a prescrição.",
+      409,
+    );
+  }
+
+  const beforeProvider = evaluatePrescriptionDraftSnapshotConsistency({
+    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
+    currentSeasonUpdatedAt: contextBeforeProvider.updatedAt,
+    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
+    currentInterpretationId: interpretation.id,
+    currentInterpretationStatus: interpretation.status,
+  });
+  if (!beforeProvider.current) {
+    throw new AiGenerationError(
+      `${beforeProvider.reason ?? "As evidências agronômicas mudaram."} Atualize a análise e gere novamente a partir do contexto atual.`,
+      409,
+    );
+  }
+
+  const provider = resolveAgronomicPrescriptionProvider();
+  let result;
+  try {
+    result = await provider.prescribe({ evidence });
+  } catch (error) {
+    throw new AiGenerationError(error instanceof Error ? error.message : "Falha ao gerar prescrição.", 502);
+  }
+
+  const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider] = await Promise.all([
+    getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
+    getRecommendationContextByAnalysis({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+    getAnalysisEvidenceState({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+  ]);
+
+  const afterProvider = evaluatePrescriptionDraftSnapshotConsistency({
+    snapshotSeasonUpdatedAt: evidence.season.updatedAt,
+    currentSeasonUpdatedAt: contextAfterProvider.updatedAt,
+    snapshotInterpretationId: evidence.deterministicInterpretation?.id,
+    currentInterpretationId: interpretationAfterProvider?.id,
+    currentInterpretationStatus: interpretationAfterProvider?.status,
+  });
+  if (!afterProvider.current) {
+    throw new AiGenerationError(
+      `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.`,
+      409,
+    );
+  }
+  if (
+    !interpretationAfterProvider?.id
+    || evidenceAfterProvider.interpretationId !== interpretationAfterProvider.id
+    || !evidenceAfterProvider.freshness.current
+  ) {
+    throw new AiGenerationError(
+      `${evidenceAfterProvider.freshness.reason ?? "O laudo laboratorial mudou durante a geração."} A resposta antiga foi descartada; recalcule a interpretação e gere novamente.`,
+      409,
+    );
+  }
+
+  const recommendations = result.prescription.recommendations as PrescriptionRecommendationCandidate[];
+  const providerPkValidation = validatePrescriptionPkRecommendations({
+    recommendations,
+    cropCode: contextAfterProvider.cropProfileCode,
+    interpretation: interpretationItems(interpretationAfterProvider.structuredOutput),
+    yieldGoal: contextAfterProvider.yieldGoal,
+    yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
+    cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
+  });
+  if (!providerPkValidation.allowed) {
+    const details = providerPkValidation.failures.map((failure) => ({
+      inputType: failure.inputType,
+      nutrient: failure.nutrient,
+      blockers: failure.blockers,
+      expected: failure.validation?.expected ?? null,
+    }));
+    throw new AiGenerationError(
+      `A resposta do provedor tentou propor P/K fora do motor determinístico da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify(details)}`,
+      502,
+    );
+  }
+
+  const previous = await getLatestAgronomicPrescription(input.tenantId, input.analysisId, input.userId);
+  const created = await recordAgronomicPrescriptionGenerationSafely({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    analysisId: input.analysisId,
+    interpretationId: interpretationAfterProvider.id,
+    expectedSeasonUpdatedAt: contextAfterProvider.updatedAt,
+    provider: result.provider,
+    model: result.model,
+    promptVersion: result.promptVersion,
+    requestPayload: { evidence },
+    responsePayload: { prescription: result.prescription, isRealLanguageModel: result.isRealLanguageModel },
+    tokensUsed: result.tokensUsed ?? null,
+    costUsd: result.costUsd ?? null,
+    supersedes: previous?.status === "CHANGES_REQUESTED" ? previous.id : null,
+  });
+
+  return {
+    generation: created,
+    prescription: result.prescription,
+    isRealLanguageModel: result.isRealLanguageModel,
+  };
+}
