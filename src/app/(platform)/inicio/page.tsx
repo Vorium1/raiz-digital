@@ -47,7 +47,7 @@ export default async function InicioPage() {
           <Icon name="arrow" size={18}/>
         </Link>
 
-        <Link href="/coletas" className="simple-action-card">
+        <Link href="/talhoes" className="simple-action-card">
           <span><Icon name="layers" size={28}/></span>
           <div><strong>Meus talhões</strong><small>Veja áreas, coletas e histórico</small></div>
           <Icon name="arrow" size={18}/>
@@ -80,7 +80,7 @@ export default async function InicioPage() {
       <section className="simple-fields-section">
         <div className="simple-section-head">
           <div><span>SEUS TALHÕES</span><h2>Mapa da sua carteira</h2><p>Clique em uma área para abrir.</p></div>
-          <Link href="/mapas">Abrir mapa <Icon name="arrow" size={15}/></Link>
+          <Link href="/talhoes">Ver todos <Icon name="arrow" size={15}/></Link>
         </div>
         {fields.length > 0 ? (
           <SimplePortfolioMap fields={fields as any}/>
@@ -102,7 +102,7 @@ function DemoInicio() {
       <header className="simple-home-head"><div><span>RAIZ DIGITAL</span><h1>Olá.</h1><p>O que você quer fazer?</p></div></header>
       <section className="simple-action-grid">
         <Link href={SEND_HREF} className="simple-action-card primary"><span><Icon name="upload" size={28}/></span><div><strong>Enviar dados</strong><small>Comece por aqui</small></div><Icon name="arrow" size={18}/></Link>
-        <Link href="/coletas" className="simple-action-card"><span><Icon name="layers" size={28}/></span><div><strong>Meus talhões</strong><small>Veja suas áreas</small></div><Icon name="arrow" size={18}/></Link>
+        <Link href="/talhoes" className="simple-action-card"><span><Icon name="layers" size={28}/></span><div><strong>Meus talhões</strong><small>Veja suas áreas</small></div><Icon name="arrow" size={18}/></Link>
         <Link href="/relatorios" className="simple-action-card"><span><Icon name="file" size={28}/></span><div><strong>Resultados</strong><small>Veja suas entregas</small></div><Icon name="arrow" size={18}/></Link>
       </section>
       <section className="simple-attention is-clear"><span className="simple-attention-icon"><Icon name="check" size={21}/></span><div><strong>Tudo certo por aqui</strong><small>Nenhuma ação urgente agora.</small></div></section>
