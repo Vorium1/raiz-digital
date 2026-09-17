@@ -56,4 +56,12 @@ assert.match(ux2ReviewSource, /decision:\s*"APPROVED"/);
 assert.match(ux2ReviewSource, /decision:\s*"CHANGES_REQUESTED"/);
 assert.doesNotMatch(ux2ReviewSource, /\/api\/agronomic-prescriptions\//);
 
-console.log("agronomic-prescription-review: transições protegidas + promoção APPROVED + decisão final unificada e transacional");
+// Pós-aprovação: a UX só reflete entrega real e encaminha ao relatório; ela não publica silenciosamente.
+const deliveryRouteSource = readFileSync(new URL("../src/app/api/analyses/[id]/delivery-status/route.ts", import.meta.url), "utf8");
+assert.match(deliveryRouteSource, /getDecisionDeliveryStatuses/);
+assert.match(ux2ReviewSource, /\/api\/analyses\/\$\{analysisId\}\/delivery-status/);
+assert.match(ux2ReviewSource, /currentReportCount/);
+assert.match(ux2ReviewSource, /\/relatorios\/talhao\/\$\{analysisId\}/);
+assert.doesNotMatch(ux2ReviewSource, /publish-report/);
+
+console.log("agronomic-prescription-review: transições protegidas + revisão final unificada + entrega real sem publicação silenciosa");

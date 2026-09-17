@@ -110,6 +110,13 @@ type PrescriptionReadiness = {
   };
 };
 
+type DeliveryStatus = {
+  currentReportCount: number;
+  latestCurrentReportAt: string | null;
+  reportCount: number;
+  latestReportAt: string | null;
+};
+
 const statusLabel: Record<string, string> = {
   CALCULATED: "Contexto incompleto",
   IN_REVIEW: "Aguardando revisão final",
@@ -136,20 +143,24 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
   const [interpretation, setInterpretation] = useState<Interpretation | null | undefined>(undefined);
   const [prescription, setPrescription] = useState<PrescriptionGeneration | null>(null);
   const [readiness, setReadiness] = useState<PrescriptionReadiness | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryStatus | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
   async function load() {
-    const [interpretationResponse, prescriptionResponse] = await Promise.all([
+    const [interpretationResponse, prescriptionResponse, deliveryResponse] = await Promise.all([
       fetch(`/api/analyses/${analysisId}/interpretation`, { cache: "no-store" }),
       fetch(`/api/analyses/${analysisId}/agronomic-prescription`, { cache: "no-store" }),
+      fetch(`/api/analyses/${analysisId}/delivery-status`, { cache: "no-store" }),
     ]);
     const interpretationPayload = await interpretationResponse.json().catch(() => ({}));
     const prescriptionPayload = await prescriptionResponse.json().catch(() => ({}));
+    const deliveryPayload = await deliveryResponse.json().catch(() => ({}));
     setInterpretation(interpretationPayload.latest ?? null);
     setPrescription(prescriptionPayload.latest ?? null);
     setReadiness(prescriptionPayload.readiness ?? null);
+    setDelivery(deliveryPayload.delivery ?? null);
   }
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -170,6 +181,7 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
   const finalApproved = interpretation?.status === "APPROVED" && prescription?.status === "APPROVED";
   const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
   const pkValidated = readiness?.prescriptionPkValidation?.allowed !== false;
+  const reportPublished = finalApproved && prescriptionCurrent && (delivery?.currentReportCount ?? 0) > 0;
   const canFinalize = canReview
     && accepted
     && Boolean(interpretation?.id)
@@ -178,6 +190,19 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
     && prescriptionCurrent
     && pkValidated;
+
+  const reviewFlow = [
+    { icon: "check", label: "Dados recebidos", state: "done" },
+    { icon: "check", label: "Processados", state: "done" },
+    { icon: "check", label: "Analisados", state: "done" },
+    { icon: prescription ? "check" : "clock", label: "Recomendação preparada", state: prescription ? "done" : "current" },
+    { icon: finalApproved ? "check" : "shield", label: "Revisão final", state: finalApproved ? "done" : prescription ? "current" : "pending" },
+    {
+      icon: reportPublished ? "check" : finalApproved ? "arrow" : "clock",
+      label: reportPublished ? "Relatório publicado" : finalApproved ? "Pronto para publicar" : "Publicação oficial",
+      state: reportPublished ? "done" : finalApproved ? "current" : "pending",
+    },
+  ];
 
   async function prepareDraft() {
     setBusy(true);
@@ -266,21 +291,14 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
           <p>Interpretação, recomendação em rascunho, evidências, regras, fontes e limitações ficam reunidas aqui. A aprovação final é uma única ação para o agrônomo.</p>
         </div>
         <StatusBadge tone={finalApproved ? "success" : interpretation.status === "IN_REVIEW" ? "waiting" : "info"}>
-          {finalApproved ? "Revisão final aprovada" : statusLabel[interpretation.status] ?? interpretation.status}
+          {reportPublished ? "Relatório oficial publicado" : finalApproved ? "Revisão final aprovada" : statusLabel[interpretation.status] ?? interpretation.status}
         </StatusBadge>
       </div>
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={15}/><span>{message.text}</span></div>}
 
       <div className="ux2-review-flow" aria-label="Etapas do fluxo">
-        {[
-          ["check", "Dados recebidos"],
-          ["check", "Processados"],
-          ["check", "Analisados"],
-          [prescription ? "check" : "clock", "Recomendação preparada"],
-          [finalApproved ? "check" : "shield", "Revisão final"],
-          [finalApproved ? "arrow" : "clock", "Pronto para publicar"],
-        ].map(([icon, label], index) => <div key={label} className={index < 4 || finalApproved ? "done" : index === 4 ? "current" : ""}><span><Icon name={icon as any} size={14}/></span><small>{label}</small></div>)}
+        {reviewFlow.map(({ icon, label, state }) => <div key={label} className={state === "done" ? "done" : state === "current" ? "current" : ""}><span><Icon name={icon as any} size={14}/></span><small>{label}</small></div>)}
       </div>
 
       <div className="ux2-review-grid">
@@ -399,7 +417,17 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
           )}
 
           {finalApproved && (
-            <div className="ux2-approved-box"><Icon name="check" size={20}/><div><strong>Revisão final aprovada</strong><small>{interpretation.approvedByName ?? prescription?.reviewedByName ?? "Profissional autorizado"}{interpretation.approvedAt ? ` · ${new Date(interpretation.approvedAt).toLocaleString("pt-BR")}` : ""}</small><span>Interpretação e recomendação estão aprovadas. A publicação oficial continua passando pelos gates próprios de integridade.</span></div></div>
+            <div className="ux2-approved-box">
+              <Icon name="check" size={20}/>
+              <div>
+                <strong>{reportPublished ? "Relatório oficial publicado" : "Revisão final aprovada"}</strong>
+                <small>{interpretation.approvedByName ?? prescription?.reviewedByName ?? "Profissional autorizado"}{interpretation.approvedAt ? ` · ${new Date(interpretation.approvedAt).toLocaleString("pt-BR")}` : ""}</small>
+                <span>{reportPublished ? "A versão oficial corrente está publicada e permanece congelada para auditoria." : "Interpretação e recomendação estão aprovadas. A publicação oficial continua passando pelos gates próprios de integridade."}</span>
+                <a className="button secondary" href={`/relatorios/talhao/${analysisId}${reportPublished ? "?versao=publicada" : ""}`}>
+                  <Icon name="file" size={15}/>{reportPublished ? "Abrir versão publicada" : "Abrir relatório e publicar versão oficial"}
+                </a>
+              </div>
+            </div>
           )}
         </aside>
       </div>
