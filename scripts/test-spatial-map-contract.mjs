@@ -8,6 +8,7 @@ import { resolveSpatialMapProvider } from "../src/lib/maps/spatial-map-provider.
 import {
   GOOGLE_MAPS_LOAD_TIMEOUT_MS,
   GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS,
+  shouldReuseLoadedGoogleMaps,
 } from "../src/lib/maps/google-maps-loader.ts";
 
 function point(overrides = {}) {
@@ -137,8 +138,24 @@ try {
   else process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = previousKey;
 }
 
+assert.equal(
+  shouldReuseLoadedGoogleMaps(true, false),
+  true,
+  "namespace Google saudável pode ser reutilizada em novas montagens",
+);
+assert.equal(
+  shouldReuseLoadedGoogleMaps(true, true),
+  false,
+  "gm_authFailure deve impedir que uma namespace residual seja reutilizada na mesma sessão",
+);
+assert.equal(
+  shouldReuseLoadedGoogleMaps(false, false),
+  false,
+  "namespace incompleta nunca deve ser tratada como carregada",
+);
+
 assert.ok(GOOGLE_MAPS_LOAD_TIMEOUT_MS >= 10_000, "loader deve ter timeout explícito e conservador");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS >= 8_000, "saúde dos tiles deve esperar tempo suficiente antes do fallback");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS < GOOGLE_MAPS_LOAD_TIMEOUT_MS, "health check de tiles deve ser limitado e inferior ao teto do loader");
 
-console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, provider e timeouts fail-closed.");
+console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, auth latch, provider e timeouts fail-closed.");
