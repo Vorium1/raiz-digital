@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import { LabImporter } from "@/components/lab-importer";
+import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
 import { buildAnalysisEvidence, EMPTY_ANALYSIS_CONTEXT_DRAFT, type AnalysisContextDraft } from "@/domain/analysis-context";
 import { evaluateAnalysisDepthReadiness } from "@/domain/analysis-depth-readiness";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
@@ -34,11 +34,6 @@ type ContextData = {
 type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
 const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [] };
 
-function sourceType(fileName: string) {
-  const value = fileName.toLowerCase();
-  if (value.endsWith(".xlsx") || value.endsWith(".xls")) return "XLSX";
-  return "CSV";
-}
 
 export function SimpleSendFlow() {
   const router = useRouter();
@@ -52,7 +47,7 @@ export function SimpleSendFlow() {
   const [laboratoryId, setLaboratoryId] = useState("");
   const [method, setMethod] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [file, setFile] = useState<{ fileName: string; content: string } | null>(null);
+  const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -131,12 +126,12 @@ export function SimpleSendFlow() {
         body: JSON.stringify({
           cropSeasonId: seasonId,
           laboratoryId: laboratoryId || undefined,
-          sourceType: sourceType(file.fileName),
+          sourceType: file.sourceType,
           analysisDepth: ANALYSIS_DEPTH,
           analysisContext: {
             schemaVersion: 1,
             ux: "ZERO_TRAINING",
-            sourceFileName: file.fileName,
+            sourceFileName: file.originalFileName,
             draft: analysisContextDraft,
             evidence,
             readiness: {
