@@ -5,10 +5,17 @@ import { Icon } from "@/components/icon";
 import type { LabImportPreview } from "@/domain/lab-import";
 import { jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 
+export type LabImporterReadyFile = {
+  fileName: string;
+  content: string;
+  sourceType: "CSV" | "XLSX" | "PDF_OCR";
+  originalFileName: string;
+};
+
 type Props = {
   method: string;
   onPreviewChange: (preview: LabImportPreview | null) => void;
-  onFileReady?: (file: { fileName: string; content: string } | null) => void;
+  onFileReady?: (file: LabImporterReadyFile | null) => void;
   simple?: boolean;
 };
 
@@ -101,7 +108,12 @@ export function LabImporter({ method, onPreviewChange, onFileReady, simple = fal
         if (!response.ok) throw new Error(payload.error ?? "Falha ao ler o arquivo com IA.");
         setPreview(payload as PreviewWithSource);
         onPreviewChange(payload as LabImportPreview);
-        onFileReady?.({ fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`, content: (payload as PreviewWithSource).csvContent ?? "" });
+        onFileReady?.({
+          fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`,
+          content: (payload as PreviewWithSource).csvContent ?? "",
+          sourceType: "PDF_OCR",
+          originalFileName: file.name,
+        });
         return;
       }
 
@@ -122,7 +134,12 @@ export function LabImporter({ method, onPreviewChange, onFileReady, simple = fal
       if (!response.ok) throw new Error(payload.error ?? "Falha ao validar o arquivo.");
       setPreview(payload as PreviewWithSource);
       onPreviewChange(payload as LabImportPreview);
-      onFileReady?.({ fileName: file.name, content: (payload as PreviewWithSource).transportContent ?? content });
+      onFileReady?.({
+        fileName: file.name,
+        content: (payload as PreviewWithSource).transportContent ?? content,
+        sourceType: isSpreadsheet ? "XLSX" : "CSV",
+        originalFileName: file.name,
+      });
     } catch (processingError) {
       setError(processingError instanceof Error ? processingError.message : "Não foi possível processar o arquivo.");
     } finally {
