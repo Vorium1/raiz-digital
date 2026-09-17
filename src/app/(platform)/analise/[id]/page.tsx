@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { SimpleFinalReview } from "@/components/simple-final-review";
+import { humanClassification } from "@/domain/simple-ux-labels";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getAnalysisById } from "@/lib/repositories/analyses";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
@@ -100,16 +101,16 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
 
       {findings.length > 0 && (
         <section className="simple-analysis-findings">
-          <div className="simple-analysis-section-title"><span>O QUE ENCONTRAMOS</span><h2>Principais resultados</h2><p>Resumo dos dados que o motor conseguiu interpretar com segurança.</p></div>
+          <div className="simple-analysis-section-title"><span>O QUE ENCONTRAMOS</span><h2>Principais resultados</h2><p>Resumo dos dados que a RAIZ conseguiu interpretar com segurança.</p></div>
           <div className="simple-analysis-finding-grid">
-            {findings.map((item: any, index: number) => <article key={`${item.sampleCode ?? "amostra"}-${item.parameterCode}-${index}`}><span>{parameterLabel(String(item.parameterCode ?? ""))}</span><strong>{item.classification}</strong><small>{item.sampleCode ? `Amostra ${item.sampleCode}` : "Dado interpretado"}</small></article>)}
+            {findings.map((item: any, index: number) => <article key={`${item.sampleCode ?? "amostra"}-${item.parameterCode}-${index}`}><span>{parameterLabel(String(item.parameterCode ?? ""))}</span><strong>{humanClassification(item.classification)}</strong><small>{item.sampleCode ? `Amostra ${item.sampleCode}` : "Dado interpretado"}</small></article>)}
           </div>
           {blockedCount > 0 && <div className="simple-analysis-note"><Icon name="warning" size={16}/><span>Alguns dados ainda precisam de contexto antes de virar recomendação. A RAIZ não completa essas informações por conta própria.</span></div>}
         </section>
       )}
 
       {!imported && (
-        <section className="simple-analysis-empty"><span><Icon name="upload" size={27}/></span><div><strong>Comece enviando o laudo</strong><p>A RAIZ organiza e analisa o restante.</p></div><Link href={`/analises/${id}/importar`}>Enviar dados <Icon name="arrow" size={14}/></Link></section>
+        <section className="simple-analysis-empty"><span><Icon name="upload" size={27}/></span><div><strong>Comece enviando o laudo</strong><p>A RAIZ organiza e analisa o restante.</p></div><Link href={`/analise/${id}/enviar`}>Enviar dados <Icon name="arrow" size={14}/></Link></section>
       )}
 
       {imported && <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>}
