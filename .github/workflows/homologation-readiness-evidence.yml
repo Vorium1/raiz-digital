@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: "SHA completo (40 hex) do candidato a homologar"
+        description: "SHA completo (40 hex) do head atual do PR candidato"
         required: true
         type: string
   push:
@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: homologation-readiness-evidence
@@ -83,6 +84,55 @@ jobs:
           echo "sha=${CANDIDATE_SHA}" >> "${GITHUB_OUTPUT}"
           echo "SHA candidato declarado: ${CANDIDATE_SHA}"
 
+      - name: Autorizar apenas head atual de PR aberto para develop
+        id: candidate_guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          RESPONSE_FILE="${RUNNER_TEMP}/candidate-associated-prs.json"
+          HTTP_CODE="$(curl --silent --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out '%{http_code}' \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/pulls")"
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Não foi possível confirmar a associação do SHA candidato a um PR autorizado (HTTP ${HTTP_CODE})."
+            exit 1
+          fi
+
+          set +e
+          CANDIDATE_PR="$(
+            RESPONSE_FILE="${RESPONSE_FILE}" CANDIDATE_SHA="${CANDIDATE_SHA}" REPOSITORY="${GITHUB_REPOSITORY}" node <<'NODE'
+          const fs = require("node:fs");
+          const prs = JSON.parse(fs.readFileSync(process.env.RESPONSE_FILE, "utf8"));
+          const matches = Array.isArray(prs) ? prs.filter((pr) =>
+            pr?.state === "open" &&
+            pr?.base?.ref === "develop" &&
+            pr?.head?.sha === process.env.CANDIDATE_SHA &&
+            pr?.head?.repo?.full_name === process.env.REPOSITORY
+          ) : [];
+          if (matches.length !== 1) process.exit(2);
+          process.stdout.write(String(matches[0].number));
+          NODE
+          )"
+          STATUS=$?
+          set -e
+
+          rm -f "${RESPONSE_FILE}"
+          if [ "${STATUS}" -ne 0 ] || ! [[ "${CANDIDATE_PR}" =~ ^[0-9]+$ ]]; then
+            echo "::error::SHA rejeitado: ele deve ser exatamente o head atual de um único PR aberto, do mesmo repositório, com base develop."
+            exit 1
+          fi
+
+          echo "pr_number=${CANDIDATE_PR}" >> "${GITHUB_OUTPUT}"
+          echo "SHA candidato autorizado como head atual do PR #${CANDIDATE_PR}."
+
       - name: Checkout exato do candidato
         uses: actions/checkout@v4
         with:
@@ -95,6 +145,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+          CANDIDATE_PR: ${{ steps.candidate_guard.outputs.pr_number }}
         run: |
           set -euo pipefail
           RESOLVED_SHA="$(git rev-parse HEAD)"
@@ -106,6 +157,7 @@ jobs:
           {
             echo "## RAIZ Digital · candidato de homologação"
             echo
+            echo "PR autorizado: **#${CANDIDATE_PR}**"
             echo "SHA auditado: \`${RESOLVED_SHA}\`"
             echo
             echo "O workflow não executa merge, deploy ou promoção de ambiente."
@@ -220,6 +272,7 @@ jobs:
         if: always()
         shell: bash
         env:
+          CANDIDATE_PR: ${{ steps.candidate_guard.outputs.pr_number }}
           CANDIDATE_SHA: ${{ steps.identity.outputs.resolved_sha }}
           CONTEXT_READY: ${{ steps.ndvi_context.outputs.ready }}
           MISSING_COUNT: ${{ steps.ndvi_context.outputs.missing_count }}
@@ -231,6 +284,7 @@ jobs:
           echo "result_file=${OUTPUT}" >> "${GITHUB_OUTPUT}"
           node <<'NODE'
           const fs = require("node:fs");
+          const candidatePr = Number(process.env.CANDIDATE_PR || 0) || null;
           const candidateSha = process.env.CANDIDATE_SHA || null;
           const contextReady = process.env.CONTEXT_READY === "true";
           const missingCount = Number(process.env.MISSING_COUNT || 0);
@@ -243,6 +297,7 @@ jobs:
           const evidence = {
             schemaVersion: 1,
             evidenceType: "RAIZ_NDVI_IMMUTABLE_RASTER_AUDIT",
+            candidatePr,
             candidateSha,
             status: !contextReady ? "BLOCKED_CONTEXT" : auditStatus === "0" ? "PASS" : auditStatus === "2" ? "BLOCKED" : "UNAVAILABLE",
             readyForImmutableRasterEvidence: raw?.readyForImmutableRasterEvidence === true,
