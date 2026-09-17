@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { RealFieldMap } from "@/components/real-field-map";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
+import { SimpleFieldVigor } from "@/components/simple-field-vigor";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
 import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domain/user-attention";
@@ -68,6 +69,8 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
       <section className="simple-field-map-card">
         <RealFieldMap boundary={field.boundary as any} points={[]} height={390} hint="Clique e arraste para explorar a área" />
       </section>
+
+      <SimpleFieldVigor fieldId={field.id}/>
 
       <section className="simple-field-status">
         <div className={`simple-field-state ${stateIcon === "check" ? "ready" : stateIcon === "shield" ? "review" : ""}`}>
