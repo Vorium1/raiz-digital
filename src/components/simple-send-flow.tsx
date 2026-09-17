@@ -4,15 +4,30 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter } from "@/components/lab-importer";
+import { buildAnalysisEvidence, EMPTY_ANALYSIS_CONTEXT_DRAFT, type AnalysisContextDraft } from "@/domain/analysis-context";
+import { evaluateAnalysisDepthReadiness } from "@/domain/analysis-depth-readiness";
+import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import type { LabImportPreview } from "@/domain/lab-import";
 
-const ANALYSIS_DEPTH = "interpretacao-rapida";
+const ANALYSIS_DEPTH: AnalysisDepthId = "interpretacao-rapida";
 
 type ContextData = {
   clients: Array<{ id: string; name: string }>;
   properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string }>;
-  fields: Array<{ id: string; propertyId: string; name: string; areaHa: number }>;
-  seasons: Array<{ id: string; fieldId: string; seasonLabel: string; currentCrop: string | null; nextCrop: string | null }>;
+  fields: Array<{ id: string; propertyId: string; name: string; areaHa: number; boundary?: object | null }>;
+  seasons: Array<{
+    id: string;
+    fieldId: string;
+    seasonLabel: string;
+    currentCrop: string | null;
+    nextCrop: string | null;
+    yieldGoal?: number | null;
+    yieldGoalUnit?: string | null;
+    irrigated?: boolean;
+    managementSystem?: string | null;
+    soilType?: string | null;
+    soilTexture?: string | null;
+  }>;
   laboratories: Array<{ id: string; name: string }>;
 };
 
@@ -86,6 +101,24 @@ export function SimpleSendFlow() {
   const areaReady = Boolean(clientId && propertyId && fieldId && seasonId);
   const rowCount = preview?.normalizedRowCount ?? preview?.rows.length ?? 0;
 
+  const analysisContextDraft = useMemo<AnalysisContextDraft>(() => ({
+    ...EMPTY_ANALYSIS_CONTEXT_DRAFT,
+    waterRegime: selectedSeason ? (selectedSeason.irrigated ? "IRRIGADO" : "SEQUEIRO") : "",
+    tillageSystem: selectedSeason?.managementSystem?.trim() || "",
+    soilContextNotes: [selectedSeason?.soilType, selectedSeason?.soilTexture].filter(Boolean).join(" · "),
+  }), [selectedSeason]);
+
+  const evidence = useMemo(() => buildAnalysisEvidence(analysisContextDraft, {
+    currentSoilAnalysis: importReady,
+    crop: Boolean(selectedSeason?.nextCrop || selectedSeason?.currentCrop),
+    yieldGoal: selectedSeason?.yieldGoal != null,
+    yieldUnit: Boolean(selectedSeason?.yieldGoalUnit),
+    fieldBoundaryGeoreferenced: Boolean(selectedField?.boundary),
+    registeredSoilContext: Boolean(selectedSeason?.soilType || selectedSeason?.soilTexture),
+  }), [analysisContextDraft, importReady, selectedField, selectedSeason]);
+
+  const readiness = useMemo(() => evaluateAnalysisDepthReadiness(ANALYSIS_DEPTH, evidence), [evidence]);
+
   async function submit() {
     if (!file || !importReady || !areaReady) return;
     setBusy(true);
@@ -99,7 +132,20 @@ export function SimpleSendFlow() {
           laboratoryId: laboratoryId || undefined,
           sourceType: sourceType(file.fileName),
           analysisDepth: ANALYSIS_DEPTH,
-          analysisContext: { schemaVersion: 1, ux: "ZERO_TRAINING", sourceFileName: file.fileName },
+          analysisContext: {
+            schemaVersion: 1,
+            ux: "ZERO_TRAINING",
+            sourceFileName: file.fileName,
+            draft: analysisContextDraft,
+            evidence,
+            readiness: {
+              effectiveLayer: readiness.effectiveLayer,
+              completeForRequestedDepth: readiness.completeForRequestedDepth,
+              spatialReady: readiness.spatialReady,
+              missingCodes: readiness.missing.map((item) => item.code),
+              limitations: readiness.limitations,
+            },
+          },
         }),
       });
       const analysisPayload = await analysisResponse.json().catch(() => ({}));
@@ -114,7 +160,7 @@ export function SimpleSendFlow() {
           content: file.content,
           fileName: file.fileName,
           fallbackMethod: method || undefined,
-          hasAgronomicContext: true,
+          hasAgronomicContext: readiness.effectiveLayer >= 2,
           spatialLinked: false,
         }),
       });
