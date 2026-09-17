@@ -124,7 +124,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </div>
         </section>
 
-        {v3?.publishedContext.fieldBoundary && (
+        {Boolean(v3?.publishedContext.fieldBoundary) && (
           <section className="simple-result-map">
             <RealFieldMap boundary={v3.publishedContext.fieldBoundary as any} points={[]} height={310} hint="Área deste resultado"/>
           </section>
