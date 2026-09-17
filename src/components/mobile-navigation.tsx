@@ -24,7 +24,7 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
       <Link href="/inicio" className={isActive("/inicio") ? "active" : ""}>
         <Icon name="home" size={21}/><span>Início</span>
       </Link>
-      <Link href="/coletas" className={isActive("/coletas") ? "active" : ""}>
+      <Link href="/talhoes" className={isActive("/talhoes") ? "active" : ""}>
         <Icon name="layers" size={21}/><span>Talhões</span>
       </Link>
       <Link href={SEND_HREF} className={`simple-mobile-send ${isActive(SEND_HREF) ? "active" : ""}`} aria-label="Enviar dados">
