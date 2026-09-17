@@ -3,7 +3,7 @@ import { NewAnalysisFlow } from "@/components/new-analysis-flow";
 import { getAnalysisDepthById } from "@/domain/analysis-depths";
 import { isDatabaseMode } from "@/lib/data-mode";
 
-export const metadata = { title: "Enviar dados" };
+export const metadata = { title: "Receber dados" };
 
 export default async function NewAnalysisPage({
   searchParams,
@@ -23,20 +23,20 @@ export default async function NewAnalysisPage({
 
   return (
     <>
-      <Topbar eyebrow="Fluxo inteligente" title="Enviar dados">
+      <Topbar eyebrow="FLUXO INTELIGENTE · ETAPA 1" title="Receber dados">
         <span className="draft-indicator">
-          A RAIZ conduz as próximas etapas · {databaseMode ? "PostgreSQL" : "demo"}
+          A RAIZ organiza e processa depois do envio · {databaseMode ? "PostgreSQL" : "demo"}
         </span>
       </Topbar>
       <div className="content-wrap ux2-intake-page">
         <section className="ux2-intake-intro">
           <div>
-            <span className="eyebrow">PASSO 1 · ENTRADA</span>
-            <h2>Comece pelo que você já tem.</h2>
-            <p>Envie o laudo primeiro. Depois a RAIZ organiza o contexto, aponta o que realmente falta, executa a análise suportada e prepara o trabalho para a revisão técnica.</p>
+            <span className="eyebrow">1 · RECEBER DADOS</span>
+            <h2>Envie o que você já tem.</h2>
+            <p>O trabalho começa pelos dados, não por um formulário técnico. A RAIZ lê o material, organiza o contexto necessário e conduz o restante do processamento.</p>
           </div>
           <div className="ux2-intake-promise">
-            <strong>Você envia</strong><span>→</span><strong>A RAIZ processa</strong><span>→</span><strong>O agrônomo revisa</strong>
+            <strong>Você envia</strong><span>→</span><strong>A RAIZ organiza e processa</strong><span>→</span><strong>O agrônomo revisa no final</strong>
           </div>
         </section>
         <NewAnalysisFlow
