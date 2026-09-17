@@ -8,8 +8,8 @@ import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
-import { checkPrescriptionGate } from "@/domain/agronomic-prescription-gate";
-import { evaluatePrescriptionSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
+import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
+import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "@/domain/uniform-pk-readiness";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 
@@ -41,7 +41,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
     getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
-  const gate = checkPrescriptionGate(interpretation?.status ?? null);
+  const gate = checkPrescriptionDraftGate(interpretation?.status ?? null);
   const prescriptionFreshness = await getAgronomicPrescriptionFreshness({
     tenantId: session.tenantId,
     userId: session.userId,
@@ -133,7 +133,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
     getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
-  const gate = checkPrescriptionGate(interpretation?.status ?? null);
+  const gate = checkPrescriptionDraftGate(interpretation?.status ?? null);
   if (!gate.allowed) {
     return Response.json({ error: gate.reason }, { status: 409 });
   }
@@ -147,7 +147,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     }, { status: 409 });
   }
 
-  const beforeProvider = evaluatePrescriptionSnapshotConsistency({
+  const beforeProvider = evaluatePrescriptionDraftSnapshotConsistency({
     snapshotSeasonUpdatedAt: evidence.season.updatedAt,
     currentSeasonUpdatedAt: contextBeforeProvider.updatedAt,
     snapshotInterpretationId: evidence.deterministicInterpretation?.id,
@@ -172,7 +172,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     getRecommendationContextByAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
     getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
-  const afterProvider = evaluatePrescriptionSnapshotConsistency({
+  const afterProvider = evaluatePrescriptionDraftSnapshotConsistency({
     snapshotSeasonUpdatedAt: evidence.season.updatedAt,
     currentSeasonUpdatedAt: contextAfterProvider.updatedAt,
     snapshotInterpretationId: evidence.deterministicInterpretation?.id,
