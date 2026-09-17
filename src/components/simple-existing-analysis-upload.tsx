@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import { LabImporter } from "@/components/lab-importer";
+import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
 import type { LabImportPreview } from "@/domain/lab-import";
 
 type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
@@ -12,7 +12,7 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
   const router = useRouter();
   const [method, setMethod] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [file, setFile] = useState<{ fileName: string; content: string } | null>(null);
+  const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
