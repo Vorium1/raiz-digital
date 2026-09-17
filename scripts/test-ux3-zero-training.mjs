@@ -83,8 +83,13 @@ assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem
 assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
 assert.match(
   prescriptionWorkflow,
-  /if \(provider\.isRealLanguageModel\) \{[\s\S]*?await getTenantPrescriptionUsage\(input\.tenantId\)/,
-  "cota de IA só pode ser verificada dentro do caminho de LLM real",
+  /if \(provider\.isRealLanguageModel\) \{[\s\S]*?await getTenantPrescriptionUsage\(input\.tenantId\)[\s\S]*?provider = deterministicLimitedPrescriptionProvider/,
+  "cota de IA deve degradar para fechamento determinístico, não bloquear o relatório",
+);
+assert.match(
+  prescriptionWorkflow,
+  /catch \(error\) \{[\s\S]*?!provider\.isRealLanguageModel[\s\S]*?provider = deterministicLimitedPrescriptionProvider[\s\S]*?provider\.prescribe/,
+  "falha do LLM deve degradar para fechamento determinístico",
 );
 assert.match(simplePublish, /\/api\/interpretations\/\$\{interpretationId\}\/publish-report/);
 assert.match(simplePublish, /method:\s*"POST"/);
