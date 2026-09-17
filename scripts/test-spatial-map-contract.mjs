@@ -43,6 +43,21 @@ assert.equal(
   "fonte auditada deve ser reconhecida sem depender de caixa",
 );
 assert.equal(
+  pointPositionKind(point({ gpsSource: "  SHAPEFILE_REAL_EPSG4326  " })),
+  "AUDITED_SOURCE",
+  "espaço acidental ao redor da fonte não deve alterar a semântica do valor exato",
+);
+assert.equal(
+  pointPositionKind(point({ gpsSource: "SHAPEFILE_REAL_GPS_LONLAT_FAKE" })),
+  "PLANNED",
+  "sufixo arbitrário não pode promover uma fonte para coordenada real auditada",
+);
+assert.equal(
+  pointPositionKind(point({ gpsSource: "SHAPEFILE_REAL_EPSG4326_IMPORT" })),
+  "PLANNED",
+  "somente os valores exatos aceitos pelo auditor podem ser tratados como proveniência real",
+);
+assert.equal(
   pointPositionKind(point({ gpsSource: "IMPORTED_GEOJSON" })),
   "PLANNED",
   "importação genérica não pode virar fonte real auditada por inferência",
@@ -126,4 +141,4 @@ assert.ok(GOOGLE_MAPS_LOAD_TIMEOUT_MS >= 10_000, "loader deve ter timeout explí
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS >= 8_000, "saúde dos tiles deve esperar tempo suficiente antes do fallback");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS < GOOGLE_MAPS_LOAD_TIMEOUT_MS, "health check de tiles deve ser limitado e inferior ao teto do loader");
 
-console.log("OK — mapa espacial: coordenada efetiva, proveniência, MultiPolygon, provider e timeouts fail-closed.");
+console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, provider e timeouts fail-closed.");
