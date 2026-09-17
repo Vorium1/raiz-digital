@@ -22,7 +22,7 @@ export function Sidebar({ tenantName, userName, role, isPlatformCurator, pending
   return (
     <aside className="sidebar ux2-sidebar">
       <Link className="brand" href="/inicio" aria-label="Raiz Digital - Início">
-        <BrandLogo variant="dark" height={38} priority />
+        <BrandLogo variant="light" height={38} priority />
       </Link>
 
       <div className="tenant-switcher" aria-label={`Empresa atual: ${tenantLabel}`}>
