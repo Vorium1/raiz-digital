@@ -61,7 +61,7 @@ export default async function InicioPage() {
           </Link>
         )}
 
-        <Link href="/relatorios" className="simple-action-card">
+        <Link href="/resultados" className="simple-action-card">
           <span><Icon name="file" size={28}/></span>
           <div><strong>Resultados</strong><small>Relatórios e entregas</small></div>
           <Icon name="arrow" size={18}/>
@@ -103,7 +103,7 @@ function DemoInicio() {
       <section className="simple-action-grid">
         <Link href={SEND_HREF} className="simple-action-card primary"><span><Icon name="upload" size={28}/></span><div><strong>Enviar dados</strong><small>Comece por aqui</small></div><Icon name="arrow" size={18}/></Link>
         <Link href="/talhoes" className="simple-action-card"><span><Icon name="layers" size={28}/></span><div><strong>Meus talhões</strong><small>Veja suas áreas</small></div><Icon name="arrow" size={18}/></Link>
-        <Link href="/relatorios" className="simple-action-card"><span><Icon name="file" size={28}/></span><div><strong>Resultados</strong><small>Veja suas entregas</small></div><Icon name="arrow" size={18}/></Link>
+        <Link href="/resultados" className="simple-action-card"><span><Icon name="file" size={28}/></span><div><strong>Resultados</strong><small>Veja suas entregas</small></div><Icon name="arrow" size={18}/></Link>
       </section>
       <section className="simple-attention is-clear"><span className="simple-attention-icon"><Icon name="check" size={21}/></span><div><strong>Tudo certo por aqui</strong><small>Nenhuma ação urgente agora.</small></div></section>
     </div>
