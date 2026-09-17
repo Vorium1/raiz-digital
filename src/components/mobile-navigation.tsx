@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icon";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
-const SEND_HREF = "/analises/nova?etapa=laudo&nivel=interpretacao-rapida";
+const SEND_HREF = "/enviar";
 
 export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: boolean }) {
   const pathname = usePathname();
@@ -14,7 +14,6 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
     if (path === "/inicio") return pathname === "/inicio" || pathname === "/dashboard";
-    if (path === "/analises/nova") return pathname.startsWith("/analises/nova");
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
