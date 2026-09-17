@@ -27,7 +27,7 @@ export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
     { href: SEND_HREF, label: "Enviar", icon: "upload" as const },
     { href: "/talhoes", label: "Talhões", icon: "layers" as const },
     ...(canReview ? [{ href: "/revisar", label: "Revisar", icon: "shield" as const }] : []),
-    { href: "/relatorios", label: "Resultados", icon: "file" as const },
+    { href: "/resultados", label: "Resultados", icon: "file" as const },
   ];
 
   function activeFor(href: string) {
