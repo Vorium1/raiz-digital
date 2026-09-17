@@ -50,6 +50,10 @@ assert.match(finalReviewSource, /return \{ decision: input\.decision, interpreta
 const finalReviewRouteSource = readFileSync(new URL("../src/app/api/analyses/[id]/final-review/route.ts", import.meta.url), "utf8");
 assert.match(finalReviewRouteSource, /reviewFinalTechnicalReviewSafely/);
 assert.match(finalReviewRouteSource, /body\.decision === "CHANGES_REQUESTED"/);
+assert.match(finalReviewRouteSource, /SUPER_ADMIN/);
+assert.match(finalReviewRouteSource, /TENANT_ADMIN/);
+assert.match(finalReviewRouteSource, /AGRONOMIST/);
+assert.match(finalReviewRouteSource, /status:\s*403/);
 
 const ux2ReviewSource = readFileSync(new URL("../src/components/ux2-technical-review.tsx", import.meta.url), "utf8");
 assert.match(ux2ReviewSource, /decision:\s*"APPROVED"/);
@@ -64,4 +68,17 @@ assert.match(ux2ReviewSource, /currentReportCount/);
 assert.match(ux2ReviewSource, /\/relatorios\/talhao\/\$\{analysisId\}/);
 assert.doesNotMatch(ux2ReviewSource, /publish-report/);
 
-console.log("agronomic-prescription-review: transições protegidas + revisão final unificada + entrega real sem publicação silenciosa");
+// Um relatório antigo da mesma interpretação não pode fingir que já publicou uma prescrição regenerada.
+// O estado de entrega só conta REPORT_PUBLISHED cujo metadata referencia exatamente a prescrição mais recente.
+const deliveryStatusSource = readFileSync(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
+assert.match(deliveryStatusSource, /audit_events/);
+assert.match(deliveryStatusSource, /REPORT_PUBLISHED/);
+assert.match(deliveryStatusSource, /approvedPrescriptionId/);
+assert.match(deliveryStatusSource, /ae\.metadata->>'approvedPrescriptionId'=prescription\.id::text/);
+assert.match(deliveryStatusSource, /interpretationFreshness\.current\s*&&\s*prescriptionCurrent/);
+
+const premiumPublicationSource = readFileSync(new URL("../src/lib/repositories/premium-report-publication.ts", import.meta.url), "utf8");
+assert.match(premiumPublicationSource, /approvedPrescriptionId:\s*approvedPrescription\.id/);
+assert.match(premiumPublicationSource, /approvedPrescription/);
+
+console.log("agronomic-prescription-review: revisão final protegida + publicação vinculada à prescrição exata do snapshot");

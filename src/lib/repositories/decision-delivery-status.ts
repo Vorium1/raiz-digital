@@ -18,6 +18,10 @@ export type DecisionDeliveryStatus = {
  * Estado de entrega por análise, sem criar um novo status artificial no banco. Consolida as etapas
  * posteriores à interpretação e separa histórico de estado CORRENTE: novo laudo torna interpretação,
  * prescrição e relatórios anteriores históricos, sem apagá-los nem fingir que a decisão continua válida.
+ *
+ * Um relatório só conta como entrega corrente quando o evento auditável REPORT_PUBLISHED prova que
+ * ele congelou exatamente a recomendação mais recente. Isso evita tratar um snapshot antigo da mesma
+ * interpretação como se já contivesse uma prescrição regenerada/aprovada depois.
  */
 export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds: string[], userId?: string): Promise<DecisionDeliveryStatus[]> {
   if (analysisIds.length === 0) return [];
@@ -28,26 +32,28 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
       latestInterpretationId: string | null;
       latestInterpretationCreatedAt: string | null;
       latestImportCommittedAt: string | null;
+      prescriptionId: string | null;
       prescriptionStatus: DecisionDeliveryStatus["prescriptionStatus"];
       prescriptionCreatedAt: string | null;
       prescriptionInterpretationId: string | null;
       reportCount: number;
       latestReportAt: string | null;
-      latestInterpretationReportCount: number;
-      latestInterpretationReportAt: string | null;
+      latestDecisionReportCount: number;
+      latestDecisionReportAt: string | null;
     }>(
       `SELECT a.id::text AS "analysisId",
               cs.updated_at::text AS "cropSeasonUpdatedAt",
               latest_i.id::text AS "latestInterpretationId",
               latest_i.created_at::text AS "latestInterpretationCreatedAt",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              prescription.id::text AS "prescriptionId",
               prescription.status::text AS "prescriptionStatus",
               prescription.created_at::text AS "prescriptionCreatedAt",
               prescription.interpretation_id::text AS "prescriptionInterpretationId",
               coalesce(report_stats.report_count,0)::int AS "reportCount",
               report_stats.latest_report_at::text AS "latestReportAt",
-              coalesce(current_report_stats.report_count,0)::int AS "latestInterpretationReportCount",
-              current_report_stats.latest_report_at::text AS "latestInterpretationReportAt"
+              coalesce(current_report_stats.report_count,0)::int AS "latestDecisionReportCount",
+              current_report_stats.latest_report_at::text AS "latestDecisionReportAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
        LEFT JOIN LATERAL (
@@ -63,7 +69,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
          WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
        ) latest_import ON true
        LEFT JOIN LATERAL (
-         SELECT ag.status, ag.created_at, ag.interpretation_id
+         SELECT ag.id, ag.status, ag.created_at, ag.interpretation_id
          FROM ai_generations ag
          WHERE ag.tenant_id=a.tenant_id
            AND ag.analysis_id=a.id
@@ -80,7 +86,17 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
        LEFT JOIN LATERAL (
          SELECT count(*)::int AS report_count, max(r.published_at) AS latest_report_at
          FROM reports r
-         WHERE r.tenant_id=a.tenant_id AND r.interpretation_id=latest_i.id
+         WHERE r.tenant_id=a.tenant_id
+           AND r.interpretation_id=latest_i.id
+           AND EXISTS (
+             SELECT 1
+             FROM audit_events ae
+             WHERE ae.tenant_id=r.tenant_id
+               AND ae.action='REPORT_PUBLISHED'
+               AND ae.entity_type='report'
+               AND ae.entity_id=r.id
+               AND ae.metadata->>'approvedPrescriptionId'=prescription.id::text
+           )
        ) current_report_stats ON true
        WHERE a.tenant_id=$1::uuid AND a.id=ANY($2::uuid[])`,
       [tenantId, analysisIds],
@@ -95,12 +111,15 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
         : { current: false, reason: null };
       const prescriptionCurrent = Boolean(
         interpretationFreshness.current
+        && row.prescriptionId
         && row.prescriptionInterpretationId
         && row.prescriptionInterpretationId === row.latestInterpretationId
         && row.prescriptionCreatedAt
         && new Date(row.prescriptionCreatedAt).getTime() >= new Date(row.cropSeasonUpdatedAt).getTime(),
       );
-      const currentReportCount = interpretationFreshness.current ? row.latestInterpretationReportCount : 0;
+      const currentReportCount = interpretationFreshness.current && prescriptionCurrent
+        ? row.latestDecisionReportCount
+        : 0;
 
       return {
         analysisId: row.analysisId,
@@ -112,7 +131,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
         reportCount: row.reportCount,
         latestReportAt: row.latestReportAt,
         currentReportCount,
-        latestCurrentReportAt: currentReportCount > 0 ? row.latestInterpretationReportAt : null,
+        latestCurrentReportAt: currentReportCount > 0 ? row.latestDecisionReportAt : null,
       };
     });
   });
