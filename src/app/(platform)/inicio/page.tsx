@@ -5,6 +5,7 @@ import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getDashboardSnapshot, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
+import { userActionAlerts } from "@/domain/user-attention";
 
 export const metadata = { title: "Início" };
 
@@ -24,7 +25,8 @@ export default async function InicioPage() {
   const firstName = session.name.trim().split(/\s+/)[0] || "você";
   const canReview = REVIEW_ROLES.has(session.role);
   const reviewCount = snapshot.awaitingReview + snapshot.inconsistent;
-  const attentionCount = alerts.length + (canReview ? reviewCount : 0);
+  const actionableAlerts = userActionAlerts(alerts);
+  const attentionCount = actionableAlerts.length + (canReview ? reviewCount : 0);
 
   return (
     <div className="simple-home">
@@ -34,7 +36,7 @@ export default async function InicioPage() {
           <h1>Olá, {firstName}.</h1>
           <p>O que você quer fazer?</p>
         </div>
-        <Link href="/alertas" className="simple-alert-button" aria-label={attentionCount > 0 ? `${attentionCount} itens para conferir` : "Nenhum item pendente"}>
+        <Link href="/atencao" className="simple-alert-button" aria-label={attentionCount > 0 ? `${attentionCount} itens para conferir` : "Nenhum item pendente"}>
           <Icon name="warning" size={22}/>
           {attentionCount > 0 && <b>{attentionCount > 9 ? "9+" : attentionCount}</b>}
         </Link>
@@ -74,7 +76,7 @@ export default async function InicioPage() {
           <strong>{attentionCount > 0 ? "Tem algo para você conferir" : "Tudo certo por aqui"}</strong>
           <small>{attentionCount > 0 ? "Abra o aviso e resolva quando puder. O restante da operação continua funcionando normalmente." : "Nenhuma ação urgente agora."}</small>
         </div>
-        {attentionCount > 0 && <Link href={canReview && reviewCount > 0 ? "/revisar" : "/alertas"}>Ver agora <Icon name="arrow" size={15}/></Link>}
+        {attentionCount > 0 && <Link href="/atencao">Ver agora <Icon name="arrow" size={15}/></Link>}
       </section>
 
       <section className="simple-fields-section">
