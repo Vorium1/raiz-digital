@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { SimpleFinalReview } from "@/components/simple-final-review";
+import { SimpleRefreshAnalysis } from "@/components/simple-refresh-analysis";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getAnalysisById } from "@/lib/repositories/analyses";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 
@@ -37,10 +39,11 @@ function parameterLabel(code: string) {
 export default async function SimpleAnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requirePlatformSession();
-  const [analysis, interpretation, deliveryRows] = await Promise.all([
+  const [analysis, interpretation, deliveryRows, evidenceState] = await Promise.all([
     getAnalysisById(session.tenantId, id, session.userId),
     getLatestInterpretation(session.tenantId, id, session.userId),
     getDecisionDeliveryStatuses(session.tenantId, [id], session.userId),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId: id }),
   ]);
   if (!analysis) notFound();
 
@@ -53,12 +56,19 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const blockedCount = Array.isArray(output?.interpretation)
     ? output.interpretation.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length
     : 0;
+  const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
 
   let stateTitle = "Aguardando dados";
   let stateText = "Envie o resultado do laboratório para a RAIZ começar.";
   let stateIcon: "upload" | "clock" | "shield" | "check" = "upload";
 
-  if (delivery?.currentReportCount) {
+  if (imported && !analysisCurrent) {
+    stateTitle = evidenceState.freshness.code === "AGRONOMIC_RULES_CHANGED" ? "Atualização disponível" : "Análise precisa ser atualizada";
+    stateText = evidenceState.freshness.code === "AGRONOMIC_RULES_CHANGED"
+      ? "A RAIZ tem regras agronômicas mais atuais para esta cultura."
+      : "Há dados mais atuais do que esta análise.";
+    stateIcon = "clock";
+  } else if (delivery?.currentReportCount) {
     stateTitle = "Resultado pronto";
     stateText = "Esta análise já foi revisada e publicada.";
     stateIcon = "check";
@@ -92,7 +102,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
       <section className="simple-analysis-progress" aria-label="Andamento">
         <div className={imported ? "done" : "current"}><span><Icon name={imported ? "check" : "upload"} size={15}/></span><b>Dados</b><small>{imported ? "Recebidos" : "Aguardando"}</small></div>
         <i/>
-        <div className={interpretation ? "done" : imported ? "current" : "pending"}><span><Icon name={interpretation ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{interpretation ? "Pronta" : "Em andamento"}</small></div>
+        <div className={analysisCurrent ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisCurrent ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisCurrent ? "Pronta" : imported ? "Atualizar" : "Em andamento"}</small></div>
         <i/>
         <div className={(interpretation as any)?.status === "APPROVED" ? "done" : (interpretation as any)?.status === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={(interpretation as any)?.status === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{(interpretation as any)?.status === "APPROVED" ? "Concluída" : "Quando estiver pronta"}</small></div>
         <i/>
@@ -113,7 +123,11 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <section className="simple-analysis-empty"><span><Icon name="upload" size={27}/></span><div><strong>Comece enviando o laudo</strong><p>A RAIZ organiza e analisa o restante.</p></div><Link href={`/analise/${id}/enviar`}>Enviar dados <Icon name="arrow" size={14}/></Link></section>
       )}
 
-      {imported && <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>}
+      {imported && !analysisCurrent
+        ? <SimpleRefreshAnalysis analysisId={id} freshnessCode={evidenceState.freshness.code}/>
+        : imported
+          ? <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>
+          : null}
 
       <details className="simple-analysis-technical">
         <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={15}/></summary>
