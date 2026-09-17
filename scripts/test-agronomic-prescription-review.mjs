@@ -81,6 +81,18 @@ const premiumPublicationSource = readFileSync(new URL("../src/lib/repositories/p
 assert.match(premiumPublicationSource, /approvedPrescriptionId:\s*approvedPrescription\.id/);
 assert.match(premiumPublicationSource, /approvedPrescription/);
 
+// Publicação oficial da mesma decisão é concorrente-segura no servidor, não apenas escondida na UI.
+// O lock exclusivo da interpretação serializa requests iguais; a segunda request encontra o audit da
+// primeira e falha ANTES de tocar o storage novamente.
+assert.match(premiumPublicationSource, /FOR UPDATE OF i/);
+assert.match(premiumPublicationSource, /FOR SHARE OF a, cs/);
+assert.match(premiumPublicationSource, /async function assertDecisionNotAlreadyPublished/);
+assert.match(premiumPublicationSource, /ae\.metadata->>'approvedPrescriptionId'=\$3/);
+assert.match(premiumPublicationSource, /já possui uma versão oficial publicada/i);
+const duplicateGuardIndex = premiumPublicationSource.indexOf("await assertDecisionNotAlreadyPublished(client");
+const storageWriteIndex = premiumPublicationSource.indexOf("const stored = await saveReportSnapshot");
+assert.ok(duplicateGuardIndex >= 0 && storageWriteIndex > duplicateGuardIndex, "duplicidade deve ser bloqueada antes de gravar snapshot");
+
 // A própria página do relatório precisa comparar o snapshot v3 com a prescrição viva antes de afirmar
 // que a decisão atual já foi publicada. A mesma revisão de interpretação, sozinha, não é evidência suficiente.
 const reportPageSource = readFileSync(new URL("../src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx", import.meta.url), "utf8");
@@ -90,4 +102,4 @@ assert.match(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton
 assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
 assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
 
-console.log("agronomic-prescription-review: revisão final protegida + publicação vinculada à prescrição exata do snapshot");
+console.log("agronomic-prescription-review: revisão final protegida + publicação exata, imutável e concorrente-segura");

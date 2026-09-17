@@ -108,6 +108,7 @@ async function assertCurrentPublicationState(
      ) prescription ON true
      WHERE i.tenant_id=$1::uuid AND i.id=$2::uuid
      LIMIT 1
+     FOR UPDATE OF i
      FOR SHARE OF a, cs`,
     [input.tenantId, input.interpretationId],
   );
@@ -146,21 +147,64 @@ async function assertCurrentPublicationState(
   return state;
 }
 
+async function assertDecisionNotAlreadyPublished(
+  client: PoolClient,
+  input: { tenantId: string; interpretationId: string; prescriptionId: string },
+) {
+  const duplicate = await client.query<{ id: string }>(
+    `SELECT r.id::text
+     FROM reports r
+     WHERE r.tenant_id=$1::uuid
+       AND r.interpretation_id=$2::uuid
+       AND EXISTS (
+         SELECT 1
+         FROM audit_events ae
+         WHERE ae.tenant_id=r.tenant_id
+           AND ae.action='REPORT_PUBLISHED'
+           AND ae.entity_type='report'
+           AND ae.entity_id=r.id
+           AND ae.metadata->>'approvedPrescriptionId'=$3
+       )
+     ORDER BY r.published_at DESC
+     LIMIT 1`,
+    [input.tenantId, input.interpretationId, input.prescriptionId],
+  );
+  if (duplicate.rows[0]) {
+    throw new ReportError(
+      "Esta decisão técnica já possui uma versão oficial publicada. Só publique novamente depois de uma nova recomendação aprovada.",
+      409,
+    );
+  }
+}
+
 /**
  * Publicação premium da decisão agronômica. Diferente do snapshot v2, congela também a recomendação
  * APROVADA da mesma interpretação, eventual síntese aprovada, contorno do talhão e pontos de amostragem.
  * Assim, reabrir a versão oficial não precisa buscar conteúdo vivo para reconstruir o que foi entregue.
  *
  * A entrega falha fechada se a interpretação, o laudo, a recomendação, o contexto da safra ou a
- * confirmação de fonte mudarem durante o processo. O lock compartilhado de análise/safra permanece
- * pela transação inteira e conflita com nova importação/edição. O snapshot no storage é imutável; se
- * uma falha ocorrer na gravação externa, nenhum registro oficial incompleto nasce em `reports`.
+ * confirmação de fonte mudarem durante o processo. A interpretação fica bloqueada para atualização pela
+ * transação inteira, serializando publicações concorrentes da mesma decisão; análise/safra permanecem
+ * protegidas por lock compartilhado. O snapshot no storage é imutável; se uma falha ocorrer na gravação
+ * externa, nenhum registro oficial incompleto nasce em `reports`.
  */
 export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const initialState = await assertCurrentPublicationState(client, {
       tenantId: input.tenantId,
       interpretationId: input.interpretationId,
+    });
+    const currentPrescriptionId = initialState.prescriptionId;
+    if (!currentPrescriptionId) {
+      throw new ReportError("A decisão atual não possui recomendação aprovada para publicação.", 409);
+    }
+
+    // A interpretação está sob FOR UPDATE desde a leitura acima. Publicações concorrentes da mesma
+    // decisão ficam serializadas e a segunda requisição enxerga o audit da primeira antes de tocar storage.
+    await assertDecisionNotAlreadyPublished(client, {
+      tenantId: input.tenantId,
+      interpretationId: input.interpretationId,
+      prescriptionId: currentPrescriptionId,
     });
 
     const interpretationResult = await client.query(
@@ -184,7 +228,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
          AND g.id=$2::uuid
          AND g.kind='AGRONOMIC_PRESCRIPTION'
        LIMIT 1`,
-      [input.tenantId, initialState.prescriptionId],
+      [input.tenantId, currentPrescriptionId],
     );
     const approvedPrescription = prescriptionResult.rows[0] as FrozenReviewedGeneration | undefined;
     if (!approvedPrescription || approvedPrescription.status !== "APPROVED") {
