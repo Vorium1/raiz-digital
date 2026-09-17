@@ -42,13 +42,13 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
     actionHref = `/analise/${latest.id}`;
     actionLabel = "Revisar agora";
   } else if (latest) {
-    stateTitle = "Em análise";
+    stateTitle = latest.notInterpretableReason ? "Análise precisa continuar" : "Em análise";
     stateText = latest.notInterpretableReason
-      ? "Falta uma informação para a RAIZ concluir esta análise."
+      ? "Os dados já estão registrados. Abra para atualizar a análise ou ver a limitação técnica."
       : "Os dados desta área estão sendo organizados e analisados.";
     stateIcon = "clock";
     actionHref = `/analise/${latest.id}`;
-    actionLabel = latest.notInterpretableReason ? "Ver o que falta" : "Acompanhar";
+    actionLabel = latest.notInterpretableReason ? "Continuar análise" : "Acompanhar";
   }
 
   const crop = season?.nextCrop || season?.currentCrop || null;
