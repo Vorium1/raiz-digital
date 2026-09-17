@@ -36,5 +36,9 @@ export function userAttentionHref(alert: { category: string; fieldId: string | n
     "Talhão sem safra definida",
     "Reanálise de solo vencida",
   ].includes(alert.category)) return `/talhoes/${alert.fieldId}`;
+
+  const analysisMatch = /^\/analises\/([0-9a-f-]{36})(?:$|[/?#])/i.exec(alert.href);
+  if (analysisMatch) return `/analise/${analysisMatch[1]}`;
+
   return alert.href;
 }
