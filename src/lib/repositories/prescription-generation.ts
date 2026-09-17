@@ -1,4 +1,5 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
+import { checkPrescriptionDraftGate, PRESCRIPTION_DRAFT_STATUS } from "@/domain/agronomic-prescription-gate";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
@@ -7,6 +8,10 @@ import { AiGenerationError } from "@/lib/repositories/ai-generations";
  * Persiste uma prescrição somente se o snapshot validado antes/depois do provedor ainda for o snapshot
  * corrente dentro da própria transação de INSERT. O lock SHARE na análise/safra conflita com importação
  * (FOR UPDATE) e com UPDATE do contexto da safra, fechando a janela entre o último check HTTP e o save.
+ *
+ * UX 2.0 permite salvar o RASCUNHO quando a mesma interpretação continua IN_REVIEW ou APPROVED. O registro
+ * nasce explicitamente PENDING_REVIEW. Promoção de doses e publicação continuam protegidas pelos gates
+ * estritos de revisão/publicação e exigem interpretação APPROVED.
  */
 export async function recordAgronomicPrescriptionGenerationSafely(input: {
   tenantId: string;
@@ -58,12 +63,16 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     const state = stateResult.rows[0];
     if (!state) throw new AiGenerationError("Análise não encontrada.", 404);
 
-    if (
-      state.latestInterpretationId !== input.interpretationId
-      || state.latestInterpretationStatus !== "APPROVED"
-    ) {
+    if (state.latestInterpretationId !== input.interpretationId) {
       throw new AiGenerationError(
-        "A interpretação determinística mudou antes de salvar a prescrição. A resposta foi descartada; gere novamente com a revisão APPROVED atual.",
+        "A interpretação determinística mudou antes de salvar a prescrição. A resposta foi descartada; gere novamente com a revisão atual.",
+        409,
+      );
+    }
+    const interpretationGate = checkPrescriptionDraftGate(state.latestInterpretationStatus);
+    if (!interpretationGate.allowed) {
+      throw new AiGenerationError(
+        `${interpretationGate.reason} A resposta foi descartada antes de persistir o rascunho.`,
         409,
       );
     }
@@ -90,8 +99,8 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
 
     const result = await client.query(
       `INSERT INTO ai_generations
-       (tenant_id, kind, interpretation_id, analysis_id, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, created_by)
-       VALUES ($1::uuid, 'AGRONOMIC_PRESCRIPTION', $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::uuid)
+       (tenant_id, kind, interpretation_id, analysis_id, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
+       VALUES ($1::uuid, 'AGRONOMIC_PRESCRIPTION', $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::ai_review_status, $12::uuid)
        RETURNING id::text, status, created_at::text AS "createdAt"`,
       [
         input.tenantId,
@@ -104,6 +113,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
         JSON.stringify(input.responsePayload),
         input.tokensUsed ?? null,
         input.costUsd ?? null,
+        PRESCRIPTION_DRAFT_STATUS,
         input.userId,
       ],
     );
@@ -131,6 +141,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
         promptVersion: input.promptVersion,
         tokensUsed: input.tokensUsed ?? null,
         interpretationId: input.interpretationId,
+        reviewStatus: PRESCRIPTION_DRAFT_STATUS,
       },
     });
 
