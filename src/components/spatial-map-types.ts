@@ -57,7 +57,10 @@ export type PortfolioCanvasField = {
 
 export type PointPositionKind = "OBSERVED" | "AUDITED_SOURCE" | "PLANNED";
 
-const AUDITED_REAL_SOURCE_PREFIXES = ["SHAPEFILE_REAL_GPS_LONLAT", "SHAPEFILE_REAL_EPSG4326"] as const;
+const AUDITED_REAL_SOURCES = new Set([
+  "SHAPEFILE_REAL_GPS_LONLAT",
+  "SHAPEFILE_REAL_EPSG4326",
+]);
 
 export function collectSpatialPositions(value: unknown, positions: Array<[number, number]>) {
   if (!Array.isArray(value)) return;
@@ -91,11 +94,12 @@ export function effectivePointCoordinates(point: MapPoint): { latitude: number; 
  * `observed_position` é a captura feita durante a coleta corrente. Alguns datasets históricos/auditados,
  * como Cabeda, preservam a coordenada real diretamente em `position` e registram a proveniência em
  * `gps_source`; nesses casos não podemos rebaixar a coordenada para "planejada" só porque
- * `observed_position` é nulo.
+ * `observed_position` é nulo. A fonte precisa corresponder exatamente ao vocabulário aprovado pelo
+ * auditor de proveniência; prefixos/sufixos arbitrários não promovem a coordenada a evidência auditada.
  */
 export function pointPositionKind(point: MapPoint): PointPositionKind {
   if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
-  const source = (point.gpsSource ?? "").toUpperCase();
-  if (AUDITED_REAL_SOURCE_PREFIXES.some((prefix) => source.startsWith(prefix))) return "AUDITED_SOURCE";
+  const source = (point.gpsSource ?? "").trim().toUpperCase();
+  if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
   return "PLANNED";
 }
