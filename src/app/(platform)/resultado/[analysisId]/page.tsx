@@ -4,6 +4,7 @@ import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { ReportBrand } from "@/components/report-brand";
+import { humanClassification } from "@/domain/simple-ux-labels";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -136,7 +137,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               {findings.map((item, index) => (
                 <div key={`${item.sampleCode ?? "amostra"}-${item.parameterCode ?? index}-${index}`}>
                   <span>{parameterLabel(item.parameterCode)}</span>
-                  <strong>{item.classification}</strong>
+                  <strong>{humanClassification(item.classification)}</strong>
                   {item.sampleCode && <small>Amostra {item.sampleCode}</small>}
                 </div>
               ))}
@@ -159,6 +160,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             )}
             {(prescription.managementPractices?.length ?? 0) > 0 && (
               <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
+            )}
+            {(prescription.missingInformation?.length ?? 0) > 0 && (
+              <div className="simple-result-limitation"><Icon name="warning" size={17}/><span><strong>Limitações registradas na revisão</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
             )}
           </section>
         ) : (
