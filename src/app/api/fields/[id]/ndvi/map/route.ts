@@ -8,6 +8,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * Serve exclusivamente o PNG arquivado junto ao snapshot histórico. Não existe fallback para uma nova
  * chamada ao Copernicus: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
  * fechado. Isso impede que uma visualização regenerada no futuro seja apresentada como a mesma evidência.
+ *
+ * O artefato é imutável, mas a autorização do usuário não é. Por isso a resposta não pode ficar
+ * armazenada por longo prazo no cache privado do navegador: cada leitura precisa voltar a passar pela
+ * sessão e pelo escopo tenant/RLS.
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -64,7 +68,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       status: 200,
       headers: {
         "content-type": "image/png",
-        "cache-control": "private, max-age=31536000, immutable",
+        "cache-control": "private, no-store",
         etag: `"${snapshot.rasterSha256}"`,
         "x-raiz-ndvi-date": requestedDate,
         "x-raiz-ndvi-bbox": bbox.join(","),
