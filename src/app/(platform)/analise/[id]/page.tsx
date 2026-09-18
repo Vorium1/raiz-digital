@@ -94,7 +94,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <div>
           <span>{(analysis as any).clientName} · {(analysis as any).propertyName}</span>
           <h1>{(analysis as any).fieldName}</h1>
-          <p>Safra {(analysis as any).seasonLabel}{(analysis as any).currentCrop ? ` · ${(analysis as any).currentCrop}` : ""}</p>
+          <p>Safra {(analysis as any).seasonLabel}{((analysis as any).currentCrop || (analysis as any).nextCrop) ? ` · ${(analysis as any).currentCrop || (analysis as any).nextCrop}` : ""}</p>
         </div>
         <div className={`simple-analysis-state ${stateIcon === "check" ? "ready" : stateIcon === "shield" ? "review" : ""}`}><span><Icon name={stateIcon} size={21}/></span><div><strong>{stateTitle}</strong><small>{stateText}</small></div></div>
       </header>
