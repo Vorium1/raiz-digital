@@ -218,9 +218,11 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
      */
     const adherenceResult = await client.query(
       `WITH latest_recommendations AS (
-         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
-         FROM input_recommendations WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
-         ORDER BY analysis_id, input_type, calculated_at DESC
+         SELECT DISTINCT ON (analysis_id, input_type)
+                id, analysis_id, input_type, quantity, unit, calculation_source, source_generation_id, calculated_at
+         FROM input_recommendations
+         WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
+         ORDER BY analysis_id, input_type, calculated_at DESC, id DESC
        ),
        applied_totals AS (
          SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
@@ -231,6 +233,16 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
               a.total_quantity::float8 AS "appliedQuantity"
        FROM latest_recommendations r
        LEFT JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
+       LEFT JOIN ai_generations g
+         ON g.tenant_id = $1::uuid
+        AND g.id = r.source_generation_id
+        AND g.kind = 'AGRONOMIC_PRESCRIPTION'
+       WHERE
+         (r.source_generation_id IS NULL AND coalesce(r.calculation_source, '') NOT LIKE 'ai_generations:%')
+         OR (
+           r.source_generation_id IS NOT NULL
+           AND g.status = 'APPROVED'
+         )
        ORDER BY r.analysis_id, r.input_type`,
       [tenantId, analysesResult.rows.map((row) => row.id)],
     );
