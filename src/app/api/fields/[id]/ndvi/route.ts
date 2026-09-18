@@ -24,6 +24,40 @@ const MAX_SCENES_PER_REFRESH = 18;
  */
 const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
 
+function ndviRuntimeReadiness() {
+  const missing: string[] = [];
+  const copernicusConfigured = Boolean(
+    process.env.COPERNICUS_CLIENT_ID?.trim() && process.env.COPERNICUS_CLIENT_SECRET?.trim(),
+  );
+  if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
+  if (!process.env.COPERNICUS_CLIENT_SECRET?.trim()) missing.push("COPERNICUS_CLIENT_SECRET");
+
+  const storageProvider = (process.env.STORAGE_PROVIDER ?? "local").trim().toLowerCase();
+  const durableStorageConfigured = storageProvider === "s3"
+    && Boolean(
+      process.env.S3_ENDPOINT?.trim()
+      && process.env.S3_BUCKET?.trim()
+      && process.env.S3_ACCESS_KEY?.trim()
+      && process.env.S3_SECRET_KEY?.trim(),
+    );
+
+  if (process.env.VERCEL && storageProvider !== "s3") missing.push("STORAGE_PROVIDER=s3");
+  if (storageProvider === "s3") {
+    if (!process.env.S3_ENDPOINT?.trim()) missing.push("S3_ENDPOINT");
+    if (!process.env.S3_BUCKET?.trim()) missing.push("S3_BUCKET");
+    if (!process.env.S3_ACCESS_KEY?.trim()) missing.push("S3_ACCESS_KEY");
+    if (!process.env.S3_SECRET_KEY?.trim()) missing.push("S3_SECRET_KEY");
+  }
+
+  return {
+    ready: copernicusConfigured && (!process.env.VERCEL || durableStorageConfigured),
+    copernicusConfigured,
+    durableStorageConfigured: process.env.VERCEL ? durableStorageConfigured : storageProvider === "s3" || storageProvider === "local",
+    storageProvider,
+    missing: [...new Set(missing)],
+  };
+}
+
 function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
   return {
     variability: latest ? detectWithinFieldVariability(latest.zoneBreakdownPct ?? {}) : null,
@@ -56,7 +90,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
   ]);
   if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
-  return Response.json({ latest, history, fieldBoundary, ...intelligencePayload(latest, history) });
+  return Response.json({ latest, history, fieldBoundary, runtime: ndviRuntimeReadiness(), ...intelligencePayload(latest, history) });
 }
 
 /**
@@ -76,6 +110,18 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!runRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode buscar leitura de satélite." }, { status: 403 });
   const { id: fieldId } = await context.params;
+
+  const runtime = ndviRuntimeReadiness();
+  if (!runtime.ready) {
+    return Response.json(
+      {
+        error: `NDVI real ainda não está configurado neste ambiente. Falta: ${runtime.missing.join(", ") || "configuração de runtime"}.`,
+        code: "NDVI_RUNTIME_NOT_CONFIGURED",
+        runtime,
+      },
+      { status: 503 },
+    );
+  }
 
   const boundary = await getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
