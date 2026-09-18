@@ -4,11 +4,12 @@ import { prepareAgronomicPrescriptionDraft } from "@/lib/workflows/agronomic-pre
 
 const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
-export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!writeRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode interpretar análises." }, { status: 403 });
   const { id } = await context.params;
+  const prepareDraft = new URL(request.url).searchParams.get("draft") !== "0";
 
   try {
     const { interpretation, engineResult } = await runInterpretationForAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id });
@@ -16,7 +17,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     let prescriptionDraft = null;
     let prescriptionDraftError: string | null = null;
     const draftEligible = interpretation.status === "IN_REVIEW" || interpretation.status === "APPROVED";
-    if (draftEligible) {
+    if (draftEligible && prepareDraft) {
       try {
         prescriptionDraft = await prepareAgronomicPrescriptionDraft({
           tenantId: session.tenantId,
@@ -35,7 +36,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       engineResult,
       prescriptionDraft,
       prescriptionDraftError,
-      prescriptionDraftState: draftEligible ? (prescriptionDraft ? "PREPARED" : "BLOCKED") : "NOT_ELIGIBLE",
+      prescriptionDraftState: !draftEligible ? "NOT_ELIGIBLE" : !prepareDraft ? "SKIPPED" : (prescriptionDraft ? "PREPARED" : "BLOCKED"),
     }, { status: 201 });
   } catch (error) {
     if (error instanceof InterpretationError) return Response.json({ error: error.message }, { status: error.status });
