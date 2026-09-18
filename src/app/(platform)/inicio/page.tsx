@@ -58,7 +58,7 @@ export default async function InicioPage() {
         {canReview && (
           <Link href="/revisar" className="simple-action-card">
             <span><Icon name="shield" size={28}/></span>
-            <div><strong>Revisar</strong><small>Confira conclusões pendentes</small></div>
+            <div><strong>Revisar</strong><small>Confira e aprove conclusões</small></div>
             <Icon name="arrow" size={18}/>
           </Link>
         )}
