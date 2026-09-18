@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import { RealFieldMap } from "@/components/real-field-map";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
+import { SimpleFieldMapLayers } from "@/components/simple-field-map-layers";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
 import type { AnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
@@ -14,10 +14,12 @@ export function SimpleFieldOverview({
   overview,
   alerts,
   analysisFreshness,
+  canRefreshAnalysis,
 }: {
   overview: FieldOverview;
   alerts: OperationalAlert[];
   analysisFreshness: AnalysisEvidenceFreshness | null;
+  canRefreshAnalysis: boolean;
 }) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
   const season = seasons[0] ?? null;
@@ -25,8 +27,6 @@ export function SimpleFieldOverview({
   const latest = seasonAnalyses[0] ?? null;
   const latestReport = latest ? reports.find((report) => report.analysisId === latest.id) ?? null : reports[0] ?? null;
   const actionableAlerts = userActionAlerts(alerts).slice(0, 3);
-  const collectedPoints = collectionPoints.filter((point: any) => Boolean(point.collectedAt));
-  const estimatedPointCount = collectionPoints.filter((point: any) => String(point.gpsSource ?? "").toUpperCase().startsWith("ESTIMADO_")).length;
 
   let stateTitle = "Ainda não analisado";
   let stateText = "Envie os dados desta área e a RAIZ organiza o restante.";
@@ -85,23 +85,14 @@ export function SimpleFieldOverview({
         <Link href={actionHref} className="simple-field-primary-action"><Icon name={stateIcon} size={19}/><span><strong>{stateTitle}</strong><small>{actionLabel}</small></span><Icon name="chevron" size={16}/></Link>
       </header>
 
-      <section className="simple-field-map-card">
-        <div className="simple-field-map-head">
-          <div><span>ÁREA E COLETA</span><strong>{collectionPoints.length ? `${collectedPoints.length || collectionPoints.length} ponto(s) de coleta` : "Limite do talhão"}</strong></div>
-        </div>
-        <RealFieldMap
-          boundary={field.boundary as any}
-          points={collectionPoints as any}
-          height={390}
-          hint={collectionPoints.length ? "Área e pontos desta coleta" : "Clique e arraste para explorar a área"}
-        />
-        {estimatedPointCount > 0 && (
-          <div className="simple-field-map-note">
-            <Icon name="location" size={14}/>
-            <span>{estimatedPointCount === collectionPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível." : "Alguns pontos usam posição aproximada conforme a referência disponível."}</span>
-          </div>
-        )}
-      </section>
+      <SimpleFieldMapLayers
+        fieldId={field.id}
+        boundary={field.boundary as any}
+        collectionPoints={collectionPoints as any}
+        analysisId={latest?.id ?? null}
+        freshnessCode={analysisFreshness?.code ?? null}
+        canRefresh={canRefreshAnalysis}
+      />
 
       <SimpleFieldVigor fieldId={field.id}/>
 
