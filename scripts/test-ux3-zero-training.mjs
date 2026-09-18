@@ -109,6 +109,7 @@ assert.match(send, /selectedSeason\?\.currentCrop \|\| selectedSeason\?\.nextCro
 assert.match(dashboardRepository, /latest_import\.latest_import_at/);
 assert.match(dashboardRepository, /latest_parameter_rule_at/);
 assert.match(dashboardRepository, /li\.status = 'IN_REVIEW'/);
+assert.match(dashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM cs\.crop_profile_id/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
