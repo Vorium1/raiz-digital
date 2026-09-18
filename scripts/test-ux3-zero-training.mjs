@@ -54,6 +54,8 @@ const prescriptionRoute = read("src/app/api/analyses/[id]/agronomic-prescription
 const narrativeSafetyRepository = read("src/lib/repositories/agronomic-narrative-safety.ts");
 const prescriptionProvider = read("src/lib/ai/agronomic-prescription-provider.ts");
 const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-prescription-provider.ts");
+const ndviRoute = read("src/app/api/fields/[id]/ndvi/route.ts");
+const ndviPanel = read("src/components/field-ndvi-panel.tsx");
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
@@ -395,3 +397,9 @@ console.log("ux3-zero-training: navegação simples + motor completo + entrega p
 
 assert.match(interpretationsRepository, /engineResult\.interpretable \? "APPROVED" : "CALCULATED"/);
 assert.match(agronomicProfilesRepository, /validation\.confidence >= 90/);
+
+assert.match(ndviRoute, /NDVI_RUNTIME_NOT_CONFIGURED/);
+assert.match(ndviRoute, /COPERNICUS_CLIENT_ID/);
+assert.match(ndviRoute, /S3_ENDPOINT/);
+assert.match(ndviPanel, /runtime\?\.ready === false/);
+assert.match(ndviPanel, /NDVI real ainda não está conectado neste ambiente/);
