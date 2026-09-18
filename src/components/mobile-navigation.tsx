@@ -4,12 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icon";
 
-const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const SEND_HREF = "/enviar";
 
-export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: boolean }) {
+export function MobileNavigation(_props: { role?: string; isPlatformCurator?: boolean }) {
   const pathname = usePathname();
-  const canReview = Boolean(role && REVIEW_ROLES.has(role));
 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
@@ -28,15 +26,9 @@ export function MobileNavigation({ role }: { role?: string; isPlatformCurator?: 
       <Link href={SEND_HREF} className={`simple-mobile-send ${isActive(SEND_HREF) ? "active" : ""}`} aria-label="Enviar dados">
         <span><Icon name="upload" size={23}/></span><b>Enviar</b>
       </Link>
-      {canReview ? (
-        <Link href="/revisar" className={isActive("/revisar") ? "active" : ""}>
-          <Icon name="shield" size={21}/><span>Revisar</span>
-        </Link>
-      ) : (
-        <Link href="/resultados" className={isActive("/resultados") ? "active" : ""}>
-          <Icon name="file" size={21}/><span>Resultados</span>
-        </Link>
-      )}
+      <Link href="/resultados" className={isActive("/resultados") ? "active" : ""}>
+        <Icon name="file" size={21}/><span>Resultados</span>
+      </Link>
       <Link href="/configuracoes" className={isActive("/configuracoes") ? "active" : ""}>
         <Icon name="dots" size={21}/><span>Mais</span>
       </Link>
