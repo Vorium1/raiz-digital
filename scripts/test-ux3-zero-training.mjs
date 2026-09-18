@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const sidebar = read("src/components/sidebar.tsx");
 const mobile = read("src/components/mobile-navigation.tsx");
 const home = read("src/app/(platform)/inicio/page.tsx");
+const dashboardRepository = read("src/lib/repositories/dashboard.ts");
 const dashboard = read("src/app/(platform)/dashboard/page.tsx");
 const send = read("src/components/simple-send-flow.tsx");
 const existingUpload = read("src/components/simple-existing-analysis-upload.tsx");
@@ -49,6 +50,10 @@ assert.match(labImporter, /!simple && preview && <div className="import-preview"
 assert.match(labImporter, /sourceType:\s*"PDF_OCR"/);
 assert.match(send, /sourceType:\s*file\.sourceType/);
 assert.match(send, /sourceFileName:\s*file\.originalFileName/);
+assert.match(send, /selectedSeason\?\.currentCrop \|\| selectedSeason\?\.nextCrop/);
+assert.match(dashboardRepository, /latest_import\.latest_import_at/);
+assert.match(dashboardRepository, /latest_parameter_rule_at/);
+assert.match(dashboardRepository, /li\.status = 'IN_REVIEW'/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
