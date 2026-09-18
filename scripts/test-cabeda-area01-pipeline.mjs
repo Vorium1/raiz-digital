@@ -19,6 +19,21 @@ const AREA_01 = [
   { clay: 58, ph: 5.2, smp: 5.7, p: 21.2, k: 179.3, ctc: 15.3, s: 8.9 },
 ];
 
+
+const AREA_02 = [
+  { clay: 74, p: 21.6, k: 216.3, ctc: 16.5 },
+  { clay: 77, p: 11.2, k: 200.2, ctc: 16.7 },
+  { clay: 74, p: 13.6, k: 210.5, ctc: 15.8 },
+  { clay: 79, p: 30.2, k: 230.5, ctc: 16.2 },
+];
+
+const AREA_03 = [
+  { clay: 75, p: 8.2, k: 160.9, ctc: 15.2 },
+  { clay: 77, p: 7.5, k: 89.4, ctc: 15.0 },
+  { clay: 67, p: 4.1, k: 126.0, ctc: 15.5 },
+  { clay: 56, p: 13.3, k: 198.1, ctc: 17.2 },
+];
+
 const bands = {
   pClay1: [
     { label: "Muito Baixo", max: 3.0 }, { label: "Baixo", min: 3.1, max: 6.0 },
@@ -168,6 +183,42 @@ const recommendationBlockers = [
 ];
 assert.ok(recommendationBlockers.includes("CULTIVATION_SEQUENCE_AFTER_ANALYSIS_MISSING"));
 assert.ok(recommendationBlockers.includes("P_NO_STRICT_PREDOMINANCE"));
+
+
+function legacyPkResults(rows) {
+  return rows.flatMap((row, index) => {
+    const sampleCode = `P${index + 1}`;
+    const common = { sampleCode, sampleType: "SOLO", depthFromCm: 0, depthToCm: 20, source: "MEASURED" };
+    return [
+      { ...common, parameterCode: "CLAY", value: row.clay, unit: "%", method: "Densímetro" },
+      { ...common, parameterCode: "P", value: row.p, unit: "mg/L", method: "Mehlich-1" },
+      { ...common, parameterCode: "K", value: row.k, unit: "mg/L", method: "Mehlich-1" },
+      { ...common, parameterCode: "CTC", value: row.ctc, unit: "cmolc/dm³", method: "Calculado: Ca+Mg+K+(H+Al)" },
+    ];
+  }).map((result) => ({
+    ...result,
+    unit: normalizeUnit(result.parameterCode, result.unit),
+    method: normalizeAnalyticalMethod(result.parameterCode, result.method),
+  }));
+}
+
+for (const [areaName, rows] of [["Área 02", AREA_02], ["Área 03", AREA_03]]) {
+  const areaEngine = runAgronomicEngine({ cropProfile, labResults: legacyPkResults(rows) });
+  const pItems = areaEngine.interpretation.filter((item) => item.parameterCode === "P" && item.interpretable);
+  const kItems = areaEngine.interpretation.filter((item) => item.parameterCode === "K" && item.interpretable);
+  assert.equal(pItems.length, rows.length, `${areaName}: todos os pontos de P devem encontrar regra após normalização`);
+  assert.equal(kItems.length, rows.length, `${areaName}: todos os pontos de K devem encontrar regra após normalização`);
+  assert.equal(
+    areaEngine.interpretation.some((item) => item.parameterCode === "P" && /parâmetro homologado/i.test(item.reason ?? "")),
+    false,
+    `${areaName}: P não pode voltar a ser rotulado como sem parâmetro homologado`,
+  );
+  assert.equal(
+    areaEngine.interpretation.some((item) => item.parameterCode === "K" && /parâmetro homologado/i.test(item.reason ?? "")),
+    false,
+    `${areaName}: K não pode voltar a ser rotulado como sem parâmetro homologado`,
+  );
+}
 
 console.log(JSON.stringify({
   scenario: "Cabeda / Área 01 / AN-CABEDA-01",
