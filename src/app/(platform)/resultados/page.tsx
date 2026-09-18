@@ -64,7 +64,7 @@ export default async function ResultadosPage() {
   return (
     <div className="simple-home simple-results-page">
       <header className="simple-home-head">
-        <div><span>RESULTADOS</span><h1>Resultados</h1><p>Veja o que já está pronto e o que falta somente revisar ou publicar.</p></div>
+        <div><span>RESULTADOS</span><h1>Resultados</h1><p>Veja os laudos oficiais, atualizações de base e resultados prontos para emissão.</p></div>
       </header>
 
       {latestResults.length > 0 && (
