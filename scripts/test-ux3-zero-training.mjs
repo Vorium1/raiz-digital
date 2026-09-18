@@ -145,6 +145,13 @@ assert.match(dashboardRepository, /confidence_score IS NOT NULL AND interpretati
 assert.match(analyticsDashboardRepository, /WITH latest_analysis AS/);
 assert.match(analyticsDashboardRepository, /ORDER BY a\.created_at DESC, a\.id DESC/);
 assert.match(analyticsDashboardRepository, /ls\.analysis_id = \(SELECT id FROM latest_analysis\)/);
+assert.match(analyticsDashboardRepository, /current_interpretation AS/);
+assert.match(analyticsDashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM ss\.crop_profile_id/);
+assert.match(analyticsDashboardRepository, /latest_import\.latest_import_at/);
+assert.match(analyticsDashboardRepository, /latest_parameter_rule_at/);
+assert.match(analyticsDashboardRepository, /FROM current_interpretation li/);
+assert.match(analyticsDashboardRepository, /FROM current_interpretation WHERE status = 'IN_REVIEW'/);
+assert.match(analyticsDashboardRepository, /JOIN current_interpretation ci ON ci\.analysis_id = sa\.id/);
 assert.match(dashboardRepository, /latest_parameter_rule_at/);
 assert.match(dashboardRepository, /status = 'IN_REVIEW' AND current/);
 assert.match(dashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM la\.crop_profile_id/);
