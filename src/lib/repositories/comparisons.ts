@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { withTenant } from "@/lib/db";
 
@@ -84,9 +85,19 @@ function buildComparisonRows(
 }
 
 
+function classificationsFromStructuredOutput(structuredOutput: any): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const item of structuredOutput?.interpretation ?? []) {
+    if (item.interpretable && item.classification && !map.has(item.parameterCode)) {
+      map.set(item.parameterCode, item.classification);
+    }
+  }
+  return map;
+}
+
 type AnalysisScope = { id: string };
 
-async function latestAnalysisForField(client: any, tenantId: string, fieldId: string): Promise<AnalysisScope | null> {
+async function latestAnalysisForField(client: PoolClient, tenantId: string, fieldId: string): Promise<AnalysisScope | null> {
   const result = await client.query(
     `SELECT a.id::text
      FROM analyses a
@@ -99,7 +110,7 @@ async function latestAnalysisForField(client: any, tenantId: string, fieldId: st
   return result.rows[0] ?? null;
 }
 
-async function latestAnalysisForSeason(client: any, tenantId: string, seasonId: string): Promise<AnalysisScope | null> {
+async function latestAnalysisForSeason(client: PoolClient, tenantId: string, seasonId: string): Promise<AnalysisScope | null> {
   const result = await client.query(
     `SELECT a.id::text, a.collection_order_id::text AS "collectionOrderId"
      FROM analyses a
@@ -111,7 +122,7 @@ async function latestAnalysisForSeason(client: any, tenantId: string, seasonId: 
   return result.rows[0] ?? null;
 }
 
-async function aggregateParametersByAnalysis(client: any, tenantId: string, analysisId: string | null): Promise<Map<string, AggregateRow>> {
+async function aggregateParametersByAnalysis(client: PoolClient, tenantId: string, analysisId: string | null): Promise<Map<string, AggregateRow>> {
   if (!analysisId) return new Map();
   const result = await client.query(
     `SELECT lr.parameter_code AS "parameterCode", count(*)::int AS n, avg(lr.numeric_value)::float8 AS avg,
@@ -129,7 +140,7 @@ async function aggregateParametersByAnalysis(client: any, tenantId: string, anal
   return new Map(result.rows.map((row: AggregateRow) => [row.parameterCode, row]));
 }
 
-async function currentApprovedInterpretationOutput(client: any, tenantId: string, analysisId: string | null): Promise<any | null> {
+async function currentApprovedInterpretationOutput(client: PoolClient, tenantId: string, analysisId: string | null): Promise<any | null> {
   if (!analysisId) return null;
   const result = await client.query<{
     status: string | null;
@@ -183,7 +194,7 @@ async function currentApprovedInterpretationOutput(client: any, tenantId: string
   return freshness.current ? row.structuredOutput : null;
 }
 
-async function currentApprovedClassificationsForAnalysis(client: any, tenantId: string, analysisId: string | null): Promise<Map<string, string>> {
+async function currentApprovedClassificationsForAnalysis(client: PoolClient, tenantId: string, analysisId: string | null): Promise<Map<string, string>> {
   return classificationsFromStructuredOutput(await currentApprovedInterpretationOutput(client, tenantId, analysisId));
 }
 
