@@ -94,6 +94,8 @@ assert.match(alertsRepository, /Análise precisa atualizar/);
 assert.match(alertsRepository, /CROP_PROFILE_CHANGED/);
 assert.match(alertsRepository, /LAB_EVIDENCE_CHANGED/);
 assert.match(alertsRepository, /AGRONOMIC_RULES_CHANGED/);
+assert.match(alertsRepository, /WITH latest_seasons AS/);
+assert.match(alertsRepository, /DISTINCT ON \(cs\.field_id\)/);
 
 // O fluxo simples mantém evidência/readiness técnica por baixo sem publicar silenciosamente.
 assert.match(send, /buildAnalysisEvidence/);
