@@ -90,6 +90,10 @@ assert.match(alertsRepository, /i\.crop_profile_id IS NOT DISTINCT FROM cs\.crop
 assert.match(alertsRepository, /g\.status = 'APPROVED'/);
 assert.match(alertsRepository, /g\.interpretation_id = li\.id/);
 assert.match(alertsRepository, /coalesce\(r\.calculation_source, ''\) NOT LIKE 'ai_generations:%'/);
+assert.match(alertsRepository, /Análise precisa atualizar/);
+assert.match(alertsRepository, /CROP_PROFILE_CHANGED/);
+assert.match(alertsRepository, /LAB_EVIDENCE_CHANGED/);
+assert.match(alertsRepository, /AGRONOMIC_RULES_CHANGED/);
 
 // O fluxo simples mantém evidência/readiness técnica por baixo sem publicar silenciosamente.
 assert.match(send, /buildAnalysisEvidence/);
