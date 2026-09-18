@@ -10,12 +10,14 @@ import type { OperationalAlert } from "@/lib/repositories/alerts";
 import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domain/user-attention";
 
 export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverview; alerts: OperationalAlert[] }) {
-  const { field, seasons, analyses, reports } = overview;
+  const { field, seasons, analyses, reports, collectionPoints } = overview;
   const season = seasons[0] ?? null;
   const seasonAnalyses = analyses.filter((analysis) => !season || analysis.cropSeasonId === season.id);
   const latest = seasonAnalyses[0] ?? null;
   const latestReport = latest ? reports.find((report) => report.analysisId === latest.id) ?? null : reports[0] ?? null;
   const actionableAlerts = userActionAlerts(alerts).slice(0, 3);
+  const collectedPoints = collectionPoints.filter((point: any) => Boolean(point.collectedAt));
+  const estimatedPointCount = collectionPoints.filter((point: any) => String(point.gpsSource ?? "").toUpperCase().startsWith("ESTIMADO_")).length;
 
   let stateTitle = "Ainda não analisado";
   let stateText = "Envie os dados desta área e a RAIZ organiza o restante.";
@@ -67,7 +69,21 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
       </header>
 
       <section className="simple-field-map-card">
-        <RealFieldMap boundary={field.boundary as any} points={[]} height={390} hint="Clique e arraste para explorar a área" />
+        <div className="simple-field-map-head">
+          <div><span>ÁREA E COLETA</span><strong>{collectionPoints.length ? `${collectedPoints.length || collectionPoints.length} ponto(s) de coleta` : "Limite do talhão"}</strong></div>
+        </div>
+        <RealFieldMap
+          boundary={field.boundary as any}
+          points={collectionPoints as any}
+          height={390}
+          hint={collectionPoints.length ? "Área e pontos desta coleta" : "Clique e arraste para explorar a área"}
+        />
+        {estimatedPointCount > 0 && (
+          <div className="simple-field-map-note">
+            <Icon name="info" size={14}/>
+            <span>{estimatedPointCount === collectionPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível." : "Alguns pontos usam posição aproximada conforme a referência disponível."}</span>
+          </div>
+        )}
       </section>
 
       <SimpleFieldVigor fieldId={field.id}/>
