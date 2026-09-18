@@ -16,7 +16,7 @@ export type PublishedReportContext = {
   createdAt: string; updatedAt: string;
   clientName: string; propertyName: string; municipality: string; state: string;
   fieldId: string; fieldName: string; areaHa: number;
-  seasonLabel: string; currentCrop: string | null; cultivar: string | null; managementSystem: string | null;
+  seasonLabel: string; currentCrop: string | null; nextCrop?: string | null; cropProfileName?: string | null; cultivar: string | null; managementSystem: string | null;
   soilTexture: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; laboratoryName: string | null;
 };
 
