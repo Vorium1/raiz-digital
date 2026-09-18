@@ -70,7 +70,6 @@ assert.match(simpleRefresh, /raiz:ux3:rule-refresh:\$\{analysisId\}/);
 assert.match(simpleRefresh, /interpret\?draft=0/);
 assert.match(simpleRefresh, /useEffect/);
 assert.match(simpleRefresh, /method:\s*"POST"/);
-assert.doesNotMatch(simpleRefresh, /useEffect/);
 assert.match(interpretationsRepository, /normalizeUnit\(row\.parameterCode, row\.unit\)/);
 assert.match(interpretationsRepository, /normalizeAnalyticalMethod\(row\.parameterCode, row\.method\)/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
