@@ -20,12 +20,35 @@ export type DecisionDeliveryStatus = {
  * prescrição e relatórios anteriores históricos, sem apagá-los nem fingir que a decisão continua válida.
  *
  * Um relatório só conta como entrega corrente quando `reports.prescription_generation_id` aponta para
- * exatamente a recomendação mais recente da mesma interpretação. Snapshots legados ficam com vínculo
- * nulo e continuam históricos; o audit log segue como evidência, não como relacionamento primário.
+ * exatamente a recomendação mais recente da mesma interpretação. Enquanto a migration 038 ainda não
+ * estiver aplicada em um ambiente, a leitura degrada de forma fail-closed: histórico continua visível,
+ * mas nenhuma entrega é promovida a "corrente" por inferência.
  */
 export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds: string[], userId?: string): Promise<DecisionDeliveryStatus[]> {
   if (analysisIds.length === 0) return [];
   return withTenant({ tenantId, userId }, async (client) => {
+    const schemaState = await client.query<{ hasPrescriptionLink: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema='public'
+           AND table_name='reports'
+           AND column_name='prescription_generation_id'
+       ) AS "hasPrescriptionLink"`,
+    );
+    const hasPrescriptionLink = schemaState.rows[0]?.hasPrescriptionLink === true;
+    const currentReportJoin = hasPrescriptionLink
+      ? `LEFT JOIN LATERAL (
+           SELECT count(*)::int AS report_count, max(r.published_at) AS latest_report_at
+           FROM reports r
+           WHERE r.tenant_id=a.tenant_id
+             AND r.interpretation_id=latest_i.id
+             AND r.prescription_generation_id=prescription.id
+         ) current_report_stats ON true`
+      : `LEFT JOIN LATERAL (
+           SELECT 0::int AS report_count, NULL::timestamptz AS latest_report_at
+         ) current_report_stats ON true`;
+
     const result = await client.query<{
       analysisId: string;
       cropSeasonUpdatedAt: string;
@@ -91,13 +114,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
          JOIN reports r ON r.tenant_id=i.tenant_id AND r.interpretation_id=i.id
          WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
        ) report_stats ON true
-       LEFT JOIN LATERAL (
-         SELECT count(*)::int AS report_count, max(r.published_at) AS latest_report_at
-         FROM reports r
-         WHERE r.tenant_id=a.tenant_id
-           AND r.interpretation_id=latest_i.id
-           AND r.prescription_generation_id=prescription.id
-       ) current_report_stats ON true
+       ${currentReportJoin}
        WHERE a.tenant_id=$1::uuid AND a.id=ANY($2::uuid[])`,
       [tenantId, analysisIds],
     );
