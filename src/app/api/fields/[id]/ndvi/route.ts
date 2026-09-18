@@ -8,10 +8,15 @@ import { getPlatformSession } from "@/lib/auth/session";
 import {
   NDVI_RASTER_ALGORITHM_VERSION,
   NdviRasterPersistenceError,
+  ndviRasterStorageProvider,
   saveRequiredNdviRasterArtifact,
 } from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getLatestNdviSnapshot, listNdviHistoryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
 import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import {
+  EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
+  earthSearchNdviProvider,
+} from "@/lib/satellite/earth-search-ndvi-provider";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const HISTORY_LOOKBACK_DAYS = 120;
@@ -26,36 +31,59 @@ const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
 
 function ndviRuntimeReadiness() {
   const missing: string[] = [];
+  const satelliteProvider = (process.env.NDVI_SATELLITE_PROVIDER ?? "earth-search").trim().toLowerCase();
   const copernicusConfigured = Boolean(
     process.env.COPERNICUS_CLIENT_ID?.trim() && process.env.COPERNICUS_CLIENT_SECRET?.trim(),
   );
-  if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
-  if (!process.env.COPERNICUS_CLIENT_SECRET?.trim()) missing.push("COPERNICUS_CLIENT_SECRET");
+  const satelliteConfigured = satelliteProvider === "earth-search"
+    || (satelliteProvider === "copernicus" && copernicusConfigured);
 
-  const storageProvider = (process.env.STORAGE_PROVIDER ?? "local").trim().toLowerCase();
-  const durableStorageConfigured = storageProvider === "s3"
-    && Boolean(
+  if (satelliteProvider === "copernicus") {
+    if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
+    if (!process.env.COPERNICUS_CLIENT_SECRET?.trim()) missing.push("COPERNICUS_CLIENT_SECRET");
+  } else if (satelliteProvider !== "earth-search") {
+    missing.push(`NDVI_SATELLITE_PROVIDER=${satelliteProvider} não suportado`);
+  }
+
+  const storageProvider = ndviRasterStorageProvider();
+  let durableStorageConfigured = false;
+  if (storageProvider === "inline") {
+    durableStorageConfigured = true;
+  } else if (storageProvider === "s3") {
+    durableStorageConfigured = Boolean(
       process.env.S3_ENDPOINT?.trim()
       && process.env.S3_BUCKET?.trim()
       && process.env.S3_ACCESS_KEY?.trim()
       && process.env.S3_SECRET_KEY?.trim(),
     );
-
-  if (process.env.VERCEL && storageProvider !== "s3") missing.push("STORAGE_PROVIDER=s3");
-  if (storageProvider === "s3") {
     if (!process.env.S3_ENDPOINT?.trim()) missing.push("S3_ENDPOINT");
     if (!process.env.S3_BUCKET?.trim()) missing.push("S3_BUCKET");
     if (!process.env.S3_ACCESS_KEY?.trim()) missing.push("S3_ACCESS_KEY");
     if (!process.env.S3_SECRET_KEY?.trim()) missing.push("S3_SECRET_KEY");
+  } else if (storageProvider === "local" && !process.env.VERCEL) {
+    durableStorageConfigured = true;
+  } else {
+    missing.push(`NDVI_RASTER_STORAGE_PROVIDER=${storageProvider} não é durável neste runtime`);
   }
 
+  const mosaickingOrder = satelliteProvider === "copernicus"
+    ? COPERNICUS_NDVI_MOSAICKING_ORDER
+    : EARTH_SEARCH_NDVI_MOSAICKING_ORDER;
+
   return {
-    ready: copernicusConfigured && (!process.env.VERCEL || durableStorageConfigured),
+    ready: satelliteConfigured && durableStorageConfigured,
+    satelliteProvider,
+    satelliteConfigured,
     copernicusConfigured,
-    durableStorageConfigured: process.env.VERCEL ? durableStorageConfigured : storageProvider === "s3" || storageProvider === "local",
+    durableStorageConfigured,
     storageProvider,
+    mosaickingOrder,
     missing: [...new Set(missing)],
   };
+}
+
+function runtimeProvider(runtime: ReturnType<typeof ndviRuntimeReadiness>) {
+  return runtime.satelliteProvider === "copernicus" ? copernicusNdviProvider : earthSearchNdviProvider;
 }
 
 function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
@@ -132,7 +160,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
   let scenes;
   try {
-    scenes = await copernicusNdviProvider.fetchFieldNdviSeries({
+    scenes = await runtimeProvider(runtime).fetchFieldNdviSeries({
       fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
       fromDate: fromDate.toISOString().slice(0, 10),
       toDate: toDate.toISOString().slice(0, 10),
@@ -164,7 +192,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   for (const scene of scenesToArchive) {
     let raster;
     try {
-      raster = await copernicusNdviProvider.fetchFieldNdviMap({
+      raster = await runtimeProvider(runtime).fetchFieldNdviMap({
         fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
         capturedAt: scene.capturedAt,
       });
@@ -218,7 +246,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
           width: raster.width,
           height: raster.height,
           algorithm: NDVI_RASTER_ALGORITHM_VERSION,
-          mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
+          mosaickingOrder: runtime.mosaickingOrder,
         },
       });
     } catch (error) {
