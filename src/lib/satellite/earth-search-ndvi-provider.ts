@@ -270,8 +270,7 @@ async function readCogBand(
 ) {
   if (!asset.href) throw new Error("Asset Sentinel-2 sem URL.");
   const tiff = await fromUrl(publicCogUrl(asset.href));
-  const image = await tiff.getImage();
-  const values = await image.readRasters({
+  const values = await tiff.readRasters({
     bbox,
     width,
     height,
