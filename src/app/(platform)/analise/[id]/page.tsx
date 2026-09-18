@@ -104,9 +104,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <i/>
         <div className={analysisReady ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisReady ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisReady ? "Pronta" : analysisCurrent ? "Limitada" : imported ? "Atualizar" : "Em andamento"}</small></div>
         <i/>
-        <div className={interpretationStatus === "APPROVED" ? "done" : interpretationStatus === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{interpretationStatus === "APPROVED" ? "Concluída" : "Quando estiver pronta"}</small></div>
+        <div className={interpretationStatus === "APPROVED" ? "done" : interpretationStatus === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{interpretationStatus === "APPROVED" ? "Concluída" : interpretationStatus === "IN_REVIEW" ? "Aguardando você" : "Depois da análise"}</small></div>
         <i/>
-        <div className={delivery?.currentReportCount ? "done" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : "Depois da revisão"}</small></div>
+        <div className={delivery?.currentReportCount ? "done" : interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED" ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED" ? "Pronto para publicar" : "Depois da revisão"}</small></div>
       </section>
 
       {findingSummaries.length > 0 && (
