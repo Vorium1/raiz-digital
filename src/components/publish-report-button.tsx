@@ -14,8 +14,8 @@ export function PublishReportButton({ interpretationId }: { interpretationId: st
     try {
       const response = await fetch(`/api/interpretations/${interpretationId}/publish-report`, { method: "POST" });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "Falha ao publicar a decisão oficial.");
-      setMessage({ tone: "success", text: "Decisão oficial publicada com versão imutável e trilha de auditoria." });
+      if (!response.ok) throw new Error(data.error ?? "Falha ao gerar a versão oficial RAIZ.");
+      setMessage({ tone: "success", text: "Laudo RAIZ oficial gerado com versão imutável e trilha de auditoria." });
       router.refresh();
     } catch (error) {
       setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao publicar a decisão oficial." });
@@ -27,7 +27,7 @@ export function PublishReportButton({ interpretationId }: { interpretationId: st
   return (
     <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <button type="button" className="button secondary" disabled={busy} onClick={() => void publish()}>
-        <Icon name="upload" size={15}/>{busy ? "Publicando…" : "Publicar decisão oficial"}
+        <Icon name="upload" size={15}/>{busy ? "Gerando…" : "Gerar versão oficial RAIZ"}
       </button>
       {message && <span style={{ fontSize: 11, color: message.tone === "success" ? "#287d5f" : "#b3473e" }}>{message.text}</span>}
     </div>
