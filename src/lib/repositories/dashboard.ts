@@ -207,7 +207,7 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
          (SELECT count(*)::int FROM scoped_analyses WHERE status NOT IN ('DRAFT')) AS "labsProcessed",
          (SELECT count(*)::int FROM latest_evaluation WHERE interpretation_status = 'IN_REVIEW') AS "interpretationsPending",
          (SELECT count(*)::int FROM latest_evaluation WHERE analysis_status = 'INCONSISTENT') AS "criticalFields",
-         (SELECT avg(confidence_score)::float8 FROM latest_evaluation WHERE confidence_score IS NOT NULL) AS "avgConfidence",
+         (SELECT avg(confidence_score)::float8 FROM latest_evaluation WHERE confidence_score IS NOT NULL AND interpretation_status IS NOT NULL) AS "avgConfidence",
          (SELECT count(*)::int
           FROM latest_evaluation
           WHERE interpretation_status = 'CALCULATED'
