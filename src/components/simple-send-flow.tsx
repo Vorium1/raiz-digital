@@ -52,6 +52,7 @@ export function SimpleSendFlow() {
   const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [areaConfirmed, setAreaConfirmed] = useState(false);
+  const [setupStage, setSetupStage] = useState<"client" | "property" | "field" | "season" | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -101,6 +102,7 @@ export function SimpleSendFlow() {
 
   async function handleSetupCreated(kind: "client" | "property" | "field" | "season", id: string) {
     await refreshContext();
+    setSetupStage(null);
     if (kind === "client") {
       setClientId(id); setPropertyId(""); setFieldId(""); setSeasonId("");
     } else if (kind === "property") {
@@ -238,10 +240,23 @@ export function SimpleSendFlow() {
                 clientId={clientId}
                 propertyId={propertyId}
                 fieldId={fieldId}
+                forceStage={setupStage}
                 onCreated={handleSetupCreated}
               />
 
-              {areaReady && (
+              {context.clients.length > 0 && (
+                <details className="simple-area-new-menu">
+                  <summary>Não encontrou a área?</summary>
+                  <div>
+                    <button type="button" onClick={() => { setAreaConfirmed(false); setSetupStage("client"); }}>Novo cliente</button>
+                    {clientId && <button type="button" onClick={() => { setAreaConfirmed(false); setSetupStage("property"); }}>Nova fazenda</button>}
+                    {propertyId && <button type="button" onClick={() => { setAreaConfirmed(false); setSetupStage("field"); }}>Novo talhão</button>}
+                    {fieldId && <button type="button" onClick={() => { setAreaConfirmed(false); setSetupStage("season"); }}>Nova safra</button>}
+                  </div>
+                </details>
+              )}
+
+              {areaReady && setupStage == null && (
                 <div className={`simple-area-confirmed ${areaConfirmed ? "confirmed" : "pending"}`}>
                   <Icon name={areaConfirmed ? "check" : "location"} size={18}/>
                   <div>
