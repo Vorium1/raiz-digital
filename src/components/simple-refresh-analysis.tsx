@@ -26,6 +26,11 @@ const COPY: Record<AnalysisEvidenceFreshnessCode, { title: string; text: string;
     text: "Há dados mais recentes do que esta análise. Atualize para continuar.",
     button: "Atualizar análise",
   },
+  CROP_PROFILE_CHANGED: {
+    title: "Perfil agronômico atualizado",
+    text: "A safra passou a usar outro perfil agronômico. A RAIZ precisa recalcular esta análise com o perfil atual.",
+    button: "Atualizar agora",
+  },
   AGRONOMIC_RULES_CHANGED: {
     title: "Atualização disponível",
     text: "A RAIZ encontrou regras agronômicas mais atuais e está atualizando esta análise automaticamente.",
@@ -59,19 +64,23 @@ export function SimpleRefreshAnalysis({
         sessionStorage.setItem(`raiz:ux3:auto:${analysisId}`, String(payload.prescriptionDraftError));
       }
       router.refresh();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível atualizar esta análise.");
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   useEffect(() => {
-    if (freshnessCode !== "AGRONOMIC_RULES_CHANGED") return;
+    if (freshnessCode !== "AGRONOMIC_RULES_CHANGED" && freshnessCode !== "CROP_PROFILE_CHANGED") return;
     const key = `raiz:ux3:rule-refresh:${analysisId}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
-    void refreshAnalysis({ deterministicOnly: true });
+    void refreshAnalysis({ deterministicOnly: true }).then((ok) => {
+      if (!ok) sessionStorage.removeItem(key);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisId, freshnessCode]);
 
