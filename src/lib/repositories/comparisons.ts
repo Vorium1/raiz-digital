@@ -84,19 +84,16 @@ function buildComparisonRows(
 }
 
 
-type AnalysisScope = {
-  id: string;
-  collectionOrderId: string | null;
-};
+type AnalysisScope = { id: string };
 
 async function latestAnalysisForField(client: any, tenantId: string, fieldId: string): Promise<AnalysisScope | null> {
   const result = await client.query(
-    \`SELECT a.id::text, a.collection_order_id::text AS "collectionOrderId"
+    `SELECT a.id::text
      FROM analyses a
      JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
      WHERE a.tenant_id = $1::uuid AND cs.field_id = $2::uuid
      ORDER BY a.created_at DESC, a.id DESC
-     LIMIT 1\`,
+     LIMIT 1`,
     [tenantId, fieldId],
   );
   return result.rows[0] ?? null;
@@ -104,11 +101,11 @@ async function latestAnalysisForField(client: any, tenantId: string, fieldId: st
 
 async function latestAnalysisForSeason(client: any, tenantId: string, seasonId: string): Promise<AnalysisScope | null> {
   const result = await client.query(
-    \`SELECT a.id::text, a.collection_order_id::text AS "collectionOrderId"
+    `SELECT a.id::text, a.collection_order_id::text AS "collectionOrderId"
      FROM analyses a
      WHERE a.tenant_id = $1::uuid AND a.crop_season_id = $2::uuid
      ORDER BY a.created_at DESC, a.id DESC
-     LIMIT 1\`,
+     LIMIT 1`,
     [tenantId, seasonId],
   );
   return result.rows[0] ?? null;
@@ -117,7 +114,7 @@ async function latestAnalysisForSeason(client: any, tenantId: string, seasonId: 
 async function aggregateParametersByAnalysis(client: any, tenantId: string, analysisId: string | null): Promise<Map<string, AggregateRow>> {
   if (!analysisId) return new Map();
   const result = await client.query(
-    \`SELECT lr.parameter_code AS "parameterCode", count(*)::int AS n, avg(lr.numeric_value)::float8 AS avg,
+    `SELECT lr.parameter_code AS "parameterCode", count(*)::int AS n, avg(lr.numeric_value)::float8 AS avg,
             array_remove(array_agg(DISTINCT lr.unit), NULL) AS units,
             array_remove(array_agg(DISTINCT lr.analytical_method), NULL) AS methods,
             array_remove(array_agg(DISTINCT ls.sample_type), NULL) AS "sampleTypes",
@@ -126,7 +123,7 @@ async function aggregateParametersByAnalysis(client: any, tenantId: string, anal
      JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
      LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
      WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid
-     GROUP BY lr.parameter_code\`,
+     GROUP BY lr.parameter_code`,
     [tenantId, analysisId],
   );
   return new Map(result.rows.map((row: AggregateRow) => [row.parameterCode, row]));
@@ -143,7 +140,7 @@ async function currentApprovedInterpretationOutput(client: any, tenantId: string
     latestImportCommittedAt: string | null;
     latestRuleUpdatedAt: string | null;
   }>(
-    \`SELECT li.status::text AS status,
+    `SELECT li.status::text AS status,
             li.structured_output AS "structuredOutput",
             li.created_at::text AS "interpretationCreatedAt",
             li.crop_profile_id::text AS "interpretationCropProfileId",
@@ -171,7 +168,7 @@ async function currentApprovedInterpretationOutput(client: any, tenantId: string
        WHERE cpp.crop_profile_id = cp.id
      ) rule_state ON cp.id IS NOT NULL
      WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
-     LIMIT 1\`,
+     LIMIT 1`,
     [tenantId, analysisId],
   );
   const row = result.rows[0];
@@ -193,7 +190,7 @@ async function currentApprovedClassificationsForAnalysis(client: any, tenantId: 
 export async function compareFields(tenantId: string, fieldIdA: string, fieldIdB: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const fieldsResult = await client.query(
-      \`SELECT id::text, name, ST_AsGeoJSON(boundary)::json AS boundary FROM fields WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])\`,
+      `SELECT id::text, name, ST_AsGeoJSON(boundary)::json AS boundary FROM fields WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
       [tenantId, [fieldIdA, fieldIdB]],
     );
     const fieldA = fieldsResult.rows.find((row: any) => row.id === fieldIdA);
@@ -224,9 +221,9 @@ export async function compareFields(tenantId: string, fieldIdA: string, fieldIdB
 export async function compareSeasons(tenantId: string, seasonIdA: string, seasonIdB: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const seasonsResult = await client.query(
-      \`SELECT cs.id::text, cs.season_label AS label, f.name AS "fieldName" FROM crop_seasons cs
+      `SELECT cs.id::text, cs.season_label AS label, f.name AS "fieldName" FROM crop_seasons cs
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       WHERE cs.tenant_id = $1::uuid AND cs.id = ANY($2::uuid[])\`,
+       WHERE cs.tenant_id = $1::uuid AND cs.id = ANY($2::uuid[])`,
       [tenantId, [seasonIdA, seasonIdB]],
     );
     const seasonA = seasonsResult.rows.find((row: any) => row.id === seasonIdA);
@@ -256,7 +253,7 @@ export async function comparePoints(tenantId: string, pointIdA: string, pointIdB
   return withTenant({ tenantId, userId }, async (client) => {
     async function pointScope(pointId: string): Promise<{ code: string; fieldName: string; analysisId: string | null } | null> {
       const pointResult = await client.query(
-        \`SELECT sp.id::text, sp.code, f.name AS "fieldName", latest_analysis.id::text AS "analysisId"
+        `SELECT sp.id::text, sp.code, f.name AS "fieldName", latest_analysis.id::text AS "analysisId"
          FROM sample_points sp
          JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
          JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
@@ -268,7 +265,7 @@ export async function comparePoints(tenantId: string, pointIdA: string, pointIdB
            ORDER BY a.created_at DESC, a.id DESC
            LIMIT 1
          ) latest_analysis ON true
-         WHERE sp.tenant_id = $1::uuid AND sp.id = $2::uuid\`,
+         WHERE sp.tenant_id = $1::uuid AND sp.id = $2::uuid`,
         [tenantId, pointId],
       );
       return pointResult.rows[0] ?? null;
@@ -277,13 +274,13 @@ export async function comparePoints(tenantId: string, pointIdA: string, pointIdB
     async function pointResults(pointId: string, analysisId: string | null) {
       if (!analysisId) return [];
       const result = await client.query(
-        \`SELECT lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
+        `SELECT lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
                 ls.sample_type AS "sampleType", sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
          FROM lab_samples ls
          JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
          JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
          WHERE ls.tenant_id = $1::uuid AND ls.sample_point_id = $2::uuid AND ls.analysis_id = $3::uuid
-         ORDER BY lr.parameter_code\`,
+         ORDER BY lr.parameter_code`,
         [tenantId, pointId, analysisId],
       );
       return result.rows;
