@@ -67,7 +67,7 @@ assert.match(simpleAnalysis, /<SimpleRefreshAnalysis analysisId=\{id\}/);
 assert.match(simpleRefresh, /\/api\/analyses\/\$\{analysisId\}\/interpret/);
 assert.match(simpleRefresh, /AGRONOMIC_RULES_CHANGED/);
 assert.match(simpleRefresh, /raiz:ux3:rule-refresh:\$\{analysisId\}/);
-assert.match(simpleRefresh, /interpret\\?draft=local/);
+assert.match(simpleRefresh, /interpret\?draft=local/);
 assert.match(simpleRefresh, /useEffect/);
 assert.match(simpleRefresh, /method:\s*"POST"/);
 assert.match(interpretationsRepository, /normalizeUnit\(row\.parameterCode, row\.unit\)/);
