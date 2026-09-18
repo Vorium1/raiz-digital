@@ -43,6 +43,7 @@ const PARAMETER_LABEL: Record<string, string> = {
 const PARAMETER_PRIORITY = ["P", "K", "PH", "MO", "CA", "MG", "ZN", "CU", "B", "MN", "S"];
 const REFRESHABLE_FRESHNESS_CODES = new Set<AnalysisEvidenceFreshnessCode>([
   "AGRONOMIC_RULES_CHANGED",
+  "CROP_PROFILE_CHANGED",
   "LAB_EVIDENCE_CHANGED",
   "INTERPRETATION_TIMESTAMP_MISSING",
 ]);
