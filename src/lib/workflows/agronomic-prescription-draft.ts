@@ -21,8 +21,11 @@ export async function prepareAgronomicPrescriptionDraft(input: {
   tenantId: string;
   userId: string;
   analysisId: string;
+  mode?: "default" | "deterministic";
 }) {
-  let provider = resolveAgronomicPrescriptionProvider();
+  let provider = input.mode === "deterministic"
+    ? deterministicLimitedPrescriptionProvider
+    : resolveAgronomicPrescriptionProvider();
   if (provider.isRealLanguageModel) {
     const usage = await getTenantPrescriptionUsage(input.tenantId);
     if (usage.usedThisMonth >= usage.monthlyLimit) {
