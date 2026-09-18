@@ -2,15 +2,26 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { listAnalyses } from "@/lib/repositories/analyses";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 
 export const metadata = { title: "Revisar" };
 
 export default async function RevisarPage() {
   const session = await requirePlatformSession();
   const analyses = await listAnalyses(session.tenantId, session.userId);
-  const pending = analyses.filter((item: any) =>
+  const candidates = analyses.filter((item: any) =>
     item.status === "AWAITING_REVIEW" || item.latestInterpretationStatus === "IN_REVIEW",
   );
+  const evidenceStates = await Promise.all(
+    candidates.map((item: any) =>
+      getAnalysisEvidenceState({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        analysisId: item.id,
+      }),
+    ),
+  );
+  const pending = candidates.filter((_: any, index: number) => evidenceStates[index]?.freshness.current === true);
 
   return (
     <div className="simple-home simple-review-page">
@@ -25,7 +36,7 @@ export default async function RevisarPage() {
               <span className="simple-review-icon ready"><Icon name="shield" size={21}/></span>
               <div className="simple-review-copy">
                 <strong>{item.fieldName}</strong>
-                <small>{item.clientName} · {item.propertyName}{item.currentCrop ? ` · ${item.currentCrop}` : ""}</small>
+                <small>{item.clientName} · {item.propertyName}{(item.currentCrop || item.nextCrop) ? ` · ${item.currentCrop || item.nextCrop}` : ""}</small>
               </div>
               <span className="simple-review-state ready">Pronto para revisar</span>
               <Icon name="chevron" size={17}/>
