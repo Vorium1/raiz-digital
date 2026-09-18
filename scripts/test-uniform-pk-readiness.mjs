@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  computeDeterministicPkDose,
   evaluateUniformPkReadiness,
   validateDeterministicPkRecommendation,
 } from "../src/domain/uniform-pk-readiness.ts";
