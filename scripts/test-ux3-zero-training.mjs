@@ -415,3 +415,5 @@ assert.match(officialResultRoute, /runInterpretationForAnalysis/);
 assert.match(officialResultRoute, /mode: "deterministic"/);
 assert.match(officialResultRoute, /publishPremiumFieldAnalysisReport/);
 assert.match(officialResultRoute, /currentReportCount/);
+
+assert.match(deterministicFallback, /Premissas automáticas rastreadas/);
