@@ -235,6 +235,8 @@ assert.match(technicalReport, /STALE_RECOMMENDATION: "Recomendação histórica 
 assert.match(simpleResult, /ndvi\.rasterArchived/);
 assert.match(premiumReportPublisher, /field_ndvi_snapshots/);
 assert.match(reportsRepository, /Fluxo legado de publicação desabilitado/);
+assert.match(reportsRepository, /AND status = 'APPROVED'/);
+assert.match(reportsRepository, /approved_i\.structured_output/);
 assert.doesNotMatch(reportsRepository, /export async function publishFieldAnalysisReport[\s\S]*?INSERT INTO reports/);
 assert.match(premiumReportPublisher, /ndviSnapshot,/);
 assert.match(simpleResult, /plannedPointCount/);
