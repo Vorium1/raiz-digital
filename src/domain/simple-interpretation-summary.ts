@@ -1,4 +1,4 @@
-import { computeParameterPredominance } from "@/domain/parameter-predominance";
+import { computeParameterPredominance } from "./parameter-predominance.ts";
 
 export type SimpleInterpretationItem = {
   sampleCode?: string | null;
