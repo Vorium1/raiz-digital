@@ -42,7 +42,7 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
       inputType: nutrient,
       quantity: dose.expected.doseKgPerHa,
       unit: "kg/ha",
-      rationale: `Dose exata do motor determinístico ${dose.expected.ruleId}, classe ${dose.expected.soilLevel}, com contexto corrente da safra.`,
+      rationale: `Dose exata do motor determinístico ${dose.expected.ruleId}, classe ${dose.expected.soilLevel}. ${dose.expected.assumptions.length ? `Premissas automáticas rastreadas: ${dose.expected.assumptions.join(", ")}.` : "Contexto informado na safra."}`,
     });
   }
 
