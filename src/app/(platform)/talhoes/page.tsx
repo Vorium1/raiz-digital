@@ -8,7 +8,7 @@ export const metadata = { title: "Talhões" };
 
 const STATUS_COPY = {
   SEM_ANALISE: "Sem dados ainda",
-  NAO_INTERPRETAVEL: "Precisa conferir",
+  NAO_INTERPRETAVEL: "Precisa continuar",
   EM_ANDAMENTO: "Em andamento",
   APROVADO: "Pronto",
 } as const;
@@ -21,7 +21,7 @@ export default async function TalhoesPage() {
     <div className="simple-home simple-fields-page">
       <header className="simple-home-head">
         <div><span>SEUS TALHÕES</span><h1>Talhões</h1><p>Abra uma área para ver tudo o que existe nela.</p></div>
-        <Link href="/coletas" className="simple-soft-button"><Icon name="location" size={17}/> Coletas</Link>
+        <Link href="/enviar" className="simple-soft-button"><Icon name="upload" size={17}/> Enviar dados</Link>
       </header>
 
       {fields.length > 0 ? (
@@ -44,7 +44,10 @@ export default async function TalhoesPage() {
         </>
       ) : (
         <div className="simple-empty-map">
-          <Icon name="layers" size={36}/><strong>Nenhum talhão cadastrado.</strong><small>Quando uma área for adicionada, ela aparece aqui.</small>
+          <Icon name="layers" size={36}/>
+          <strong>Nenhum talhão cadastrado.</strong>
+          <small>Envie o primeiro laudo e a RAIZ ajuda a cadastrar a área sem sair do fluxo.</small>
+          <Link href="/enviar">Começar agora <Icon name="arrow" size={14}/></Link>
         </div>
       )}
     </div>
