@@ -213,6 +213,9 @@ assert.match(interpretationsRepository, /normalizeAnalyticalMethod\(row\.paramet
 assert.match(prescriptionFreshnessRepository, /latestRuleUpdatedAt/);
 assert.match(prescriptionFreshnessRepository, /latest_rule_updated_at/);
 assert.match(prescriptionFreshnessRepository, /latestRuleUpdatedAt:\s*row\.latestRuleUpdatedAt/);
+assert.match(prescriptionFreshnessRepository, /latestInterpretationStatus !== "IN_REVIEW"/);
+assert.match(prescriptionFreshnessRepository, /latestInterpretationStatus !== "APPROVED"/);
+assert.match(prescriptionFreshnessRepository, /Não significa[\s\S]*?oficial\/aprovado/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
