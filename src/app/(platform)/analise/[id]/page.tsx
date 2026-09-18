@@ -51,12 +51,12 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
 
   const delivery = deliveryRows[0] ?? null;
   const imported = Number((analysis as any).importCount) > 0 || Number((analysis as any).labSampleCount) > 0;
-  const output = (interpretation as any)?.structuredOutput ?? null;
+  const interpretationStatus = (interpretation as any)?.status ?? null;
+  const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
+  const output = analysisCurrent ? (interpretation as any)?.structuredOutput ?? null : null;
   const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
   const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
   const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
-  const interpretationStatus = (interpretation as any)?.status ?? null;
-  const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
   const prescriptionCurrent = delivery?.prescriptionCurrent === true;
   const finalReviewApproved = analysisCurrent
