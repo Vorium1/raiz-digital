@@ -69,6 +69,8 @@ type CurrentPublicationState = {
   analysisId: string;
   interpretationStatus: string;
   interpretationCreatedAt: string;
+  interpretationCropProfileId: string | null;
+  currentCropProfileId: string | null;
   latestInterpretationId: string | null;
   latestImportCommittedAt: string | null;
   latestRuleUpdatedAt: string | null;
@@ -88,6 +90,8 @@ async function assertCurrentPublicationState(
     `SELECT i.analysis_id::text AS "analysisId",
             i.status::text AS "interpretationStatus",
             i.created_at::text AS "interpretationCreatedAt",
+            i.crop_profile_id::text AS "interpretationCropProfileId",
+            cs.crop_profile_id::text AS "currentCropProfileId",
             latest_i.id::text AS "latestInterpretationId",
             latest_import.latest_import_at::text AS "latestImportCommittedAt",
             rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
@@ -147,6 +151,8 @@ async function assertCurrentPublicationState(
   const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: state.interpretationCreatedAt,
     latestImportCommittedAt: state.latestImportCommittedAt,
+    interpretationCropProfileId: state.interpretationCropProfileId,
+    currentCropProfileId: state.currentCropProfileId,
     latestRuleUpdatedAt: state.latestRuleUpdatedAt,
   });
   if (!evidenceFreshness.current) {
