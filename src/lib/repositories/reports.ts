@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
-import { writeAudit } from "@/lib/repositories/audit";
-import { saveReportSnapshot, readRawStoredFile } from "@/lib/storage";
+import { readRawStoredFile } from "@/lib/storage";
 import { getExecutiveDashboard, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
-import { getTenantBranding, type TenantBranding } from "@/lib/repositories/tenant-branding";
+import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 
 /** Schema do JSON gravado no publish -- versão 2 (fechamento técnico Fase 3, item 2). Snapshots
  * publicados ANTES desta mudança (se algum dia existirem em outro ambiente) não têm `reportSnapshotVersion`
@@ -273,78 +272,14 @@ export async function getPropertyExecutiveReportData(tenantId: string, propertyI
   });
 }
 
-/** Fecha o elo mapa -> relatório: publica um relatório real a partir de uma interpretação já aprovada. */
+/** Compatibilidade: o publisher v2 antigo foi desativado.
+ * Ele não revalidava a decisão completa (laudo/regra/perfil + prescrição oficial corrente).
+ * O único caminho de escrita oficial é publishPremiumFieldAnalysisReport pela rota /publish-report. */
 export async function publishFieldAnalysisReport(_input: { tenantId: string; userId: string; interpretationId: string }) {
-  // Compatibilidade somente de símbolo. A publicação v2 antiga não revalidava a decisão completa
-  // (freshness de laudo/regra/perfil + prescrição aprovada corrente) e por isso não pode mais gravar.
-  // O único caminho de escrita oficial é o publisher premium chamado pela rota /publish-report.
   throw new ReportError(
     "Fluxo legado de publicação desabilitado. Use a publicação oficial com os gates atuais de integridade.",
     409,
   );
-}) {
-  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
-    const interpretationResult = await client.query(
-      `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.revision, i.status, i.structured_output AS "structuredOutput"
-       FROM interpretations i WHERE i.tenant_id = $1::uuid AND i.id = $2::uuid`,
-      [input.tenantId, input.interpretationId],
-    );
-    const interpretation = interpretationResult.rows[0];
-    if (!interpretation) throw new ReportError("Interpretação não encontrada.", 404);
-    if (interpretation.status !== "APPROVED") throw new ReportError("Só é possível publicar um relatório de uma interpretação já aprovada por um agrônomo responsável.", 409);
-
-    // Fechamento técnico (item 2 do segundo pedido do diretor): congela TAMBÉM os metadados do documento
-    // no momento do publish -- cliente/propriedade/talhão/safra/cultivar/sistema/textura/meta produtiva/
-    // laboratório e a marca (branding) da empresa. Sem isso, "Versão publicada" continuava lendo esses
-    // campos AO VIVO (ex.: talhão renomeado depois vazaria pro documento supostamente imutável). Mesma
-    // consulta/mesmos nomes de coluna de `getFieldAnalysisReportData`, pra "publishedContext" ser um
-    // substituto direto do objeto `analysis` na tela.
-    const contextResult = await client.query<PublishedReportContext>(
-      `SELECT a.id::text, a.code, a.status::text, a.confidence_score::float8 AS "confidenceScore", a.confidence_level AS "confidenceLevel",
-              a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt",
-              c.name AS "clientName", p.name AS "propertyName", p.municipality, p.state,
-              f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
-              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.cultivar, cs.management_system AS "managementSystem",
-              cs.soil_texture AS "soilTexture", cs.yield_goal::float8 AS "yieldGoal", cs.yield_goal_unit AS "yieldGoalUnit",
-              l.name AS "laboratoryName"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN laboratories l ON l.id = a.laboratory_id
-       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
-      [input.tenantId, interpretation.analysisId],
-    );
-    const publishedContext = contextResult.rows[0];
-    if (!publishedContext) throw new ReportError("Contexto da análise não encontrado.", 404);
-    const brandingSnapshot = await getTenantBranding(input.tenantId);
-
-    const snapshotPayload: ReportSnapshotV2 = {
-      reportSnapshotVersion: REPORT_SNAPSHOT_VERSION,
-      interpretationId: interpretation.id,
-      revision: interpretation.revision,
-      publishedContext,
-      structuredOutput: interpretation.structuredOutput,
-      brandingSnapshot,
-      publishedAt: new Date().toISOString(),
-      publishedBy: input.userId,
-    };
-    const snapshot = JSON.stringify(snapshotPayload);
-    const sha256 = createHash("sha256").update(snapshot).digest("hex");
-    const stored = await saveReportSnapshot({ tenantId: input.tenantId, interpretationId: interpretation.id, revision: interpretation.revision, content: snapshot });
-    const storageKey = stored?.key ?? `reports/${input.tenantId}/${interpretation.id}/rev-${interpretation.revision}`;
-
-    const result = await client.query(
-      `INSERT INTO reports (tenant_id, interpretation_id, revision, storage_key, sha256, published_at, published_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), $6::uuid)
-       RETURNING id::text, revision, storage_key AS "storageKey", published_at::text AS "publishedAt"`,
-      [input.tenantId, interpretation.id, interpretation.revision, storageKey, sha256, input.userId],
-    );
-    const report = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "REPORT_PUBLISHED", entityType: "report", entityId: report.id, metadata: { interpretationId: interpretation.id, analysisId: interpretation.analysisId } });
-    return report;
-  });
 }
 
 /** Snapshot legado (versão 1 implícita, gravado antes desta correção -- sem `reportSnapshotVersion` nem
