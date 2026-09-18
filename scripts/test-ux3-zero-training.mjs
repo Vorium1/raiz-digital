@@ -47,6 +47,7 @@ const simpleRecommendationContext = read("src/components/simple-recommendation-c
 const technicalIntelligence = read("src/components/agronomic-intelligence-panel.tsx");
 const ux2TechnicalReview = read("src/components/ux2-technical-review.tsx");
 const interpretationsRepository = read("src/lib/repositories/interpretations.ts");
+const agronomicProfilesRepository = read("src/lib/repositories/agronomic-profiles.ts");
 const prescriptionFreshnessRepository = read("src/lib/repositories/prescription-freshness.ts");
 const prescriptionGenerationRepository = read("src/lib/repositories/prescription-generation.ts");
 const prescriptionRoute = read("src/app/api/analyses/[id]/agronomic-prescription/route.ts");
@@ -358,7 +359,9 @@ assert.match(simpleRecommendationContext, /<details className="simple-context-qu
 assert.match(simpleRecommendationContext, /Incluir dose de fósforo e potássio/);
 assert.match(simpleRecommendationContext, /conclui o relatório sem estimar valores/);
 assert.match(prescriptionProvider, /return deterministicLimitedPrescriptionProvider/);
-assert.match(deterministicFallback, /recommendations:\s*\[\]/);
+assert.match(deterministicFallback, /deterministicRecommendations/);
+assert.match(deterministicFallback, /recommendations: deterministic\.recommendations/);
+assert.match(deterministicFallback, /dose\.expected\.isDiscretionaryRange/);
 assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
 assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
 assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem evidência suficiente/);
@@ -389,3 +392,6 @@ assert.doesNotMatch(simpleResult, /getLatestAgronomicPrescription|getLatestAgron
 assert.doesNotMatch(simpleResult, /publish-report|PublishReportButton/);
 
 console.log("ux3-zero-training: navegação simples + motor completo + entrega publicada fail-closed");
+
+assert.match(interpretationsRepository, /engineResult\.interpretable \? "APPROVED" : "CALCULATED"/);
+assert.match(agronomicProfilesRepository, /validation\.confidence >= 90/);
