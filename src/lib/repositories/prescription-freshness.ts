@@ -27,6 +27,7 @@ export async function getAgronomicPrescriptionFreshness(input: {
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
     }>(
       `SELECT g.created_at::text AS "generationCreatedAt",
               g.interpretation_id::text AS "generationInterpretationId",
@@ -34,10 +35,12 @@ export async function getAgronomicPrescriptionFreshness(input: {
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
-              latest_import.latest_import_at::text AS "latestImportCommittedAt"
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM ai_generations g
        JOIN analyses a ON a.tenant_id = g.tenant_id AND a.id = g.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
          SELECT i.id, i.status, i.created_at
          FROM interpretations i
@@ -50,6 +53,11 @@ export async function getAgronomicPrescriptionFreshness(input: {
          FROM analysis_imports ai
          WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        WHERE g.tenant_id = $1::uuid
          AND g.analysis_id = $2::uuid
          AND g.id = $3::uuid
@@ -80,6 +88,7 @@ export async function getAgronomicPrescriptionFreshness(input: {
     const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
       interpretationCreatedAt: row.latestInterpretationCreatedAt,
       latestImportCommittedAt: row.latestImportCommittedAt,
+      latestRuleUpdatedAt: row.latestRuleUpdatedAt,
     });
     if (!evidenceFreshness.current) {
       return { current: false, reason: evidenceFreshness.reason };
