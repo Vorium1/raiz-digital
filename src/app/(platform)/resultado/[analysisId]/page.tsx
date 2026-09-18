@@ -5,6 +5,7 @@ import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { ReportBrand } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
+import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -96,9 +97,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   }
 
   const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as { interpretation?: Finding[] };
-  const findings = (structured.interpretation ?? [])
-    .filter((item) => item.classificationRole !== "AUXILIARY" && item.interpretable && item.classification)
-    .slice(0, 8);
+  const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []).slice(0, 8);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
@@ -149,17 +148,31 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
-        {findings.length > 0 && (
+        {findingSummaries.length > 0 && (
           <section className="simple-result-section">
-            <div className="simple-result-section-head"><span>O QUE ENCONTRAMOS</span><h2>Principais resultados</h2></div>
+            <div className="simple-result-section-head">
+              <span>O QUE ENCONTRAMOS</span>
+              <h2>Como está a área</h2>
+              <p>Resumo por parâmetro da decisão publicada. Não é interpolação nem mapa de fertilidade.</p>
+            </div>
             <div className="simple-result-findings">
-              {findings.map((item, index) => (
-                <div key={`${item.sampleCode ?? "amostra"}-${item.parameterCode ?? index}-${index}`}>
-                  <span>{parameterLabel(item.parameterCode)}</span>
-                  <strong>{humanClassification(item.classification)}</strong>
-                  {item.sampleCode && <small>Amostra {item.sampleCode}</small>}
-                </div>
-              ))}
+              {findingSummaries.map((summary) => {
+                const headline = summary.uniformClassification
+                  ? humanClassification(summary.uniformClassification)
+                  : summary.predominantClassification
+                    ? `Predomina ${humanClassification(summary.predominantClassification)}`
+                    : "Varia entre os pontos";
+                const breakdown = summary.classificationCounts
+                  .map((item) => `${item.count} ${humanClassification(item.classification).toLowerCase()}`)
+                  .join(" · ");
+                return (
+                  <div key={summary.parameterCode}>
+                    <span>{parameterLabel(summary.parameterCode)}</span>
+                    <strong>{headline}</strong>
+                    <small>{breakdown}</small>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
