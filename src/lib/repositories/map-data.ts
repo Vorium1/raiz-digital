@@ -1,3 +1,4 @@
+import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { withTenant } from "@/lib/db";
 
 export type MapPointLayer = {
@@ -29,6 +30,8 @@ export type MapLayerResult = {
   points: MapPointLayer[];
   availableParameters: string[];
   interpretationStatus: string | null;
+  interpretationCurrent: boolean;
+  interpretationFreshnessCode: string;
   confidence: { score: number; level: string } | null;
   trace: { cropProfileCode: string | null; cropProfileVersion: string | null } | null;
   analysisId: string | null;
@@ -78,7 +81,9 @@ export async function getLatestFieldSoilMapContext(input: {
 
 /**
  * Camada de dados do mapa agronômico para um talhão/ordem de coleta: pontos reais (PostGIS) cruzados
- * com a classificação já homologada da última interpretação, quando existir. A posição renderizada
+ * com a classificação da última interpretação SOMENTE quando ela ainda representa a evidência e as
+ * regras agronômicas correntes. Interpretação stale é preservada como histórico, mas nunca colore o
+ * mapa como se fosse atual. A posição renderizada
  * privilegia `observed_position` quando existe; só cai para a posição planejada quando não há captura
  * observada. As duas continuam separadas no payload para auditoria.
  */
@@ -127,28 +132,61 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       [input.tenantId, input.collectionOrderId, input.parameterCode],
     );
 
-    const analysisResult = await client.query<{ id: string; reportId: string | null }>(
+    const analysisResult = await client.query<{
+      id: string;
+      reportId: string | null;
+      latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
+    }>(
       `SELECT a.id::text AS id,
               (SELECT r.id::text FROM reports r JOIN interpretations i2 ON i2.tenant_id = r.tenant_id AND i2.id = r.interpretation_id
-                 WHERE i2.tenant_id = a.tenant_id AND i2.analysis_id = a.id ORDER BY r.published_at DESC LIMIT 1) AS "reportId"
-       FROM analyses a WHERE a.tenant_id = $1::uuid AND a.collection_order_id = $2::uuid
+                 WHERE i2.tenant_id = a.tenant_id AND i2.analysis_id = a.id ORDER BY r.published_at DESC LIMIT 1) AS "reportId",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+       ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
+       WHERE a.tenant_id = $1::uuid AND a.collection_order_id = $2::uuid
        ORDER BY a.created_at DESC LIMIT 1`,
       [input.tenantId, input.collectionOrderId],
     );
     const analysis = analysisResult.rows[0] ?? null;
 
-    const interpretationResult = await client.query<{ status: string; structuredOutput: any }>(
-      `SELECT i.status, i.structured_output AS "structuredOutput"
-       FROM interpretations i
-       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
-       WHERE i.tenant_id = $1::uuid AND a.collection_order_id = $2::uuid
-       ORDER BY i.created_at DESC LIMIT 1`,
-      [input.tenantId, input.collectionOrderId],
-    );
+    const interpretationResult = analysis
+      ? await client.query<{ status: string; structuredOutput: any; createdAt: string | null }>(
+          `SELECT i.status, i.structured_output AS "structuredOutput", i.created_at::text AS "createdAt"
+           FROM interpretations i
+           WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+           ORDER BY i.revision DESC LIMIT 1`,
+          [input.tenantId, analysis.id],
+        )
+      : { rows: [] as Array<{ status: string; structuredOutput: any; createdAt: string | null }> };
     const interpretation = interpretationResult.rows[0] ?? null;
+    const interpretationFreshness = interpretation && analysis
+      ? evaluateAnalysisEvidenceFreshness({
+          interpretationCreatedAt: interpretation.createdAt,
+          latestImportCommittedAt: analysis.latestImportCommittedAt,
+          latestRuleUpdatedAt: analysis.latestRuleUpdatedAt,
+        })
+      : {
+          current: false,
+          code: "INTERPRETATION_TIMESTAMP_MISSING",
+          reason: "Ainda não existe interpretação determinística corrente para esta coleta.",
+        };
+    const currentInterpretation = interpretationFreshness.current ? interpretation : null;
     const byCode = new Map<string, any>();
-    if (interpretation?.structuredOutput?.interpretation) {
-      for (const item of interpretation.structuredOutput.interpretation as any[]) {
+    if (currentInterpretation?.structuredOutput?.interpretation) {
+      for (const item of currentInterpretation.structuredOutput.interpretation as any[]) {
         if (item.parameterCode === input.parameterCode) byCode.set(item.sampleCode, item);
       }
     }
@@ -185,8 +223,10 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       points,
       availableParameters,
       interpretationStatus: interpretation?.status ?? null,
-      confidence: interpretation?.structuredOutput?.confidence ?? null,
-      trace: interpretation?.structuredOutput?.trace ?? null,
+      interpretationCurrent: interpretationFreshness.current,
+      interpretationFreshnessCode: interpretationFreshness.code,
+      confidence: currentInterpretation?.structuredOutput?.confidence ?? null,
+      trace: currentInterpretation?.structuredOutput?.trace ?? null,
       analysisId: analysis?.id ?? null,
       reportId: analysis?.reportId ?? null,
     };
