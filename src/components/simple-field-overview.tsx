@@ -80,7 +80,7 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
         />
         {estimatedPointCount > 0 && (
           <div className="simple-field-map-note">
-            <Icon name="info" size={14}/>
+            <Icon name="location" size={14}/>
             <span>{estimatedPointCount === collectionPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível." : "Alguns pontos usam posição aproximada conforme a referência disponível."}</span>
           </div>
         )}
