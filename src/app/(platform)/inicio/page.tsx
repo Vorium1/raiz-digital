@@ -9,7 +9,6 @@ import { userActionAlerts } from "@/domain/user-attention";
 
 export const metadata = { title: "Início" };
 
-const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const SEND_HREF = "/enviar";
 
 export default async function InicioPage() {
@@ -23,10 +22,8 @@ export default async function InicioPage() {
   ]);
 
   const firstName = session.name.trim().split(/\s+/)[0] || "você";
-  const canReview = REVIEW_ROLES.has(session.role);
-  const reviewCount = snapshot.awaitingReview;
   const actionableAlerts = userActionAlerts(alerts);
-  const attentionCount = actionableAlerts.length + (canReview ? reviewCount : 0);
+  const attentionCount = actionableAlerts.length;
 
   return (
     <div className="simple-home">
@@ -54,14 +51,6 @@ export default async function InicioPage() {
           <div><strong>Talhões</strong><small>Veja suas áreas e histórico</small></div>
           <Icon name="arrow" size={18}/>
         </Link>
-
-        {canReview && (
-          <Link href="/revisar" className="simple-action-card">
-            <span><Icon name="shield" size={28}/></span>
-            <div><strong>Revisar</strong><small>Confira e aprove conclusões</small></div>
-            <Icon name="arrow" size={18}/>
-          </Link>
-        )}
 
         <Link href="/resultados" className="simple-action-card">
           <span><Icon name="file" size={28}/></span>
