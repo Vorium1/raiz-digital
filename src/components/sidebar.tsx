@@ -33,6 +33,7 @@ export function Sidebar({ userName, role }: SidebarProps) {
   function activeFor(href: string) {
     const path = href.split("?")[0];
     if (path === "/inicio") return pathname === "/inicio" || pathname === "/dashboard";
+    if (path === "/mais") return pathname === "/mais" || pathname.startsWith("/configuracoes");
     return pathname === path || pathname.startsWith(`${path}/`);
   }
 
@@ -55,7 +56,7 @@ export function Sidebar({ userName, role }: SidebarProps) {
       </nav>
 
       <div className="simple-sidebar-bottom">
-        <Link href="/configuracoes" aria-label="Mais opções" title="Mais opções"><Icon name="settings" size={21}/><span>Mais</span></Link>
+        <Link href="/mais" aria-label="Mais opções" title="Mais opções"><Icon name="settings" size={21}/><span>Mais</span></Link>
         <span className="simple-avatar" title={userName ?? "Usuário"}>{avatar}</span>
       </div>
     </aside>
