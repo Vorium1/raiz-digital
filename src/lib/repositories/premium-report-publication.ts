@@ -19,6 +19,10 @@ export type FrozenSamplePoint = {
   code: string;
   latitude: number;
   longitude: number;
+  /** Ausente em snapshots v3 antigos. Novas publicações congelam a captura observada separadamente. */
+  observedLatitude?: number | null;
+  observedLongitude?: number | null;
+  accuracyM?: number | null;
   depthFromCm: number;
   depthToCm: number;
   collectedAt: string | null;
@@ -301,6 +305,9 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       ? await client.query<FrozenSamplePoint>(
           `SELECT sp.id::text, sp.code,
                   ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+                  CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+                  CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+                  sp.accuracy_m::float8 AS "accuracyM",
                   sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
                   sp.collected_at::text AS "collectedAt", sp.gps_source AS "gpsSource"
            FROM sample_points sp
