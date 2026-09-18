@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
@@ -117,18 +118,18 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     sequence: null,
     latitude: point.latitude,
     longitude: point.longitude,
-    observedLatitude: null,
-    observedLongitude: null,
+    observedLatitude: point.observedLatitude ?? null,
+    observedLongitude: point.observedLongitude ?? null,
     collectedAt: point.collectedAt,
     depthFromCm: point.depthFromCm,
     depthToCm: point.depthToCm,
     subsampleCount: null,
-    accuracyM: null,
+    accuracyM: point.accuracyM ?? null,
     gpsSource: point.gpsSource,
     notes: null,
     labResultCount: 0,
   }));
-  const estimatedPointCount = publishedPoints.filter((point) => String(point.gpsSource ?? "").toUpperCase().startsWith("ESTIMADO_")).length;
+  const plannedPointCount = publishedPoints.filter((point) => pointPositionKind(point) === "PLANNED").length;
 
   return (
     <div className="simple-result-page">
@@ -156,10 +157,12 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         {Boolean(publishedBoundary) && (
           <section className="simple-result-map">
             <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
-            {estimatedPointCount > 0 && (
+            {plannedPointCount > 0 && (
               <div className="simple-result-map-note">
                 <Icon name="location" size={14}/>
-                <span>{estimatedPointCount === publishedPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível no momento da publicação." : "Alguns pontos usam posição aproximada conforme a referência disponível no momento da publicação."}</span>
+                <span>{plannedPointCount === publishedPoints.length
+                  ? "As posições dos pontos são aproximadas ou não possuem evidência observada congelada neste snapshot."
+                  : "Alguns pontos usam posição planejada/estimada ou não possuem evidência observada congelada neste snapshot."}</span>
               </div>
             )}
           </section>
