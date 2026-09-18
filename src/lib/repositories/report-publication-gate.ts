@@ -29,6 +29,8 @@ export async function getReportPublicationReadiness(
     const result = await client.query(
       `SELECT i.status::text AS "interpretationStatus",
               i.created_at::text AS "interpretationCreatedAt",
+              i.crop_profile_id::text AS "interpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               (latest_interpretation.id = i.id) AS "interpretationIsLatest",
               a.source_human_verified AS "sourceHumanVerified",
               t.require_source_human_verification AS "sourceVerificationRequired",
@@ -80,6 +82,8 @@ export async function getReportPublicationReadiness(
       ? evaluateAnalysisEvidenceFreshness({
           interpretationCreatedAt: row.interpretationCreatedAt,
           latestImportCommittedAt: row.latestImportCommittedAt,
+          interpretationCropProfileId: row.interpretationCropProfileId,
+          currentCropProfileId: row.currentCropProfileId,
           latestRuleUpdatedAt: row.latestRuleUpdatedAt,
         })
       : { current: false };
