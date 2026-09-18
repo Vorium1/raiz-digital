@@ -28,10 +28,9 @@ export default async function ResultadosPage() {
               <span className="simple-result-icon"><Icon name="file" size={24}/></span>
               <div>
                 <strong>{report.fieldName}</strong>
-                <small>{report.clientName} · {report.propertyName}</small>
+                <small>{report.clientName} · {report.propertyName} · Safra {report.seasonLabel}</small>
                 <time>{new Date(report.publishedAt).toLocaleDateString("pt-BR")}</time>
               </div>
-              <span className="simple-result-ready"><Icon name="check" size={13}/> Pronto</span>
               <Icon name="arrow" size={17}/>
             </Link>
           ))}
@@ -41,7 +40,7 @@ export default async function ResultadosPage() {
           <span><Icon name="file" size={28}/></span>
           <strong>Nenhum resultado publicado ainda.</strong>
           <small>Quando uma revisão for aprovada e publicada, o resultado aparece aqui automaticamente.</small>
-          <Link href="/inicio">Voltar ao início</Link>
+          <Link href="/enviar">Enviar dados</Link>
         </section>
       )}
     </div>
