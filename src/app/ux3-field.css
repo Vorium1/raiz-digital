@@ -87,8 +87,12 @@
   box-shadow: 0 12px 34px rgba(45,70,53,.05);
   overflow: hidden;
 }
+.simple-field-map-head { align-items:center; display:flex; justify-content:space-between; padding:14px 16px 12px; }
+.simple-field-map-head span { color:#7a887f; display:block; font-size:9px; font-weight:850; letter-spacing:.13em; margin-bottom:3px; }
+.simple-field-map-head strong { color:#31513d; display:block; font-size:12px; }
 .simple-field-map-card .real-field-map,
 .simple-field-map-card .leaflet-container { border-radius: 0 !important; }
+.simple-field-map-note { align-items:flex-start; background:#f8faf7; border-top:1px solid #e8ede7; color:#718078; display:flex; font-size:9px; gap:7px; line-height:1.45; padding:9px 13px; }
 
 
 .simple-field-vigor {
