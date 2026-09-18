@@ -4,6 +4,7 @@ import { Icon } from "@/components/icon";
 import { SimpleFinalReview } from "@/components/simple-final-review";
 import { SimpleRefreshAnalysis } from "@/components/simple-refresh-analysis";
 import { humanClassification } from "@/domain/simple-ux-labels";
+import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getAnalysisById } from "@/lib/repositories/analyses";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
@@ -50,12 +51,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const delivery = deliveryRows[0] ?? null;
   const imported = Number((analysis as any).importCount) > 0 || Number((analysis as any).labSampleCount) > 0;
   const output = (interpretation as any)?.structuredOutput ?? null;
-  const findings = Array.isArray(output?.interpretation)
-    ? output.interpretation.filter((item: any) => item?.classificationRole !== "AUXILIARY" && item?.interpretable && item?.classification).slice(0, 8)
-    : [];
-  const blockedCount = Array.isArray(output?.interpretation)
-    ? output.interpretation.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length
-    : 0;
+  const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
+  const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
+  const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
   const interpretationStatus = (interpretation as any)?.status ?? null;
   const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
@@ -84,7 +82,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
     stateIcon = "shield";
   } else if (imported) {
     stateTitle = "Em análise";
-    stateText = blockedCount > 0 ? "A RAIZ encontrou dados que ainda precisam de contexto para concluir." : "Os dados foram recebidos e estão sendo organizados.";
+    stateText = blockedCount > 0 ? "A RAIZ concluiu o que tem base técnica e registrou os limites restantes." : "Os dados foram recebidos e estão sendo organizados.";
     stateIcon = "clock";
   }
 
@@ -111,13 +109,29 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <div className={delivery?.currentReportCount ? "done" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : "Depois da revisão"}</small></div>
       </section>
 
-      {findings.length > 0 && (
+      {findingSummaries.length > 0 && (
         <section className="simple-analysis-findings">
-          <div className="simple-analysis-section-title"><span>O QUE ENCONTRAMOS</span><h2>Principais resultados</h2><p>Resumo dos dados que a RAIZ conseguiu interpretar com segurança.</p></div>
+          <div className="simple-analysis-section-title"><span>O QUE ENCONTRAMOS</span><h2>Como está a área</h2><p>Um resumo por parâmetro, usando somente as classificações já produzidas pelo motor.</p></div>
           <div className="simple-analysis-finding-grid">
-            {findings.map((item: any, index: number) => <article key={`${item.sampleCode ?? "amostra"}-${item.parameterCode}-${index}`}><span>{parameterLabel(String(item.parameterCode ?? ""))}</span><strong>{humanClassification(item.classification)}</strong><small>{item.sampleCode ? `Amostra ${item.sampleCode}` : "Dado interpretado"}</small></article>)}
+            {findingSummaries.map((summary) => {
+              const headline = summary.uniformClassification
+                ? humanClassification(summary.uniformClassification)
+                : summary.predominantClassification
+                  ? `Predomina ${humanClassification(summary.predominantClassification)}`
+                  : "Varia entre os pontos";
+              const breakdown = summary.classificationCounts
+                .map((item) => `${item.count} ${humanClassification(item.classification).toLowerCase()}`)
+                .join(" · ");
+              return (
+                <article key={summary.parameterCode}>
+                  <span>{parameterLabel(summary.parameterCode)}</span>
+                  <strong>{headline}</strong>
+                  <small>{breakdown}</small>
+                </article>
+              );
+            })}
           </div>
-          {blockedCount > 0 && <div className="simple-analysis-note"><Icon name="warning" size={16}/><span>Alguns dados ainda precisam de contexto antes de virar recomendação. A RAIZ não completa essas informações por conta própria.</span></div>}
+          {blockedCount > 0 && <div className="simple-analysis-note"><Icon name="shield" size={16}/><span>Há parâmetros que ficaram fora desta conclusão por limitação técnica. Eles não impedem o restante da análise.</span></div>}
         </section>
       )}
 
