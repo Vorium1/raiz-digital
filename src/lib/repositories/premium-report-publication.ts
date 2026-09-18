@@ -259,11 +259,12 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
               a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt", a.collection_order_id::text AS "collectionOrderId",
               c.name AS "clientName", p.name AS "propertyName", p.municipality, p.state,
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa", ST_AsGeoJSON(f.boundary)::json AS "fieldBoundary",
-              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.cultivar, cs.management_system AS "managementSystem",
+              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop", cp.name AS "cropProfileName", cs.cultivar, cs.management_system AS "managementSystem",
               cs.soil_texture AS "soilTexture", cs.yield_goal::float8 AS "yieldGoal", cs.yield_goal_unit AS "yieldGoalUnit",
               l.name AS "laboratoryName"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
        JOIN fields f ON f.tenant_id=cs.tenant_id AND f.id=cs.field_id
        JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id
        JOIN clients c ON c.tenant_id=p.tenant_id AND c.id=p.client_id
