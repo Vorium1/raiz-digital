@@ -127,7 +127,14 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     );
   }
 
-  const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as { interpretation?: Finding[] };
+  const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as {
+    interpretation?: Finding[];
+    trace?: {
+      cropProfileCode?: string;
+      cropProfileVersion?: string;
+      generatedAt?: string;
+    };
+  };
   const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []).slice(0, 8);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
@@ -288,6 +295,26 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         ) : (
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
         )}
+
+        <section className="simple-result-section traceability">
+          <div className="simple-result-section-head">
+            <span>RASTREABILIDADE</span>
+            <h2>Como este laudo foi gerado</h2>
+            <p>A versão oficial congela a base agronômica e o motor utilizados nesta decisão.</p>
+          </div>
+          <div className="simple-result-ndvi-grid">
+            <div><small>Versão da decisão</small><strong>Rev. {v3?.revision ?? published.report.revision}</strong></div>
+            <div>
+              <small>Base agronômica</small>
+              <strong>
+                {structured.trace?.cropProfileCode ?? context.currentCrop ?? context.cropProfileName ?? "Perfil corrente"}
+                {structured.trace?.cropProfileVersion ? ` · v${structured.trace.cropProfileVersion}` : ""}
+              </strong>
+            </div>
+            <div><small>Motor</small><strong>{engineValidated ? "RAIZ Agronomic Engine" : (v3?.approvedPrescription.model ?? "Motor registrado")}</strong></div>
+            <div><small>Versão do motor</small><strong>{v3?.approvedPrescription.promptVersion ?? "Snapshot publicado"}</strong></div>
+          </div>
+        </section>
 
         <section className="simple-result-signature">
           <ReportSignature branding={branding}/>
