@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { PublishReportButton } from "@/components/publish-report-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { PremiumDecisionSummary } from "@/components/premium-decision-summary";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
@@ -33,6 +34,9 @@ type DisplayPoint = {
   code: string;
   latitude: number;
   longitude: number;
+  observedLatitude?: number | null;
+  observedLongitude?: number | null;
+  accuracyM?: number | null;
   depthFromCm: number;
   depthToCm: number;
   collectedAt: string | null;
@@ -113,9 +117,31 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const displayBoundary = viewingPublished ? (publishedSnapshotV3?.publishedContext.fieldBoundary ?? null) : analysis.fieldBoundary;
   const displayNarrative = viewingPublished ? (publishedSnapshotV3?.approvedNarrative ?? null) : currentNarrative;
   const displayPrescription = viewingPublished ? (publishedSnapshotV3?.approvedPrescription ?? null) : currentPrescription;
-  const collectedCount = displayPoints.filter((point) => point.collectedAt).length;
-  const reportSampleCount = displayPoints.length > 0
-    ? displayPoints.length
+  const reportMapPoints: MapPoint[] = displayPoints.map((point) => ({
+    ...point,
+    sequence: null,
+    observedLatitude: point.observedLatitude ?? null,
+    observedLongitude: point.observedLongitude ?? null,
+    subsampleCount: null,
+    accuracyM: point.accuracyM ?? null,
+    gpsSource: point.gpsSource ?? null,
+    notes: null,
+    labResultCount: 0,
+  }));
+  const observedPointCount = reportMapPoints.filter((point) => pointPositionKind(point) === "OBSERVED").length;
+  const auditedPointCount = reportMapPoints.filter((point) => pointPositionKind(point) === "AUDITED_SOURCE").length;
+  const plannedPointCount = reportMapPoints.filter((point) => pointPositionKind(point) === "PLANNED").length;
+  const pointProvenanceLabel = (point: MapPoint) => {
+    const kind = pointPositionKind(point);
+    if (kind === "OBSERVED") return "Posição observada em campo";
+    if (kind === "AUDITED_SOURCE") return "Importação espacial auditada";
+    return viewingPublished && point.observedLatitude == null && point.observedLongitude == null && !point.gpsSource
+      ? "Origem não capturada no snapshot"
+      : "Planejada / estimada";
+  };
+  const collectedCount = reportMapPoints.filter((point) => point.collectedAt).length;
+  const reportSampleCount = reportMapPoints.length > 0
+    ? reportMapPoints.length
     : new Set(displayInterpretation.map((row) => row.sampleCode)).size;
 
   return (
@@ -240,22 +266,30 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
             </section>
           ) : (
             <section className="report-section">
-              <h2>Pontos de amostragem ({displayPoints.length} — {collectedCount} coletados)</h2>
-              {displayPoints.length ? (
-                <div className="report-table-wrap"><table className="report-table">
-                  <thead><tr><th>Código</th><th>Coordenadas</th><th>Profundidade</th><th>Origem</th><th>Status</th></tr></thead>
-                  <tbody>{displayPoints.map((point) => (
-                    <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.depthFromCm}–{point.depthToCm} cm</td><td>{point.gpsSource || "—"}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td></tr>
-                  ))}</tbody>
-                </table></div>
+              <h2>Pontos de amostragem ({reportMapPoints.length} — {collectedCount} coletados)</h2>
+              {reportMapPoints.length ? (
+                <>
+                  <p className="report-empty-note" style={{ marginBottom: 8 }}>
+                    Origem espacial: {observedPointCount} observada(s) · {auditedPointCount} importada(s) de fonte auditada · {plannedPointCount} planejada(s)/estimada(s).
+                  </p>
+                  <div className="report-table-wrap"><table className="report-table">
+                    <thead><tr><th>Código</th><th>Coordenada usada</th><th>Profundidade</th><th>Origem espacial</th><th>Status</th></tr></thead>
+                    <tbody>{reportMapPoints.map((point) => {
+                      const effective = effectivePointCoordinates(point);
+                      return (
+                        <tr key={point.id}><td>{point.code}</td><td>{effective.latitude.toFixed(6)}, {effective.longitude.toFixed(6)}</td><td>{point.depthFromCm}–{point.depthToCm} cm</td><td>{pointProvenanceLabel(point)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td></tr>
+                      );
+                    })}</tbody>
+                  </table></div>
+                </>
               ) : <p className="report-empty-note">Nenhum ponto vinculado a esta análise.</p>}
             </section>
           )}
 
-          {displayPoints.length > 0 && displayBoundary && (
+          {reportMapPoints.length > 0 && displayBoundary && (
             <section className="report-section no-print">
-              <h2>Mapa do talhão e pontos <span className="report-empty-note">({viewingPublished ? "geometria congelada na entrega; " : ""}visualização interativa; coordenadas constam na tabela acima)</span></h2>
-              <RealFieldMap boundary={displayBoundary} points={displayPoints.map((point) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, gpsSource: point.gpsSource ?? null, notes: null, labResultCount: 0 }))} height={340}/>
+              <h2>Mapa do talhão e pontos <span className="report-empty-note">({viewingPublished ? "geometria congelada na entrega; " : ""}posição observada prevalece quando existe; coordenadas constam na tabela acima)</span></h2>
+              <RealFieldMap boundary={displayBoundary} points={reportMapPoints} height={340}/>
             </section>
           )}
 
