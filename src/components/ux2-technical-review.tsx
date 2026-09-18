@@ -178,9 +178,15 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
   const doseItems = useMemo(() => (["P2O5", "K2O"] as const).map((nutrient) => ({ nutrient, decision: doses?.[nutrient] })), [doses]);
   const readyDoses = doseItems.filter((item) => item.decision?.ready && item.decision.expected);
   const blockedDoses = doseItems.filter((item) => !item.decision?.ready);
-  const finalApproved = interpretation?.status === "APPROVED" && prescription?.status === "APPROVED";
-  const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
-  const pkValidated = readiness?.prescriptionPkValidation?.allowed !== false;
+  const interpretationCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
+  const prescriptionCurrent = !prescription || readiness?.prescriptionFreshness?.current === true;
+  const pkValidated = !prescription || readiness?.prescriptionPkValidation?.allowed === true;
+  const finalApproved = interpretationCurrent
+    && interpretation?.status === "APPROVED"
+    && prescription?.status === "APPROVED"
+    && readiness?.allowed === true
+    && prescriptionCurrent
+    && pkValidated;
   const reportPublished = finalApproved && prescriptionCurrent && (delivery?.currentReportCount ?? 0) > 0;
   const canFinalize = canReview
     && accepted
@@ -188,6 +194,8 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
     && Boolean(prescription?.id)
     && (interpretation?.status === "IN_REVIEW" || interpretation?.status === "APPROVED")
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
+    && readiness?.allowed === true
+    && interpretationCurrent
     && prescriptionCurrent
     && pkValidated;
 
@@ -294,6 +302,8 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
           {reportPublished ? "Relatório oficial publicado" : finalApproved ? "Revisão final aprovada" : statusLabel[interpretation.status] ?? interpretation.status}
         </StatusBadge>
       </div>
+
+      {!interpretationCurrent && readiness?.interpretationEvidenceFreshness && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>Interpretação histórica.</strong> {readiness.interpretationEvidenceFreshness.reason ?? "A evidência ou regra agronômica mudou depois desta revisão."} Recalcule antes de concluir uma nova decisão.</span></div>}
 
       {message && <div className={`agro-message ${message.tone}`}><Icon name={message.tone === "success" ? "check" : "warning"} size={15}/><span>{message.text}</span></div>}
 
@@ -410,7 +420,7 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
             <div className="ux2-signoff">
               <label className="ux2-signoff-check"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi interpretação, recomendação, fontes, cálculos, fórmulas, evidências e limitações exibidas nesta revisão final.</span></label>
               <button className="button primary" disabled={!canFinalize || busy} onClick={() => void approveFinalReview()}><Icon name="shield" size={16}/>{busy ? "Validando gates…" : "Aprovar revisão final"}</button>
-              {prescription?.status === "PENDING_REVIEW" && <button className="button ghost" disabled={busy} onClick={() => void requestPrescriptionChanges()}>Solicitar ajustes na recomendação</button>}
+              {interpretationCurrent && prescriptionCurrent && prescription?.status === "PENDING_REVIEW" && <button className="button ghost" disabled={busy} onClick={() => void requestPrescriptionChanges()}>Solicitar ajustes na recomendação</button>}
               {!prescription && <small>A aprovação final só é liberada quando existir um rascunho real vinculado à interpretação corrente.</small>}
               <small><Icon name="history" size={12}/>A ação final registra as duas decisões técnicas na mesma transação. Se um gate falhar, nenhuma das duas é efetivada. Não representa assinatura digital ICP-Brasil/CREA enquanto essa integração não estiver configurada.</small>
             </div>
