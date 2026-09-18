@@ -123,11 +123,28 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
        FROM interpretations i
        JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+       ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        WHERE i.tenant_id = $1::uuid AND i.status = 'IN_REVIEW'
-         AND i.revision = (SELECT max(revision) FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = i.analysis_id)`,
+         AND i.revision = (SELECT max(revision) FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = i.analysis_id)
+         AND i.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+         AND (latest_import.latest_import_at IS NULL OR i.created_at >= latest_import.latest_import_at)
+         AND (
+           cp.id IS NULL
+           OR i.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+         )`,
       [tenantId],
     );
     for (const row of awaitingReview.rows) {
@@ -276,9 +293,10 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      */
     const inputDeviation = await client.query(
       `WITH latest_recommendations AS (
-         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
+         SELECT DISTINCT ON (analysis_id, input_type)
+                id, analysis_id, input_type, quantity, unit, calculation_source, calculated_at, source_generation_id
          FROM input_recommendations WHERE tenant_id = $1::uuid
-         ORDER BY analysis_id, input_type, calculated_at DESC
+         ORDER BY analysis_id, input_type, calculated_at DESC, id DESC
        ),
        applied_totals AS (
          SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
@@ -291,9 +309,46 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
        JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
        JOIN analyses an ON an.tenant_id = $1::uuid AND an.id = r.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = an.tenant_id AND cs.id = an.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id`,
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN ai_generations g
+         ON g.tenant_id = $1::uuid AND g.id = r.source_generation_id AND g.kind = 'AGRONOMIC_PRESCRIPTION'
+       LEFT JOIN LATERAL (
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
+         FROM interpretations i
+         WHERE i.tenant_id = an.tenant_id AND i.analysis_id = an.id
+         ORDER BY i.revision DESC
+         LIMIT 1
+       ) li ON true
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = an.tenant_id AND ai.analysis_id = an.id
+       ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
+       WHERE (
+         -- Recomendações não-IA permanecem fora do lifecycle das gerações assistidas.
+         (r.source_generation_id IS NULL AND coalesce(r.calculation_source, '') NOT LIKE 'ai_generations:%')
+         OR (
+           r.source_generation_id IS NOT NULL
+           AND g.status = 'APPROVED'
+           AND g.created_at >= cs.updated_at
+           AND g.interpretation_id = li.id
+           AND li.status = 'APPROVED'
+           AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+           AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+           AND (
+             cp.id IS NULL
+             OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+           )
+         )
+       )`,
       [tenantId],
     );
     for (const row of inputDeviation.rows) {
