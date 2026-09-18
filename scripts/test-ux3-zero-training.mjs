@@ -82,7 +82,7 @@ assert.match(home, /const SEND_HREF = "\/enviar"/);
 assert.match(home, /simple-alert-dot/);
 assert.doesNotMatch(home, /simple-attention has-items|simple-attention is-clear/);
 assert.doesNotMatch(home, /item esperando|itens esperando|conclusões pendentes/);
-assert.match(home, /Confira e aprove conclusões/);
+assert.doesNotMatch(home, /Confira e aprove conclusões|href="\/revisar"/);
 assert.match(dashboard, /redirect\("\/inicio"\)/);
 assert.match(morePage, /Configurações avançadas/);
 assert.ok(morePage.includes("const canManageSettings ="));
@@ -363,3 +363,6 @@ assert.match(results, /VALIDADOS PELO MOTOR/);
 assert.doesNotMatch(results, /PRONTO PARA REVISAR/);
 assert.match(resultsPreparation, /\/api\/analyses\/\$\{item\.id\}\/official-result/);
 assert.match(resultsPreparation, /Atualizar laudo/);
+
+assert.doesNotMatch(attentionPage, /Revisões para você/);
+assert.doesNotMatch(attentionPage, /href="\/revisar"/);
