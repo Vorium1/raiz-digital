@@ -74,9 +74,10 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const liveStructured = (interpretationCurrent ? interpretation?.structuredOutput : null) as StructuredOutput | null;
 
   const publishedInfo = publishedSnapshot.found ? publishedSnapshot : null;
+  const requestedPublished = query.versao === "publicada";
   const integrityFailed = publishedInfo != null && publishedInfo.hashVerified === false;
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
-  const requestedView = query.versao === "publicada" && canShowPublishedView ? "publicada" : "atual";
+  const requestedView = requestedPublished && canShowPublishedView ? "publicada" : "atual";
   const viewingPublished = requestedView === "publicada";
   const publishedInterpretationIsCurrent = data.isShowingPublishedVersion && canShowPublishedView && interpretationCurrent;
 
@@ -143,6 +144,34 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const reportSampleCount = reportMapPoints.length > 0
     ? reportMapPoints.length
     : new Set(displayInterpretation.map((row) => row.sampleCode)).size;
+
+  if (requestedPublished && !canShowPublishedView) {
+    const reason = !publishedInfo
+      ? "Não existe uma versão oficial publicada para esta análise."
+      : integrityFailed
+        ? "O arquivo publicado falhou na verificação de integridade. Por segurança, o conteúdo atual não será mostrado no lugar dele."
+        : publishedInfo.readError
+          ? `O snapshot oficial não pôde ser lido: ${publishedInfo.readError}`
+          : "O snapshot oficial não está disponível em formato verificável.";
+    return (
+      <>
+        <Topbar eyebrow="Relatórios" title="Versão publicada">
+          <Link href="/relatorios" className="button ghost no-print">Voltar</Link>
+        </Topbar>
+        <div className="content-wrap">
+          <section className="simple-result-integrity-error">
+            <span><Icon name="warning" size={28}/></span>
+            <div>
+              <h1>Não foi possível abrir a versão publicada.</h1>
+              <p>{reason}</p>
+              <p>A versão atual permanece separada e não é usada como substituta do documento oficial.</p>
+            </div>
+            <Link href={`/relatorios/talhao/${analysisId}`} className="button secondary no-print">Abrir somente o rascunho atual</Link>
+          </section>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
