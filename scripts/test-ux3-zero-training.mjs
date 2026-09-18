@@ -48,6 +48,7 @@ const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
 const decisionDeliveryStatus = read("src/lib/repositories/decision-delivery-status.ts");
 const inputComparisonRepository = read("src/lib/repositories/input-comparison.ts");
+const catalogRepository = read("src/lib/repositories/catalog.ts");
 const comparisonsRepository = read("src/lib/repositories/comparisons.ts");
 
 // A navegação principal é um app de tarefas, não uma árvore de módulos/ERP.
@@ -191,6 +192,7 @@ assert.match(decisionDeliveryStatus, /information_schema\.columns/);
 assert.match(decisionDeliveryStatus, /hasPrescriptionLink/);
 assert.match(decisionDeliveryStatus, /currentReportJoin/);
 assert.match(inputComparisonRepository, /latestInterpretationCropProfileId/);
+assert.match(catalogRepository, /return getCurrentInputComparisonForAnalysis\(tenantId, analysisId, userId\)/);
 assert.match(inputComparisonRepository, /currentCropProfileId/);
 assert.match(inputComparisonRepository, /latestRuleUpdatedAt/);
 assert.match(comparisonsRepository, /latestAnalysisForField/);
