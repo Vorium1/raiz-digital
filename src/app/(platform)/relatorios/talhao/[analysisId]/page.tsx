@@ -9,10 +9,13 @@ import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { PremiumDecisionSummary } from "@/components/premium-decision-summary";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
+import { getAgronomicNarrativeFreshness } from "@/lib/repositories/agronomic-narrative-safety";
+import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
 import { getFieldAnalysisReportData, getPublishedReportSnapshot, type PublishedReportContext, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import { type PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
 import { getLatestAgronomicNarrative, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
-import { getInputComparisonForAnalysis } from "@/lib/repositories/catalog";
+import { getCurrentInputComparisonForAnalysis } from "@/lib/repositories/input-comparison";
 import { getTenantBranding, type TenantBranding } from "@/lib/repositories/tenant-branding";
 import { getReportPublicationReadiness } from "@/lib/repositories/report-publication-gate";
 import { analysisDisplayStatus } from "@/domain/analysis-ui";
@@ -40,28 +43,38 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const { analysisId } = await params;
   const query = await searchParams;
   const session = await requirePlatformSession();
-  const [data, narrative, prescription, comparison, branding, publishedSnapshot] = await Promise.all([
+  const [data, narrative, prescription, comparison, branding, publishedSnapshot, evidence] = await Promise.all([
     getFieldAnalysisReportData(session.tenantId, analysisId, session.userId),
     getLatestAgronomicNarrative(session.tenantId, analysisId, session.userId),
     getLatestAgronomicPrescription(session.tenantId, analysisId, session.userId),
-    getInputComparisonForAnalysis(session.tenantId, analysisId, session.userId),
+    getCurrentInputComparisonForAnalysis(session.tenantId, analysisId, session.userId),
     getTenantBranding(session.tenantId),
     getPublishedReportSnapshot(session.tenantId, analysisId, session.userId),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId }),
   ]);
   if (!data) notFound();
   const { analysis, points, results, interpretation, publishedReport } = data;
-  const publicationReadiness = interpretation
-    ? await getReportPublicationReadiness(session.tenantId, interpretation.id, session.userId)
-    : null;
-  const meta = analysisDisplayStatus({ status: analysis.status, latestInterpretationStatus: interpretation?.status ?? null, notInterpretableReason: interpretation?.notInterpretableReason ?? null });
-  const liveStructured = interpretation?.structuredOutput as StructuredOutput | null;
+  const [publicationReadiness, narrativeFreshness, prescriptionFreshness] = await Promise.all([
+    interpretation ? getReportPublicationReadiness(session.tenantId, interpretation.id, session.userId) : Promise.resolve(null),
+    narrative ? getAgronomicNarrativeFreshness({ tenantId: session.tenantId, userId: session.userId, analysisId, generationId: narrative.id }) : Promise.resolve(null),
+    prescription ? getAgronomicPrescriptionFreshness({ tenantId: session.tenantId, userId: session.userId, analysisId, generationId: prescription.id }) : Promise.resolve(null),
+  ]);
+  const interpretationCurrent = evidence.interpretationId === interpretation?.id && evidence.freshness.current === true;
+  const narrativeCurrent = Boolean(interpretationCurrent && narrative && narrativeFreshness?.current === true);
+  const prescriptionCurrent = Boolean(interpretationCurrent && prescription && prescriptionFreshness?.current === true);
+  const currentNarrative = narrativeCurrent ? narrative : null;
+  const currentPrescription = prescriptionCurrent ? prescription : null;
+  const meta = interpretationCurrent
+    ? analysisDisplayStatus({ status: analysis.status, latestInterpretationStatus: interpretation?.status ?? null, notInterpretableReason: interpretation?.notInterpretableReason ?? null })
+    : { label: "Precisa atualizar", tone: "waiting" as const };
+  const liveStructured = (interpretationCurrent ? interpretation?.structuredOutput : null) as StructuredOutput | null;
 
   const publishedInfo = publishedSnapshot.found ? publishedSnapshot : null;
   const integrityFailed = publishedInfo != null && publishedInfo.hashVerified === false;
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
   const requestedView = query.versao === "publicada" && canShowPublishedView ? "publicada" : "atual";
   const viewingPublished = requestedView === "publicada";
-  const publishedInterpretationIsCurrent = data.isShowingPublishedVersion && canShowPublishedView;
+  const publishedInterpretationIsCurrent = data.isShowingPublishedVersion && canShowPublishedView && interpretationCurrent;
 
   // Snapshots v3 congelam a decisão completa (contexto, pontos, síntese/recomendação aprovadas). V2 congela
   // contexto e interpretação, mas não os artefatos posteriores. V1 legado não recebe dados vivos por
@@ -78,8 +91,8 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const isPremiumPublishedSnapshot = publishedSnapshotV3 != null;
   const publishedPrescriptionMatchesCurrent = Boolean(
     publishedSnapshotV3
-    && prescription?.id
-    && publishedSnapshotV3.approvedPrescription.id === prescription.id,
+    && currentPrescription?.id
+    && publishedSnapshotV3.approvedPrescription.id === currentPrescription.id,
   );
   const sameDecisionAsPublished = publishedInterpretationIsCurrent && publishedPrescriptionMatchesCurrent;
   const hasFrozenContext = publishedSnapshotV3 != null || publishedSnapshotV2 != null;
@@ -98,8 +111,8 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
     ? (publishedSnapshotV3?.pointsSnapshot ?? [])
     : points;
   const displayBoundary = viewingPublished ? (publishedSnapshotV3?.publishedContext.fieldBoundary ?? null) : analysis.fieldBoundary;
-  const displayNarrative = viewingPublished ? (publishedSnapshotV3?.approvedNarrative ?? null) : narrative;
-  const displayPrescription = viewingPublished ? (publishedSnapshotV3?.approvedPrescription ?? null) : prescription;
+  const displayNarrative = viewingPublished ? (publishedSnapshotV3?.approvedNarrative ?? null) : currentNarrative;
+  const displayPrescription = viewingPublished ? (publishedSnapshotV3?.approvedPrescription ?? null) : currentPrescription;
   const collectedCount = displayPoints.filter((point) => point.collectedAt).length;
   const reportSampleCount = displayPoints.length > 0
     ? displayPoints.length
@@ -122,6 +135,24 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
         {interpretation?.status === "APPROVED" && publicationReadiness && !publicationReadiness.allowed && (
           <div className="report-toolbar no-print">
             <span className="report-empty-note"><Icon name="shield" size={12}/> <strong>Entrega oficial bloqueada:</strong> {publicationReadiness.reason}</span>
+          </div>
+        )}
+
+        {!viewingPublished && interpretation && !interpretationCurrent && (
+          <div className="report-toolbar no-print">
+            <span className="report-empty-note"><Icon name="warning" size={12}/> <strong>Interpretação histórica:</strong> {evidence.freshness.reason ?? "A evidência ou regra agronômica mudou depois desta revisão."} Os resultados laboratoriais permanecem visíveis, mas classificação, síntese e recomendação antigas não são apresentadas como decisão corrente.</span>
+          </div>
+        )}
+
+        {!viewingPublished && narrative && !narrativeCurrent && (
+          <div className="report-toolbar no-print">
+            <span className="report-empty-note"><Icon name="warning" size={12}/> A síntese assistida mais recente permanece no histórico, mas não representa a interpretação corrente.</span>
+          </div>
+        )}
+
+        {!viewingPublished && prescription && !prescriptionCurrent && (
+          <div className="report-toolbar no-print">
+            <span className="report-empty-note"><Icon name="warning" size={12}/> A prescrição mais recente permanece no histórico, mas não é usada como recomendação corrente neste documento.</span>
           </div>
         )}
 
@@ -192,7 +223,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           <PremiumDecisionSummary
             rows={displayInterpretation}
             sampleCount={reportSampleCount}
-            interpretationStatus={viewingPublished ? "APPROVED" : interpretation?.status ?? null}
+            interpretationStatus={viewingPublished ? "APPROVED" : interpretationCurrent ? interpretation?.status ?? null : null}
             prescriptionStatus={displayPrescription?.status ?? null}
             reportPublished={viewingPublished || sameDecisionAsPublished}
             viewingPublished={viewingPublished}
@@ -318,7 +349,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
                         <td>{row.inputType}</td>
                         <td>{row.recommendedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.recommendedUnit}</td>
                         <td>{row.appliedQuantity != null ? `${row.appliedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${row.appliedUnit}` : row.hasAnyApplication ? "Em outra unidade" : "—"}</td>
-                        <td>{{ OK: "Conforme recomendado", UNDER: "Abaixo do recomendado", OVER: "Acima do recomendado", UNIT_MISMATCH: "Unidade diferente", NOT_APPLIED: "Ainda não aplicado" }[row.status as string]}</td>
+                        <td>{{ OK: "Conforme recomendado", UNDER: "Abaixo do recomendado", OVER: "Acima do recomendado", UNIT_MISMATCH: "Unidade diferente", NOT_APPLIED: "Ainda não aplicado", STALE_RECOMMENDATION: "Recomendação histórica — não comparar" }[row.status as string]}</td>
                       </tr>
                     ))}</tbody>
                   </table></div>
@@ -346,7 +377,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
               </>
             ) : (
               <>
-                <div><span>Status de revisão</span>{interpretation ? (interpretation.status === "APPROVED" ? "Aprovada" : "Aguardando validação técnica") : "Sem interpretação registrada"}</div>
+                <div><span>Status de revisão</span>{!interpretation ? "Sem interpretação registrada" : !interpretationCurrent ? "Revisão histórica — recálculo necessário" : interpretation.status === "APPROVED" ? "Aprovada" : "Aguardando validação técnica"}</div>
                 <div><span>Responsável técnico</span>{interpretation?.approvedByName || interpretation?.reviewedByName || "—"}</div>
                 <div><span>Base técnica</span>{interpretation?.cropProfileName || "—"}</div>
               </>
