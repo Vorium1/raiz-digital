@@ -25,7 +25,6 @@ const prescriptionProvider = read("src/lib/ai/agronomic-prescription-provider.ts
 const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-prescription-provider.ts");
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
-const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 
 // A navegação principal é um app de tarefas, não uma árvore de módulos/ERP.
 assert.match(sidebar, /const SEND_HREF = "\/enviar"/);
@@ -85,10 +84,14 @@ assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
 assert.match(simpleReview, /Preparar com os dados disponíveis/);
+assert.match(simpleReview, /Conclusão pronta com os dados disponíveis/);
+assert.match(simpleReview, /Aprovar conclusão/);
 assert.match(simpleReview, /Limites desta conclusão/);
 assert.doesNotMatch(simpleReview, /Ainda falta informação/);
 assert.doesNotMatch(simpleReview, /prescriptionCurrent && pkValid && !needsPkContext/);
-assert.match(simpleRecommendationContext, /conclui o relatório sem estimar a dose/);
+assert.match(simpleRecommendationContext, /<details className="simple-context-question">/);
+assert.match(simpleRecommendationContext, /Incluir dose de fósforo e potássio/);
+assert.match(simpleRecommendationContext, /conclui o relatório sem estimar valores/);
 assert.match(prescriptionProvider, /return deterministicLimitedPrescriptionProvider/);
 assert.match(deterministicFallback, /recommendations:\s*\[\]/);
 assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
