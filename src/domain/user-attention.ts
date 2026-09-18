@@ -22,6 +22,7 @@ export function userAttentionTitle(category: string): string {
     "Talhão sem cultura definida": "Informe a cultura",
     "Talhão sem safra definida": "Informe a safra",
     "Análise incompleta": "Continue este trabalho",
+    "Análise precisa atualizar": "Atualize esta análise",
     "Reanálise de solo vencida": "Está na hora de analisar novamente",
     "Desvio de aplicação de insumo": "Confira a aplicação",
   };
