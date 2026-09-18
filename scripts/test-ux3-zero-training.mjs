@@ -364,7 +364,7 @@ assert.match(deterministicFallback, /recommendations: deterministic\.recommendat
 assert.match(deterministicFallback, /dose\.expected\.isDiscretionaryRange/);
 assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
 assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
-assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem evidência suficiente/);
+assert.match(deterministicFallback, /incluiu somente classificações e doses exatas produzidas pelo motor determinístico/);
 assert.match(prescriptionWorkflow, /input\.mode === "deterministic"/);
 assert.match(prescriptionWorkflow, /deterministicLimitedPrescriptionProvider/);
 assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
