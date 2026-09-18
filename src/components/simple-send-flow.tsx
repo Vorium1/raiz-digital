@@ -200,7 +200,7 @@ export function SimpleSendFlow() {
               {clientId && properties.length > 1 && <label><span>Fazenda</span><select value={propertyId} onChange={(event) => chooseProperty(event.target.value)}><option value="">Escolha</option>{properties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
               {propertyId && fields.length > 1 && <label><span>Talhão</span><select value={fieldId} onChange={(event) => chooseField(event.target.value)}><option value="">Escolha</option>{fields.map((item) => <option key={item.id} value={item.id}>{item.name} · {Number(item.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</option>)}</select></label>}
               {fieldId && seasons.length > 1 && <label><span>Safra</span><select value={seasonId} onChange={(event) => setSeasonId(event.target.value)}><option value="">Escolha</option>{seasons.map((item) => <option key={item.id} value={item.id}>{item.seasonLabel}</option>)}</select></label>}
-              {areaReady && <div className="simple-area-confirmed"><Icon name="check" size={18}/><div><strong>{selectedField?.name}</strong><small>{selectedClient?.name} · {selectedProperty?.name} · Safra {selectedSeason?.seasonLabel}{selectedSeason?.currentCrop ? ` · ${selectedSeason.currentCrop}` : ""}</small></div></div>}
+              {areaReady && <div className="simple-area-confirmed"><Icon name="check" size={18}/><div><strong>{selectedField?.name}</strong><small>{selectedClient?.name} · {selectedProperty?.name} · Safra {selectedSeason?.seasonLabel}{(selectedSeason?.currentCrop || selectedSeason?.nextCrop) ? ` · ${selectedSeason.currentCrop || selectedSeason.nextCrop}` : ""}</small></div></div>}
             </div>
           )}
         </div>
