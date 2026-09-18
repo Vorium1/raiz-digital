@@ -10,7 +10,7 @@ const STATUS: Record<string, { label: string; tone: StatusTone; progress: number
   READY_TO_INTERPRET: { label: "Pronta para interpretar", tone: "waiting", progress: 58 },
   INTERPRETED: { label: "Interpretada", tone: "review", progress: 70 },
   AWAITING_REVIEW: { label: "Aguardando revisão", tone: "review", progress: 82 },
-  APPROVED: { label: "Aprovada", tone: "success", progress: 92 },
+  APPROVED: { label: "Validada pelo motor", tone: "success", progress: 92 },
   REPORT_SENT: { label: "Relatório enviado", tone: "success", progress: 100 },
   ARCHIVED: { label: "Arquivada", tone: "neutral", progress: 100 },
 };
