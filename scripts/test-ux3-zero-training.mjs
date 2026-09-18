@@ -336,7 +336,7 @@ assert.match(narrativeSafetyRepository, /currentCropProfileId/);
 assert.match(narrativeSafetyRepository, /latestRuleUpdatedAt/);
 assert.match(narrativeSafetyRepository, /interpretationCropProfileId:\s*row\.latestInterpretationCropProfileId/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
-assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
+assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretation\?\.id\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
 assert.match(simpleReview, /Preparar com os dados disponíveis/);
 assert.match(simpleReview, /Conclusão pronta com os dados disponíveis/);
