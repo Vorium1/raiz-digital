@@ -16,7 +16,7 @@ export type SimplePortfolioField = {
 
 const PRESENTATION = {
   SEM_ANALISE: { color: "#aeb9b1", label: "Sem dados ainda" },
-  NAO_INTERPRETAVEL: { color: "#d6a04b", label: "Precisa conferir" },
+  NAO_INTERPRETAVEL: { color: "#d6a04b", label: "Precisa continuar" },
   EM_ANDAMENTO: { color: "#6d9f78", label: "Em andamento" },
   APROVADO: { color: "#2f7d45", label: "Pronto" },
 } as const;
