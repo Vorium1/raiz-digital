@@ -66,7 +66,9 @@ export async function reviewAgronomicPrescriptionWithClient(client: PoolClient, 
       yieldGoalUnit: string | null;
       cultivationOrderAfterSoilAnalysis: number | null;
       cropProfileCode: string | null;
+      currentCropProfileId: string | null;
       latestInterpretationId: string | null;
+      latestInterpretationCropProfileId: string | null;
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
       latestStructuredOutput: unknown;
@@ -78,7 +80,9 @@ export async function reviewAgronomicPrescriptionWithClient(client: PoolClient, 
               cs.yield_goal_unit AS "yieldGoalUnit",
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
               cp.code AS "cropProfileCode",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               li.id::text AS "latestInterpretationId",
+              li.crop_profile_id::text AS "latestInterpretationCropProfileId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
               li.structured_output AS "latestStructuredOutput",
@@ -88,7 +92,7 @@ export async function reviewAgronomicPrescriptionWithClient(client: PoolClient, 
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at, i.structured_output
+         SELECT i.id, i.status, i.created_at, i.structured_output, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
@@ -131,6 +135,8 @@ export async function reviewAgronomicPrescriptionWithClient(client: PoolClient, 
     const labEvidenceFreshness = evaluateAnalysisEvidenceFreshness({
       interpretationCreatedAt: state?.latestInterpretationCreatedAt,
       latestImportCommittedAt: state?.latestImportCommittedAt,
+      interpretationCropProfileId: state?.latestInterpretationCropProfileId,
+      currentCropProfileId: state?.currentCropProfileId,
       latestRuleUpdatedAt: state?.latestRuleUpdatedAt,
     });
     if (!labEvidenceFreshness.current) {
