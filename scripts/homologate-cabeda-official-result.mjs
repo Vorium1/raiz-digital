@@ -8,8 +8,8 @@ import { assertReportPublicationReady } from "../src/lib/repositories/report-pub
 import { publishPremiumFieldAnalysisReport } from "../src/lib/repositories/premium-report-publication.ts";
 import { prepareAgronomicPrescriptionDraft } from "../src/lib/workflows/agronomic-prescription-draft.ts";
 
-const tenantId = process.env.CABEDA_TENANT_ID?.trim() ?? "";
-const userId = process.env.CABEDA_ACTOR_USER_ID?.trim() ?? "";
+let tenantId = "";
+let userId = "";
 const expectedGuard = "PR88_CABEDA_OFFICIAL_RESULT";
 const analysisCodes = ["AN-CABEDA-01", "AN-CABEDA-02", "AN-CABEDA-03"];
 
@@ -29,7 +29,8 @@ function recommendationSummary(prescription) {
 }
 
 async function assertIsolatedHomologation() {
-  return withTenant({ tenantId, userId }, async (client) => {
+  const client = await getPool().connect();
+  try {
     const guard = await client.query(
       `SELECT
          EXISTS (
@@ -47,17 +48,27 @@ async function assertIsolatedHomologation() {
     }
 
     const analyses = await client.query(
-      `SELECT a.id::text, a.code
+      `SELECT a.id::text, a.code, a.tenant_id::text AS "tenantId", a.created_by::text AS "createdBy"
        FROM analyses a
-       WHERE a.tenant_id=$1::uuid AND a.code = ANY($2::text[])
+       WHERE a.code = ANY($1::text[])
        ORDER BY a.code`,
-      [tenantId, analysisCodes],
+      [analysisCodes],
     );
     if (analyses.rows.length !== analysisCodes.length) {
       throw new Error(`WRITE_GUARD_REFUSED: esperado ${analysisCodes.length} análises Cabeda, encontradas ${analyses.rows.length}.`);
     }
-    return analyses.rows;
-  });
+
+    const tenantIds = [...new Set(analyses.rows.map((row) => row.tenantId).filter(Boolean))];
+    const actorIds = [...new Set(analyses.rows.map((row) => row.createdBy).filter(Boolean))];
+    if (tenantIds.length !== 1 || actorIds.length !== 1) {
+      throw new Error("WRITE_GUARD_REFUSED: análises Cabeda não compartilham tenant/ator de homologação únicos.");
+    }
+    tenantId = tenantIds[0];
+    userId = actorIds[0];
+    return analyses.rows.map(({ id, code }) => ({ id, code }));
+  } finally {
+    client.release();
+  }
 }
 
 async function ensureOfficialResult(analysisId, code) {
@@ -131,8 +142,6 @@ async function ensureOfficialResult(analysisId, code) {
 }
 
 async function main() {
-  requireEnv("CABEDA_TENANT_ID", tenantId);
-  requireEnv("CABEDA_ACTOR_USER_ID", userId);
   requireEnv("DATABASE_URL/APP_DATABASE_URL", (process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL)?.trim() ?? "");
 
   const analyses = await assertIsolatedHomologation();
