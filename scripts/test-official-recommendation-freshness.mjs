@@ -53,6 +53,38 @@ assert.equal(newerLab.current, false);
 assert.equal(newerLab.code, "LAB_EVIDENCE_CHANGED");
 assert.match(newerLab.reason, /laudo laboratorial foi alterado/i);
 
+const changedRules = evaluateOfficialRecommendationFreshness({
+  sourceKind: "AI",
+  generationStatus: "APPROVED",
+  generationCreatedAt: "2026-09-14T02:05:00.000Z",
+  cropSeasonUpdatedAt: "2026-09-14T01:50:00.000Z",
+  generationInterpretationId: "interp-2",
+  latestInterpretationId: "interp-2",
+  latestInterpretationStatus: "APPROVED",
+  latestInterpretationCreatedAt: "2026-09-14T02:00:00.000Z",
+  latestInterpretationCropProfileId: "profile-current",
+  currentCropProfileId: "profile-current",
+  latestRuleUpdatedAt: "2026-09-14T02:10:00.000Z",
+});
+assert.equal(changedRules.current, false);
+assert.equal(changedRules.code, "AGRONOMIC_RULES_CHANGED");
+
+const changedProfile = evaluateOfficialRecommendationFreshness({
+  sourceKind: "AI",
+  generationStatus: "APPROVED",
+  generationCreatedAt: "2026-09-14T02:05:00.000Z",
+  cropSeasonUpdatedAt: "2026-09-14T01:50:00.000Z",
+  generationInterpretationId: "interp-2",
+  latestInterpretationId: "interp-2",
+  latestInterpretationStatus: "APPROVED",
+  latestInterpretationCreatedAt: "2026-09-14T02:00:00.000Z",
+  latestInterpretationCropProfileId: "profile-old",
+  currentCropProfileId: "profile-new",
+  latestRuleUpdatedAt: "2026-09-01T00:00:00.000Z",
+});
+assert.equal(changedProfile.current, false);
+assert.equal(changedProfile.code, "CROP_PROFILE_CHANGED");
+
 const unresolvedAi = evaluateOfficialRecommendationFreshness({ sourceKind: "UNRESOLVED_AI" });
 assert.equal(unresolvedAi.current, false);
 assert.equal(unresolvedAi.code, "SOURCE_UNRESOLVED");
@@ -60,4 +92,4 @@ assert.equal(unresolvedAi.code, "SOURCE_UNRESOLVED");
 const nonAi = evaluateOfficialRecommendationFreshness({ sourceKind: "NON_AI" });
 assert.deepEqual(nonAi, { current: true, code: "CURRENT", reason: null });
 
-console.log("official-recommendation-freshness: recomendações históricas não permanecem correntes após mudança de contexto, interpretação ou laudo");
+console.log("official-recommendation-freshness: recomendações históricas não permanecem correntes após mudança de contexto, interpretação, laudo, perfil ou regra");
