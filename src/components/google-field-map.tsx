@@ -37,6 +37,7 @@ export function GoogleFieldMap({
   hint = "Clique num ponto para ver os dados",
   boundaryFillColor,
   imageOverlay,
+  baseLayer = "default",
   onProviderFailure,
 }: FieldMapProps & { onProviderFailure?: (error: Error) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +74,9 @@ export function GoogleFieldMap({
         map = new maps.Map(containerRef.current, {
           center: { lat: first[1], lng: first[0] },
           zoom: positions.length ? 16 : 4,
-          mapTypeId: maps.MapTypeId?.SATELLITE ?? "satellite",
+          mapTypeId: baseLayer === "terrain"
+            ? (maps.MapTypeId?.TERRAIN ?? "terrain")
+            : (maps.MapTypeId?.SATELLITE ?? "satellite"),
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
@@ -185,7 +188,7 @@ export function GoogleFieldMap({
       try { if (maps && map) maps.event?.clearInstanceListeners?.(map); } catch { /* noop */ }
       if (containerRef.current) containerRef.current.replaceChildren();
     };
-  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay, onProviderFailure]);
+  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay, baseLayer, onProviderFailure]);
 
   const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;
