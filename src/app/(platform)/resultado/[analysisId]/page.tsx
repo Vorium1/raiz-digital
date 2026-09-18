@@ -54,6 +54,28 @@ function parameterLabel(code: string | undefined) {
   return PARAMETER_LABEL[code.toUpperCase()] ?? code;
 }
 
+function recommendationTotalForArea(
+  recommendation: { inputType: string; quantity: number; unit: string },
+  areaHa: number,
+) {
+  const normalizedUnit = recommendation.unit.trim().toLowerCase();
+  if (normalizedUnit === "kg/ha") {
+    return {
+      quantity: recommendation.quantity * areaHa,
+      unit: "kg",
+      label: recommendation.inputType,
+    };
+  }
+  if (normalizedUnit === "t/ha" || normalizedUnit === "ton/ha") {
+    return {
+      quantity: recommendation.quantity * areaHa,
+      unit: "t",
+      label: recommendation.inputType,
+    };
+  }
+  return null;
+}
+
 function isV3(value: unknown): value is PremiumReportSnapshotV3 {
   return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 3);
 }
@@ -236,12 +258,24 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             )}
             {(prescription.recommendations?.length ?? 0) > 0 && (
               <div className="simple-result-recommendations">
-                {prescription.recommendations!.map((item, index) => (
-                  <article key={`${item.inputType}-${index}`}>
-                    <div><strong>{item.inputType}</strong>{item.rationale && <small>{item.rationale}</small>}</div>
-                    <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
-                  </article>
-                ))}
+                {prescription.recommendations!.map((item, index) => {
+                  const areaTotal = recommendationTotalForArea(item, Number(context.areaHa));
+                  return (
+                    <article key={`${item.inputType}-${index}`}>
+                      <div>
+                        <strong>{item.inputType}</strong>
+                        {item.rationale && <small>{item.rationale}</small>}
+                        {areaTotal && (
+                          <small>
+                            Total para {Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha:{" "}
+                            {areaTotal.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {areaTotal.unit} de {areaTotal.label}
+                          </small>
+                        )}
+                      </div>
+                      <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
+                    </article>
+                  );
+                })}
               </div>
             )}
             {(prescription.managementPractices?.length ?? 0) > 0 && (
