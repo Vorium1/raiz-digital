@@ -61,9 +61,16 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
     if (!analysis) return null;
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
-              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm", sp.collected_at::text AS "collectedAt"
-       FROM sample_points sp WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid ORDER BY sp.sequence NULLS LAST, sp.code`,
+      `SELECT sp.id::text, sp.code,
+              ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
+              sp.collected_at::text AS "collectedAt", sp.accuracy_m::float8 AS "accuracyM",
+              sp.gps_source AS "gpsSource"
+       FROM sample_points sp
+       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid
+       ORDER BY sp.sequence NULLS LAST, sp.code`,
       [tenantId, analysis.collectionOrderId],
     );
 
@@ -139,11 +146,16 @@ export async function getCollectionReportData(tenantId: string, collectionOrderI
     if (!order) return null;
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
-              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm", sp.collected_at::text AS "collectedAt",
+      `SELECT sp.id::text, sp.code,
+              ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
+              sp.collected_at::text AS "collectedAt", sp.accuracy_m::float8 AS "accuracyM",
               sp.gps_source AS "gpsSource", collector.name AS "collectedByName", sp.notes
        FROM sample_points sp LEFT JOIN users collector ON collector.id = sp.collected_by
-       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid ORDER BY sp.sequence NULLS LAST, sp.code`,
+       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid
+       ORDER BY sp.sequence NULLS LAST, sp.code`,
       [tenantId, collectionOrderId],
     );
 
