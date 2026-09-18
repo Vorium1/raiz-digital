@@ -55,6 +55,11 @@ function isV3(value: unknown): value is PremiumReportSnapshotV3 {
   return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 3);
 }
 
+function formatSnapshotDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
 function isV2(value: unknown): value is ReportSnapshotV2 {
   return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 2);
 }
@@ -102,6 +107,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const branding = v3?.brandingSnapshot ?? v2!.brandingSnapshot;
   const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
+  const ndvi = v3?.ndviSnapshot ?? null;
   const publishedPoints = (v3?.pointsSnapshot ?? []).map((point) => ({
     id: point.id,
     code: point.code,
@@ -153,6 +159,22 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
                 <span>{estimatedPointCount === publishedPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível no momento da publicação." : "Alguns pontos usam posição aproximada conforme a referência disponível no momento da publicação."}</span>
               </div>
             )}
+          </section>
+        )}
+
+        {ndvi && (
+          <section className="simple-result-section satellite">
+            <div className="simple-result-section-head">
+              <span>SATÉLITE</span>
+              <h2>Vigor da área</h2>
+              <p>Leitura NDVI congelada junto com esta decisão. A RAIZ não transforma esse índice em recomendação por si só.</p>
+            </div>
+            <div className="simple-result-ndvi-grid">
+              <div><small>Data da leitura</small><strong>{formatSnapshotDate(ndvi.capturedAt)}</strong></div>
+              <div><small>NDVI médio</small><strong>{ndvi.meanNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div><small>Faixa observada</small><strong>{ndvi.minNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–{ndvi.maxNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
+            </div>
           </section>
         )}
 
