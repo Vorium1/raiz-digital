@@ -33,6 +33,8 @@ export type MapImageOverlay = {
   opacity?: number;
 };
 
+export type FieldMapBaseLayer = "default" | "terrain";
+
 export type FieldMapProps = {
   boundary: SpatialGeometry;
   points: MapPoint[];
@@ -42,6 +44,7 @@ export type FieldMapProps = {
   hint?: string;
   boundaryFillColor?: string;
   imageOverlay?: MapImageOverlay | null;
+  baseLayer?: FieldMapBaseLayer;
 };
 
 export type PortfolioCanvasField = {
