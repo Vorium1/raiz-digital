@@ -366,3 +366,7 @@ assert.match(resultsPreparation, /Atualizar laudo/);
 
 assert.doesNotMatch(attentionPage, /Revisões para você/);
 assert.doesNotMatch(attentionPage, /href="\/revisar"/);
+
+assert.match(simpleResult, /recommendationTotalForArea/);
+assert.match(simpleResult, /Total para/);
+assert.match(simpleResult, /kg\/ha/);
