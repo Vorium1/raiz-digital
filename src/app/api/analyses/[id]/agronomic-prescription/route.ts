@@ -108,17 +108,19 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   });
 }
 
-export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!runRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode gerar prescrição assistida por IA." }, { status: 403 });
   const { id } = await context.params;
+  const deterministicMode = new URL(request.url).searchParams.get("mode") === "deterministic";
 
   try {
     const result = await prepareAgronomicPrescriptionDraft({
       tenantId: session.tenantId,
       userId: session.userId,
       analysisId: id,
+      mode: deterministicMode ? "deterministic" : "default",
     });
     return Response.json(result, { status: 201 });
   } catch (error) {
