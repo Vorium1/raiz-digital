@@ -175,12 +175,24 @@ export async function getParameterAveragesForSeason(tenantId: string, cropSeason
     const cropProfileId = cropProfileResult.rows[0]?.cropProfileId ?? null;
 
     const averagesResult = await client.query<{ parameterCode: string; avgValue: number; unit: string; sampleCount: number }>(
-      `SELECT lr.parameter_code AS "parameterCode", avg(lr.numeric_value)::float8 AS "avgValue",
+      `WITH latest_analysis AS (
+         SELECT a.id
+         FROM analyses a
+         WHERE a.tenant_id = $1::uuid
+           AND a.crop_season_id = $2::uuid
+           AND EXISTS (
+             SELECT 1 FROM lab_samples ls
+             WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id
+           )
+         ORDER BY a.created_at DESC, a.id DESC
+         LIMIT 1
+       )
+       SELECT lr.parameter_code AS "parameterCode", avg(lr.numeric_value)::float8 AS "avgValue",
               mode() WITHIN GROUP (ORDER BY lr.unit) AS unit, count(*)::int AS "sampleCount"
        FROM lab_results lr
-       JOIN lab_samples ls ON ls.id = lr.lab_sample_id
-       JOIN analyses a ON a.id = ls.analysis_id
-       WHERE a.tenant_id = $1::uuid AND a.crop_season_id = $2::uuid AND lr.source = 'MEASURED'
+       JOIN lab_samples ls ON ls.id = lr.lab_sample_id AND ls.tenant_id = lr.tenant_id
+       WHERE ls.analysis_id = (SELECT id FROM latest_analysis)
+         AND lr.source = 'MEASURED'
        GROUP BY lr.parameter_code
        ORDER BY "sampleCount" DESC, "parameterCode"`,
       [tenantId, cropSeasonId],
