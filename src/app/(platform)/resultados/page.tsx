@@ -47,7 +47,10 @@ export default async function ResultadosPage() {
   const reviewReady = analyses.filter((analysis: any) => {
     const delivery = deliveryByAnalysis.get(String(analysis.id));
     return delivery?.interpretationCurrent === true
-      && (analysis.latestInterpretationStatus === "IN_REVIEW" || delivery.prescriptionStatus === "PENDING_REVIEW");
+      && (
+        analysis.latestInterpretationStatus === "IN_REVIEW"
+        || (delivery.prescriptionCurrent === true && delivery.prescriptionStatus === "PENDING_REVIEW")
+      );
   });
 
   const publishReady = analyses.filter((analysis: any) => {
