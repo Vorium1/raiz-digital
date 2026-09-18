@@ -146,3 +146,24 @@ assert.equal(providerInventedDose.allowed, false);
 assert.ok(providerInventedDose.failures[0].blockers.includes("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
 
 console.log("uniform-pk-readiness: heterogeneidade, fonte 2025, dose e barreira de persistência/promoção validadas");
+
+{
+  const result = computeDeterministicPkDose({
+    cropCode: "SOJA",
+    interpretation: [
+      { sampleCode: "A", parameterCode: "K", interpretable: true, classification: "Alto" },
+      { sampleCode: "B", parameterCode: "K", interpretable: true, classification: "Alto" },
+      { sampleCode: "C", parameterCode: "K", interpretable: true, classification: "Muito Alto" },
+    ],
+    yieldGoal: null,
+    yieldGoalUnit: null,
+    cultivationOrderAfterSoilAnalysis: null,
+    nutrient: "K2O",
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.expected?.doseKgPerHa, 75);
+  assert.deepEqual(result.expected?.assumptions, [
+    "YIELD_GOAL_DEFAULTED_TO_CROP_REFERENCE:3_T_HA",
+    "CULTIVATION_ORDER_DEFAULTED_TO_FIRST_AFTER_ANALYSIS",
+  ]);
+}
