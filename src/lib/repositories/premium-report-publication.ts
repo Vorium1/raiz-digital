@@ -25,6 +25,20 @@ export type FrozenSamplePoint = {
   gpsSource: string | null;
 };
 
+export type FrozenNdviSnapshot = {
+  id: string;
+  capturedAt: string;
+  source: string;
+  cloudCoverPct: number | null;
+  pixelCount: number;
+  meanNdvi: number;
+  minNdvi: number;
+  maxNdvi: number;
+  stddevNdvi: number | null;
+  zoneBreakdownPct: Record<string, number>;
+  rasterArchived: boolean;
+};
+
 export type FrozenReviewedGeneration = {
   id: string;
   status: "APPROVED";
@@ -44,6 +58,7 @@ export type PremiumReportSnapshotV3 = {
   structuredOutput: unknown;
   brandingSnapshot: TenantBranding;
   pointsSnapshot: FrozenSamplePoint[];
+  ndviSnapshot?: FrozenNdviSnapshot | null;
   approvedNarrative: FrozenReviewedGeneration | null;
   approvedPrescription: FrozenReviewedGeneration;
   publishedAt: string;
@@ -289,6 +304,26 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
         )
       : { rows: [] as FrozenSamplePoint[] };
 
+    const ndviResult = await client.query<FrozenNdviSnapshot>(
+      `SELECT id::text,
+              captured_at::text AS "capturedAt",
+              source,
+              cloud_cover_pct::float8 AS "cloudCoverPct",
+              pixel_count AS "pixelCount",
+              mean_ndvi::float8 AS "meanNdvi",
+              min_ndvi::float8 AS "minNdvi",
+              max_ndvi::float8 AS "maxNdvi",
+              stddev_ndvi::float8 AS "stddevNdvi",
+              zone_breakdown_pct AS "zoneBreakdownPct",
+              (raster_object_key IS NOT NULL) AS "rasterArchived"
+       FROM field_ndvi_snapshots
+       WHERE tenant_id=$1::uuid AND field_id=$2::uuid
+       ORDER BY captured_at DESC
+       LIMIT 1`,
+      [input.tenantId, publishedContext.fieldId],
+    );
+    const ndviSnapshot = ndviResult.rows[0] ?? null;
+
     // Releitura imediatamente antes de congelar o artefato externo.
     await assertCurrentPublicationState(client, {
       tenantId: input.tenantId,
@@ -306,6 +341,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       structuredOutput: interpretation.structuredOutput,
       brandingSnapshot,
       pointsSnapshot: pointsResult.rows,
+      ndviSnapshot,
       approvedNarrative,
       approvedPrescription,
       publishedAt,
