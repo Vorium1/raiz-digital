@@ -1,0 +1,41 @@
+name: PR88 Cabeda Runner Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/pr88-cabeda-runner-bundle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Empacotar candidato executável
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar             --exclude=.git             --exclude=.next             --exclude=storage             --exclude=playwright-report             --exclude=test-results             -czf pr88-cabeda-runner.tgz             package.json package-lock.json src scripts node_modules
+
+      - name: Publicar bundle temporário
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr88-cabeda-runner
+          path: pr88-cabeda-runner.tgz
+          retention-days: 1
+          compression-level: 0
