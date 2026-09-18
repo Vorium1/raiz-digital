@@ -51,6 +51,7 @@ export function SimpleSendFlow() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
+  const [areaConfirmed, setAreaConfirmed] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -110,6 +111,10 @@ export function SimpleSendFlow() {
       setSeasonId(id);
     }
   }
+
+  useEffect(() => {
+    setAreaConfirmed(false);
+  }, [clientId, propertyId, fieldId, seasonId]);
 
   function chooseClient(value: string) { setClientId(value); setPropertyId(""); setFieldId(""); setSeasonId(""); }
   function chooseProperty(value: string) { setPropertyId(value); setFieldId(""); setSeasonId(""); }
@@ -236,7 +241,18 @@ export function SimpleSendFlow() {
                 onCreated={handleSetupCreated}
               />
 
-              {areaReady && <div className="simple-area-confirmed"><Icon name="check" size={18}/><div><strong>{selectedField?.name}</strong><small>{selectedClient?.name} · {selectedProperty?.name} · Safra {selectedSeason?.seasonLabel}{(selectedSeason?.currentCrop || selectedSeason?.nextCrop) ? ` · ${selectedSeason.currentCrop || selectedSeason.nextCrop}` : ""}</small></div></div>}
+              {areaReady && (
+                <div className={`simple-area-confirmed ${areaConfirmed ? "confirmed" : "pending"}`}>
+                  <Icon name={areaConfirmed ? "check" : "location"} size={18}/>
+                  <div>
+                    <strong>{selectedField?.name}</strong>
+                    <small>{selectedClient?.name} · {selectedProperty?.name} · Safra {selectedSeason?.seasonLabel}{(selectedSeason?.currentCrop || selectedSeason?.nextCrop) ? ` · ${selectedSeason.currentCrop || selectedSeason.nextCrop}` : ""}</small>
+                  </div>
+                  {!areaConfirmed
+                    ? <button type="button" onClick={() => setAreaConfirmed(true)}>Usar esta área</button>
+                    : <span className="simple-area-confirmed-label">Confirmada</span>}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -246,7 +262,7 @@ export function SimpleSendFlow() {
 
       <div className="simple-send-finish">
         <div><strong>A RAIZ faz o restante.</strong><small>Organiza, analisa e leva para revisão. Nada é publicado automaticamente.</small></div>
-        <button type="button" disabled={!importReady || !areaReady || busy} onClick={() => void submit()}>{busy ? "Analisando…" : "Enviar e analisar"}<Icon name="arrow" size={16}/></button>
+        <button type="button" disabled={!importReady || !areaReady || !areaConfirmed || busy} onClick={() => void submit()}>{busy ? "Analisando…" : "Enviar e analisar"}<Icon name="arrow" size={16}/></button>
       </div>
     </div>
   );
