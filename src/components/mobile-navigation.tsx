@@ -12,6 +12,7 @@ export function MobileNavigation(_props: { role?: string; isPlatformCurator?: bo
   const isActive = (href: string) => {
     const path = href.split("?")[0];
     if (path === "/inicio") return pathname === "/inicio" || pathname === "/dashboard";
+    if (path === "/mais") return pathname === "/mais" || pathname.startsWith("/configuracoes");
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
@@ -29,7 +30,7 @@ export function MobileNavigation(_props: { role?: string; isPlatformCurator?: bo
       <Link href="/resultados" className={isActive("/resultados") ? "active" : ""}>
         <Icon name="file" size={21}/><span>Resultados</span>
       </Link>
-      <Link href="/configuracoes" className={isActive("/configuracoes") ? "active" : ""}>
+      <Link href="/mais" className={isActive("/mais") ? "active" : ""}>
         <Icon name="dots" size={21}/><span>Mais</span>
       </Link>
     </nav>
