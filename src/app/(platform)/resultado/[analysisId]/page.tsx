@@ -109,6 +109,11 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []).slice(0, 8);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
+  const engineValidated = Boolean(
+    v3?.approvedPrescription.provider === "raiz-deterministic-limited"
+    && v3?.approvedPrescription.model === "agronomic-engine",
+  );
+  const validationLabel = engineValidated ? "Motor RAIZ" : reviewer;
   const branding = v3?.brandingSnapshot ?? v2!.brandingSnapshot;
   const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
   const ndvi = v3?.ndviSnapshot ?? null;
@@ -150,7 +155,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             <div><small>Safra</small><strong>{context.seasonLabel}</strong></div>
             <div><small>Cultura</small><strong>{context.currentCrop || context.nextCrop || context.cropProfileName || "Não informada"}</strong></div>
             {publishedPoints.length > 0 && <div><small>Pontos de coleta</small><strong>{publishedPoints.length}</strong></div>}
-            {reviewer && <div><small>Responsável pela revisão</small><strong>{reviewer}</strong></div>}
+            {validationLabel && <div><small>Validação</small><strong>{validationLabel}</strong></div>}
           </div>
         </section>
 
@@ -217,7 +222,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           <section className="simple-result-section recommendation">
             <div className="simple-result-section-head">
               <span>{(prescription.recommendations?.length ?? 0) > 0 ? "O QUE FAZER" : "CONCLUSÃO TÉCNICA"}</span>
-              <h2>{(prescription.recommendations?.length ?? 0) > 0 ? "Recomendação aprovada" : "Conclusão técnica aprovada"}</h2>
+              <h2>{(prescription.recommendations?.length ?? 0) > 0 ? (engineValidated ? "Recomendação validada pelo motor RAIZ" : "Recomendação validada") : (engineValidated ? "Conclusão validada pelo motor RAIZ" : "Conclusão técnica validada")}</h2>
               {prescription.summary && <p>{prescription.summary}</p>}
             </div>
             {(prescription.recommendations?.length ?? 0) === 0 && (
@@ -255,7 +260,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         </section>
 
         <footer className="simple-result-footer">
-          <div><span><Icon name="shield" size={16}/> Revisado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
+          <div><span><Icon name="shield" size={16}/> Validado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
           <div className="no-print"><PrintButton/>{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}</div>
         </footer>
       </article>
