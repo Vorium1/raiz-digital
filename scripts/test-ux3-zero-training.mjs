@@ -151,6 +151,8 @@ assert.match(fieldOverviewRepository, /collectionPoints: pointsResult\.rows/);
 assert.match(fieldVigor, /raiz:ndvi:auto:\$\{fieldId\}/);
 assert.match(fieldVigor, /\/api\/fields\/\$\{fieldId\}\/ndvi/);
 assert.match(fieldVigor, /method:\s*"POST"/);
+assert.match(fieldVigor, /const refreshed = await refreshSatellite\(\{ automatic: true \}\)/);
+assert.match(fieldVigor, /if \(!refreshed\) sessionStorage\.removeItem\(key\)/);
 assert.match(fieldVigor, /imageOverlay=\{overlay\}/);
 assert.match(results, /href=\{`\/resultado\/\$\{report\.analysisId\}`\}/);
 assert.match(results, /Safra \{report\.seasonLabel\}/);
