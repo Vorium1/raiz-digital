@@ -98,18 +98,77 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
            AND ($2::uuid IS NULL OR p.id = $2::uuid)
        ),
        scoped_seasons AS (
-         SELECT cs.id, cs.field_id, cs.crop_profile_id
+         SELECT DISTINCT ON (cs.field_id)
+                cs.id, cs.field_id, cs.crop_profile_id, cs.created_at
          FROM crop_seasons cs
          WHERE cs.field_id IN (SELECT id FROM scoped_fields)
            AND ($3::uuid IS NULL OR cs.id = $3::uuid)
+         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
        ),
        scoped_analyses AS (
-         SELECT a.* FROM analyses a WHERE a.crop_season_id IN (SELECT id FROM scoped_seasons)
+         SELECT a.*
+         FROM analyses a
+         WHERE a.crop_season_id IN (SELECT id FROM scoped_seasons)
+       ),
+       latest_analyses AS (
+         SELECT DISTINCT ON (cs.field_id)
+                a.id, a.tenant_id, a.crop_season_id, a.status, a.confidence_score, a.created_at,
+                cs.field_id, cs.crop_profile_id
+         FROM scoped_analyses a
+         JOIN scoped_seasons cs ON cs.id = a.crop_season_id
+         ORDER BY cs.field_id, a.created_at DESC, a.id DESC
        ),
        scoped_points AS (
-         SELECT sp.* FROM sample_points sp
+         SELECT sp.*
+         FROM sample_points sp
          JOIN collection_orders co ON co.id = sp.collection_order_id
          WHERE co.crop_season_id IN (SELECT id FROM scoped_seasons)
+       ),
+       latest_evaluation AS (
+         SELECT la.field_id,
+                la.status AS analysis_status,
+                la.confidence_score,
+                CASE
+                  WHEN li.id IS NULL THEN NULL
+                  WHEN li.crop_profile_id IS NOT DISTINCT FROM la.crop_profile_id
+                   AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+                   AND (
+                     cp.id IS NULL
+                     OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+                   )
+                  THEN li.status
+                  ELSE NULL
+                END AS interpretation_status,
+                CASE
+                  WHEN li.id IS NOT NULL
+                   AND li.crop_profile_id IS NOT DISTINCT FROM la.crop_profile_id
+                   AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+                   AND (
+                     cp.id IS NULL
+                     OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+                   )
+                  THEN li.not_interpretable_reason
+                  ELSE NULL
+                END AS not_interpretable_reason
+         FROM latest_analyses la
+         LEFT JOIN crop_profiles cp ON cp.id = la.crop_profile_id
+         LEFT JOIN LATERAL (
+           SELECT i.id, i.status, i.not_interpretable_reason, i.created_at, i.crop_profile_id
+           FROM interpretations i
+           WHERE i.tenant_id = la.tenant_id AND i.analysis_id = la.id
+           ORDER BY i.revision DESC
+           LIMIT 1
+         ) li ON true
+         LEFT JOIN LATERAL (
+           SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+           FROM analysis_imports ai
+           WHERE ai.tenant_id = la.tenant_id AND ai.analysis_id = la.id
+         ) latest_import ON true
+         LEFT JOIN LATERAL (
+           SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+           FROM crop_profile_parameters cpp
+           WHERE cpp.crop_profile_id = cp.id
+         ) rule_state ON cp.id IS NOT NULL
        )
        SELECT
          (SELECT count(*)::int FROM clients WHERE ($1::uuid IS NULL OR id = $1::uuid)) AS clients,
@@ -121,46 +180,13 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
          (SELECT count(*)::int FROM scoped_points) AS "totalPoints",
          (SELECT count(*)::int FROM scoped_points WHERE collected_at IS NOT NULL) AS "collectedPoints",
          (SELECT count(*)::int FROM scoped_analyses WHERE status NOT IN ('DRAFT')) AS "labsProcessed",
+         (SELECT count(*)::int FROM latest_evaluation WHERE interpretation_status = 'IN_REVIEW') AS "interpretationsPending",
+         (SELECT count(*)::int FROM latest_evaluation WHERE analysis_status = 'INCONSISTENT') AS "criticalFields",
+         (SELECT avg(confidence_score)::float8 FROM latest_evaluation WHERE confidence_score IS NOT NULL) AS "avgConfidence",
          (SELECT count(*)::int
-          FROM scoped_analyses a
-          JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-          LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
-          JOIN LATERAL (
-            SELECT i.status, i.created_at, i.crop_profile_id
-            FROM interpretations i
-            WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
-            ORDER BY i.revision DESC
-            LIMIT 1
-          ) li ON true
-          LEFT JOIN LATERAL (
-            SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
-            FROM analysis_imports ai
-            WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
-          ) latest_import ON true
-          LEFT JOIN LATERAL (
-            SELECT max(cpp.updated_at) AS latest_parameter_rule_at
-            FROM crop_profile_parameters cpp
-            WHERE cpp.crop_profile_id = cp.id
-          ) rule_state ON cp.id IS NOT NULL
-          WHERE li.status = 'IN_REVIEW'
-            AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
-            AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
-            AND (
-              cp.id IS NULL
-              OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
-            )
-         ) AS "interpretationsPending",
-         (SELECT count(DISTINCT cs.field_id)::int FROM scoped_analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id WHERE a.status = 'INCONSISTENT') AS "criticalFields",
-         (SELECT avg(confidence_score)::float8 FROM scoped_analyses WHERE confidence_score IS NOT NULL) AS "avgConfidence",
-         -- Análises com parâmetro aguardando homologação (motor rodou e não achou nada interpretável)
-         -- desaparecem de "interpretationsPending" (não é IN_REVIEW) e de "criticalFields" (não é
-         -- INCONSISTENT) -- ficavam invisíveis no painel principal, só apareciam como alerta de baixa
-         -- prioridade em /alertas. Achado real confirmado na auditoria (item B). "Não avaliado" nunca deve
-         -- virar silêncio na tela -- por isso ganha indicador próprio, nunca contado como "tudo OK".
-         (SELECT count(*)::int FROM scoped_analyses a WHERE EXISTS (
-            SELECT 1 FROM interpretations i WHERE i.analysis_id = a.id AND i.status = 'CALCULATED' AND i.not_interpretable_reason IS NOT NULL
-              AND i.revision = (SELECT max(i2.revision) FROM interpretations i2 WHERE i2.analysis_id = a.id)
-         )) AS "notInterpretableCount"
+          FROM latest_evaluation
+          WHERE interpretation_status = 'CALCULATED'
+            AND not_interpretable_reason IS NOT NULL) AS "notInterpretableCount"
       `,
       [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );
