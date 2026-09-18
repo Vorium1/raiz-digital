@@ -67,14 +67,21 @@ export function SimpleRecommendationContext({
   if (!needsYield && !needsOrder) return null;
 
   return (
-    <div className="simple-context-question">
-      <div className="simple-context-question-head"><span><Icon name="sparkles" size={18}/></span><div><strong>Para incluir dose de fósforo e potássio</strong><small>{missingGroupCount === 1 ? "Há uma informação opcional que libera essa dose." : "Há duas informações opcionais que liberam essas doses."} Se você não tiver esses dados, a RAIZ conclui o relatório sem estimar a dose.</small></div></div>
+    <details className="simple-context-question">
+      <summary className="simple-context-question-head">
+        <span><Icon name="sparkles" size={18}/></span>
+        <div>
+          <strong>Incluir dose de fósforo e potássio</strong>
+          <small>Opcional. {missingGroupCount === 1 ? "Falta uma informação para calcular essa dose." : "Faltam duas informações para calcular essas doses."} Sem isso, a RAIZ conclui o relatório sem estimar valores.</small>
+        </div>
+        <Icon name="chevron" size={15}/>
+      </summary>
       <div className="simple-context-fields">
         {needsYield && <label><span>Meta de produtividade</span><div className="simple-context-input"><input inputMode="decimal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Ex.: 4,0"/><b>t/ha</b></div></label>}
         {needsOrder && <label><span>Esta é qual safra depois desta análise de solo?</span><select value={order} onChange={(event) => setOrder(event.target.value)}><option value="">Escolha</option><option value="1">Primeira safra</option><option value="2">Segunda safra</option></select></label>}
       </div>
       {error && <div className="simple-context-error">{error}</div>}
-      <button type="button" onClick={() => void save()} disabled={busy}>{busy ? "Salvando…" : "Salvar e continuar"}</button>
-    </div>
+      <button type="button" onClick={() => void save()} disabled={busy}>{busy ? "Salvando…" : "Salvar e incluir dose"}</button>
+    </details>
   );
 }
