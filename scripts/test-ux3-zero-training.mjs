@@ -167,6 +167,7 @@ assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
 assert.match(results, /Conclusões preparadas/);
 assert.match(results, /Prontos para publicar/);
+assert.match(results, /delivery\.prescriptionCurrent === true && delivery\.prescriptionStatus === "PENDING_REVIEW"/);
 assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
 assert.match(resultsPreparation, /router\.refresh\(\)/);
