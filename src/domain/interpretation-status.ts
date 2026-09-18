@@ -4,13 +4,12 @@ export type InterpretationStatusTone = "success" | "review" | "waiting" | "dange
  * Única fonte de rótulo pro status de uma interpretação (`interpretations.status`). O texto precisa
  * explicar o estado técnico sem transformar ausência de cobertura em "erro do dado": `CALCULATED`
  * significa que o motor rodou, mas não encontrou cobertura suficiente para produzir nenhuma
- * classificação utilizável; `IN_REVIEW` significa que existe interpretação real aguardando decisão
- * profissional; `APPROVED` significa decisão técnica registrada.
+ * classificação utilizável; `IN_REVIEW` permanece apenas para histórico/compatibilidade; `APPROVED` significa validação determinística registrada pelo motor.
  */
 export const INTERPRETATION_STATUS_META: Record<string, { label: string; tone: InterpretationStatusTone }> = {
   CALCULATED: { label: "Sem cobertura técnica suficiente", tone: "waiting" },
   IN_REVIEW: { label: "Aguardando validação técnica", tone: "review" },
-  APPROVED: { label: "Aprovada", tone: "success" },
+  APPROVED: { label: "Validada pelo motor RAIZ", tone: "success" },
   AI_GENERATED: { label: "Narrativa gerada", tone: "waiting" },
   PUBLISHED: { label: "Publicada", tone: "success" },
   SUPERSEDED: { label: "Substituída", tone: "waiting" },
@@ -26,7 +25,7 @@ export const QUEUE_BUCKET_META: Record<QueueBucket, { label: string; tone: Inter
   BLOQUEADA: { label: "Interpretação bloqueada", tone: "danger" },
   AGUARDANDO_REVISAO: { label: "Aguardando revisão", tone: "review" },
   REVISAO_EM_ANDAMENTO: { label: "Revisão em andamento", tone: "review" },
-  APROVADA: { label: "Decisão aprovada", tone: "success" },
+  APROVADA: { label: "Validada pelo motor", tone: "success" },
 };
 
 /**
