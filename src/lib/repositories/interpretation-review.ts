@@ -40,14 +40,25 @@ export async function reviewInterpretationWithClient(client: PoolClient, input: 
   const current = locked.rows[0];
   if (!current) throw new InterpretationError("Interpretação não encontrada.", 404);
 
-  const evidenceState = await client.query<{ latestImportCommittedAt: string | null }>(
-    `SELECT latest_import.latest_import_at::text AS "latestImportCommittedAt"
+  const evidenceState = await client.query<{
+    latestImportCommittedAt: string | null;
+    latestRuleUpdatedAt: string | null;
+  }>(
+    `SELECT latest_import.latest_import_at::text AS "latestImportCommittedAt",
+            rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
      FROM analyses a
+     JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+     LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
      LEFT JOIN LATERAL (
        SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
        FROM analysis_imports ai
        WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
      ) latest_import ON true
+     LEFT JOIN LATERAL (
+       SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+       FROM crop_profile_parameters cpp
+       WHERE cpp.crop_profile_id = cp.id
+     ) rule_state ON cp.id IS NOT NULL
      WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
      FOR SHARE OF a`,
     [input.tenantId, current.analysisId],
@@ -55,6 +66,7 @@ export async function reviewInterpretationWithClient(client: PoolClient, input: 
   const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: current.createdAt,
     latestImportCommittedAt: evidenceState.rows[0]?.latestImportCommittedAt ?? null,
+    latestRuleUpdatedAt: evidenceState.rows[0]?.latestRuleUpdatedAt ?? null,
   });
   if (!evidenceFreshness.current) {
     throw new InterpretationError(evidenceFreshness.reason ?? "A interpretação não representa o laudo laboratorial corrente.", 409);
