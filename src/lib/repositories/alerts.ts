@@ -118,6 +118,88 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
+    // Uma interpretação pode continuar no banco e, ainda assim, deixar de representar a decisão
+    // corrente quando muda laudo, crop profile ou regra. Só olhamos a análise mais recente da safra mais
+    // recente de cada talhão para não transformar histórico legítimo em alerta operacional.
+    const staleCurrentInterpretations = await client.query(
+      `WITH latest_seasons AS (
+         SELECT DISTINCT ON (cs.field_id)
+                cs.id, cs.field_id, cs.crop_profile_id, cs.created_at
+         FROM crop_seasons cs
+         WHERE cs.tenant_id = $1::uuid
+         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
+       ),
+       latest_analyses AS (
+         SELECT DISTINCT ON (ls.field_id)
+                a.id, a.tenant_id, a.code, a.created_at,
+                ls.field_id, ls.crop_profile_id
+         FROM analyses a
+         JOIN latest_seasons ls ON ls.id = a.crop_season_id
+         ORDER BY ls.field_id, a.created_at DESC, a.id DESC
+       )
+       SELECT la.id::text AS "analysisId",
+              la.code,
+              f.id::text AS "fieldId",
+              f.name AS "fieldName",
+              c.name AS "clientName",
+              li.created_at::text AS "interpretationCreatedAt",
+              CASE
+                WHEN li.crop_profile_id IS DISTINCT FROM la.crop_profile_id THEN 'CROP_PROFILE_CHANGED'
+                WHEN latest_import.latest_import_at IS NOT NULL AND li.created_at < latest_import.latest_import_at THEN 'LAB_EVIDENCE_CHANGED'
+                WHEN cp.id IS NOT NULL
+                 AND li.created_at < greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at)) THEN 'AGRONOMIC_RULES_CHANGED'
+                ELSE NULL
+              END AS "freshnessCode"
+       FROM latest_analyses la
+       JOIN fields f ON f.tenant_id = la.tenant_id AND f.id = la.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+       LEFT JOIN crop_profiles cp ON cp.id = la.crop_profile_id
+       JOIN LATERAL (
+         SELECT i.created_at, i.crop_profile_id
+         FROM interpretations i
+         WHERE i.tenant_id = la.tenant_id AND i.analysis_id = la.id
+         ORDER BY i.revision DESC
+         LIMIT 1
+       ) li ON true
+       LEFT JOIN LATERAL (
+         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+         FROM analysis_imports ai
+         WHERE ai.tenant_id = la.tenant_id AND ai.analysis_id = la.id
+       ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
+       WHERE li.crop_profile_id IS DISTINCT FROM la.crop_profile_id
+          OR (latest_import.latest_import_at IS NOT NULL AND li.created_at < latest_import.latest_import_at)
+          OR (
+            cp.id IS NOT NULL
+            AND li.created_at < greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+          )`,
+      [tenantId],
+    );
+    for (const row of staleCurrentInterpretations.rows) {
+      const reason = row.freshnessCode === "CROP_PROFILE_CHANGED"
+        ? "o perfil agronômico da safra mudou"
+        : row.freshnessCode === "LAB_EVIDENCE_CHANGED"
+          ? "o laudo recebeu evidência mais recente"
+          : "as regras agronômicas foram atualizadas";
+      alerts.push({
+        id: `stale-current-${row.analysisId}`,
+        category: "Análise precisa atualizar",
+        criticality: "MEDIA",
+        title: `${row.fieldName} precisa recalcular a análise`,
+        description: `${row.clientName} · ${row.code} — ${reason}. A versão anterior permanece no histórico e não deve ser usada como decisão corrente.`,
+        href: `/analise/${row.analysisId}`,
+        context: row.fieldName,
+        fieldId: row.fieldId,
+        date: row.interpretationCreatedAt,
+        responsible: null,
+      });
+    }
+
     const awaitingReview = await client.query(
       `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.created_at::text AS "createdAt", a.code, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
        FROM interpretations i
