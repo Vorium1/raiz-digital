@@ -21,6 +21,8 @@ type LayerResponse = {
   points: MapPoint[];
   availableParameters: string[];
   interpretationStatus: string | null;
+  interpretationCurrent: boolean;
+  interpretationFreshnessCode: string;
 };
 
 const PARAMETER_LABEL: Record<string, string> = {
@@ -39,6 +41,11 @@ const PARAMETER_LABEL: Record<string, string> = {
 };
 
 const PARAMETER_PRIORITY = ["P", "K", "PH", "MO", "CA", "MG", "ZN", "CU", "B", "MN", "S"];
+const REFRESHABLE_FRESHNESS_CODES = new Set<AnalysisEvidenceFreshnessCode>([
+  "AGRONOMIC_RULES_CHANGED",
+  "LAB_EVIDENCE_CHANGED",
+  "INTERPRETATION_TIMESTAMP_MISSING",
+]);
 
 function parameterLabel(code: string) {
   return PARAMETER_LABEL[code.toUpperCase()] ?? code;
@@ -74,18 +81,26 @@ export function SimpleFieldMapLayers({
 
     void (async () => {
       try {
+        let refreshedAnalysis = false;
         if (
           analysisId
           && canRefresh
-          && freshnessCode === "AGRONOMIC_RULES_CHANGED"
+          && freshnessCode
+          && REFRESHABLE_FRESHNESS_CODES.has(freshnessCode)
         ) {
-          const key = `raiz:ux3:field-rule-refresh:${analysisId}`;
+          const key = `raiz:ux3:field-analysis-refresh:${analysisId}`;
           if (!sessionStorage.getItem(key)) {
             sessionStorage.setItem(key, "1");
-            const refresh = await fetch(`/api/analyses/${analysisId}/interpret?draft=local`, { method: "POST" });
-            if (!refresh.ok) {
-              const payload = await refresh.json().catch(() => ({}));
-              throw new Error(payload.error ?? "Não foi possível atualizar a análise desta área.");
+            try {
+              const refresh = await fetch(`/api/analyses/${analysisId}/interpret?draft=local`, { method: "POST" });
+              if (!refresh.ok) {
+                const payload = await refresh.json().catch(() => ({}));
+                throw new Error(payload.error ?? "Não foi possível atualizar a análise desta área.");
+              }
+              refreshedAnalysis = true;
+            } catch (error) {
+              sessionStorage.removeItem(key);
+              throw error;
             }
           }
         }
@@ -116,7 +131,7 @@ export function SimpleFieldMapLayers({
         setParameter(preferred);
         if (!preferred) setMode("collection");
         setLoading(false);
-        if (analysisId && freshnessCode === "AGRONOMIC_RULES_CHANGED") router.refresh();
+        if (refreshedAnalysis) router.refresh();
       } catch (caught) {
         if (cancelled) return;
         setMessage(caught instanceof Error ? caught.message : "Não foi possível abrir as camadas desta área.");
