@@ -262,12 +262,19 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
     }
 
     const seasonsWithoutCrop = await client.query(
-      `SELECT cs.id::text, cs.season_label AS "seasonLabel", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
-       FROM crop_seasons cs
+      `WITH latest_seasons AS (
+         SELECT DISTINCT ON (cs.field_id)
+                cs.id, cs.tenant_id, cs.field_id, cs.season_label, cs.crop_profile_id, cs.created_at
+         FROM crop_seasons cs
+         WHERE cs.tenant_id = $1::uuid
+         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
+       )
+       SELECT cs.id::text, cs.season_label AS "seasonLabel", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
+       FROM latest_seasons cs
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE cs.tenant_id = $1::uuid AND cs.crop_profile_id IS NULL`,
+       WHERE cs.crop_profile_id IS NULL`,
       [tenantId],
     );
     for (const row of seasonsWithoutCrop.rows) {
