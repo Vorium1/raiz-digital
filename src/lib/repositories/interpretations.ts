@@ -89,7 +89,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
       [input.tenantId, input.analysisId],
     );
     const revision = revisionResult.rows[0].nextRevision;
-    const status = engineResult.interpretable ? "IN_REVIEW" : "CALCULATED";
+    const status = engineResult.interpretable ? "APPROVED" : "CALCULATED";
     const notInterpretableReason = engineResult.interpretable ? null : (engineResult.pendencies[0] ?? "Sem contexto suficiente para interpretar.");
 
     const insertResult = await client.query<{ id: string; revision: number; status: string; createdAt: string }>(
@@ -112,13 +112,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     await client.query(
       `UPDATE analyses SET status = $3::analysis_status, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [input.tenantId, input.analysisId, engineResult.interpretable ? "AWAITING_REVIEW" : "READY_TO_INTERPRET"],
+      [input.tenantId, input.analysisId, engineResult.interpretable ? "APPROVED" : "READY_TO_INTERPRET"],
     );
 
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
-      action: "INTERPRETATION_CALCULATED",
+      action: engineResult.interpretable ? "INTERPRETATION_ENGINE_VALIDATED" : "INTERPRETATION_CALCULATED",
       entityType: "interpretation",
       entityId: created.id,
       metadata: { analysisId: input.analysisId, revision, status, interpretable: engineResult.interpretable, pendencyCount: engineResult.pendencies.length },
