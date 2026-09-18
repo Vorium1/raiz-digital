@@ -19,7 +19,37 @@ export async function getDashboardSnapshot(tenantId: string, userId?: string, cl
     const result = await client.query<DashboardSnapshot>(
       `SELECT
         (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status NOT IN ('ARCHIVED','REPORT_SENT') AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "activeAnalyses",
-        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status = 'AWAITING_REVIEW' AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "awaitingReview",
+        (SELECT count(*)::int
+         FROM analyses a
+         JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+         JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+         JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+         LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+         JOIN LATERAL (
+           SELECT i.status, i.created_at
+           FROM interpretations i
+           WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
+           ORDER BY i.revision DESC
+           LIMIT 1
+         ) li ON true
+         LEFT JOIN LATERAL (
+           SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+           FROM analysis_imports ai
+           WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+         ) latest_import ON true
+         LEFT JOIN LATERAL (
+           SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+           FROM crop_profile_parameters cpp
+           WHERE cpp.crop_profile_id = cp.id
+         ) rule_state ON cp.id IS NOT NULL
+         WHERE li.status = 'IN_REVIEW'
+           AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+           AND (
+             cp.id IS NULL
+             OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+           )
+           AND ($1::uuid IS NULL OR p.client_id = $1::uuid)
+        ) AS "awaitingReview",
         (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status = 'INCONSISTENT' AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS inconsistent,
         (SELECT count(*)::int FROM sample_points sp JOIN collection_orders co ON co.id = sp.collection_order_id JOIN crop_seasons cs ON cs.id = co.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE sp.collected_at IS NOT NULL AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "collectedPoints",
         (SELECT count(*)::int FROM clients WHERE ($1::uuid IS NULL OR id = $1::uuid)) AS clients`,
