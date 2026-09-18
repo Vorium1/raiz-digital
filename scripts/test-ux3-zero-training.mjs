@@ -37,6 +37,7 @@ const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-p
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
+const decisionDeliveryStatus = read("src/lib/repositories/decision-delivery-status.ts");
 
 // A navegação principal é um app de tarefas, não uma árvore de módulos/ERP.
 assert.match(sidebar, /const SEND_HREF = "\/enviar"/);
@@ -147,6 +148,9 @@ assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
 assert.match(resultsPreparation, /router\.refresh\(\)/);
 assert.match(resultsPreparation, /não aprova nem publica nada sozinha/);
+assert.match(decisionDeliveryStatus, /information_schema\.columns/);
+assert.match(decisionDeliveryStatus, /hasPrescriptionLink/);
+assert.match(decisionDeliveryStatus, /currentReportJoin/);
 assert.match(simpleAnalysis, /getAnalysisEvidenceState/);
 assert.ok(simpleAnalysis.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);"));
 assert.ok(simpleAnalysis.includes("{canViewTechnical && ("));
