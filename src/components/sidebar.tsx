@@ -17,7 +17,7 @@ type SidebarProps = {
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const SEND_HREF = "/enviar";
 
-export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
+export function Sidebar({ userName, role }: SidebarProps) {
   const pathname = usePathname();
   const canReview = Boolean(role && REVIEW_ROLES.has(role));
   const avatar = userName ? initials(userName) || "R" : "R";
@@ -45,10 +45,9 @@ export function Sidebar({ userName, role, pendingAnalyses }: SidebarProps) {
       <nav className="simple-nav">
         {items.map((item) => {
           const active = activeFor(item.href);
-          const count = item.label === "Revisar" ? (pendingAnalyses ?? 0) : 0;
           return (
             <Link key={item.href} href={item.href} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>
-              <span className="simple-nav-icon"><Icon name={item.icon} size={23}/>{count > 0 && <b aria-label={`${count} itens para revisar`}>{count > 9 ? "9+" : count}</b>}</span>
+              <span className="simple-nav-icon"><Icon name={item.icon} size={23}/></span>
               <span>{item.label}</span>
             </Link>
           );
