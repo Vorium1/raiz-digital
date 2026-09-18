@@ -50,7 +50,7 @@ export function SimpleRefreshAnalysis({
     setMessage("");
     try {
       const url = options.deterministicOnly
-        ? `/api/analyses/${analysisId}/interpret?draft=0`
+        ? `/api/analyses/${analysisId}/interpret?draft=local`
         : `/api/analyses/${analysisId}/interpret`;
       const response = await fetch(url, { method: "POST" });
       const payload = await response.json().catch(() => ({}));
