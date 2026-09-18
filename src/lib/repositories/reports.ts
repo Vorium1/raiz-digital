@@ -298,7 +298,7 @@ export async function getPropertyExecutiveReportData(tenantId: string, propertyI
       getPortfolioFieldSummaries(tenantId, { propertyId }, userId),
     ]);
 
-    const attentionFields = fieldSummaries.filter((f) => f.evaluationStatus === "SEM_ANALISE" || f.evaluationStatus === "NAO_INTERPRETAVEL");
+    const attentionFields = fieldSummaries.filter((f) => f.evaluationStatus !== "APROVADO");
 
     return { property, summary, fields: fieldSummaries, attentionFields };
   });
