@@ -112,10 +112,10 @@ const duplicateGuardIndex = premiumPublicationSource.indexOf("await assertDecisi
 const storageWriteIndex = premiumPublicationSource.indexOf("const stored = await saveReportSnapshot");
 assert.ok(duplicateGuardIndex >= 0 && storageWriteIndex > duplicateGuardIndex, "duplicidade deve ser bloqueada antes de gravar snapshot");
 
-// A própria página do relatório precisa comparar o snapshot v3 com a prescrição viva antes de afirmar
-// que a decisão atual já foi publicada. A mesma revisão de interpretação, sozinha, não é evidência suficiente.
+// A própria página do relatório precisa comparar o snapshot v3 com a prescrição CORRENTE antes de afirmar
+// que a decisão atual já foi publicada. Uma prescrição stale não pode fazer a publicação histórica parecer atual.
 const reportPageSource = readFileSync(new URL("../src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx", import.meta.url), "utf8");
-assert.match(reportPageSource, /publishedSnapshotV3\.approvedPrescription\.id === prescription\.id/);
+assert.match(reportPageSource, /publishedSnapshotV3\.approvedPrescription\.id === currentPrescription\.id/);
 assert.match(reportPageSource, /sameDecisionAsPublished/);
 assert.match(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
 assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
