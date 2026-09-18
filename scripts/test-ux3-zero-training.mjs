@@ -31,6 +31,7 @@ const results = read("src/app/(platform)/resultados/page.tsx");
 const resultsPreparation = read("src/components/simple-results-preparation.tsx");
 const simpleAnalysis = read("src/app/(platform)/analise/[id]/page.tsx");
 const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
+const producerReport = read("src/app/(platform)/relatorios/produtor/[analysisId]/page.tsx");
 const simpleRefresh = read("src/components/simple-refresh-analysis.tsx");
 const simpleReview = read("src/components/simple-final-review.tsx");
 const simpleRecommendationContext = read("src/components/simple-recommendation-context.tsx");
@@ -210,6 +211,9 @@ assert.ok(simpleResult.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES
 assert.ok(simpleResult.includes("{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}"));
 assert.match(simpleResult, /const ndvi = v3\?\.ndviSnapshot \?\? null/);
 assert.match(simpleResult, /Vigor da área/);
+assert.match(producerReport, /getAnalysisEvidenceState/);
+assert.match(producerReport, /interpretationCurrent/);
+assert.match(producerReport, /Existe uma aprovação histórica/);
 assert.match(simpleResult, /ndvi\.rasterArchived/);
 assert.match(premiumReportPublisher, /field_ndvi_snapshots/);
 assert.match(premiumReportPublisher, /ndviSnapshot,/);
