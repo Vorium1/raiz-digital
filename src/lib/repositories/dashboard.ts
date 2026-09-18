@@ -171,7 +171,7 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
          WHERE ($1::uuid IS NULL OR p.client_id = $1::uuid) AND ($2::uuid IS NULL OR p.id = $2::uuid)
        ),
        scoped_seasons AS (
-         SELECT cs.id, cs.field_id FROM crop_seasons cs
+         SELECT cs.id, cs.field_id, cs.crop_profile_id FROM crop_seasons cs
          WHERE cs.field_id IN (SELECT id FROM scoped_fields) AND ($3::uuid IS NULL OR cs.id = $3::uuid)
        ),
        scoped_points AS (
@@ -181,13 +181,46 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
        ),
        scoped_analyses AS (
          SELECT a.id, a.crop_season_id, cs.field_id,
-                li.status AS latest_interpretation_status, li.not_interpretable_reason
+                CASE
+                  WHEN li.id IS NULL THEN NULL
+                  WHEN (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+                   AND (
+                     cp.id IS NULL
+                     OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+                   )
+                  THEN li.status
+                  ELSE NULL
+                END AS latest_interpretation_status,
+                CASE
+                  WHEN li.id IS NOT NULL
+                   AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+                   AND (
+                     cp.id IS NULL
+                     OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+                   )
+                  THEN li.not_interpretable_reason
+                  ELSE NULL
+                END AS not_interpretable_reason
          FROM analyses a
          JOIN scoped_seasons cs ON cs.id = a.crop_season_id
+         LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
          LEFT JOIN LATERAL (
-           SELECT status, not_interpretable_reason FROM interpretations
-           WHERE interpretations.analysis_id = a.id ORDER BY revision DESC LIMIT 1
+           SELECT id, status, not_interpretable_reason, created_at
+           FROM interpretations
+           WHERE interpretations.analysis_id = a.id
+           ORDER BY revision DESC
+           LIMIT 1
          ) li ON true
+         LEFT JOIN LATERAL (
+           SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+           FROM analysis_imports ai
+           WHERE ai.analysis_id = a.id
+         ) latest_import ON true
+         LEFT JOIN LATERAL (
+           SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+           FROM crop_profile_parameters cpp
+           WHERE cpp.crop_profile_id = cp.id
+         ) rule_state ON cp.id IS NOT NULL
        )
        SELECT sf.id::text, sf.name, sf.boundary, sf."clientName", sf."propertyName",
               count(sp.*)::int AS "plannedPoints", count(sp.*) FILTER (WHERE sp.collected_at IS NOT NULL)::int AS "collectedPoints",
