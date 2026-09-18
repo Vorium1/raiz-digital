@@ -2,8 +2,8 @@
  * Ensaio HTTP do fluxo REAL já persistido de Cabeda / Área 01 / AN-CABEDA-01.
  *
  * Objetivo: exercitar o mesmo caminho da aplicação sem duplicar o laudo e sem fingir revisão humana:
- * localizar análise -> motor determinístico -> parecer -> prontidão da recomendação -> geração de
- * recomendação assistida (se a interpretação JÁ estiver aprovada) -> checar gate da entrega.
+ * localizar análise -> conferir freshness -> recalcular com regras atuais quando autorizado -> preparar
+ * conclusão determinística local -> checar revisão e gate da entrega.
  *
  * NUNCA aprova interpretação, NUNCA aprova prescrição e NUNCA publica relatório. Esses três atos são
  * decisões profissionais e continuam fora da automação. Escritas de máquina (recalcular/gerar rascunho)
@@ -92,7 +92,7 @@ if (matches.length === 0) {
   let latestInterpretation = interp.body?.latest ?? null;
 
   if (!latestInterpretation && WRITE) {
-    const calculated = await authed(cookie, `/api/analyses/${analysis.id}/interpret`, { method: "POST" });
+    const calculated = await authed(cookie, `/api/analyses/${analysis.id}/interpret?draft=local`, { method: "POST" });
     stage("deterministic-engine", calculated.res.ok ? "OK" : "FAIL", calculated.res.ok ? "Interpretação calculada." : calculated.body);
     if (calculated.res.ok) {
       interp = await authed(cookie, `/api/analyses/${analysis.id}/interpretation`);
@@ -109,6 +109,36 @@ if (matches.length === 0) {
   } else {
     stage("deterministic-engine", "NOT_RUN", "Modo somente leitura e nenhuma interpretação existente.");
     blocker("INTERPRETATION_MISSING", "Ative RAIZ_REHEARSAL_WRITE=true em homologação para calcular a interpretação.");
+  }
+
+  let prescription = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription`);
+  if (!prescription.res.ok) throw new Error(`Falha ao ler recomendação: HTTP ${prescription.res.status}`);
+  let latestPrescription = prescription.body?.latest ?? null;
+  let readiness = prescription.body?.readiness ?? null;
+  const interpretationFreshness = readiness?.interpretationEvidenceFreshness ?? null;
+
+  if (latestInterpretation && interpretationFreshness?.current === false) {
+    stage("interpretation-freshness", "STALE", {
+      code: interpretationFreshness.code ?? null,
+      reason: interpretationFreshness.reason ?? null,
+    });
+    if (WRITE) {
+      const refreshed = await authed(cookie, `/api/analyses/${analysis.id}/interpret?draft=local`, { method: "POST" });
+      stage("deterministic-self-heal", refreshed.res.ok ? "OK" : "FAIL", refreshed.res.ok
+        ? { interpretationId: refreshed.body?.interpretation?.id, status: refreshed.body?.interpretation?.status, draftState: refreshed.body?.prescriptionDraftState }
+        : refreshed.body);
+      if (refreshed.res.ok) {
+        interp = await authed(cookie, `/api/analyses/${analysis.id}/interpretation`);
+        latestInterpretation = interp.body?.latest ?? null;
+        prescription = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription`);
+        latestPrescription = prescription.body?.latest ?? null;
+        readiness = prescription.body?.readiness ?? null;
+      }
+    } else {
+      blocker("INTERPRETATION_STALE", interpretationFreshness.reason ?? "A interpretação precisa ser atualizada pelas regras correntes.");
+    }
+  } else if (latestInterpretation) {
+    stage("interpretation-freshness", "CURRENT");
   }
 
   // Parecer: pode ser gerado a partir da interpretação calculada; não muda recomendação oficial.
@@ -128,15 +158,12 @@ if (matches.length === 0) {
     stage("agronomic-opinion", "NOT_RUN", "Parecer ainda não gerado; modo somente leitura.");
   }
 
-  // Prescrição: só o sistema gera o rascunho se a interpretação JÁ foi aprovada por humano.
-  let prescription = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription`);
-  if (!prescription.res.ok) throw new Error(`Falha ao ler recomendação: HTTP ${prescription.res.status}`);
-  let latestPrescription = prescription.body?.latest ?? null;
-  const readiness = prescription.body?.readiness ?? null;
+  // Conclusão: rascunho pode existir em IN_REVIEW ou APPROVED, sempre PENDING_REVIEW.
+  // O ensaio força o modo determinístico local para nunca consumir LLM externo.
 
   if (readiness?.allowed && WRITE && (!latestPrescription || latestPrescription.status === "CHANGES_REQUESTED")) {
-    const generated = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription`, { method: "POST" });
-    stage("assisted-recommendation", generated.res.ok ? "OK" : "FAIL", generated.res.ok ? {
+    const generated = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription?mode=deterministic`, { method: "POST" });
+    stage("technical-conclusion-draft", generated.res.ok ? "OK" : "FAIL", generated.res.ok ? {
       generationId: generated.body?.generation?.id,
       isRealLanguageModel: generated.body?.isRealLanguageModel,
       recommendationCount: generated.body?.prescription?.recommendations?.length ?? 0,
@@ -149,11 +176,11 @@ if (matches.length === 0) {
       blocker("PRESCRIPTION_PROVIDER_FAILED", typeof generated.body?.error === "string" ? generated.body.error : "Falha no provedor de prescrição.");
     }
   } else if (latestPrescription) {
-    stage("assisted-recommendation", "OK", { generationId: latestPrescription.id, status: latestPrescription.status, provider: latestPrescription.provider, model: latestPrescription.model });
+    stage("technical-conclusion-draft", "OK", { generationId: latestPrescription.id, status: latestPrescription.status, provider: latestPrescription.provider, model: latestPrescription.model });
   } else if (!readiness?.allowed) {
-    stage("assisted-recommendation", "BLOCKED", readiness?.reason ?? "Interpretação ainda não aprovada.");
+    stage("technical-conclusion-draft", "BLOCKED", readiness?.reason ?? "Interpretação ainda não aprovada.");
   } else {
-    stage("assisted-recommendation", "NOT_RUN", "Pronta para gerar, mas o ensaio está em modo somente leitura.");
+    stage("technical-conclusion-draft", "NOT_RUN", "Pronta para gerar, mas o ensaio está em modo somente leitura.");
   }
 
   if (latestInterpretation?.status !== "APPROVED") {
