@@ -258,22 +258,30 @@ export async function crossValidateCropProfileParameter(input: { tenantId: strin
       sufficiencyRanges: parameter.sufficiencyRanges,
     });
 
+    const autoActivate = provider.isRealLanguageModel
+      && validation.status === "CONSISTENTE"
+      && validation.confidence >= 90
+      && validation.sources.length > 0;
+
     const result = await client.query(
       `UPDATE crop_profile_parameters
        SET ai_validation_status = $2, ai_validation_confidence = $3, ai_validation_summary = $4,
-           ai_validation_sources = $5::jsonb, ai_validation_model = $6, ai_validated_at = now(), updated_at = now()
+           ai_validation_sources = $5::jsonb, ai_validation_model = $6, ai_validated_at = now(),
+           status = CASE WHEN $7::boolean THEN 'ACTIVE'::crop_profile_status ELSE status END,
+           updated_at = now()
        WHERE id = $1::uuid
-       RETURNING id::text, parameter_code AS "parameterCode", ai_validation_status AS "aiValidationStatus",
+       RETURNING id::text, parameter_code AS "parameterCode", status,
+                 ai_validation_status AS "aiValidationStatus",
                  ai_validation_confidence::float8 AS "aiValidationConfidence", ai_validation_summary AS "aiValidationSummary",
                  ai_validation_sources AS "aiValidationSources", ai_validation_model AS "aiValidationModel",
                  ai_validated_at::text AS "aiValidatedAt"`,
-      [input.parameterId, validation.status, validation.confidence, validation.summary, JSON.stringify(validation.sources), validation.model],
+      [input.parameterId, validation.status, validation.confidence, validation.summary, JSON.stringify(validation.sources), validation.model, autoActivate],
     );
     const updated = result.rows[0];
     await writeAudit(client, {
       tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETER_AI_VALIDATED",
       entityType: "crop_profile_parameter", entityId: updated.id,
-      metadata: { status: validation.status, confidence: validation.confidence, model: validation.model, provider: validation.provider },
+      metadata: { status: validation.status, confidence: validation.confidence, model: validation.model, provider: validation.provider, autoActivated: updated.status === "ACTIVE" && autoActivate },
     });
     return updated;
   });
