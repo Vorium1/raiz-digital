@@ -4,6 +4,8 @@ import path from "node:path";
 import { getS3Object, putS3Object } from "./s3-object-storage.ts";
 
 const S3_OBJECT_PREFIX = "s3:v1:";
+const INLINE_OBJECT_PREFIX = "inline-ndvi:v1:";
+const MAX_INLINE_NDVI_RASTER_BYTES = 1_000_000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -19,7 +21,7 @@ export type StoredNdviRasterArtifact = {
 };
 
 export class NdviRasterPersistenceError extends Error {
-  constructor(message = "Persistência durável do raster NDVI indisponível. Configure STORAGE_PROVIDER=s3 no runtime hospedado antes de arquivar uma aquisição.") {
+  constructor(message = "Persistência durável do raster NDVI indisponível. Use armazenamento inline do Neon ou configure um provider S3 compatível.") {
     super(message);
     this.name = "NdviRasterPersistenceError";
   }
@@ -31,6 +33,20 @@ function localStorageRoot() {
 
 function configuredProvider() {
   return (process.env.STORAGE_PROVIDER ?? "local").trim().toLowerCase();
+}
+
+/**
+ * O raster NDVI pode usar storage próprio sem interferir na cadeia de custódia do laudo bruto.
+ * - em Vercel, quando não há S3 explícito, usa inline no Neon;
+ * - fora da Vercel preserva o provider geral (local/s3);
+ * - NDVI_RASTER_STORAGE_PROVIDER sempre vence quando explicitamente configurado.
+ */
+export function ndviRasterStorageProvider() {
+  const explicit = process.env.NDVI_RASTER_STORAGE_PROVIDER?.trim().toLowerCase();
+  if (explicit) return explicit;
+  const base = configuredProvider();
+  if (base === "s3") return "s3";
+  return process.env.VERCEL ? "inline" : base;
 }
 
 function safeSegment(value: string, label: string) {
@@ -59,9 +75,12 @@ export function ndviRasterObjectKey(input: {
 }
 
 export function ndviRasterKeyBelongsToField(key: string, tenantId: string, fieldId: string) {
-  const rawKey = key.startsWith(S3_OBJECT_PREFIX) ? key.slice(S3_OBJECT_PREFIX.length) : key;
   const tenant = safeSegment(tenantId, "Tenant");
   const field = safeSegment(fieldId, "Talhão");
+  if (key.startsWith(INLINE_OBJECT_PREFIX)) {
+    return key.startsWith(`${INLINE_OBJECT_PREFIX}${tenant}/${field}/`);
+  }
+  const rawKey = key.startsWith(S3_OBJECT_PREFIX) ? key.slice(S3_OBJECT_PREFIX.length) : key;
   return rawKey.startsWith(`ndvi/${tenant}/${field}/`) && !rawKey.includes("../") && !rawKey.includes("..\\");
 }
 
@@ -100,7 +119,23 @@ export async function saveRequiredNdviRasterArtifact(input: {
     capturedAt: input.capturedAt,
     sha256: digest,
   });
-  const provider = configuredProvider();
+  const provider = ndviRasterStorageProvider();
+
+  if (provider === "inline") {
+    if (input.bytes.length > MAX_INLINE_NDVI_RASTER_BYTES) {
+      throw new NdviRasterPersistenceError(
+        `Raster NDVI excede o limite inline seguro de ${MAX_INLINE_NDVI_RASTER_BYTES} bytes. Configure NDVI_RASTER_STORAGE_PROVIDER=s3 para este ambiente.`,
+      );
+    }
+    const tenant = safeSegment(input.tenantId, "Tenant");
+    const field = safeSegment(input.fieldId, "Talhão");
+    const encoded = input.bytes.toString("base64");
+    return {
+      key: `${INLINE_OBJECT_PREFIX}${tenant}/${field}/${input.capturedAt}/${digest}:${encoded}`,
+      sha256: digest,
+      bytes: input.bytes.length,
+    };
+  }
 
   if (provider === "s3") {
     await putS3Object({ key: objectKey, body: input.bytes, contentType: "image/png" });
@@ -115,7 +150,7 @@ export async function saveRequiredNdviRasterArtifact(input: {
     return { key: objectKey, sha256: digest, bytes: input.bytes.length };
   }
 
-  throw new NdviRasterPersistenceError(`STORAGE_PROVIDER "${provider}" não oferece armazenamento durável para raster NDVI.`);
+  throw new NdviRasterPersistenceError(`NDVI_RASTER_STORAGE_PROVIDER/STORAGE_PROVIDER "${provider}" não oferece armazenamento durável para raster NDVI.`);
 }
 
 /** Lê somente o artefato já arquivado; nunca reconsulta o Copernicus como fallback histórico. */
@@ -131,7 +166,23 @@ export async function readNdviRasterArtifact(input: {
   }
 
   let buffer: Buffer;
-  if (input.key.startsWith(S3_OBJECT_PREFIX)) {
+  if (input.key.startsWith(INLINE_OBJECT_PREFIX)) {
+    const payloadSeparator = input.key.indexOf(":", INLINE_OBJECT_PREFIX.length);
+    if (payloadSeparator < 0) throw new NdviRasterPersistenceError("Raster NDVI inline inválido.");
+    const header = input.key.slice(INLINE_OBJECT_PREFIX.length, payloadSeparator);
+    const [tenant, field, capturedAt, digest] = header.split("/");
+    if (
+      tenant !== input.tenantId
+      || field !== input.fieldId
+      || !DATE_RE.test(capturedAt ?? "")
+      || digest !== input.sha256.toLowerCase()
+    ) {
+      throw new NdviRasterPersistenceError("Metadados do raster NDVI inline não conferem com o snapshot.");
+    }
+    const encoded = input.key.slice(payloadSeparator + 1);
+    if (!encoded) throw new NdviRasterPersistenceError("Raster NDVI inline vazio.");
+    buffer = Buffer.from(encoded, "base64");
+  } else if (input.key.startsWith(S3_OBJECT_PREFIX)) {
     buffer = await getS3Object({ key: input.key.slice(S3_OBJECT_PREFIX.length) });
   } else {
     const fullPath = path.join(localStorageRoot(), input.key);
