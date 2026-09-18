@@ -8,6 +8,7 @@ import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { AiGenerationError, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { recordAgronomicPrescriptionGenerationSafely } from "@/lib/repositories/prescription-generation";
+import { reviewAgronomicPrescriptionSafely } from "@/lib/repositories/prescription-review";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 
@@ -153,8 +154,20 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     supersedes: previous?.status === "CHANGES_REQUESTED" ? previous.id : null,
   });
 
+  let generation = created;
+  if (!result.isRealLanguageModel) {
+    const validated = await reviewAgronomicPrescriptionSafely({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      generationId: created.id,
+      decision: "APPROVED",
+      note: "RAIZ_ENGINE_AUTO_VALIDATED",
+    });
+    generation = { ...created, status: validated.status };
+  }
+
   return {
-    generation: created,
+    generation,
     prescription: result.prescription,
     isRealLanguageModel: result.isRealLanguageModel,
   };
