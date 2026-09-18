@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
+import { SimpleAreaSetup } from "@/components/simple-area-setup";
 import { buildAnalysisEvidence, EMPTY_ANALYSIS_CONTEXT_DRAFT, type AnalysisContextDraft } from "@/domain/analysis-context";
 import { evaluateAnalysisDepthReadiness } from "@/domain/analysis-depth-readiness";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
@@ -13,7 +14,7 @@ const ANALYSIS_DEPTH: AnalysisDepthId = "interpretacao-rapida";
 
 type ContextData = {
   clients: Array<{ id: string; name: string }>;
-  properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string }>;
+  properties: Array<{ id: string; clientId: string; name: string; municipality: string; state: string; boundary?: object | null }>;
   fields: Array<{ id: string; propertyId: string; name: string; areaHa: number; boundary?: object | null }>;
   seasons: Array<{
     id: string;
@@ -29,10 +30,11 @@ type ContextData = {
     soilTexture?: string | null;
   }>;
   laboratories: Array<{ id: string; name: string }>;
+  cropProfiles: Array<{ id: string; code: string; name: string; status: string }>;
 };
 
 type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
-const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [] };
+const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [], cropProfiles: [] };
 
 
 export function SimpleSendFlow() {
@@ -87,6 +89,27 @@ export function SimpleSendFlow() {
   useEffect(() => {
     if (fieldId && !seasonId && seasons.length === 1) setSeasonId(seasons[0].id);
   }, [fieldId, seasonId, seasons]);
+
+  async function refreshContext() {
+    const response = await fetch("/api/context", { cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar suas áreas.");
+    setContext(payload as ContextData);
+    return payload as ContextData;
+  }
+
+  async function handleSetupCreated(kind: "client" | "property" | "field" | "season", id: string) {
+    await refreshContext();
+    if (kind === "client") {
+      setClientId(id); setPropertyId(""); setFieldId(""); setSeasonId("");
+    } else if (kind === "property") {
+      setPropertyId(id); setFieldId(""); setSeasonId("");
+    } else if (kind === "field") {
+      setFieldId(id); setSeasonId("");
+    } else {
+      setSeasonId(id);
+    }
+  }
 
   function chooseClient(value: string) { setClientId(value); setPropertyId(""); setFieldId(""); setSeasonId(""); }
   function chooseProperty(value: string) { setPropertyId(value); setFieldId(""); setSeasonId(""); }
@@ -194,12 +217,25 @@ export function SimpleSendFlow() {
         <div className="simple-send-number">2</div>
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ÁREA</span><h2>De onde são estes dados?</h2><p>Confirme a área. Só isso.</p></div>
-          {!importReady ? <div className="simple-send-wait"><Icon name={fileNeedsAttention ? "warning" : "upload"} size={18}/>{fileNeedsAttention ? "Confira o aviso do arquivo acima antes de continuar." : "Primeiro envie o arquivo acima."}</div> : contextLoading ? <div className="simple-send-wait"><Icon name="clock" size={18}/> Carregando suas áreas…</div> : contextError ? <div className="simple-send-error">{contextError}</div> : context.clients.length === 0 ? <div className="simple-send-error">Nenhuma área cadastrada ainda.</div> : (
+          {!importReady ? <div className="simple-send-wait"><Icon name={fileNeedsAttention ? "warning" : "upload"} size={18}/>{fileNeedsAttention ? "Confira o aviso do arquivo acima antes de continuar." : "Primeiro envie o arquivo acima."}</div> : contextLoading ? <div className="simple-send-wait"><Icon name="clock" size={18}/> Carregando suas áreas…</div> : contextError ? <div className="simple-send-error">{contextError}</div> : (
             <div className="simple-area-picker">
               {context.clients.length > 1 && <label><span>Cliente</span><select value={clientId} onChange={(event) => chooseClient(event.target.value)}><option value="">Escolha</option>{context.clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
               {clientId && properties.length > 1 && <label><span>Fazenda</span><select value={propertyId} onChange={(event) => chooseProperty(event.target.value)}><option value="">Escolha</option>{properties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
               {propertyId && fields.length > 1 && <label><span>Talhão</span><select value={fieldId} onChange={(event) => chooseField(event.target.value)}><option value="">Escolha</option>{fields.map((item) => <option key={item.id} value={item.id}>{item.name} · {Number(item.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</option>)}</select></label>}
               {fieldId && seasons.length > 1 && <label><span>Safra</span><select value={seasonId} onChange={(event) => setSeasonId(event.target.value)}><option value="">Escolha</option>{seasons.map((item) => <option key={item.id} value={item.id}>{item.seasonLabel}</option>)}</select></label>}
+
+              <SimpleAreaSetup
+                clients={context.clients}
+                properties={properties}
+                fields={fields}
+                seasons={seasons}
+                cropProfiles={context.cropProfiles}
+                clientId={clientId}
+                propertyId={propertyId}
+                fieldId={fieldId}
+                onCreated={handleSetupCreated}
+              />
+
               {areaReady && <div className="simple-area-confirmed"><Icon name="check" size={18}/><div><strong>{selectedField?.name}</strong><small>{selectedClient?.name} · {selectedProperty?.name} · Safra {selectedSeason?.seasonLabel}{(selectedSeason?.currentCrop || selectedSeason?.nextCrop) ? ` · ${selectedSeason.currentCrop || selectedSeason.nextCrop}` : ""}</small></div></div>}
             </div>
           )}
