@@ -3,12 +3,12 @@ import { ReportError } from "@/lib/repositories/reports";
 import { publishPremiumFieldAnalysisReport } from "@/lib/repositories/premium-report-publication";
 import { assertReportPublicationReady, ReportPublicationGateError } from "@/lib/repositories/report-publication-gate";
 
-const publishRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
+const publishRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
-  if (!publishRoles.has(session.role)) return Response.json({ error: "Somente um agrônomo responsável pode publicar um relatório." }, { status: 403 });
+  if (!publishRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode gerar um laudo oficial." }, { status: 403 });
   const { id } = await context.params;
 
   try {
