@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
-import { ReportBrand } from "@/components/report-brand";
+import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -100,6 +100,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []).slice(0, 8);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
+  const branding = v3?.brandingSnapshot ?? v2!.brandingSnapshot;
   const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
   const publishedPoints = (v3?.pointsSnapshot ?? []).map((point) => ({
     id: point.id,
@@ -118,6 +119,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     notes: null,
     labResultCount: 0,
   }));
+  const estimatedPointCount = publishedPoints.filter((point) => String(point.gpsSource ?? "").toUpperCase().startsWith("ESTIMADO_")).length;
 
   return (
     <div className="simple-result-page">
@@ -125,7 +127,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
 
       <article className="simple-result-document">
         <header className="simple-result-document-head">
-          <ReportBrand branding={v3?.brandingSnapshot ?? v2!.brandingSnapshot}/>
+          <ReportBrand branding={branding}/>
           <div className="simple-result-published"><Icon name="check" size={15}/><span><strong>Resultado oficial</strong><small>{new Date(published.report.publishedAt).toLocaleDateString("pt-BR")}</small></span></div>
         </header>
 
@@ -145,6 +147,12 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         {Boolean(publishedBoundary) && (
           <section className="simple-result-map">
             <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
+            {estimatedPointCount > 0 && (
+              <div className="simple-result-map-note">
+                <Icon name="info" size={14}/>
+                <span>{estimatedPointCount === publishedPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível no momento da publicação." : "Alguns pontos usam posição aproximada conforme a referência disponível no momento da publicação."}</span>
+              </div>
+            )}
           </section>
         )}
 
@@ -213,6 +221,10 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         ) : (
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
         )}
+
+        <section className="simple-result-signature">
+          <ReportSignature branding={branding}/>
+        </section>
 
         <footer className="simple-result-footer">
           <div><span><Icon name="shield" size={16}/> Revisado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
