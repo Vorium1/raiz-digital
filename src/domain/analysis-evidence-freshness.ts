@@ -3,6 +3,7 @@ export type AnalysisEvidenceFreshnessCode =
   | "INTERPRETATION_TIMESTAMP_MISSING"
   | "INVALID_TRACE_TIMESTAMPS"
   | "LAB_EVIDENCE_CHANGED"
+  | "CROP_PROFILE_CHANGED"
   | "AGRONOMIC_RULES_CHANGED";
 
 export type AnalysisEvidenceFreshness = {
@@ -19,6 +20,9 @@ export type AnalysisEvidenceFreshness = {
  * (`committed_at`, com fallback legado para `created_at`). Quando não existe importação gerenciada
  * pela RAIZ, este gate não invalida fontes INTEGRATION/MANUAL só pela ausência desse timestamp.
  *
+ * `interpretationCropProfileId/currentCropProfileId` comprovam identidade do perfil usado no cálculo.
+ * Trocar o perfil da safra invalida a revisão mesmo que o novo registro tenha `updated_at` antigo.
+ *
  * `latestRuleUpdatedAt` é a atualização mais recente do perfil da cultura ou de qualquer regra
  * `crop_profile_parameters` vinculada a ele. Se a regra mudou depois da interpretação, a revisão antiga
  * é histórica e precisa ser recalculada antes de prescrição, aprovação ou publicação.
@@ -26,8 +30,19 @@ export type AnalysisEvidenceFreshness = {
 export function evaluateAnalysisEvidenceFreshness(input: {
   interpretationCreatedAt: string | null | undefined;
   latestImportCommittedAt: string | null | undefined;
+  interpretationCropProfileId?: string | null | undefined;
+  currentCropProfileId?: string | null | undefined;
   latestRuleUpdatedAt?: string | null | undefined;
 }): AnalysisEvidenceFreshness {
+  const profileIdentityProvided = input.interpretationCropProfileId !== undefined || input.currentCropProfileId !== undefined;
+  if (profileIdentityProvided && input.interpretationCropProfileId !== input.currentCropProfileId) {
+    return {
+      current: false,
+      code: "CROP_PROFILE_CHANGED",
+      reason: "O perfil agronômico da safra mudou depois desta análise. Atualize a análise para usar o perfil atual.",
+    };
+  }
+
   if (!input.latestImportCommittedAt && !input.latestRuleUpdatedAt) {
     return { current: true, code: "CURRENT", reason: null };
   }
