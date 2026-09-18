@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { requirePlatformSession } from "@/lib/auth/session";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { getFieldAnalysisReportData } from "@/lib/repositories/reports";
 import { getTenantBranding } from "@/lib/repositories/tenant-branding";
 
@@ -19,21 +20,24 @@ export const metadata = { title: "Resumo ao produtor" };
 export default async function ProducerSummaryReportPage({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
   const session = await requirePlatformSession();
-  const [data, branding] = await Promise.all([
+  const [data, branding, evidence] = await Promise.all([
     getFieldAnalysisReportData(session.tenantId, analysisId, session.userId),
     getTenantBranding(session.tenantId),
+    getAnalysisEvidenceState({ tenantId: session.tenantId, userId: session.userId, analysisId }),
   ]);
   if (!data) notFound();
   const { analysis, points, results, interpretation } = data;
-  const structured = interpretation?.structuredOutput as { interpretation?: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification?: string; reason?: string }> } | null;
+  const interpretationCurrent = evidence.interpretationId === interpretation?.id && evidence.freshness.current === true;
+  const structured = (interpretationCurrent ? interpretation?.structuredOutput : null) as { interpretation?: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification?: string; reason?: string }> } | null;
   const collectedCount = points.filter((p: any) => p.collectedAt).length;
   const interpretableItems = structured?.interpretation?.filter((i) => i.interpretable) ?? [];
   const blockedItems = structured?.interpretation?.filter((i) => !i.interpretable) ?? [];
   const uniqueBlockReasons = Array.from(new Set(blockedItems.map((i) => (i as any).reason).filter(Boolean)));
-  const isApproved = interpretation?.status === "APPROVED";
+  const isApproved = interpretationCurrent && interpretation?.status === "APPROVED";
 
   let nextSteps: string[] = [];
   if (!interpretation) nextSteps = ["Aguardar o cálculo da interpretação técnica."];
+  else if (!interpretationCurrent) nextSteps = [evidence.freshness.reason ?? "Atualizar a análise antes de apresentar uma conclusão técnica corrente."];
   else if (interpretation.status !== "APPROVED" && uniqueBlockReasons.length > 0) nextSteps = ["Resolver as pendências técnicas listadas abaixo antes de interpretar todos os parâmetros."];
   else if (interpretation.status === "IN_REVIEW") nextSteps = ["Aguardar revisão de um profissional responsável."];
   else if (interpretation.status === "APPROVED") nextSteps = ["Nenhuma pendência técnica — acompanhar as próximas coletas/safras."];
@@ -60,18 +64,24 @@ export default async function ProducerSummaryReportPage({ params }: { params: Pr
             </p>
           </section>
 
+          {!interpretationCurrent && interpretation && (
+            <p className="report-empty-note" style={{ background: "#fff4e5", padding: "10px 12px", borderRadius: 8 }}>
+              <Icon name="warning" size={12}/> A interpretação anterior permanece no histórico, mas não representa mais a evidência agronômica corrente. {evidence.freshness.reason ?? "A análise precisa ser atualizada antes de apresentar uma nova conclusão."}
+            </p>
+          )}
+
           <section className="report-section">
             <h2>O que foi interpretado</h2>
             {interpretableItems.length > 0 ? (
               <p style={{ fontSize: 12, lineHeight: 1.8 }}><strong>{interpretableItems.length}</strong> resultado(s) já têm uma classificação técnica, feita por um cálculo automático seguindo regras já validadas pela sua consultoria/agrônomo.</p>
-            ) : <p className="report-empty-note">Nenhum resultado pôde ser classificado ainda — ver os motivos em &quot;O que ainda precisa ser investigado&quot; abaixo.</p>}
+            ) : <p className="report-empty-note">{interpretation && !interpretationCurrent ? "A classificação anterior está preservada apenas como histórico. Atualize a análise para obter a leitura corrente." : "Nenhum resultado pôde ser classificado ainda — ver os motivos em \"O que ainda precisa ser investigado\" abaixo."}</p>}
           </section>
 
           <section className="report-section">
             <h2>O que foi aprovado</h2>
             {isApproved ? (
               <p style={{ fontSize: 12, lineHeight: 1.8 }}>Um profissional responsável já revisou e aprovou esta interpretação{interpretation?.approvedByName ? ` (${interpretation.approvedByName})` : ""} em {interpretation?.approvedAt ? new Date(interpretation.approvedAt).toLocaleDateString("pt-BR") : "data não registrada"}.</p>
-            ) : <p className="report-empty-note">Ainda não há aprovação de um profissional responsável para esta análise — o que está aqui é um cálculo técnico, não uma conclusão final.</p>}
+            ) : <p className="report-empty-note">{interpretation?.status === "APPROVED" && !interpretationCurrent ? "Existe uma aprovação histórica, mas ela não cobre a evidência/regra agronômica corrente. Uma nova revisão será necessária após o recálculo." : "Ainda não há aprovação de um profissional responsável para esta análise — o que está aqui é um cálculo técnico, não uma conclusão final."}</p>}
           </section>
 
           <section className="report-section">
