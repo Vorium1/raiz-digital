@@ -136,12 +136,14 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       id: string;
       reportId: string | null;
       latestImportCommittedAt: string | null;
+      currentCropProfileId: string | null;
       latestRuleUpdatedAt: string | null;
     }>(
       `SELECT a.id::text AS id,
               (SELECT r.id::text FROM reports r JOIN interpretations i2 ON i2.tenant_id = r.tenant_id AND i2.id = r.interpretation_id
                  WHERE i2.tenant_id = a.tenant_id AND i2.analysis_id = a.id ORDER BY r.published_at DESC LIMIT 1) AS "reportId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -163,19 +165,21 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
     const analysis = analysisResult.rows[0] ?? null;
 
     const interpretationResult = analysis
-      ? await client.query<{ status: string; structuredOutput: any; createdAt: string | null }>(
-          `SELECT i.status, i.structured_output AS "structuredOutput", i.created_at::text AS "createdAt"
+      ? await client.query<{ status: string; structuredOutput: any; createdAt: string | null; cropProfileId: string | null }>(
+          `SELECT i.status, i.structured_output AS "structuredOutput", i.created_at::text AS "createdAt", i.crop_profile_id::text AS "cropProfileId"
            FROM interpretations i
            WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
            ORDER BY i.revision DESC LIMIT 1`,
           [input.tenantId, analysis.id],
         )
-      : { rows: [] as Array<{ status: string; structuredOutput: any; createdAt: string | null }> };
+      : { rows: [] as Array<{ status: string; structuredOutput: any; createdAt: string | null; cropProfileId: string | null }> };
     const interpretation = interpretationResult.rows[0] ?? null;
     const interpretationFreshness = interpretation && analysis
       ? evaluateAnalysisEvidenceFreshness({
           interpretationCreatedAt: interpretation.createdAt,
           latestImportCommittedAt: analysis.latestImportCommittedAt,
+          interpretationCropProfileId: interpretation.cropProfileId,
+          currentCropProfileId: analysis.currentCropProfileId,
           latestRuleUpdatedAt: analysis.latestRuleUpdatedAt,
         })
       : {
