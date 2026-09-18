@@ -6,6 +6,8 @@ export type AnalysisEvidenceState = {
   interpretationId: string | null;
   interpretationStatus: string | null;
   interpretationCreatedAt: string | null;
+  interpretationCropProfileId: string | null;
+  currentCropProfileId: string | null;
   latestImportCommittedAt: string | null;
   latestRuleUpdatedAt: string | null;
   freshness: AnalysisEvidenceFreshness;
@@ -23,6 +25,8 @@ export async function getAnalysisEvidenceState(input: {
       interpretationId: string | null;
       interpretationStatus: string | null;
       interpretationCreatedAt: string | null;
+      interpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
       latestRuleUpdatedAt: string | null;
     }>(
@@ -30,13 +34,15 @@ export async function getAnalysisEvidenceState(input: {
               li.id::text AS "interpretationId",
               li.status::text AS "interpretationStatus",
               li.created_at::text AS "interpretationCreatedAt",
+              li.crop_profile_id::text AS "interpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
@@ -63,6 +69,8 @@ export async function getAnalysisEvidenceState(input: {
         interpretationId: null,
         interpretationStatus: null,
         interpretationCreatedAt: null,
+        interpretationCropProfileId: null,
+        currentCropProfileId: null,
         latestImportCommittedAt: null,
         latestRuleUpdatedAt: null,
         freshness: {
@@ -78,12 +86,16 @@ export async function getAnalysisEvidenceState(input: {
       interpretationId: row.interpretationId,
       interpretationStatus: row.interpretationStatus,
       interpretationCreatedAt: row.interpretationCreatedAt,
+      interpretationCropProfileId: row.interpretationCropProfileId,
+      currentCropProfileId: row.currentCropProfileId,
       latestImportCommittedAt: row.latestImportCommittedAt,
       latestRuleUpdatedAt: row.latestRuleUpdatedAt,
       freshness: row.interpretationId
         ? evaluateAnalysisEvidenceFreshness({
             interpretationCreatedAt: row.interpretationCreatedAt,
             latestImportCommittedAt: row.latestImportCommittedAt,
+            interpretationCropProfileId: row.interpretationCropProfileId,
+            currentCropProfileId: row.currentCropProfileId,
             latestRuleUpdatedAt: row.latestRuleUpdatedAt,
           })
         : {
