@@ -27,8 +27,6 @@ jobs:
       APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_SSL: require
-      CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
-      CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
       REPORT_STORAGE_PROVIDER: inline
       AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
@@ -47,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for name in APP_DATABASE_URL CABEDA_TENANT_ID CABEDA_ACTOR_USER_ID; do
+          for name in APP_DATABASE_URL; do
             if [ -z "${!name:-}" ]; then
               echo "::notice::${name} não está configurado no environment homologation."
               missing=$((missing + 1))
