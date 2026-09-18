@@ -274,7 +274,15 @@ export async function getPropertyExecutiveReportData(tenantId: string, propertyI
 }
 
 /** Fecha o elo mapa -> relatório: publica um relatório real a partir de uma interpretação já aprovada. */
-export async function publishFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
+export async function publishFieldAnalysisReport(_input: { tenantId: string; userId: string; interpretationId: string }) {
+  // Compatibilidade somente de símbolo. A publicação v2 antiga não revalidava a decisão completa
+  // (freshness de laudo/regra/perfil + prescrição aprovada corrente) e por isso não pode mais gravar.
+  // O único caminho de escrita oficial é o publisher premium chamado pela rota /publish-report.
+  throw new ReportError(
+    "Fluxo legado de publicação desabilitado. Use a publicação oficial com os gates atuais de integridade.",
+    409,
+  );
+}) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const interpretationResult = await client.query(
       `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.revision, i.status, i.structured_output AS "structuredOutput"
