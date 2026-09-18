@@ -67,7 +67,7 @@ assert.match(simpleAnalysis, /<SimpleRefreshAnalysis analysisId=\{id\}/);
 assert.match(simpleRefresh, /\/api\/analyses\/\$\{analysisId\}\/interpret/);
 assert.match(simpleRefresh, /AGRONOMIC_RULES_CHANGED/);
 assert.match(simpleRefresh, /raiz:ux3:rule-refresh:\$\{analysisId\}/);
-assert.match(simpleRefresh, /interpret\?draft=0/);
+assert.match(simpleRefresh, /interpret\\?draft=local/);
 assert.match(simpleRefresh, /useEffect/);
 assert.match(simpleRefresh, /method:\s*"POST"/);
 assert.match(interpretationsRepository, /normalizeUnit\(row\.parameterCode, row\.unit\)/);
@@ -85,6 +85,8 @@ assert.match(deterministicFallback, /recommendations:\s*\[\]/);
 assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
 assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
 assert.match(deterministicFallback, /não criou doses ou práticas de manejo sem evidência suficiente/);
+assert.match(prescriptionWorkflow, /input\.mode === "deterministic"/);
+assert.match(prescriptionWorkflow, /deterministicLimitedPrescriptionProvider/);
 assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
 assert.match(
   prescriptionWorkflow,
