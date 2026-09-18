@@ -33,5 +33,7 @@ const repositorySource = readFileSync(new URL("../src/lib/repositories/interpret
 assert.match(repositorySource, /latestRuleUpdatedAt/);
 assert.match(repositorySource, /crop_profile_parameters/);
 assert.match(repositorySource, /latestRuleUpdatedAt:\s*evidenceState\.rows\[0\]\?\.latestRuleUpdatedAt/);
+assert.match(repositorySource, /interpretationCropProfileId:\s*current\.cropProfileId/);
+assert.match(repositorySource, /currentCropProfileId:\s*evidenceState\.rows\[0\]\?\.currentCropProfileId/);
 
-console.log("interpretation-review: estados, última revisão e freshness de regra protegidos");
+console.log("interpretation-review: estados, última revisão, perfil e freshness de regra protegidos");
