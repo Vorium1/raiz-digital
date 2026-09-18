@@ -7,6 +7,8 @@ import { SimpleFieldOverview } from "@/components/simple-field-overview";
 
 export const metadata = { title: "Talhão" };
 
+const AUTO_REFRESH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
 export default async function FieldOverviewPage({ params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const session = await requirePlatformSession();
@@ -32,6 +34,7 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
         overview={overview}
         alerts={alerts.filter((alert) => alert.fieldId === fieldId)}
         analysisFreshness={analysisEvidence?.freshness ?? null}
+        canRefreshAnalysis={AUTO_REFRESH_ROLES.has(session.role)}
       />
     </div>
   );
