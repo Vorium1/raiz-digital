@@ -149,7 +149,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
             {estimatedPointCount > 0 && (
               <div className="simple-result-map-note">
-                <Icon name="info" size={14}/>
+                <Icon name="location" size={14}/>
                 <span>{estimatedPointCount === publishedPoints.length ? "As posições dos pontos são aproximadas conforme a referência disponível no momento da publicação." : "Alguns pontos usam posição aproximada conforme a referência disponível no momento da publicação."}</span>
               </div>
             )}
