@@ -38,6 +38,7 @@ const technicalIntelligence = read("src/components/agronomic-intelligence-panel.
 const ux2TechnicalReview = read("src/components/ux2-technical-review.tsx");
 const interpretationsRepository = read("src/lib/repositories/interpretations.ts");
 const prescriptionFreshnessRepository = read("src/lib/repositories/prescription-freshness.ts");
+const narrativeSafetyRepository = read("src/lib/repositories/agronomic-narrative-safety.ts");
 const prescriptionProvider = read("src/lib/ai/agronomic-prescription-provider.ts");
 const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-prescription-provider.ts");
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
@@ -231,6 +232,10 @@ assert.match(prescriptionFreshnessRepository, /latestRuleUpdatedAt:\s*row\.lates
 assert.match(prescriptionFreshnessRepository, /latestInterpretationStatus !== "IN_REVIEW"/);
 assert.match(prescriptionFreshnessRepository, /latestInterpretationStatus !== "APPROVED"/);
 assert.match(prescriptionFreshnessRepository, /Não significa[\s\S]*?oficial\/aprovado/);
+assert.match(narrativeSafetyRepository, /latestInterpretationCropProfileId/);
+assert.match(narrativeSafetyRepository, /currentCropProfileId/);
+assert.match(narrativeSafetyRepository, /latestRuleUpdatedAt/);
+assert.match(narrativeSafetyRepository, /interpretationCropProfileId:\s*row\.latestInterpretationCropProfileId/);
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
