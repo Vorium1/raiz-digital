@@ -143,9 +143,9 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   if (prescription && !prescriptionCurrent) {
     return (
       <section className="simple-final-review blocked">
-        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>A recomendação precisa ser atualizada</strong><p>Alguma informação da área mudou depois que esta versão foi preparada.</p></div></div>
+        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>A conclusão precisa ser atualizada</strong><p>Alguma informação da área mudou depois que esta versão foi preparada.</p></div></div>
         {message && <div className="simple-review-message">{message}</div>}
-        <button type="button" onClick={prepare} disabled={busy || !canReview}>{busy ? "Atualizando…" : "Atualizar recomendação"}</button>
+        <button type="button" onClick={prepare} disabled={busy || !canReview}>{busy ? "Atualizando…" : "Atualizar conclusão"}</button>
         <small className="simple-review-help">A versão anterior não pode ser aprovada como se ainda estivesse atual.</small>
       </section>
     );
@@ -154,7 +154,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   if (prescription && !pkValid) {
     return (
       <section className="simple-final-review blocked">
-        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a recomendação preparada e o cálculo validado. Nada será alterado automaticamente.</p></div></div>
+        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a conclusão preparada e o cálculo validado. Nada será alterado automaticamente.</p></div></div>
         <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>
       </section>
     );
@@ -179,7 +179,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
           {busy ? "Preparando…" : needsPkContext ? "Preparar com os dados disponíveis" : "Preparar conclusão"}
         </button>
         {needsPkContext && <small className="simple-review-help">Sem esse contexto, a RAIZ não inclui dose de fósforo ou potássio. O restante do relatório pode seguir normalmente.</small>}
-        {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma recomendação.</small>}
+        {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma conclusão.</small>}
       </section>
     );
   }
@@ -220,7 +220,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
       {message && <div className="simple-review-message">{message}</div>}
 
       {canReview ? <>
-        <label className="simple-review-confirm"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi os dados, a recomendação e as limitações apresentadas.</span></label>
+        <label className="simple-review-confirm"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi os dados, a conclusão e os limites apresentados.</span></label>
         <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar conclusão"}</button></div>
       </> : <p className="simple-review-help">A revisão final precisa ser feita por um perfil técnico autorizado.</p>}
 
