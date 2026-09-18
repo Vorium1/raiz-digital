@@ -1,23 +1,14 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { getDashboardSnapshot } from "@/lib/repositories/dashboard";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domain/user-attention";
 
 export const metadata = { title: "Atenção" };
 
-const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
-
 export default async function AtencaoPage() {
   const session = await requirePlatformSession();
-  const [snapshot, alerts] = await Promise.all([
-    getDashboardSnapshot(session.tenantId, session.userId),
-    listOperationalAlerts(session.tenantId, session.userId),
-  ]);
-
-  const canReview = REVIEW_ROLES.has(session.role);
-  const reviewCount = canReview ? snapshot.awaitingReview : 0;
+  const alerts = await listOperationalAlerts(session.tenantId, session.userId);
   const actionable = userActionAlerts(alerts);
   const seenDestinations = new Set<string>();
   const attentionItems = actionable.filter((alert) => {
@@ -26,7 +17,7 @@ export default async function AtencaoPage() {
     seenDestinations.add(href);
     return true;
   });
-  const total = reviewCount + attentionItems.length;
+  const total = attentionItems.length;
 
   return (
     <div className="simple-home simple-attention-page">
@@ -36,15 +27,6 @@ export default async function AtencaoPage() {
 
       {total > 0 ? (
         <section className="simple-attention-list">
-          {reviewCount > 0 && (
-            <Link href="/revisar" className="simple-attention-row">
-              <span className="simple-attention-row-icon review"><Icon name="shield" size={21}/></span>
-              <div><strong>Revisões para você</strong><small>Abra e confira as conclusões que aguardam sua decisão.</small></div>
-              <span className="simple-attention-action">Revisar</span>
-              <Icon name="chevron" size={17}/>
-            </Link>
-          )}
-
           {attentionItems.map((alert) => (
             <Link href={userAttentionHref(alert)} key={alert.id} className="simple-attention-row">
               <span className="simple-attention-row-icon"><Icon name="warning" size={21}/></span>
