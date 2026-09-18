@@ -3,6 +3,7 @@ import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 import { computeLimingDoseBySmpIndex } from "../src/domain/liming-engine.ts";
 import { computeParameterPredominance } from "../src/domain/parameter-predominance.ts";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "../src/domain/uniform-pk-readiness.ts";
+import { normalizeAnalyticalMethod, normalizeUnit } from "../src/domain/lab-method-normalization.ts";
 
 // Fixture de regressão: Área 01 / AN-CABEDA-01, transcrita do mesmo conjunto real já mantido em
 // scripts/import-cabeda-solo-2026.mjs. Este teste NÃO inventa uma nova análise e NÃO acessa banco.
@@ -76,13 +77,26 @@ const labResults = AREA_01.flatMap((row, index) => {
   const common = { sampleCode, sampleType: "SOLO", depthFromCm: 0, depthToCm: 20, source: "MEASURED" };
   return [
     { ...common, parameterCode: "CLAY", value: row.clay, unit: "%", method: "Densímetro" },
-    { ...common, parameterCode: "P", value: row.p, unit: "mg/dm³", method: "Mehlich-1" },
-    { ...common, parameterCode: "K", value: row.k, unit: "mg/dm³", method: "Mehlich-1" },
-    { ...common, parameterCode: "CTC", value: row.ctc, unit: "cmolc/dm³", method: "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)" },
+    { ...common, parameterCode: "P", value: row.p, unit: "mg/L", method: "Mehlich-1" },
+    { ...common, parameterCode: "K", value: row.k, unit: "mg/L", method: "Mehlich-1" },
+    { ...common, parameterCode: "CTC", value: row.ctc, unit: "cmolc/dm³", method: "Calculado: Ca+Mg+K+(H+Al)" },
   ];
 });
 
-const engine = runAgronomicEngine({ cropProfile, labResults });
+const normalizedLabResults = labResults.map((result) => ({
+  ...result,
+  unit: normalizeUnit(result.parameterCode, result.unit),
+  method: normalizeAnalyticalMethod(result.parameterCode, result.method),
+}));
+
+assert.equal(labResults.find((item) => item.parameterCode === "P")?.unit, "mg/L");
+assert.equal(normalizedLabResults.find((item) => item.parameterCode === "P")?.unit, "mg/dm³");
+assert.equal(
+  normalizedLabResults.find((item) => item.parameterCode === "CTC")?.method,
+  "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)",
+);
+
+const engine = runAgronomicEngine({ cropProfile, labResults: normalizedLabResults });
 const interpreted = engine.interpretation.filter((item) => item.interpretable);
 const classes = (parameterCode) => interpreted.filter((item) => item.parameterCode === parameterCode).map((item) => item.classification);
 
