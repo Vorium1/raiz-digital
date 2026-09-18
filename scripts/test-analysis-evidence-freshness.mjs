@@ -43,6 +43,26 @@ assert.equal(staleRules.current, false);
 assert.equal(staleRules.code, "AGRONOMIC_RULES_CHANGED");
 assert.match(staleRules.reason, /regras agronômicas.*atualizadas/i);
 
+const profileChanged = evaluateAnalysisEvidenceFreshness({
+  interpretationCreatedAt: "2026-09-16T02:10:00.000Z",
+  latestImportCommittedAt: null,
+  interpretationCropProfileId: "profile-old",
+  currentCropProfileId: "profile-new",
+  latestRuleUpdatedAt: "2026-09-01T00:00:00.000Z",
+});
+assert.equal(profileChanged.current, false);
+assert.equal(profileChanged.code, "CROP_PROFILE_CHANGED");
+assert.match(profileChanged.reason, /perfil agronômico da safra mudou/i);
+
+const profileSame = evaluateAnalysisEvidenceFreshness({
+  interpretationCreatedAt: "2026-09-16T02:10:00.000Z",
+  latestImportCommittedAt: null,
+  interpretationCropProfileId: "profile-current",
+  currentCropProfileId: "profile-current",
+  latestRuleUpdatedAt: "2026-09-01T00:00:00.000Z",
+});
+assert.equal(profileSame.current, true);
+
 const missingInterpretationDate = evaluateAnalysisEvidenceFreshness({
   interpretationCreatedAt: null,
   latestImportCommittedAt: "2026-09-16T02:10:00.000Z",
