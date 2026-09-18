@@ -218,8 +218,8 @@ assert.match(results, /analyses\.map\(\(analysis: any\) => String\(analysis\.id\
 assert.match(results, /Versões oficiais já emitidas/);
 assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
-assert.match(results, /Conclusões preparadas/);
-assert.match(results, /Prontos para publicar/);
+assert.match(results, /VALIDADOS PELO MOTOR/);
+assert.match(results, /Prontos para gerar o laudo/);
 assert.match(results, /delivery\.prescriptionCurrent === true && delivery\.prescriptionStatus === "PENDING_REVIEW"/);
 assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
