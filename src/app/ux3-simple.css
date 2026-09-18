@@ -314,6 +314,21 @@
 .simple-empty-map svg { color: #7c9a83; margin-bottom: 12px; }
 .simple-empty-map strong { color: var(--simple-text); font-size: 16px; }
 .simple-empty-map small { margin-top: 6px; max-width: 360px; }
+.simple-empty-map > a {
+  align-items:center;
+  background:var(--simple-green);
+  border-radius:11px;
+  color:#fff;
+  display:inline-flex;
+  font-size:10px;
+  font-weight:850;
+  gap:6px;
+  margin-top:14px;
+  min-height:40px;
+  padding:0 13px;
+  text-decoration:none;
+}
+.simple-empty-map > a svg { color:currentColor; margin:0; }
 
 .simple-mobile-nav { display: none; }
 
