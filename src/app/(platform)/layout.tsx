@@ -2,12 +2,9 @@ import { MobileNavigation } from "@/components/mobile-navigation";
 import { Sidebar } from "@/components/sidebar";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
-import { getDashboardSnapshot } from "@/lib/repositories/dashboard";
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = isDatabaseMode() ? await requirePlatformSession() : null;
-  const snapshot = session ? await getDashboardSnapshot(session.tenantId, session.userId) : null;
-  const pendingAnalyses = snapshot ? snapshot.awaitingReview : undefined;
 
   return (
     <div className="app-shell ux2-shell simple-shell">
@@ -16,7 +13,6 @@ export default async function PlatformLayout({ children }: { children: React.Rea
         userName={session?.name}
         role={session?.role}
         isPlatformCurator={session?.isPlatformCurator}
-        pendingAnalyses={pendingAnalyses}
       />
       <main id="conteudo-principal" className="main-content" tabIndex={-1}>{children}</main>
       <MobileNavigation role={session?.role} isPlatformCurator={session?.isPlatformCurator} />
