@@ -9,7 +9,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!writeRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode interpretar análises." }, { status: 403 });
   const { id } = await context.params;
-  const prepareDraft = new URL(request.url).searchParams.get("draft") !== "0";
+  const draftMode = new URL(request.url).searchParams.get("draft");
+  const prepareDraft = draftMode !== "0";
+  const deterministicDraft = draftMode === "local";
 
   try {
     const { interpretation, engineResult } = await runInterpretationForAnalysis({ tenantId: session.tenantId, userId: session.userId, analysisId: id });
@@ -23,6 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           tenantId: session.tenantId,
           userId: session.userId,
           analysisId: id,
+          mode: deterministicDraft ? "deterministic" : "default",
         });
       } catch (error) {
         // A interpretação determinística já foi persistida com sucesso. Falha/insuficiência no rascunho
