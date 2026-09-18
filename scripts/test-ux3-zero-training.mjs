@@ -25,6 +25,7 @@ const prescriptionProvider = read("src/lib/ai/agronomic-prescription-provider.ts
 const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-prescription-provider.ts");
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
+const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
 
 // A navegação principal é um app de tarefas, não uma árvore de módulos/ERP.
 assert.match(sidebar, /const SEND_HREF = "\/enviar"/);
@@ -80,6 +81,11 @@ assert.match(simpleResult, /summarizeSimpleInterpretation/);
 assert.match(simpleResult, /Como está a área/);
 assert.match(simpleResult, /context\.currentCrop \|\| context\.nextCrop \|\| context\.cropProfileName/);
 assert.match(simpleResult, /<ReportSignature branding=\{branding\}\/>/);
+assert.match(simpleResult, /const ndvi = v3\?\.ndviSnapshot \?\? null/);
+assert.match(simpleResult, /Vigor da área/);
+assert.match(simpleResult, /ndvi\.rasterArchived/);
+assert.match(premiumReportPublisher, /field_ndvi_snapshots/);
+assert.match(premiumReportPublisher, /ndviSnapshot,/);
 assert.match(simpleResult, /estimatedPointCount/);
 assert.match(simpleResult, /posições dos pontos são aproximadas/);
 assert.match(simpleAnalysis, /<SimpleRefreshAnalysis analysisId=\{id\}/);
