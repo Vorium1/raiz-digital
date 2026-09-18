@@ -23,7 +23,7 @@ const COPY: Record<AnalysisEvidenceFreshnessCode, { title: string; text: string;
   },
   LAB_EVIDENCE_CHANGED: {
     title: "Os dados mudaram",
-    text: "Há dados mais recentes do que esta análise. Atualize para continuar.",
+    text: "Há dados mais recentes do que esta análise. A RAIZ está recalculando a leitura determinística para continuar.",
     button: "Atualizar análise",
   },
   CROP_PROFILE_CHANGED: {
@@ -74,7 +74,11 @@ export function SimpleRefreshAnalysis({
   }
 
   useEffect(() => {
-    if (freshnessCode !== "AGRONOMIC_RULES_CHANGED" && freshnessCode !== "CROP_PROFILE_CHANGED") return;
+    if (
+      freshnessCode !== "AGRONOMIC_RULES_CHANGED"
+      && freshnessCode !== "CROP_PROFILE_CHANGED"
+      && freshnessCode !== "LAB_EVIDENCE_CHANGED"
+    ) return;
     const key = `raiz:ux3:rule-refresh:${analysisId}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, "1");
