@@ -190,29 +190,46 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `WITH scoped_fields AS (
-         -- ::jsonb (não ::json) -- GROUP BY abaixo precisa comparar igualdade, e o tipo json puro do
-         -- Postgres não tem operador de igualdade (erro real encontrado testando: "could not identify an
-         -- equality operator for type json"). jsonb tem, e serializa pro cliente exatamente igual.
-         SELECT f.id, f.name, ST_AsGeoJSON(f.boundary)::jsonb AS boundary, p.name AS "propertyName", c.name AS "clientName"
+         SELECT f.id, f.name, ST_AsGeoJSON(f.boundary)::jsonb AS boundary,
+                p.name AS "propertyName", c.name AS "clientName"
          FROM fields f
          JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
          JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-         WHERE ($1::uuid IS NULL OR p.client_id = $1::uuid) AND ($2::uuid IS NULL OR p.id = $2::uuid)
+         WHERE ($1::uuid IS NULL OR p.client_id = $1::uuid)
+           AND ($2::uuid IS NULL OR p.id = $2::uuid)
        ),
        scoped_seasons AS (
-         SELECT cs.id, cs.field_id, cs.crop_profile_id FROM crop_seasons cs
-         WHERE cs.field_id IN (SELECT id FROM scoped_fields) AND ($3::uuid IS NULL OR cs.id = $3::uuid)
+         -- Estado operacional: sem filtro explícito de safra, usa somente a safra mais recente de cada
+         -- talhão. Uma safra histórica aprovada não pode fazer a safra atual parecer pronta.
+         SELECT DISTINCT ON (cs.field_id)
+                cs.id, cs.field_id, cs.crop_profile_id, cs.created_at
+         FROM crop_seasons cs
+         WHERE cs.field_id IN (SELECT id FROM scoped_fields)
+           AND ($3::uuid IS NULL OR cs.id = $3::uuid)
+         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
        ),
-       scoped_points AS (
-         SELECT sp.*, cs.field_id FROM sample_points sp
-         JOIN collection_orders co ON co.id = sp.collection_order_id
-         JOIN scoped_seasons cs ON cs.id = co.crop_season_id
+       point_counts AS (
+         SELECT cs.field_id,
+                count(sp.*)::int AS planned_points,
+                count(sp.*) FILTER (WHERE sp.collected_at IS NOT NULL)::int AS collected_points
+         FROM scoped_seasons cs
+         LEFT JOIN collection_orders co ON co.crop_season_id = cs.id
+         LEFT JOIN sample_points sp ON sp.collection_order_id = co.id
+         GROUP BY cs.field_id
        ),
-       scoped_analyses AS (
-         SELECT a.id, a.crop_season_id, cs.field_id,
+       latest_analyses AS (
+         SELECT DISTINCT ON (cs.field_id)
+                a.id, a.tenant_id, a.crop_season_id, a.created_at,
+                cs.field_id, cs.crop_profile_id
+         FROM analyses a
+         JOIN scoped_seasons cs ON cs.id = a.crop_season_id
+         ORDER BY cs.field_id, a.created_at DESC, a.id DESC
+       ),
+       current_evaluation AS (
+         SELECT la.field_id,
                 CASE
                   WHEN li.id IS NULL THEN NULL
-                  WHEN li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+                  WHEN li.crop_profile_id IS NOT DISTINCT FROM la.crop_profile_id
                    AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
                    AND (
                      cp.id IS NULL
@@ -223,7 +240,7 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
                 END AS latest_interpretation_status,
                 CASE
                   WHEN li.id IS NOT NULL
-                   AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+                   AND li.crop_profile_id IS NOT DISTINCT FROM la.crop_profile_id
                    AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
                    AND (
                      cp.id IS NULL
@@ -232,20 +249,20 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
                   THEN li.not_interpretable_reason
                   ELSE NULL
                 END AS not_interpretable_reason
-         FROM analyses a
-         JOIN scoped_seasons cs ON cs.id = a.crop_season_id
-         LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+         FROM latest_analyses la
+         LEFT JOIN crop_profiles cp ON cp.id = la.crop_profile_id
          LEFT JOIN LATERAL (
            SELECT id, status, not_interpretable_reason, created_at, crop_profile_id
            FROM interpretations
-           WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id
+           WHERE interpretations.tenant_id = la.tenant_id
+             AND interpretations.analysis_id = la.id
            ORDER BY revision DESC
            LIMIT 1
          ) li ON true
          LEFT JOIN LATERAL (
            SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
            FROM analysis_imports ai
-           WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+           WHERE ai.tenant_id = la.tenant_id AND ai.analysis_id = la.id
          ) latest_import ON true
          LEFT JOIN LATERAL (
            SELECT max(cpp.updated_at) AS latest_parameter_rule_at
@@ -254,18 +271,20 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
          ) rule_state ON cp.id IS NOT NULL
        )
        SELECT sf.id::text, sf.name, sf.boundary, sf."clientName", sf."propertyName",
-              count(sp.*)::int AS "plannedPoints", count(sp.*) FILTER (WHERE sp.collected_at IS NOT NULL)::int AS "collectedPoints",
+              coalesce(pc.planned_points, 0)::int AS "plannedPoints",
+              coalesce(pc.collected_points, 0)::int AS "collectedPoints",
               CASE
-                WHEN count(sa.id) = 0 THEN 'SEM_ANALISE'
-                WHEN count(sa.id) FILTER (WHERE sa.latest_interpretation_status = 'APPROVED') = count(sa.id) THEN 'APROVADO'
-                WHEN count(sa.id) FILTER (WHERE sa.latest_interpretation_status = 'CALCULATED' AND sa.not_interpretable_reason IS NOT NULL) > 0 THEN 'NAO_INTERPRETAVEL'
+                WHEN la.id IS NULL THEN 'SEM_ANALISE'
+                WHEN ce.latest_interpretation_status = 'APPROVED' THEN 'APROVADO'
+                WHEN ce.latest_interpretation_status = 'CALCULATED' AND ce.not_interpretable_reason IS NOT NULL THEN 'NAO_INTERPRETAVEL'
                 ELSE 'EM_ANDAMENTO'
               END AS "evaluationStatus",
-              string_agg(DISTINCT sa.not_interpretable_reason, ' · ') FILTER (WHERE sa.not_interpretable_reason IS NOT NULL) AS "notInterpretableReason"
+              ce.not_interpretable_reason AS "notInterpretableReason"
        FROM scoped_fields sf
-       LEFT JOIN scoped_points sp ON sp.field_id = sf.id
-       LEFT JOIN scoped_analyses sa ON sa.field_id = sf.id
-       GROUP BY sf.id, sf.name, sf.boundary, sf."clientName", sf."propertyName"
+       LEFT JOIN scoped_seasons cs ON cs.field_id = sf.id
+       LEFT JOIN point_counts pc ON pc.field_id = sf.id
+       LEFT JOIN latest_analyses la ON la.field_id = sf.id
+       LEFT JOIN current_evaluation ce ON ce.field_id = sf.id
        ORDER BY sf.name`,
       [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );
