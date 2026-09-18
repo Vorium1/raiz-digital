@@ -8,6 +8,7 @@ const mobile = read("src/components/mobile-navigation.tsx");
 const home = read("src/app/(platform)/inicio/page.tsx");
 const dashboardRepository = read("src/lib/repositories/dashboard.ts");
 const dashboard = read("src/app/(platform)/dashboard/page.tsx");
+const attentionPage = read("src/app/(platform)/atencao/page.tsx");
 const send = read("src/components/simple-send-flow.tsx");
 const areaSetup = read("src/components/simple-area-setup.tsx");
 const geoMapInput = read("src/components/geo-map-input.tsx");
@@ -41,8 +42,13 @@ assert.doesNotMatch(mobile, /canReview \?/);
 assert.match(home, /const SEND_HREF = "\/enviar"/);
 assert.match(home, /simple-alert-dot/);
 assert.doesNotMatch(home, /simple-attention has-items|simple-attention is-clear/);
-assert.doesNotMatch(home, /item esperando|itens esperando/);
+assert.doesNotMatch(home, /item esperando|itens esperando|conclusões pendentes/);
+assert.match(home, /Confira e aprove conclusões/);
 assert.match(dashboard, /redirect\("\/inicio"\)/);
+assert.match(attentionPage, /const seenDestinations = new Set<string>\(\)/);
+assert.match(attentionPage, /userAttentionHref\(alert\)/);
+assert.match(attentionPage, /attentionItems\.map/);
+assert.doesNotMatch(attentionPage, /Há \$\{reviewCount\} revisões esperando/);
 
 // O fluxo simples mantém evidência/readiness técnica por baixo sem publicar silenciosamente.
 assert.match(send, /buildAnalysisEvidence/);
