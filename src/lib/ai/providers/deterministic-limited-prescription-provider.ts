@@ -24,12 +24,29 @@ function unique(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value?.trim()))));
 }
 
-function doseLimitation(evidence: AgronomicPrescriptionEvidencePackage) {
-  if (evidence.pkDoseReadiness.ready && evidence.uniformPkReadiness.ready) return null;
-  if (!evidence.pkDoseReadiness.ready) {
-    return "Dose de fósforo e potássio não incluída: falta contexto necessário para o cálculo seguro da dose. O relatório segue sem estimar esse valor.";
+function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePackage) {
+  const recommendations: Array<{ inputType: string; quantity: number; unit: string; rationale: string }> = [];
+  const limitations: string[] = [];
+
+  for (const nutrient of ["P2O5", "K2O"] as const) {
+    const dose = evidence.deterministicPkDoses[nutrient];
+    if (!dose.ready || !dose.expected) {
+      limitations.push(`Dose de ${nutrient} não incluída: ${dose.blockers.join(", ") || "evidência insuficiente para uma dose uniforme segura"}.`);
+      continue;
+    }
+    if (dose.expected.isDiscretionaryRange) {
+      limitations.push(`Dose de ${nutrient} não automatizada: a fonte permite faixa discricionária de ${dose.expected.minimumKgPerHa} a ${dose.expected.maximumKgPerHa} kg/ha.`);
+      continue;
+    }
+    recommendations.push({
+      inputType: nutrient,
+      quantity: dose.expected.doseKgPerHa,
+      unit: "kg/ha",
+      rationale: `Dose exata do motor determinístico ${dose.expected.ruleId}, classe ${dose.expected.soilLevel}, com contexto corrente da safra.`,
+    });
   }
-  return "Dose uniforme de fósforo e/ou potássio não incluída: os resultados disponíveis não sustentam uma dose uniforme segura para esta área.";
+
+  return { recommendations, limitations };
 }
 
 /**
@@ -72,8 +89,8 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         .filter((item) => item.classificationRole !== "AUXILIARY" && item.interpretable === false)
         .map((item) => item.reason),
     );
-    const pkLimitation = doseLimitation(evidence);
-    const missingInformation = unique([...deterministicLimitations, pkLimitation]);
+    const deterministic = deterministicRecommendations(evidence);
+    const missingInformation = unique([...deterministicLimitations, ...deterministic.limitations]);
 
     const sources = Array.from(
       new Map(
@@ -88,9 +105,9 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
 
     return {
       prescription: {
-        summary: "Análise técnica preparada com os dados disponíveis. A RAIZ manteve apenas classificações produzidas pelo motor validado e não criou doses ou práticas de manejo sem evidência suficiente.",
+        summary: "Análise técnica preparada com os dados disponíveis. A RAIZ incluiu somente classificações e doses exatas produzidas pelo motor determinístico; qualquer nutriente sem contexto ou predominância suficiente permanece explicitamente bloqueado.",
         diagnosis,
-        recommendations: [],
+        recommendations: deterministic.recommendations,
         managementPractices: [],
         missingInformation,
         sources,
