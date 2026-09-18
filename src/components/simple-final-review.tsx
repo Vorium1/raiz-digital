@@ -205,7 +205,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
 
       {(draft?.managementPractices?.length ?? 0) > 0 && <div className="simple-review-practices"><span>MANEJO</span><ul>{draft!.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
 
-      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="warning" size={17}/><div><strong>Ainda falta informação</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
+      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="shield" size={17}/><div><strong>Limites desta conclusão</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
 
       {message && <div className="simple-review-message">{message}</div>}
 
