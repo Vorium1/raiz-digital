@@ -171,6 +171,15 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <h2>{(prescription.recommendations?.length ?? 0) > 0 ? "Recomendação aprovada" : "Conclusão técnica aprovada"}</h2>
               {prescription.summary && <p>{prescription.summary}</p>}
             </div>
+            {(prescription.recommendations?.length ?? 0) === 0 && (
+              <div className="simple-result-completed-limited">
+                <Icon name="check" size={17}/>
+                <span>
+                  <strong>Relatório concluído com os dados disponíveis</strong>
+                  <small>A RAIZ não estimou doses ou manejos que não tinham evidência suficiente. Isso não impede a conclusão deste resultado.</small>
+                </span>
+              </div>
+            )}
             {(prescription.recommendations?.length ?? 0) > 0 && (
               <div className="simple-result-recommendations">
                 {prescription.recommendations!.map((item, index) => (
@@ -185,7 +194,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
             )}
             {(prescription.missingInformation?.length ?? 0) > 0 && (
-              <div className="simple-result-limitation"><Icon name="warning" size={17}/><span><strong>Limitações registradas na revisão</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
+              <div className="simple-result-limitation"><Icon name="info" size={17}/><span><strong>Limites desta conclusão</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
             )}
           </section>
         ) : (
