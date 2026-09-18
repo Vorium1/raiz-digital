@@ -39,14 +39,14 @@ export async function POST(request: Request) {
 
   const perCrop: Array<{
     cropId: string; cropCode: string; cropName: string;
-    sources: KnowledgeResearchSource[];
+    sources: Array<KnowledgeResearchSource & { providerName: string; providerModel: string }>;
     providerResults: Array<{ provider: string; model: string; sourcesCreated: number; error: string | null }>;
   }> = [];
   let totalTokens = 0;
   let promptVersion = "unknown";
 
   for (const crop of crops) {
-    const cropSources: KnowledgeResearchSource[] = [];
+    const cropSources: Array<KnowledgeResearchSource & { providerName: string; providerModel: string }> = [];
     const providerResults: Array<{ provider: string; model: string; sourcesCreated: number; error: string | null }> = [];
     for (const provider of providers) {
       try {
@@ -54,7 +54,12 @@ export async function POST(request: Request) {
         totalTokens += result.tokensUsed ?? 0;
         promptVersion = result.promptVersion;
         for (const source of result.sources) {
-          cropSources.push({ ...source, content: `[Pesquisado por ${provider.name}/${provider.model}]\n\n${source.content}` });
+          cropSources.push({
+            ...source,
+            providerName: provider.name,
+            providerModel: provider.model,
+            content: `[Pesquisado por ${provider.name}/${provider.model}]\n\n${source.content}`,
+          });
         }
         providerResults.push({ provider: provider.name, model: provider.model, sourcesCreated: result.sources.length, error: null });
       } catch (error) {
