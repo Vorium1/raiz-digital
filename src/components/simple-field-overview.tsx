@@ -6,10 +6,19 @@ import { RealFieldMap } from "@/components/real-field-map";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
+import type { AnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
 import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domain/user-attention";
 
-export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverview; alerts: OperationalAlert[] }) {
+export function SimpleFieldOverview({
+  overview,
+  alerts,
+  analysisFreshness,
+}: {
+  overview: FieldOverview;
+  alerts: OperationalAlert[];
+  analysisFreshness: AnalysisEvidenceFreshness | null;
+}) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
   const season = seasons[0] ?? null;
   const seasonAnalyses = analyses.filter((analysis) => !season || analysis.cropSeasonId === season.id);
@@ -31,6 +40,14 @@ export function SimpleFieldOverview({ overview, alerts }: { overview: FieldOverv
     stateIcon = "check";
     actionHref = `/resultado/${latestReport.analysisId}`;
     actionLabel = "Ver resultado";
+  } else if (latest && analysisFreshness?.current === false) {
+    stateTitle = analysisFreshness.code === "AGRONOMIC_RULES_CHANGED" ? "Atualização disponível" : "Análise precisa ser atualizada";
+    stateText = analysisFreshness.code === "AGRONOMIC_RULES_CHANGED"
+      ? "A RAIZ encontrou regras mais atuais e pode atualizar esta análise."
+      : "Há dados mais atuais do que esta análise.";
+    stateIcon = "clock";
+    actionHref = `/analise/${latest.id}`;
+    actionLabel = "Continuar análise";
   } else if (latest?.latestInterpretationStatus === "APPROVED") {
     stateTitle = "Revisão concluída";
     stateText = "A decisão técnica foi aprovada. Falta somente concluir a entrega.";
