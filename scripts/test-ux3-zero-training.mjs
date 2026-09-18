@@ -46,6 +46,7 @@ const deterministicFallback = read("src/lib/ai/providers/deterministic-limited-p
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
+const reportsRepository = read("src/lib/repositories/reports.ts");
 const decisionDeliveryStatus = read("src/lib/repositories/decision-delivery-status.ts");
 const inputComparisonRepository = read("src/lib/repositories/input-comparison.ts");
 const catalogRepository = read("src/lib/repositories/catalog.ts");
@@ -231,6 +232,8 @@ assert.match(technicalReport, /Interpretação histórica/);
 assert.match(technicalReport, /STALE_RECOMMENDATION: "Recomendação histórica — não comparar"/);
 assert.match(simpleResult, /ndvi\.rasterArchived/);
 assert.match(premiumReportPublisher, /field_ndvi_snapshots/);
+assert.match(reportsRepository, /Fluxo legado de publicação desabilitado/);
+assert.doesNotMatch(reportsRepository, /export async function publishFieldAnalysisReport[\s\S]*?INSERT INTO reports/);
 assert.match(premiumReportPublisher, /ndviSnapshot,/);
 assert.match(simpleResult, /estimatedPointCount/);
 assert.match(simpleResult, /posições dos pontos são aproximadas/);
