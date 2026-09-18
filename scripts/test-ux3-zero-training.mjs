@@ -143,7 +143,7 @@ assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
 assert.match(results, /Conclusões preparadas/);
 assert.match(results, /Prontos para publicar/);
-assert.match(results, /Concluídos com limites/);
+assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
 assert.match(resultsPreparation, /router\.refresh\(\)/);
 assert.match(resultsPreparation, /não aprova nem publica nada sozinha/);
