@@ -1,0 +1,117 @@
+name: Cabeda Official Result Homologation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/cabeda-official-result-homologation.yml"
+      - "scripts/homologate-cabeda-official-result.mjs"
+      - "scripts/node-ts-alias-loader.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabeda-official-result-homologation
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: generate-cabeda-official-results
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: homologation
+    env:
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
+      CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
+      REPORT_STORAGE_PROVIDER: inline
+      AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+
+    steps:
+      - name: Checkout do próprio candidato PR #88
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar secrets mínimos sem expor valores
+        id: context
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in APP_DATABASE_URL CABEDA_TENANT_ID CABEDA_ACTOR_USER_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::notice::${name} não está configurado no environment homologation."
+              missing=$((missing + 1))
+            fi
+          done
+          echo "missing=${missing}" >> "${GITHUB_OUTPUT}"
+          if [ "${missing}" -gt 0 ]; then
+            echo "::error::Contexto de homologação incompleto: ${missing} secret(s) obrigatório(s) ausente(s)."
+            exit 1
+          fi
+          echo "Contexto mínimo presente. O sentinela do banco ainda será validado antes de qualquer escrita."
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar fluxo oficial Cabeda no banco isolado
+        id: run
+        shell: bash
+        run: |
+          set -uo pipefail
+          RESULT_FILE="cabeda-official-result.json"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+          set +e
+          node --experimental-strip-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
+            scripts/homologate-cabeda-official-result.mjs | tee "${RESULT_FILE}"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
+          test -s "${RESULT_FILE}" || true
+          exit "${STATUS}"
+
+      - name: Registrar resumo sanitizado
+        if: ${{ always() && steps.run.outputs.result_file != '' }}
+        shell: bash
+        run: |
+          RESULT_FILE="${{ steps.run.outputs.result_file }}"
+          if [ ! -s "${RESULT_FILE}" ]; then
+            echo "## Cabeda · laudo oficial" >> "${GITHUB_STEP_SUMMARY}"
+            echo "" >> "${GITHUB_STEP_SUMMARY}"
+            echo "Executor não produziu JSON sanitizado. Consulte a etapa anterior." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          RESULT_FILE="${RESULT_FILE}" node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
+          console.log("## Cabeda · laudos RAIZ na homologação isolada");
+          console.log("");
+          for (const item of payload.results || []) {
+            console.log(`- **${item.code}**: ${item.status}; interpretação=${item.interpretationStatus || "—"}; prescrição=${item.prescriptionStatus || "—"}; relatórios correntes=${item.currentReportCount ?? 0}`);
+            for (const rec of item.recommendations || []) {
+              console.log(`  - ${rec.inputType}: ${rec.quantity} ${rec.unit}`);
+            }
+            if (item.reason) console.log(`  - bloqueio: ${item.reason}`);
+            if (Array.isArray(item.pendencies) && item.pendencies.length) console.log(`  - pendências: ${item.pendencies.join("; ")}`);
+          }
+          console.log("");
+          console.log("Banco protegido por sentinela PR88_CABEDA_OFFICIAL_RESULT + migration 038. Produção não é alvo deste workflow.");
+          NODE
+
+      - name: Salvar evidência sanitizada
+        if: ${{ always() && steps.run.outputs.result_file != '' && hashFiles(steps.run.outputs.result_file) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabeda-official-result-homologation
+          path: ${{ steps.run.outputs.result_file }}
+          if-no-files-found: ignore
+          retention-days: 30
