@@ -9,6 +9,7 @@ export const metadata = { title: "Mais" };
 export default async function MorePage() {
   const session = await requirePlatformSession();
   const avatar = initials(session.name) || "R";
+  const canManageSettings = session.role === "SUPER_ADMIN" || session.role === "TENANT_ADMIN" || session.isPlatformCurator;
 
   return (
     <div className="simple-home simple-more-page">
@@ -29,14 +30,16 @@ export default async function MorePage() {
       </section>
 
       <section className="simple-more-list" aria-label="Mais opções">
-        <Link href="/configuracoes">
-          <span><Icon name="settings" size={21}/></span>
-          <div>
-            <strong>Configurações avançadas</strong>
-            <small>Conta, segurança, equipe e opções técnicas.</small>
-          </div>
-          <Icon name="chevron" size={17}/>
-        </Link>
+        {canManageSettings && (
+          <Link href="/configuracoes">
+            <span><Icon name="settings" size={21}/></span>
+            <div>
+              <strong>Configurações avançadas</strong>
+              <small>Conta, segurança, equipe e opções técnicas.</small>
+            </div>
+            <Icon name="chevron" size={17}/>
+          </Link>
+        )}
 
         <div className="simple-more-logout">
           <span><Icon name="logout" size={21}/></span>
