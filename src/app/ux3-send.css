@@ -28,6 +28,11 @@
 .simple-send-ok strong,.simple-send-ok small,.simple-area-confirmed strong,.simple-area-confirmed small { display:block; }
 .simple-send-ok strong,.simple-area-confirmed strong { font-size:11px; }
 .simple-send-ok small,.simple-area-confirmed small { color:#75827a; font-size:9px; margin-top:2px; }
+.simple-area-confirmed.pending { background:#fff; border-color:#dfe6dc; }
+.simple-area-confirmed.pending>svg { color:#6f8076; }
+.simple-area-confirmed>div { flex:1; min-width:0; }
+.simple-area-confirmed>button { background:#2f7d45; border:0; border-radius:10px; color:#fff; cursor:pointer; font:inherit; font-size:9px; font-weight:850; min-height:36px; padding:0 11px; }
+.simple-area-confirmed-label { color:#2f7d45; font-size:9px; font-weight:850; }
 
 .simple-send-options { border-top:1px solid #edf0ec; margin-top:12px; padding-top:10px; }
 .simple-send-options summary { color:#7b887f; cursor:pointer; font-size:9px; font-weight:750; }
@@ -80,7 +85,8 @@
   .simple-inline-setup-grid{grid-template-columns:1fr}
   .simple-inline-setup-grid .wide{grid-column:auto}
   .simple-inline-setup>button{justify-content:center;width:100%}
-  .simple-area-confirmed{grid-column:auto}
+  .simple-area-confirmed{align-items:flex-start;grid-column:auto;flex-wrap:wrap}
+  .simple-area-confirmed>button{margin-left:28px;width:calc(100% - 28px)}
   .simple-send-finish{align-items:flex-start;flex-direction:column}
   .simple-send-finish button{justify-content:center;width:100%}
 }
