@@ -63,8 +63,10 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível buscar a imagem de satélite agora.");
       applyPayload(payload);
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível buscar a imagem de satélite agora.");
+      return false;
     } finally {
       setRefreshing(false);
     }
@@ -85,7 +87,8 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
           const key = `raiz:ndvi:auto:${fieldId}`;
           if (!sessionStorage.getItem(key)) {
             sessionStorage.setItem(key, new Date().toISOString());
-            await refreshSatellite({ automatic: true });
+            const refreshed = await refreshSatellite({ automatic: true });
+            if (!refreshed) sessionStorage.removeItem(key);
           }
         }
       } catch (caught) {
