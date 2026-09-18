@@ -58,6 +58,16 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const interpretationStatus = (interpretation as any)?.status ?? null;
   const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
+  const prescriptionCurrent = delivery?.prescriptionCurrent === true;
+  const finalReviewApproved = analysisCurrent
+    && interpretationStatus === "APPROVED"
+    && prescriptionCurrent
+    && delivery?.prescriptionStatus === "APPROVED";
+  const reviewPending = analysisCurrent
+    && (
+      interpretationStatus === "IN_REVIEW"
+      || (prescriptionCurrent && delivery?.prescriptionStatus === "PENDING_REVIEW")
+    );
   const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);
 
   let stateTitle = "Aguardando dados";
@@ -74,11 +84,11 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
     stateTitle = "Resultado pronto";
     stateText = "Esta análise já foi revisada e publicada.";
     stateIcon = "check";
-  } else if (interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED") {
+  } else if (finalReviewApproved) {
     stateTitle = "Revisão concluída";
     stateText = "A decisão técnica foi aprovada. Falta somente concluir a entrega.";
     stateIcon = "check";
-  } else if (interpretationStatus === "IN_REVIEW" || delivery?.prescriptionStatus === "PENDING_REVIEW") {
+  } else if (reviewPending) {
     stateTitle = "Pronto para revisar";
     stateText = "A RAIZ já organizou a análise e preparou a etapa de decisão.";
     stateIcon = "shield";
@@ -106,9 +116,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <i/>
         <div className={analysisReady ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisReady ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisReady ? "Pronta" : analysisCurrent ? "Limitada" : imported ? "Atualizar" : "Em andamento"}</small></div>
         <i/>
-        <div className={interpretationStatus === "APPROVED" ? "done" : interpretationStatus === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{interpretationStatus === "APPROVED" ? "Concluída" : interpretationStatus === "IN_REVIEW" ? "Aguardando você" : "Depois da análise"}</small></div>
+        <div className={analysisCurrent && interpretationStatus === "APPROVED" ? "done" : reviewPending ? "current" : "pending"}><span><Icon name={analysisCurrent && interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{analysisCurrent && interpretationStatus === "APPROVED" ? "Concluída" : reviewPending ? "Aguardando você" : "Depois da análise"}</small></div>
         <i/>
-        <div className={delivery?.currentReportCount ? "done" : interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED" ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED" ? "Pronto para publicar" : "Depois da revisão"}</small></div>
+        <div className={delivery?.currentReportCount ? "done" : finalReviewApproved ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : finalReviewApproved ? "Pronto para publicar" : "Depois da revisão"}</small></div>
       </section>
 
       {findingSummaries.length > 0 && (
