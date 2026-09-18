@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import type { AnalysisEvidenceFreshnessCode } from "@/domain/analysis-evidence-freshness";
@@ -28,8 +28,8 @@ const COPY: Record<AnalysisEvidenceFreshnessCode, { title: string; text: string;
   },
   AGRONOMIC_RULES_CHANGED: {
     title: "Atualização disponível",
-    text: "A RAIZ tem regras agronômicas mais atuais para esta cultura. Atualize a análise para usar a versão atual.",
-    button: "Atualizar análise",
+    text: "A RAIZ encontrou regras agronômicas mais atuais e está atualizando esta análise automaticamente.",
+    button: "Atualizar agora",
   },
 };
 
@@ -45,11 +45,14 @@ export function SimpleRefreshAnalysis({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function refreshAnalysis() {
+  async function refreshAnalysis(options: { deterministicOnly?: boolean } = {}) {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/analyses/${analysisId}/interpret`, { method: "POST" });
+      const url = options.deterministicOnly
+        ? `/api/analyses/${analysisId}/interpret?draft=0`
+        : `/api/analyses/${analysisId}/interpret`;
+      const response = await fetch(url, { method: "POST" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar esta análise.");
       if (payload.prescriptionDraftError) {
@@ -62,6 +65,15 @@ export function SimpleRefreshAnalysis({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (freshnessCode !== "AGRONOMIC_RULES_CHANGED") return;
+    const key = `raiz:ux3:rule-refresh:${analysisId}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    void refreshAnalysis({ deterministicOnly: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisId, freshnessCode]);
 
   return (
     <section className="simple-refresh-analysis">
