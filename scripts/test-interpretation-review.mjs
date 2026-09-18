@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { evaluateInterpretationReviewTransition } from "../src/domain/interpretation-review.ts";
 
 const latest = true;
@@ -28,4 +29,9 @@ assert.deepEqual(
   { allowed: true, noOp: false, nextStatus: "IN_REVIEW", reason: null },
 );
 
-console.log("interpretation-review: estados e imutabilidade protegidos");
+const repositorySource = readFileSync(new URL("../src/lib/repositories/interpretation-review.ts", import.meta.url), "utf8");
+assert.match(repositorySource, /latestRuleUpdatedAt/);
+assert.match(repositorySource, /crop_profile_parameters/);
+assert.match(repositorySource, /latestRuleUpdatedAt:\s*evidenceState\.rows\[0\]\?\.latestRuleUpdatedAt/);
+
+console.log("interpretation-review: estados, última revisão e freshness de regra protegidos");
