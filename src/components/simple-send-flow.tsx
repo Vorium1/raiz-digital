@@ -144,7 +144,7 @@ export function SimpleSendFlow() {
   const readiness = useMemo(() => evaluateAnalysisDepthReadiness(ANALYSIS_DEPTH, evidence), [evidence]);
 
   async function submit() {
-    if (!file || !importReady || !areaReady) return;
+    if (!file || !importReady || !areaReady || !areaConfirmed) return;
     setBusy(true);
     setError("");
     try {
