@@ -26,7 +26,7 @@ export async function getDashboardSnapshot(tenantId: string, userId?: string, cl
          JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
          LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
          JOIN LATERAL (
-           SELECT i.status, i.created_at
+           SELECT i.status, i.created_at, i.crop_profile_id
            FROM interpretations i
            WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
            ORDER BY i.revision DESC
@@ -43,6 +43,7 @@ export async function getDashboardSnapshot(tenantId: string, userId?: string, cl
            WHERE cpp.crop_profile_id = cp.id
          ) rule_state ON cp.id IS NOT NULL
          WHERE li.status = 'IN_REVIEW'
+           AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
            AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
            AND (
              cp.id IS NULL
@@ -120,7 +121,35 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
          (SELECT count(*)::int FROM scoped_points) AS "totalPoints",
          (SELECT count(*)::int FROM scoped_points WHERE collected_at IS NOT NULL) AS "collectedPoints",
          (SELECT count(*)::int FROM scoped_analyses WHERE status NOT IN ('DRAFT')) AS "labsProcessed",
-         (SELECT count(*)::int FROM interpretations WHERE status = 'IN_REVIEW' AND analysis_id IN (SELECT id FROM scoped_analyses)) AS "interpretationsPending",
+         (SELECT count(*)::int
+          FROM scoped_analyses a
+          JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+          LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+          JOIN LATERAL (
+            SELECT i.status, i.created_at, i.crop_profile_id
+            FROM interpretations i
+            WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
+            ORDER BY i.revision DESC
+            LIMIT 1
+          ) li ON true
+          LEFT JOIN LATERAL (
+            SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+            FROM analysis_imports ai
+            WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+          ) latest_import ON true
+          LEFT JOIN LATERAL (
+            SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+            FROM crop_profile_parameters cpp
+            WHERE cpp.crop_profile_id = cp.id
+          ) rule_state ON cp.id IS NOT NULL
+          WHERE li.status = 'IN_REVIEW'
+            AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+            AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+            AND (
+              cp.id IS NULL
+              OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+            )
+         ) AS "interpretationsPending",
          (SELECT count(DISTINCT cs.field_id)::int FROM scoped_analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id WHERE a.status = 'INCONSISTENT') AS "criticalFields",
          (SELECT avg(confidence_score)::float8 FROM scoped_analyses WHERE confidence_score IS NOT NULL) AS "avgConfidence",
          -- Análises com parâmetro aguardando homologação (motor rodou e não achou nada interpretável)
@@ -183,7 +212,8 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
          SELECT a.id, a.crop_season_id, cs.field_id,
                 CASE
                   WHEN li.id IS NULL THEN NULL
-                  WHEN (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+                  WHEN li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
+                   AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
                    AND (
                      cp.id IS NULL
                      OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
@@ -193,6 +223,7 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
                 END AS latest_interpretation_status,
                 CASE
                   WHEN li.id IS NOT NULL
+                   AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
                    AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
                    AND (
                      cp.id IS NULL
@@ -205,7 +236,7 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
          JOIN scoped_seasons cs ON cs.id = a.crop_season_id
          LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
          LEFT JOIN LATERAL (
-           SELECT id, status, not_interpretable_reason, created_at
+           SELECT id, status, not_interpretable_reason, created_at, crop_profile_id
            FROM interpretations
            WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id
            ORDER BY revision DESC
