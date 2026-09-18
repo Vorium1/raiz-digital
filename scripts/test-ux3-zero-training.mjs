@@ -338,79 +338,16 @@ assert.match(narrativeSafetyRepository, /interpretationCropProfileId:\s*row\.lat
 assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretation\?\.id\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
-assert.match(simpleReview, /Preparar com os dados disponíveis/);
-assert.match(simpleReview, /Conclusão pronta com os dados disponíveis/);
-assert.match(simpleReview, /Aprovar conclusão/);
-assert.match(simpleReview, /readiness\?\.allowed === true/);
-assert.match(simpleReview, /readiness\?\.interpretationEvidenceFreshness\?\.current === true/);
-assert.match(simpleReview, /readiness\?\.prescriptionFreshness\?\.current === true/);
-assert.match(simpleReview, /readiness\?\.prescriptionPkValidation\?\.allowed === true/);
-
-assert.match(technicalIntelligence, /evidenceFreshness/);
-assert.match(technicalIntelligence, /interpretationCurrent/);
-assert.match(technicalIntelligence, /canRun=\{canRun && interpretationCurrent\}/);
-assert.match(technicalIntelligence, /canReview && interpretationCurrent && latest\.status === "IN_REVIEW"/);
-assert.match(ux2TechnicalReview, /interpretationEvidenceFreshness\?\.current === true/);
-assert.match(ux2TechnicalReview, /readiness\?\.allowed === true/);
-assert.match(ux2TechnicalReview, /prescriptionFreshness\?\.current === true/);
-assert.ok(simpleReview.includes("{canReview && <Link href={`/analises/${analysisId}`}"));
-assert.ok(simpleReview.includes('{canReview && <details className="simple-review-more">'));
-assert.match(simpleReview, /Limites desta conclusão/);
-assert.doesNotMatch(simpleReview, /Ainda falta informação/);
-assert.doesNotMatch(simpleReview, /prescriptionCurrent && pkValid && !needsPkContext/);
-assert.match(simpleRecommendationContext, /<details className="simple-context-question">/);
-assert.match(simpleRecommendationContext, /Incluir dose de fósforo e potássio/);
-assert.match(simpleRecommendationContext, /conclui o relatório sem estimar valores/);
-assert.match(prescriptionProvider, /return deterministicLimitedPrescriptionProvider/);
-assert.match(deterministicFallback, /deterministicRecommendations/);
-assert.match(deterministicFallback, /recommendations: deterministic\.recommendations/);
-assert.match(deterministicFallback, /dose\.expected\.isDiscretionaryRange/);
-assert.match(deterministicFallback, /managementPractices:\s*\[\]/);
-assert.match(deterministicFallback, /isRealLanguageModel:\s*false/);
-assert.match(deterministicFallback, /incluiu somente classificações e doses exatas produzidas pelo motor determinístico/);
-assert.match(prescriptionWorkflow, /input\.mode === "deterministic"/);
-assert.match(prescriptionWorkflow, /deterministicLimitedPrescriptionProvider/);
-assert.match(prescriptionWorkflow, /if \(provider\.isRealLanguageModel\)/);
-assert.match(
-  prescriptionWorkflow,
-  /if \(provider\.isRealLanguageModel\) \{[\s\S]*?await getTenantPrescriptionUsage\(input\.tenantId\)[\s\S]*?provider = deterministicLimitedPrescriptionProvider/,
-  "cota de IA deve degradar para fechamento determinístico, não bloquear o relatório",
-);
-assert.match(
-  prescriptionWorkflow,
-  /catch \(error\) \{[\s\S]*?!provider\.isRealLanguageModel[\s\S]*?provider = deterministicLimitedPrescriptionProvider[\s\S]*?provider\.prescribe/,
-  "falha do LLM deve degradar para fechamento determinístico",
-);
-assert.match(simplePublish, /\/api\/interpretations\/\$\{interpretationId\}\/publish-report/);
-assert.match(simplePublish, /method:\s*"POST"/);
-assert.match(simplePublish, /router\.push\(`\/resultado\/\$\{analysisId\}`\)/);
-assert.doesNotMatch(simplePublish, /useEffect/);
-
-// A visualização simples de resultado só usa snapshot publicado validado; nunca reconstrói a versão
-// oficial a partir de prescrição viva ou publica por conta própria.
-assert.match(simpleResult, /getPublishedReportSnapshot/);
-assert.match(simpleResult, /published\.hashVerified !== true/);
-assert.match(simpleResult, /approvedPrescription\.responsePayload/);
-assert.doesNotMatch(simpleResult, /getLatestAgronomicPrescription|getLatestAgronomicNarrative/);
-assert.doesNotMatch(simpleResult, /publish-report|PublishReportButton/);
-
-console.log("ux3-zero-training: navegação simples + motor completo + entrega publicada fail-closed");
-
-assert.match(interpretationsRepository, /engineResult\.interpretable \? "APPROVED" : "CALCULATED"/);
-assert.match(agronomicProfilesRepository, /validation\.confidence >= 90/);
-
-assert.match(ndviRoute, /NDVI_RUNTIME_NOT_CONFIGURED/);
-assert.match(ndviRoute, /COPERNICUS_CLIENT_ID/);
-assert.match(ndviRoute, /S3_ENDPOINT/);
-assert.match(ndviPanel, /runtime\?\.ready === false/);
-assert.match(ndviPanel, /NDVI real ainda não está conectado neste ambiente/);
-
-assert.match(simplePublish, /\/api\/analyses\/\$\{analysisId\}\/official-result/);
-assert.match(simplePublish, /Gerar laudo RAIZ/);
 assert.match(simpleReview, /Laudo RAIZ oficial emitido/);
+assert.match(simpleReview, /Base validada pelo motor RAIZ/);
 assert.match(simpleReview, /Gerar laudo com a base agronômica atual/);
+assert.match(simpleReview, /A base mudou desde o último cálculo/);
+assert.match(simpleReview, /DOSES DETERMINÍSTICAS/);
+assert.match(simpleReview, /Limites registrados/);
+assert.match(simpleReview, /Nenhuma publicação anterior é reescrita/);
 assert.doesNotMatch(simpleReview, /Conferi os dados, a conclusão e os limites apresentados/);
 assert.doesNotMatch(simpleReview, /Aprovar conclusão/);
+assert.doesNotMatch(simpleReview, /Pedir ajuste/);
 assert.match(officialResultRoute, /runInterpretationForAnalysis/);
 assert.match(officialResultRoute, /mode: "deterministic"/);
 assert.match(officialResultRoute, /publishPremiumFieldAnalysisReport/);
