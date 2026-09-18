@@ -32,7 +32,7 @@ export default async function AtencaoPage() {
           {reviewCount > 0 && (
             <Link href="/revisar" className="simple-attention-row">
               <span className="simple-attention-row-icon review"><Icon name="shield" size={21}/></span>
-              <div><strong>{reviewCount === 1 ? "Há uma revisão esperando" : `Há ${reviewCount} revisões esperando`}</strong><small>Confira e decida quando puder.</small></div>
+              <div><strong>Revisões para você</strong><small>Abra e confira as conclusões que aguardam sua decisão.</small></div>
               <span className="simple-attention-action">Revisar</span>
               <Icon name="chevron" size={17}/>
             </Link>
