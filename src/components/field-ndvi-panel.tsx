@@ -28,6 +28,14 @@ type SoilLayerResponse = {
   analysisId: string | null;
   reportId: string | null;
 };
+type NdviRuntimeReadiness = {
+  ready: boolean;
+  copernicusConfigured: boolean;
+  durableStorageConfigured: boolean;
+  storageProvider: string;
+  missing: string[];
+};
+
 type SoilMapContext = {
   collectionOrderId: string;
   collectionOrderCode: string;
@@ -103,6 +111,7 @@ export function FieldNdviPanel({
   const [quality, setQuality] = useState<NdviObservationQuality>("INDETERMINADA");
   const [temporal, setTemporal] = useState<NdviTemporalAnalysis | null>(null);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<NdviRuntimeReadiness | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRasterDate, setSelectedRasterDate] = useState("");
   const [rasterLoading, setRasterLoading] = useState(false);
@@ -141,6 +150,7 @@ export function FieldNdviPanel({
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
+      setRuntime(payload.runtime ?? null);
       setLoading(false);
       onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
     })();
@@ -275,6 +285,7 @@ export function FieldNdviPanel({
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
+      setRuntime(payload.runtime ?? runtime);
 
       const archivedCount = Number(payload.archivedRasterCount ?? payload.importedCount ?? 0);
       const pendingCount = Number(payload.pendingArchiveCount ?? 0);
@@ -335,12 +346,23 @@ export function FieldNdviPanel({
     <div className="ndvi-panel card">
       <div className="ndvi-panel-head">
         <span className="eyebrow">INTELIGÊNCIA ESPACIAL + TEMPORAL · SENTINEL-2</span>
-        <button type="button" className="button ghost small" onClick={handleFetchSatellite} disabled={fetching}>
+        <button type="button" className="button ghost small" onClick={handleFetchSatellite} disabled={fetching || runtime?.ready === false}>
           <Icon name="history" size={14} />
           {fetching ? "Buscando série…" : latest ? "Atualizar 120 dias" : "Buscar histórico"}
         </button>
       </div>
       <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa usa o raster NDVI histórico arquivado e validado por integridade; não é interpolação do laboratório e não representa produtividade.</p>
+
+      {runtime?.ready === false && (
+        <div className="ndvi-panel-error">
+          <Icon name="warning" size={14}/>
+          <span>
+            NDVI real ainda não está conectado neste ambiente.
+            {runtime.missing.length > 0 ? ` Falta configurar: ${runtime.missing.join(", ")}.` : ""}
+            {" "}Depois dessas credenciais, “Buscar histórico” passa a adquirir e arquivar o raster Sentinel-2 real.
+          </span>
+        </div>
+      )}
 
       {error && <p className="ndvi-panel-error"><Icon name="warning" size={14} />{error}</p>}
       {refreshNote && <p className="ndvi-panel-meta"><Icon name="check" size={14} />{refreshNote}</p>}
