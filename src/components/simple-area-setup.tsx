@@ -19,6 +19,7 @@ type Props = {
   clientId: string;
   propertyId: string;
   fieldId: string;
+  forceStage?: "client" | "property" | "field" | "season" | null;
   onCreated: (kind: "client" | "property" | "field" | "season", id: string) => Promise<void> | void;
 };
 
@@ -52,6 +53,7 @@ export function SimpleAreaSetup({
   clientId,
   propertyId,
   fieldId,
+  forceStage = null,
   onCreated,
 }: Props) {
   const [clientName, setClientName] = useState("");
@@ -71,10 +73,10 @@ export function SimpleAreaSetup({
     [cropProfiles],
   );
 
-  const needsClient = clients.length === 0;
-  const needsProperty = Boolean(clientId) && properties.length === 0;
-  const needsField = Boolean(propertyId) && fields.length === 0;
-  const needsSeason = Boolean(fieldId) && seasons.length === 0;
+  const needsClient = forceStage === "client" || clients.length === 0;
+  const needsProperty = forceStage === "property" || (forceStage == null && Boolean(clientId) && properties.length === 0);
+  const needsField = forceStage === "field" || (forceStage == null && Boolean(propertyId) && fields.length === 0);
+  const needsSeason = forceStage === "season" || (forceStage == null && Boolean(fieldId) && seasons.length === 0);
 
   if (!needsClient && !needsProperty && !needsField && !needsSeason) return null;
 
