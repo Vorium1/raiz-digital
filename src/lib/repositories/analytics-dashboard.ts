@@ -78,6 +78,29 @@ const SCOPED_LATEST_INTERPRETATION_CTE = `
     FROM interpretations i
     WHERE i.analysis_id IN (SELECT id FROM scoped_analyses)
     ORDER BY i.analysis_id, i.revision DESC
+  ),
+  current_interpretation AS (
+    SELECT li.*
+    FROM latest_interpretation li
+    JOIN scoped_analyses sa ON sa.id = li.analysis_id
+    JOIN scoped_seasons ss ON ss.id = sa.crop_season_id
+    LEFT JOIN crop_profiles cp ON cp.id = ss.crop_profile_id
+    LEFT JOIN LATERAL (
+      SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
+      FROM analysis_imports ai
+      WHERE ai.tenant_id = sa.tenant_id AND ai.analysis_id = sa.id
+    ) latest_import ON true
+    LEFT JOIN LATERAL (
+      SELECT max(cpp.updated_at) AS latest_parameter_rule_at
+      FROM crop_profile_parameters cpp
+      WHERE cpp.crop_profile_id = cp.id
+    ) rule_state ON cp.id IS NOT NULL
+    WHERE li.crop_profile_id IS NOT DISTINCT FROM ss.crop_profile_id
+      AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
+      AND (
+        cp.id IS NULL
+        OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
+      )
   )
 `;
 
@@ -92,17 +115,20 @@ export async function getAnalyticsStats(tenantId: string, filters: AnalyticsFilt
        ),
        out_of_range AS (
          SELECT li.analysis_id, item->>'parameterCode' AS parameter_code
-         FROM latest_interpretation li, jsonb_array_elements(li.structured_output->'interpretation') AS item
+         FROM current_interpretation li, jsonb_array_elements(li.structured_output->'interpretation') AS item
          WHERE (item->>'interpretable')::boolean IS TRUE
            AND (item->>'classification') !~* $4
        )
        SELECT
          (SELECT count(*)::int FROM scoped_analyses WHERE status NOT IN ('DRAFT')) AS "reportsInPeriod",
-         (SELECT avg(confidence_score)::float8 FROM scoped_analyses WHERE confidence_score IS NOT NULL) AS "avgConfidence",
+         (SELECT avg(sa.confidence_score)::float8
+          FROM scoped_analyses sa
+          JOIN current_interpretation ci ON ci.analysis_id = sa.id
+          WHERE sa.confidence_score IS NOT NULL) AS "avgConfidence",
          (SELECT count(*)::int FROM scoped_points WHERE collected_at IS NOT NULL) AS "pointsWithCompleteData",
          (SELECT count(*)::int FROM scoped_points) AS "pointsTotal",
          (SELECT count(DISTINCT (analysis_id, parameter_code))::int FROM out_of_range) AS "parametersOutOfRange",
-         (SELECT count(*)::int FROM scoped_analyses WHERE status = 'AWAITING_REVIEW') AS "awaitingReview"
+         (SELECT count(*)::int FROM current_interpretation WHERE status = 'IN_REVIEW') AS "awaitingReview"
       `,
       [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null, ADEQUATE_LABEL_PATTERN],
     );
@@ -136,6 +162,7 @@ export async function getFieldConfidenceRanking(tenantId: string, filters: Analy
        SELECT sf.id::text AS "fieldId", sf.field_name AS "fieldName",
               avg(sa.confidence_score)::float8 AS "avgConfidence", count(sa.id)::int AS "analysisCount"
        FROM scoped_analyses sa
+       JOIN current_interpretation ci ON ci.analysis_id = sa.id
        JOIN scoped_seasons ss ON ss.id = sa.crop_season_id
        JOIN scoped_fields sf ON sf.id = ss.field_id
        WHERE sa.confidence_score IS NOT NULL
