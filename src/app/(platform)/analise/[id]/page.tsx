@@ -12,6 +12,7 @@ import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
+const TECHNICAL_DETAIL_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
 const PARAMETER_LABEL: Record<string, string> = {
   PH: "pH",
@@ -57,6 +58,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const interpretationStatus = (interpretation as any)?.status ?? null;
   const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
+  const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);
 
   let stateTitle = "Aguardando dados";
   let stateText = "Envie o resultado do laboratório para a RAIZ começar.";
@@ -147,10 +149,12 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
             ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para uma decisão técnica revisável. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
             : null}
 
-      <details className="simple-analysis-technical">
-        <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={15}/></summary>
-        <div><p>Mapas de pontos, rastreabilidade, fórmulas, métodos, simulações, histórico e ferramentas avançadas ficam no modo técnico.</p><Link href={`/analises/${id}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></div>
-      </details>
+      {canViewTechnical && (
+        <details className="simple-analysis-technical">
+          <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={15}/></summary>
+          <div><p>Mapas de pontos, rastreabilidade, fórmulas, métodos, simulações, histórico e ferramentas avançadas ficam no modo técnico.</p><Link href={`/analises/${id}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></div>
+        </details>
+      )}
     </div>
   );
 }
