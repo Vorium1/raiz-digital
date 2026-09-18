@@ -79,3 +79,11 @@ assert.equal(validateKnowledgeResearchSources([{
 }]), null);
 
 console.log("knowledge-research-schema: compatibilidade legada + metadados científicos aprovados");
+
+const curriculumDomains = await import("../src/domain/agronomy-knowledge-domains.ts");
+assert.ok(curriculumDomains.AGRONOMY_KNOWLEDGE_DOMAINS.length >= 12);
+assert.match(curriculumDomains.AGRONOMY_KNOWLEDGE_COVERAGE_TEXT, /Ciência do solo/);
+assert.match(curriculumDomains.AGRONOMY_KNOWLEDGE_COVERAGE_TEXT, /Fitopatologia/);
+assert.match(curriculumDomains.AGRONOMY_KNOWLEDGE_COVERAGE_TEXT, /Fisiologia e ecofisiologia vegetal/);
+assert.match(curriculumDomains.AGRONOMY_KNOWLEDGE_COVERAGE_TEXT, /Entomologia agrícola/);
+assert.match(curriculumDomains.AGRONOMY_KNOWLEDGE_COVERAGE_TEXT, /Topografia, geoprocessamento e sensoriamento remoto/);
