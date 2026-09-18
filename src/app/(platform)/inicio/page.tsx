@@ -36,9 +36,9 @@ export default async function InicioPage() {
           <h1>Olá, {firstName}.</h1>
           <p>O que você quer fazer?</p>
         </div>
-        <Link href="/atencao" className="simple-alert-button" aria-label={attentionCount > 0 ? `${attentionCount} itens para conferir` : "Nenhum item pendente"}>
-          <Icon name="warning" size={22}/>
-          {attentionCount > 0 && <b>{attentionCount > 9 ? "9+" : attentionCount}</b>}
+        <Link href="/atencao" className={`simple-alert-button ${attentionCount > 0 ? "has-attention" : ""}`} aria-label={attentionCount > 0 ? "Há algo para conferir" : "Nada precisa da sua atenção agora"}>
+          <Icon name={attentionCount > 0 ? "warning" : "check"} size={22}/>
+          {attentionCount > 0 && <span className="simple-alert-dot" aria-hidden="true"/>}
         </Link>
       </header>
 
@@ -51,14 +51,14 @@ export default async function InicioPage() {
 
         <Link href="/talhoes" className="simple-action-card">
           <span><Icon name="layers" size={28}/></span>
-          <div><strong>Meus talhões</strong><small>Veja suas áreas e histórico</small></div>
+          <div><strong>Talhões</strong><small>Veja suas áreas e histórico</small></div>
           <Icon name="arrow" size={18}/>
         </Link>
 
         {canReview && (
           <Link href="/revisar" className="simple-action-card">
             <span><Icon name="shield" size={28}/></span>
-            <div><strong>Revisar</strong><small>{reviewCount > 0 ? `${reviewCount} ${reviewCount === 1 ? "item esperando" : "itens esperando"}` : "Nada esperando agora"}</small></div>
+            <div><strong>Revisar</strong><small>Confira conclusões pendentes</small></div>
             <Icon name="arrow" size={18}/>
           </Link>
         )}
@@ -68,15 +68,6 @@ export default async function InicioPage() {
           <div><strong>Resultados</strong><small>Relatórios prontos</small></div>
           <Icon name="arrow" size={18}/>
         </Link>
-      </section>
-
-      <section className={`simple-attention ${attentionCount > 0 ? "has-items" : "is-clear"}`}>
-        <span className="simple-attention-icon"><Icon name={attentionCount > 0 ? "warning" : "check"} size={21}/></span>
-        <div>
-          <strong>{attentionCount > 0 ? "Tem algo para você conferir" : "Tudo certo por aqui"}</strong>
-          <small>{attentionCount > 0 ? "Abra o aviso e resolva quando puder." : "Nenhuma ação urgente agora."}</small>
-        </div>
-        {attentionCount > 0 && <Link href="/atencao">Ver agora <Icon name="arrow" size={15}/></Link>}
       </section>
 
       <section className="simple-fields-section">
@@ -107,7 +98,6 @@ function DemoInicio() {
         <Link href="/talhoes" className="simple-action-card"><span><Icon name="layers" size={28}/></span><div><strong>Meus talhões</strong><small>Veja suas áreas</small></div><Icon name="arrow" size={18}/></Link>
         <Link href="/resultados" className="simple-action-card"><span><Icon name="file" size={28}/></span><div><strong>Resultados</strong><small>Veja suas entregas</small></div><Icon name="arrow" size={18}/></Link>
       </section>
-      <section className="simple-attention is-clear"><span className="simple-attention-icon"><Icon name="check" size={21}/></span><div><strong>Tudo certo por aqui</strong><small>Nenhuma ação urgente agora.</small></div></section>
     </div>
   );
 }
