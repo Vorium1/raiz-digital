@@ -224,7 +224,7 @@ assert.match(results, /delivery\.prescriptionCurrent === true && delivery\.presc
 assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
 assert.match(resultsPreparation, /router\.refresh\(\)/);
-assert.match(resultsPreparation, /não aprova nem publica nada sozinha/);
+assert.match(resultsPreparation, /versão oficial antiga permanece congelada/);
 assert.match(decisionDeliveryStatus, /information_schema\.columns/);
 assert.match(decisionDeliveryStatus, /hasPrescriptionLink/);
 assert.match(decisionDeliveryStatus, /currentReportJoin/);
@@ -354,3 +354,12 @@ assert.match(officialResultRoute, /publishPremiumFieldAnalysisReport/);
 assert.match(officialResultRoute, /currentReportCount/);
 
 assert.match(deterministicFallback, /Premissas automáticas rastreadas/);
+
+assert.match(simpleResult, /engineValidated/);
+assert.match(simpleResult, /Recomendação validada pelo motor RAIZ/);
+assert.match(simpleResult, /Validado e publicado/);
+assert.doesNotMatch(simpleResult, /Responsável pela revisão/);
+assert.match(results, /VALIDADOS PELO MOTOR/);
+assert.doesNotMatch(results, /PRONTO PARA REVISAR/);
+assert.match(resultsPreparation, /\/api\/analyses\/\$\{item\.id\}\/official-result/);
+assert.match(resultsPreparation, /Atualizar laudo/);
