@@ -6,6 +6,7 @@ import { FieldOverviewTabs } from "@/components/field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
 import { SimpleFieldMapLayers } from "@/components/simple-field-map-layers";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
+import type { DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
 import type { AnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
 import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domain/user-attention";
@@ -14,18 +15,21 @@ export function SimpleFieldOverview({
   overview,
   alerts,
   analysisFreshness,
+  deliveryStatus,
   canRefreshAnalysis,
 }: {
   overview: FieldOverview;
   alerts: OperationalAlert[];
   analysisFreshness: AnalysisEvidenceFreshness | null;
+  deliveryStatus: DecisionDeliveryStatus | null;
   canRefreshAnalysis: boolean;
 }) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
   const season = seasons[0] ?? null;
   const seasonAnalyses = analyses.filter((analysis) => !season || analysis.cropSeasonId === season.id);
   const latest = seasonAnalyses[0] ?? null;
-  const latestReport = latest ? reports.find((report) => report.analysisId === latest.id) ?? null : reports[0] ?? null;
+  const latestReport = latest ? reports.find((report) => report.analysisId === latest.id) ?? null : null;
+  const currentReport = latestReport && (deliveryStatus?.currentReportCount ?? 0) > 0 ? latestReport : null;
   const actionableAlerts = userActionAlerts(alerts).slice(0, 3);
 
   let stateTitle = "Ainda não analisado";
@@ -34,13 +38,7 @@ export function SimpleFieldOverview({
   let actionHref = "/enviar";
   let actionLabel = "Enviar dados";
 
-  if (latestReport) {
-    stateTitle = "Resultado pronto";
-    stateText = "O resultado desta área já está disponível.";
-    stateIcon = "check";
-    actionHref = `/resultado/${latestReport.analysisId}`;
-    actionLabel = "Ver resultado";
-  } else if (latest && analysisFreshness?.current === false) {
+  if (latest && analysisFreshness?.current === false) {
     stateTitle = analysisFreshness.code === "AGRONOMIC_RULES_CHANGED" ? "Atualização disponível" : "Análise precisa ser atualizada";
     stateText = analysisFreshness.code === "AGRONOMIC_RULES_CHANGED"
       ? "A RAIZ encontrou regras mais atuais e pode atualizar esta análise."
@@ -48,9 +46,19 @@ export function SimpleFieldOverview({
     stateIcon = "clock";
     actionHref = `/analise/${latest.id}`;
     actionLabel = "Continuar análise";
-  } else if (latest?.latestInterpretationStatus === "APPROVED") {
+  } else if (currentReport) {
+    stateTitle = "Resultado pronto";
+    stateText = "A versão oficial corrente desta área já está disponível.";
+    stateIcon = "check";
+    actionHref = `/resultado/${currentReport.analysisId}`;
+    actionLabel = "Ver resultado";
+  } else if (
+    latest?.latestInterpretationStatus === "APPROVED"
+    && deliveryStatus?.prescriptionCurrent === true
+    && deliveryStatus.prescriptionStatus === "APPROVED"
+  ) {
     stateTitle = "Revisão concluída";
-    stateText = "A decisão técnica foi aprovada. Falta somente concluir a entrega.";
+    stateText = "A decisão técnica corrente foi aprovada. Falta somente concluir a entrega.";
     stateIcon = "check";
     actionHref = `/analise/${latest.id}`;
     actionLabel = "Concluir entrega";
