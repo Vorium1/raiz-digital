@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const sidebar = read("src/components/sidebar.tsx");
 const mobile = read("src/components/mobile-navigation.tsx");
 const home = read("src/app/(platform)/inicio/page.tsx");
+const fieldsPage = read("src/app/(platform)/talhoes/page.tsx");
 const dashboardRepository = read("src/lib/repositories/dashboard.ts");
 const dashboard = read("src/app/(platform)/dashboard/page.tsx");
 const attentionPage = read("src/app/(platform)/atencao/page.tsx");
@@ -45,6 +46,10 @@ assert.doesNotMatch(home, /simple-attention has-items|simple-attention is-clear/
 assert.doesNotMatch(home, /item esperando|itens esperando|conclusões pendentes/);
 assert.match(home, /Confira e aprove conclusões/);
 assert.match(dashboard, /redirect\("\/inicio"\)/);
+assert.match(fieldsPage, /href="\/enviar"/);
+assert.doesNotMatch(fieldsPage, /href="\/coletas"/);
+assert.match(fieldsPage, /Precisa continuar/);
+assert.match(fieldsPage, /Começar agora/);
 assert.match(attentionPage, /const seenDestinations = new Set<string>\(\)/);
 assert.match(attentionPage, /userAttentionHref\(alert\)/);
 assert.match(attentionPage, /attentionItems\.map/);
