@@ -74,10 +74,15 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const interpretationId = interpretation.id;
   const interpretationStatus = interpretation.status;
   const draft = prescription?.responsePayload?.prescription ?? null;
-  const finalApproved = interpretationStatus === "APPROVED" && prescription?.status === "APPROVED";
+  // Prescrição existente só é tratada como corrente/validada quando a API comprova isso explicitamente.
+  // Falha ou ausência de readiness nunca libera publicação por otimismo.
+  const prescriptionCurrent = !prescription || readiness?.prescriptionFreshness?.current === true;
+  const pkValid = !prescription || readiness?.prescriptionPkValidation?.allowed === true;
+  const finalApproved = interpretationStatus === "APPROVED"
+    && prescription?.status === "APPROVED"
+    && prescriptionCurrent
+    && pkValid;
   const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
-  const prescriptionCurrent = readiness?.prescriptionFreshness?.current !== false;
-  const pkValid = readiness?.prescriptionPkValidation?.allowed !== false;
   const recommendationContext = readiness?.recommendationContext ?? null;
   const needsPkContext = Boolean(
     recommendationContext?.uniformPkReadiness?.ready === true
