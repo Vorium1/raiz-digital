@@ -44,15 +44,6 @@ export default async function ResultadosPage() {
       reason: deliveryByAnalysis.get(String(analysis.id))?.interpretationStaleReason ?? null,
     }));
 
-  const reviewReady = analyses.filter((analysis: any) => {
-    const delivery = deliveryByAnalysis.get(String(analysis.id));
-    return delivery?.interpretationCurrent === true
-      && (
-        analysis.latestInterpretationStatus === "IN_REVIEW"
-        || (delivery.prescriptionCurrent === true && delivery.prescriptionStatus === "PENDING_REVIEW")
-      );
-  });
-
   const publishReady = analyses.filter((analysis: any) => {
     const delivery = deliveryByAnalysis.get(String(analysis.id));
     return delivery?.interpretationCurrent === true
@@ -68,7 +59,7 @@ export default async function ResultadosPage() {
       && analysis.latestInterpretationStatus === "CALCULATED";
   });
 
-  const hasAnyState = latestResults.length + stale.length + reviewReady.length + publishReady.length + limited.length > 0;
+  const hasAnyState = latestResults.length + stale.length + publishReady.length + limited.length > 0;
 
   return (
     <div className="simple-home simple-results-page">
@@ -97,29 +88,14 @@ export default async function ResultadosPage() {
 
       <SimpleResultsPreparation items={stale} canPrepare={PREPARE_ROLES.has(session.role)}/>
 
-      {reviewReady.length > 0 && (
-        <section className="simple-results-section">
-          <div className="simple-results-section-head"><span>PRONTO PARA REVISAR</span><h2>Conclusões preparadas</h2><p>Os dados já foram processados. Falta apenas a decisão técnica.</p></div>
-          <div className="simple-results-grid">
-            {reviewReady.map((analysis: any) => (
-              <Link href={`/analise/${analysis.id}`} key={analysis.id} className="simple-result-card review-ready">
-                <span className="simple-result-icon"><Icon name="shield" size={23}/></span>
-                <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>Conclusão pronta para revisar</time></div>
-                <Icon name="arrow" size={17}/>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {publishReady.length > 0 && (
         <section className="simple-results-section">
-          <div className="simple-results-section-head"><span>APROVADOS</span><h2>Prontos para publicar</h2><p>A revisão já terminou. Falta apenas gerar a versão oficial.</p></div>
+          <div className="simple-results-section-head"><span>VALIDADOS PELO MOTOR</span><h2>Prontos para gerar o laudo</h2><p>A base atual já passou pelos validadores determinísticos. Falta apenas emitir a nova versão oficial.</p></div>
           <div className="simple-results-grid">
             {publishReady.map((analysis: any) => (
               <Link href={`/analise/${analysis.id}`} key={analysis.id} className="simple-result-card publish-ready">
                 <span className="simple-result-icon"><Icon name="check" size={23}/></span>
-                <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>Aprovado · publicar resultado</time></div>
+                <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>Validado pelo motor · gerar resultado</time></div>
                 <Icon name="arrow" size={17}/>
               </Link>
             ))}
