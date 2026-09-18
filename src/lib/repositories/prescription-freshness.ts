@@ -5,8 +5,13 @@ import { withTenant } from "@/lib/db";
 /**
  * Estado corrente de uma geração já persistida. Uma prescrição deixa de ser corrente quando:
  * 1) a safra mudou depois da geração; OU
- * 2) ela não aponta mais para a revisão determinística mais recente e APPROVED; OU
- * 3) o laudo laboratorial foi efetivado depois da interpretação que sustenta a geração.
+ * 2) ela não aponta mais para a revisão determinística mais recente em estado revisável
+ *    (IN_REVIEW ou APPROVED); OU
+ * 3) o laudo ou as regras agronômicas mudaram depois da interpretação que sustenta a geração.
+ *
+ * "Corrente" aqui significa que o rascunho ainda representa o snapshot técnico atual. Não significa
+ * que ele já esteja oficial/aprovado. A publicação continua exigindo interpretação e prescrição
+ * APPROVED nos gates próprios de revisão/publicação.
  *
  * Isso é somente leitura: a geração histórica não é apagada nem reescrita.
  */
@@ -77,11 +82,11 @@ export async function getAgronomicPrescriptionFreshness(input: {
     if (
       !row.generationInterpretationId
       || row.generationInterpretationId !== row.latestInterpretationId
-      || row.latestInterpretationStatus !== "APPROVED"
+      || (row.latestInterpretationStatus !== "IN_REVIEW" && row.latestInterpretationStatus !== "APPROVED")
     ) {
       return {
         current: false,
-        reason: "A interpretação determinística vinculada a esta geração foi superada ou deixou de ser a revisão APPROVED atual.",
+        reason: "A interpretação determinística vinculada a esta geração foi superada ou deixou de ser a revisão atual disponível para decisão.",
       };
     }
 
