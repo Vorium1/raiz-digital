@@ -9,7 +9,6 @@ import { SimplePublishResultButton } from "@/components/simple-publish-result-bu
 type Interpretation = {
   id: string;
   status: string;
-  structuredOutput?: { interpretation?: Array<{ parameterCode: string; interpretable: boolean; classification?: string; classificationRole?: "TARGET" | "AUXILIARY" }> } | null;
 };
 
 type Prescription = {
@@ -48,9 +47,6 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const [prescription, setPrescription] = useState<Prescription | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
-  const [accepted, setAccepted] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
   async function load() {
     const [iRes, pRes, dRes] = await Promise.all([
@@ -69,135 +65,52 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (interpretation === undefined) return <div className="simple-review-loading"><Icon name="clock" size={18}/> Preparando a revisão…</div>;
-  if (!interpretation) return null;
+  if (interpretation === undefined) {
+    return <div className="simple-review-loading"><Icon name="clock" size={18}/> Preparando o laudo RAIZ…</div>;
+  }
 
-  const interpretationId = interpretation.id;
-  const interpretationStatus = interpretation.status;
+  const published = (delivery?.currentReportCount ?? 0) > 0;
+  if (published) {
+    return (
+      <section className="simple-final-review done">
+        <span><Icon name="check" size={24}/></span>
+        <div><strong>Laudo RAIZ oficial emitido</strong><p>A versão corrente está congelada, rastreável e pronta para entrega.</p></div>
+        <Link href={`/resultado/${analysisId}`}>Ver laudo <Icon name="arrow" size={14}/></Link>
+      </section>
+    );
+  }
+
   const draft = prescription?.responsePayload?.prescription ?? null;
-  // Prescrição existente só é tratada como corrente/validada quando a API comprova isso explicitamente.
-  // Falha ou ausência de readiness nunca libera publicação por otimismo.
-  const interpretationEvidenceCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
-  const prescriptionCurrent = !prescription || readiness?.prescriptionFreshness?.current === true;
-  const pkValid = !prescription || readiness?.prescriptionPkValidation?.allowed === true;
-  const finalApproved = interpretationStatus === "APPROVED"
-    && prescription?.status === "APPROVED"
-    && readiness?.allowed === true
-    && interpretationEvidenceCurrent
-    && prescriptionCurrent
-    && pkValid;
-  const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
   const recommendationContext = readiness?.recommendationContext ?? null;
   const needsPkContext = Boolean(
     recommendationContext?.uniformPkReadiness?.ready === true
     && recommendationContext?.pkDoseReadiness?.ready === false
     && (recommendationContext?.pkDoseReadiness?.blockers.length ?? 0) > 0,
   );
-  const canFinalize = canReview && accepted && Boolean(prescription?.id)
-    && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED")
-    && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
-    && readiness?.allowed === true
-    && interpretationEvidenceCurrent
-    && prescriptionCurrent && pkValid;
-
-  async function prepare() {
-    setBusy(true); setMessage(null);
-    try {
-      const response = await fetch(`/api/analyses/${analysisId}/agronomic-prescription`, { method: "POST" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível preparar a recomendação.");
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível preparar a recomendação.");
-    } finally { setBusy(false); }
-  }
-
-  async function decide(decision: "APPROVED" | "CHANGES_REQUESTED") {
-    if (!prescription) return;
-    setBusy(true); setMessage(null);
-    try {
-      const response = await fetch(`/api/analyses/${analysisId}/final-review`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          decision,
-          interpretationId,
-          prescriptionId: prescription.id,
-          ...(decision === "CHANGES_REQUESTED" ? { note: "Ajustes solicitados na revisão final." } : {}),
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível concluir esta ação.");
-      setAccepted(false);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível concluir esta ação.");
-    } finally { setBusy(false); }
-  }
-
-  if (published) {
-    return <section className="simple-final-review done"><span><Icon name="check" size={24}/></span><div><strong>Resultado publicado</strong><p>Esta decisão já está pronta para consulta e entrega.</p></div><Link href={`/resultado/${analysisId}`}>Ver resultado <Icon name="arrow" size={14}/></Link></section>;
-  }
-
-  if (finalApproved) {
-    return (
-      <section className="simple-final-review done">
-        <span><Icon name="check" size={24}/></span>
-        <div><strong>Revisão concluída</strong><p>A decisão foi aprovada. Publique a versão oficial para ela aparecer em Resultados.</p></div>
-        {canReview
-          ? <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretationId}/>
-          : <small className="simple-review-help">Um responsável técnico autorizado precisa publicar este resultado.</small>}
-      </section>
-    );
-  }
-
-  if (prescription && !prescriptionCurrent) {
-    return (
-      <section className="simple-final-review blocked">
-        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>A conclusão precisa ser atualizada</strong><p>Alguma informação da área mudou depois que esta versão foi preparada.</p></div></div>
-        {message && <div className="simple-review-message">{message}</div>}
-        <button type="button" onClick={prepare} disabled={busy || !canReview}>{busy ? "Atualizando…" : "Atualizar conclusão"}</button>
-        <small className="simple-review-help">A versão anterior não pode ser aprovada como se ainda estivesse atual.</small>
-      </section>
-    );
-  }
-
-  if (prescription && !pkValid) {
-    return (
-      <section className="simple-final-review blocked">
-        <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a conclusão preparada e o cálculo validado. Nada será alterado automaticamente.</p></div></div>
-        {canReview && <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>}
-      </section>
-    );
-  }
-
-  if (!prescription) {
-    return (
-      <section className="simple-final-review">
-        <div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar conclusão</strong><p>A análise já existe; a RAIZ pode organizar a conclusão para você revisar.</p></div></div>
-        {needsPkContext && recommendationContext && (
-          <SimpleRecommendationContext
-            cropSeasonId={recommendationContext.cropSeasonId}
-            blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
-            yieldGoal={recommendationContext.yieldGoal}
-            yieldGoalUnit={recommendationContext.yieldGoalUnit}
-            cultivationOrderAfterSoilAnalysis={recommendationContext.cultivationOrderAfterSoilAnalysis}
-            onSaved={load}
-          />
-        )}
-        {message && <div className="simple-review-message">{message}</div>}
-        <button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>
-          {busy ? "Preparando…" : needsPkContext ? "Preparar com os dados disponíveis" : "Preparar conclusão"}
-        </button>
-        {needsPkContext && <small className="simple-review-help">Sem esse contexto, a RAIZ não inclui dose de fósforo ou potássio. O restante do relatório pode seguir normalmente.</small>}
-        {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma conclusão.</small>}
-      </section>
-    );
-  }
+  const evidenceCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
+  const currentEngineValidation = interpretation?.status === "APPROVED" && evidenceCurrent;
+  const staleReason = readiness?.interpretationEvidenceFreshness?.reason ?? null;
 
   return (
     <section className="simple-final-review" id="revisar">
-      <div className="simple-final-review-head"><span><Icon name="shield" size={22}/></span><div><strong>Revisão final</strong><p>Confira a conclusão preparada pela RAIZ e decida.</p></div></div>
+      <div className="simple-final-review-head">
+        <span><Icon name={currentEngineValidation ? "check" : "leaf"} size={22}/></span>
+        <div>
+          <strong>{currentEngineValidation ? "Base validada pelo motor RAIZ" : "Gerar laudo com a base agronômica atual"}</strong>
+          <p>
+            {currentEngineValidation
+              ? "Os dados correntes já passaram pelo motor determinístico. O próximo comando gera a versão oficial."
+              : "A RAIZ recalcula automaticamente a interpretação com as regras atuais antes de gerar o laudo. Versões antigas permanecem congeladas."}
+          </p>
+        </div>
+      </div>
+
+      {!evidenceCurrent && staleReason && (
+        <div className="simple-review-missing">
+          <Icon name="history" size={17}/>
+          <div><strong>A base mudou desde o último cálculo</strong><small>{staleReason}</small></div>
+        </div>
+      )}
 
       {needsPkContext && recommendationContext && (
         <SimpleRecommendationContext
@@ -210,32 +123,42 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
         />
       )}
 
-      {draft?.summary && <div className="simple-review-summary"><span>RESUMO</span><p>{draft.summary}</p></div>}
+      {draft?.summary && <div className="simple-review-summary"><span>CONCLUSÃO ATUAL</span><p>{draft.summary}</p></div>}
 
-      {(draft?.recommendations?.length ?? 0) === 0 && (
-        <div className="simple-review-completed-limited">
-          <Icon name="check" size={18}/>
+      {(draft?.recommendations?.length ?? 0) > 0 && (
+        <div className="simple-review-recommendations">
+          <span>DOSES DETERMINÍSTICAS</span>
+          {draft!.recommendations!.map((item, index) => (
+            <div key={`${item.inputType}-${index}`}>
+              <strong>{item.inputType}</strong>
+              <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
+              <small>{item.rationale}</small>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(draft?.missingInformation?.length ?? 0) > 0 && (
+        <div className="simple-review-missing">
+          <Icon name="shield" size={17}/>
           <div>
-            <strong>Conclusão pronta com os dados disponíveis</strong>
-            <small>A RAIZ não incluiu dose ou manejo sem evidência suficiente. Isso não impede a revisão desta conclusão.</small>
+            <strong>Limites registrados ({draft!.missingInformation!.length})</strong>
+            <ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul>
           </div>
         </div>
       )}
 
-      {(draft?.recommendations?.length ?? 0) > 0 && <div className="simple-review-recommendations"><span>RECOMENDAÇÃO APROVÁVEL</span>{draft!.recommendations!.map((item, index) => <div key={`${item.inputType}-${index}`}><strong>{item.inputType}</strong><b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b><small>{item.rationale}</small></div>)}</div>}
+      {canReview ? (
+        <div className="simple-review-actions">
+          <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretation?.id}/>
+        </div>
+      ) : (
+        <p className="simple-review-help">Seu perfil atual não possui permissão operacional para emitir o laudo.</p>
+      )}
 
-      {(draft?.managementPractices?.length ?? 0) > 0 && <div className="simple-review-practices"><span>MANEJO</span><ul>{draft!.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-
-      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="shield" size={17}/><div><strong>Limites desta conclusão{(draft?.missingInformation?.length ?? 0) > 1 ? ` (${draft!.missingInformation!.length})` : ""}</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
-
-      {message && <div className="simple-review-message">{message}</div>}
-
-      {canReview ? <>
-        <label className="simple-review-confirm"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi os dados, a conclusão e os limites apresentados.</span></label>
-        <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar conclusão"}</button></div>
-      </> : <p className="simple-review-help">A revisão final precisa ser feita por um perfil técnico autorizado.</p>}
-
-      {canReview && <details className="simple-review-more"><summary>Ver informações técnicas da revisão</summary><Link href={`/analises/${analysisId}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></details>}
+      <small className="simple-review-help">
+        O laudo sempre usa a versão corrente da base técnica. Nenhuma publicação anterior é reescrita.
+      </small>
     </section>
   );
 }
