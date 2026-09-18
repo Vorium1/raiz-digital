@@ -24,12 +24,14 @@ export async function reviewInterpretationWithClient(client: PoolClient, input: 
     revision: number;
     latestRevision: number;
     createdAt: string;
+    cropProfileId: string | null;
   }>(
     `SELECT i.id::text,
             i.status::text AS status,
             i.analysis_id::text AS "analysisId",
             i.revision,
             i.created_at::text AS "createdAt",
+            i.crop_profile_id::text AS "cropProfileId",
             (SELECT max(i2.revision) FROM interpretations i2
              WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = i.analysis_id) AS "latestRevision"
      FROM interpretations i
@@ -42,9 +44,11 @@ export async function reviewInterpretationWithClient(client: PoolClient, input: 
 
   const evidenceState = await client.query<{
     latestImportCommittedAt: string | null;
+    currentCropProfileId: string | null;
     latestRuleUpdatedAt: string | null;
   }>(
     `SELECT latest_import.latest_import_at::text AS "latestImportCommittedAt",
+            cs.crop_profile_id::text AS "currentCropProfileId",
             rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
      FROM analyses a
      JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -66,6 +70,8 @@ export async function reviewInterpretationWithClient(client: PoolClient, input: 
   const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: current.createdAt,
     latestImportCommittedAt: evidenceState.rows[0]?.latestImportCommittedAt ?? null,
+    interpretationCropProfileId: current.cropProfileId,
+    currentCropProfileId: evidenceState.rows[0]?.currentCropProfileId ?? null,
     latestRuleUpdatedAt: evidenceState.rows[0]?.latestRuleUpdatedAt ?? null,
   });
   if (!evidenceFreshness.current) {
