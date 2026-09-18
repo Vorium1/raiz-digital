@@ -19,7 +19,14 @@ export default async function AtencaoPage() {
   const canReview = REVIEW_ROLES.has(session.role);
   const reviewCount = canReview ? snapshot.awaitingReview : 0;
   const actionable = userActionAlerts(alerts);
-  const total = reviewCount + actionable.length;
+  const seenDestinations = new Set<string>();
+  const attentionItems = actionable.filter((alert) => {
+    const href = userAttentionHref(alert);
+    if (seenDestinations.has(href)) return false;
+    seenDestinations.add(href);
+    return true;
+  });
+  const total = reviewCount + attentionItems.length;
 
   return (
     <div className="simple-home simple-attention-page">
@@ -38,7 +45,7 @@ export default async function AtencaoPage() {
             </Link>
           )}
 
-          {actionable.map((alert) => (
+          {attentionItems.map((alert) => (
             <Link href={userAttentionHref(alert)} key={alert.id} className="simple-attention-row">
               <span className="simple-attention-row-icon"><Icon name="warning" size={21}/></span>
               <div>
