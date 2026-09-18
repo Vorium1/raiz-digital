@@ -54,6 +54,8 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
       cropSeasonUpdatedAt: string;
       latestInterpretationId: string | null;
       latestInterpretationCreatedAt: string | null;
+      latestInterpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
       latestRuleUpdatedAt: string | null;
       prescriptionId: string | null;
@@ -69,6 +71,8 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
               cs.updated_at::text AS "cropSeasonUpdatedAt",
               latest_i.id::text AS "latestInterpretationId",
               latest_i.created_at::text AS "latestInterpretationCreatedAt",
+              latest_i.crop_profile_id::text AS "latestInterpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               prescription.id::text AS "prescriptionId",
@@ -83,7 +87,7 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
        JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
        LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.created_at
+         SELECT i.id, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
          ORDER BY i.revision DESC
@@ -124,6 +128,8 @@ export async function getDecisionDeliveryStatuses(tenantId: string, analysisIds:
         ? evaluateAnalysisEvidenceFreshness({
             interpretationCreatedAt: row.latestInterpretationCreatedAt,
             latestImportCommittedAt: row.latestImportCommittedAt,
+            interpretationCropProfileId: row.latestInterpretationCropProfileId,
+            currentCropProfileId: row.currentCropProfileId,
             latestRuleUpdatedAt: row.latestRuleUpdatedAt,
           })
         : { current: false, reason: null };
