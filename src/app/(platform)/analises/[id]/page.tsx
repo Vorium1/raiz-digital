@@ -39,7 +39,15 @@ export default async function AnalysisDetailPage({ params }: { params: Promise<{
 }
 
 function RealAnalysisDetail({ analysis, delivery, canRun, canReview }: { analysis: any; delivery: DecisionDeliveryStatus | null; canRun: boolean; canReview: boolean }) {
-  const meta = analysisDisplayStatus(analysis);
+  const persistedMeta = analysisDisplayStatus(analysis);
+  const meta = analysis.latestInterpretationStatus && delivery?.interpretationCurrent === false
+    ? {
+        label: "Precisa atualizar",
+        tone: "waiting" as const,
+        progress: persistedMeta.progress,
+        detail: delivery.interpretationStaleReason ?? "A interpretação anterior permanece no histórico, mas não representa a evidência agronômica corrente.",
+      }
+    : persistedMeta;
   const imported = Number(analysis.importCount) > 0 || Number(analysis.labSampleCount) > 0;
   return <><Topbar eyebrow="Fluxo inteligente" title={analysis.code}><AssistantEntryButton label="Pergunte sobre esta análise"/>{canRun && <Link href={`/analises/${analysis.id}/importar`} className="button secondary"><Icon name="upload" size={16}/>Adicionar dados</Link>}</Topbar><div className="content-wrap detail-page ux2-analysis-detail">
     <div className="detail-header"><div><div className="breadcrumb"><Link href="/inicio">Início</Link><Icon name="chevron" size={13}/><Link href="/analises">Operações</Link><Icon name="chevron" size={13}/><span>{analysis.code}</span></div><h2>{analysis.clientName}</h2><p>{analysis.propertyName} · {analysis.fieldName} · {Number(analysis.areaHa).toLocaleString("pt-BR",{maximumFractionDigits:2})} ha · Safra {analysis.seasonLabel}{analysis.laboratoryName ? ` · ${analysis.laboratoryName}` : ""}</p></div><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></div>
