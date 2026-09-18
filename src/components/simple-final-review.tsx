@@ -35,6 +35,7 @@ type RecommendationContext = {
 type Readiness = {
   allowed?: boolean;
   reason?: string | null;
+  interpretationEvidenceFreshness?: { current?: boolean; reason?: string | null };
   prescriptionFreshness?: { current?: boolean };
   prescriptionPkValidation?: { allowed?: boolean } | null;
   recommendationContext?: RecommendationContext;
@@ -76,10 +77,13 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const draft = prescription?.responsePayload?.prescription ?? null;
   // Prescrição existente só é tratada como corrente/validada quando a API comprova isso explicitamente.
   // Falha ou ausência de readiness nunca libera publicação por otimismo.
+  const interpretationEvidenceCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
   const prescriptionCurrent = !prescription || readiness?.prescriptionFreshness?.current === true;
   const pkValid = !prescription || readiness?.prescriptionPkValidation?.allowed === true;
   const finalApproved = interpretationStatus === "APPROVED"
     && prescription?.status === "APPROVED"
+    && readiness?.allowed === true
+    && interpretationEvidenceCurrent
     && prescriptionCurrent
     && pkValid;
   const published = finalApproved && (delivery?.currentReportCount ?? 0) > 0;
@@ -92,6 +96,8 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   const canFinalize = canReview && accepted && Boolean(prescription?.id)
     && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED")
     && (prescription?.status === "PENDING_REVIEW" || prescription?.status === "APPROVED")
+    && readiness?.allowed === true
+    && interpretationEvidenceCurrent
     && prescriptionCurrent && pkValid;
 
   async function prepare() {
