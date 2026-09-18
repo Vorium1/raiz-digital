@@ -32,6 +32,7 @@ const resultsPreparation = read("src/components/simple-results-preparation.tsx")
 const simpleAnalysis = read("src/app/(platform)/analise/[id]/page.tsx");
 const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 const producerReport = read("src/app/(platform)/relatorios/produtor/[analysisId]/page.tsx");
+const propertyReport = read("src/app/(platform)/relatorios/propriedade/[propertyId]/page.tsx");
 const technicalReport = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
 const collectionReport = read("src/app/(platform)/relatorios/coleta/[orderId]/page.tsx");
 const spatialMapTypes = read("src/components/spatial-map-types.ts");
@@ -238,6 +239,9 @@ assert.match(simpleResult, /Vigor da área/);
 assert.match(producerReport, /getAnalysisEvidenceState/);
 assert.match(producerReport, /interpretationCurrent/);
 assert.match(producerReport, /Existe uma aprovação histórica/);
+assert.match(reportsRepository, /evaluationStatus !== "APROVADO"/);
+assert.match(propertyReport, /concluir ou atualizar a análise corrente/);
+assert.match(propertyReport, /todos os talhões desta propriedade estão avaliados e aprovados na versão corrente/);
 assert.match(technicalReport, /getAnalysisEvidenceState/);
 assert.match(technicalReport, /getAgronomicNarrativeFreshness/);
 assert.match(technicalReport, /getAgronomicPrescriptionFreshness/);
