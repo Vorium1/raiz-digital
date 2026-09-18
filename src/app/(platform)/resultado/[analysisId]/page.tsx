@@ -136,7 +136,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           <div className="simple-result-context">
             <div><small>Área</small><strong>{Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
             <div><small>Safra</small><strong>{context.seasonLabel}</strong></div>
-            <div><small>Cultura</small><strong>{context.currentCrop || "Não informada"}</strong></div>
+            <div><small>Cultura</small><strong>{context.currentCrop || context.nextCrop || context.cropProfileName || "Não informada"}</strong></div>
             {publishedPoints.length > 0 && <div><small>Pontos de coleta</small><strong>{publishedPoints.length}</strong></div>}
             {reviewer && <div><small>Responsável pela revisão</small><strong>{reviewer}</strong></div>}
           </div>
