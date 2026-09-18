@@ -155,7 +155,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
     return (
       <section className="simple-final-review blocked">
         <div className="simple-final-review-head"><span><Icon name="warning" size={22}/></span><div><strong>Aprovação bloqueada</strong><p>A RAIZ encontrou diferença entre a conclusão preparada e o cálculo validado. Nada será alterado automaticamente.</p></div></div>
-        <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>
+        {canReview && <Link href={`/analises/${analysisId}`} className="simple-review-technical-action">Ver detalhes técnicos <Icon name="arrow" size={13}/></Link>}
       </section>
     );
   }
@@ -224,7 +224,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
         <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar conclusão"}</button></div>
       </> : <p className="simple-review-help">A revisão final precisa ser feita por um perfil técnico autorizado.</p>}
 
-      <details className="simple-review-more"><summary>Ver informações técnicas da revisão</summary><Link href={`/analises/${analysisId}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></details>
+      {canReview && <details className="simple-review-more"><summary>Ver informações técnicas da revisão</summary><Link href={`/analises/${analysisId}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></details>}
     </section>
   );
 }
