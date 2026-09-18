@@ -370,3 +370,8 @@ assert.doesNotMatch(attentionPage, /href="\/revisar"/);
 assert.match(simpleResult, /recommendationTotalForArea/);
 assert.match(simpleResult, /Total para/);
 assert.match(simpleResult, /kg\/ha/);
+
+assert.match(simpleResult, /RASTREABILIDADE/);
+assert.match(simpleResult, /Base agronômica/);
+assert.match(simpleResult, /RAIZ Agronomic Engine/);
+assert.match(simpleResult, /Versão do motor/);
