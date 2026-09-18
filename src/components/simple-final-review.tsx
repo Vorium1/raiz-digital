@@ -163,7 +163,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
   if (!prescription) {
     return (
       <section className="simple-final-review">
-        <div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar recomendação</strong><p>A análise já existe; a RAIZ pode organizar a proposta para você revisar.</p></div></div>
+        <div className="simple-final-review-head"><span><Icon name="leaf" size={22}/></span><div><strong>Preparar conclusão</strong><p>A análise já existe; a RAIZ pode organizar a conclusão para você revisar.</p></div></div>
         {needsPkContext && recommendationContext && (
           <SimpleRecommendationContext
             cropSeasonId={recommendationContext.cropSeasonId}
@@ -176,7 +176,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
         )}
         {message && <div className="simple-review-message">{message}</div>}
         <button type="button" onClick={prepare} disabled={busy || !canReview || readiness?.allowed === false}>
-          {busy ? "Preparando…" : needsPkContext ? "Preparar com os dados disponíveis" : "Preparar recomendação"}
+          {busy ? "Preparando…" : needsPkContext ? "Preparar com os dados disponíveis" : "Preparar conclusão"}
         </button>
         {needsPkContext && <small className="simple-review-help">Sem esse contexto, a RAIZ não inclui dose de fósforo ou potássio. O restante do relatório pode seguir normalmente.</small>}
         {readiness?.allowed === false && <small className="simple-review-help">A análise ainda não está pronta para preparar uma recomendação.</small>}
@@ -186,7 +186,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
 
   return (
     <section className="simple-final-review" id="revisar">
-      <div className="simple-final-review-head"><span><Icon name="shield" size={22}/></span><div><strong>Revisão final</strong><p>Confira a recomendação preparada pela RAIZ e decida.</p></div></div>
+      <div className="simple-final-review-head"><span><Icon name="shield" size={22}/></span><div><strong>Revisão final</strong><p>Confira a conclusão preparada pela RAIZ e decida.</p></div></div>
 
       {needsPkContext && recommendationContext && (
         <SimpleRecommendationContext
@@ -201,17 +201,27 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
 
       {draft?.summary && <div className="simple-review-summary"><span>RESUMO</span><p>{draft.summary}</p></div>}
 
-      {(draft?.recommendations?.length ?? 0) > 0 && <div className="simple-review-recommendations"><span>RECOMENDAÇÃO</span>{draft!.recommendations!.map((item, index) => <div key={`${item.inputType}-${index}`}><strong>{item.inputType}</strong><b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b><small>{item.rationale}</small></div>)}</div>}
+      {(draft?.recommendations?.length ?? 0) === 0 && (
+        <div className="simple-review-completed-limited">
+          <Icon name="check" size={18}/>
+          <div>
+            <strong>Conclusão pronta com os dados disponíveis</strong>
+            <small>A RAIZ não incluiu dose ou manejo sem evidência suficiente. Isso não impede a revisão desta conclusão.</small>
+          </div>
+        </div>
+      )}
+
+      {(draft?.recommendations?.length ?? 0) > 0 && <div className="simple-review-recommendations"><span>RECOMENDAÇÃO APROVÁVEL</span>{draft!.recommendations!.map((item, index) => <div key={`${item.inputType}-${index}`}><strong>{item.inputType}</strong><b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b><small>{item.rationale}</small></div>)}</div>}
 
       {(draft?.managementPractices?.length ?? 0) > 0 && <div className="simple-review-practices"><span>MANEJO</span><ul>{draft!.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
 
-      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="shield" size={17}/><div><strong>Limites desta conclusão</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
+      {(draft?.missingInformation?.length ?? 0) > 0 && <div className="simple-review-missing"><Icon name="shield" size={17}/><div><strong>Limites desta conclusão{(draft?.missingInformation?.length ?? 0) > 1 ? ` (${draft!.missingInformation!.length})` : ""}</strong><ul>{draft!.missingInformation!.map((item, index) => <li key={index}>{item}</li>)}</ul></div></div>}
 
       {message && <div className="simple-review-message">{message}</div>}
 
       {canReview ? <>
         <label className="simple-review-confirm"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Conferi os dados, a recomendação e as limitações apresentadas.</span></label>
-        <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar revisão"}</button></div>
+        <div className="simple-review-actions"><button type="button" className="secondary" disabled={busy || prescription.status !== "PENDING_REVIEW"} onClick={() => void decide("CHANGES_REQUESTED")}>Pedir ajuste</button><button type="button" disabled={busy || !canFinalize} onClick={() => void decide("APPROVED")}>{busy ? "Salvando…" : "Aprovar conclusão"}</button></div>
       </> : <p className="simple-review-help">A revisão final precisa ser feita por um perfil técnico autorizado.</p>}
 
       <details className="simple-review-more"><summary>Ver informações técnicas da revisão</summary><Link href={`/analises/${analysisId}`}>Abrir modo técnico completo <Icon name="arrow" size={13}/></Link></details>
