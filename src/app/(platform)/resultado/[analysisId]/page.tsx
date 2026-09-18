@@ -12,6 +12,8 @@ import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-
 
 export const metadata = { title: "Resultado" };
 
+const TECHNICAL_DETAIL_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
 type Finding = {
   sampleCode?: string;
   parameterCode?: string;
@@ -67,6 +69,7 @@ function isV2(value: unknown): value is ReportSnapshotV2 {
 export default async function ResultadoPage({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
   const session = await requirePlatformSession();
+  const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);
   const published = await getPublishedReportSnapshot(session.tenantId, analysisId, session.userId);
   if (!published.found) notFound();
 
@@ -77,7 +80,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         <section className="simple-result-integrity-error">
           <span><Icon name="warning" size={28}/></span>
           <div><h1>Não foi possível validar este resultado.</h1><p>Por segurança, a RAIZ não mostra uma versão oficial quando não consegue confirmar que o arquivo publicado está íntegro.</p></div>
-          <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Ver detalhes técnicos</Link>
+          {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Ver detalhes técnicos</Link>}
         </section>
       </div>
     );
@@ -95,7 +98,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         <section className="simple-result-integrity-error legacy">
           <span><Icon name="file" size={28}/></span>
           <div><h1>Resultado de uma versão anterior.</h1><p>Este documento foi publicado antes do formato atual e não contém contexto suficiente para montar a visualização simples sem misturar dados novos.</p></div>
-          <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Abrir versão técnica publicada</Link>
+          {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Abrir versão técnica publicada</Link>}
         </section>
       </div>
     );
@@ -250,7 +253,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
 
         <footer className="simple-result-footer">
           <div><span><Icon name="shield" size={16}/> Revisado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
-          <div className="no-print"><PrintButton/><Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link></div>
+          <div className="no-print"><PrintButton/>{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}</div>
         </footer>
       </article>
     </div>
