@@ -23,16 +23,17 @@ export default async function ResultadosPage() {
     return true;
   });
 
-  const publishedAnalysisIds = new Set(latestResults.map((report: any) => String(report.analysisId)));
-  const unpublishedAnalyses = analyses.filter((analysis: any) => !publishedAnalysisIds.has(String(analysis.id)));
+  // Publicação é histórico imutável, não um bloqueio para o estado corrente. Uma análise pode ter
+  // uma versão oficial já emitida e, depois de novo laudo/regra/contexto, voltar a precisar atualização,
+  // revisão ou nova publicação. Por isso o estado de entrega é calculado para TODAS as análises.
   const deliveryRows = await getDecisionDeliveryStatuses(
     session.tenantId,
-    unpublishedAnalyses.map((analysis: any) => String(analysis.id)),
+    analyses.map((analysis: any) => String(analysis.id)),
     session.userId,
   );
   const deliveryByAnalysis = new Map(deliveryRows.map((row) => [row.analysisId, row]));
 
-  const stale = unpublishedAnalyses
+  const stale = analyses
     .filter((analysis: any) => {
       const delivery = deliveryByAnalysis.get(String(analysis.id));
       return Boolean(analysis.latestInterpretationStatus) && delivery?.interpretationCurrent === false;
@@ -43,13 +44,13 @@ export default async function ResultadosPage() {
       reason: deliveryByAnalysis.get(String(analysis.id))?.interpretationStaleReason ?? null,
     }));
 
-  const reviewReady = unpublishedAnalyses.filter((analysis: any) => {
+  const reviewReady = analyses.filter((analysis: any) => {
     const delivery = deliveryByAnalysis.get(String(analysis.id));
     return delivery?.interpretationCurrent === true
       && (analysis.latestInterpretationStatus === "IN_REVIEW" || delivery.prescriptionStatus === "PENDING_REVIEW");
   });
 
-  const publishReady = unpublishedAnalyses.filter((analysis: any) => {
+  const publishReady = analyses.filter((analysis: any) => {
     const delivery = deliveryByAnalysis.get(String(analysis.id));
     return delivery?.interpretationCurrent === true
       && delivery.prescriptionCurrent === true
@@ -58,7 +59,7 @@ export default async function ResultadosPage() {
       && delivery.currentReportCount === 0;
   });
 
-  const limited = unpublishedAnalyses.filter((analysis: any) => {
+  const limited = analyses.filter((analysis: any) => {
     const delivery = deliveryByAnalysis.get(String(analysis.id));
     return delivery?.interpretationCurrent === true
       && analysis.latestInterpretationStatus === "CALCULATED";
@@ -74,7 +75,7 @@ export default async function ResultadosPage() {
 
       {latestResults.length > 0 && (
         <section className="simple-results-section">
-          <div className="simple-results-section-head"><span>PUBLICADOS</span><h2>Resultados oficiais</h2></div>
+          <div className="simple-results-section-head"><span>PUBLICADOS</span><h2>Resultados oficiais</h2><p>Versões oficiais já emitidas. Se houver dados mais novos, a mesma área também aparece abaixo com o estado atual.</p></div>
           <div className="simple-results-grid">
             {latestResults.map((report: any) => (
               <Link href={`/resultado/${report.analysisId}`} key={report.id} className="simple-result-card">
