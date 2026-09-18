@@ -45,7 +45,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     analysisId: id,
     generationId: latest?.id,
   });
-  const interpreted = interpretationItems(interpretation?.structuredOutput);
+  const evidenceCurrent = analysisEvidence.interpretationId === interpretation?.id && analysisEvidence.freshness.current;
+  const interpreted = evidenceCurrent ? interpretationItems(interpretation?.structuredOutput) : [];
   const uniformPkReadiness = evaluateUniformPkReadiness({
     cropCode: recommendationContext.cropProfileCode,
     interpretation: interpreted,
@@ -79,7 +80,6 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       })
     : null;
 
-  const evidenceCurrent = analysisEvidence.interpretationId === interpretation?.id && analysisEvidence.freshness.current;
   return Response.json({
     latest,
     history,
