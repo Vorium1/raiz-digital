@@ -9,7 +9,7 @@ import {
   type NdviMapResult,
   type NdviSceneResult,
   type SatelliteNdviProvider,
-} from "./copernicus-ndvi-provider";
+} from "./copernicus-ndvi-provider.ts";
 
 export const EARTH_SEARCH_STAC_URL = "https://earth-search.aws.element84.com/v1/search";
 export const EARTH_SEARCH_COLLECTION = "sentinel-2-l2a";
