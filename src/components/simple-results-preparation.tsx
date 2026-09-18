@@ -42,6 +42,29 @@ export function SimpleResultsPreparation({
     }
   }
 
+  async function updateOfficial(item: Item) {
+    if (!canPrepare) return;
+    setBusyIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[item.id];
+      return next;
+    });
+    try {
+      const response = await fetch(`/api/analyses/${item.id}/official-result`, { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar o laudo RAIZ.");
+      router.refresh();
+    } catch (caught) {
+      setErrors((current) => ({
+        ...current,
+        [item.id]: caught instanceof Error ? caught.message : "Não foi possível atualizar o laudo RAIZ.",
+      }));
+    } finally {
+      setBusyIds((current) => current.filter((id) => id !== item.id));
+    }
+  }
+
   useEffect(() => {
     if (!canPrepare || items.length === 0) return;
     let cancelled = false;
@@ -67,7 +90,7 @@ export function SimpleResultsPreparation({
       <div className="simple-results-section-head">
         <span>ATUALIZANDO</span>
         <h2>A RAIZ está preparando estas conclusões</h2>
-        <p>Os dados já existem. A atualização usa o motor local e não aprova nem publica nada sozinha.</p>
+<p>Os dados já existem. A RAIZ recalcula com a base técnica atual; a versão oficial antiga permanece congelada até você escolher atualizar o laudo.</p>
       </div>
       <div className="simple-results-grid">
         {items.map((item) => {
@@ -81,8 +104,8 @@ export function SimpleResultsPreparation({
                 <small>{error ?? (busy ? "Atualizando análise e preparando a conclusão…" : item.reason ?? "Análise precisa ser atualizada.")}</small>
               </div>
               {canPrepare && !busy && (
-                <button type="button" onClick={() => void prepare(item).then((ok) => ok && router.refresh())}>
-                  Atualizar
+                <button type="button" onClick={() => void updateOfficial(item)}>
+                  Atualizar laudo
                 </button>
               )}
             </article>
