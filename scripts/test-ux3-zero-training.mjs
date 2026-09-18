@@ -269,6 +269,7 @@ assert.match(simpleAnalysis, /<SimpleRefreshAnalysis analysisId=\{id\}/);
 assert.match(simpleRefresh, /\/api\/analyses\/\$\{analysisId\}\/interpret/);
 assert.match(simpleRefresh, /AGRONOMIC_RULES_CHANGED/);
 assert.match(simpleRefresh, /CROP_PROFILE_CHANGED/);
+assert.match(simpleRefresh, /LAB_EVIDENCE_CHANGED/);
 assert.match(simpleRefresh, /raiz:ux3:rule-refresh:\$\{analysisId\}/);
 assert.match(simpleRefresh, /if \(!ok\) sessionStorage\.removeItem\(key\)/);
 assert.match(simpleRefresh, /interpret\?draft=local/);
