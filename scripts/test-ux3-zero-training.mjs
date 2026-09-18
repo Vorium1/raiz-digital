@@ -131,6 +131,7 @@ assert.match(dashboardRepository, /latest_analyses/);
 assert.match(dashboardRepository, /current_review/);
 assert.match(dashboardRepository, /DISTINCT ON \(cs\.field_id\)/);
 assert.match(dashboardRepository, /point_counts/);
+assert.match(dashboardRepository, /confidence_score IS NOT NULL AND interpretation_status IS NOT NULL/);
 assert.match(dashboardRepository, /latest_parameter_rule_at/);
 assert.match(dashboardRepository, /li\.status = 'IN_REVIEW'/);
 assert.match(dashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM cs\.crop_profile_id/);
