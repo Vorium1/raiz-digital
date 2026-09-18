@@ -12,6 +12,7 @@ const dashboard = read("src/app/(platform)/dashboard/page.tsx");
 const morePage = read("src/app/(platform)/mais/page.tsx");
 const platformLayout = read("src/app/(platform)/layout.tsx");
 const attentionPage = read("src/app/(platform)/atencao/page.tsx");
+const alertsRepository = read("src/lib/repositories/alerts.ts");
 const send = read("src/components/simple-send-flow.tsx");
 const areaSetup = read("src/components/simple-area-setup.tsx");
 const geoMapInput = read("src/components/geo-map-input.tsx");
@@ -75,6 +76,10 @@ assert.match(attentionPage, /const seenDestinations = new Set<string>\(\)/);
 assert.match(attentionPage, /userAttentionHref\(alert\)/);
 assert.match(attentionPage, /attentionItems\.map/);
 assert.doesNotMatch(attentionPage, /Há \$\{reviewCount\} revisões esperando/);
+assert.match(alertsRepository, /i\.crop_profile_id IS NOT DISTINCT FROM cs\.crop_profile_id/);
+assert.match(alertsRepository, /g\.status = 'APPROVED'/);
+assert.match(alertsRepository, /g\.interpretation_id = li\.id/);
+assert.match(alertsRepository, /coalesce\(r\.calculation_source, ''\) NOT LIKE 'ai_generations:%'/);
 
 // O fluxo simples mantém evidência/readiness técnica por baixo sem publicar silenciosamente.
 assert.match(send, /buildAnalysisEvidence/);
