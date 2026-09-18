@@ -34,8 +34,14 @@ const premiumReportPublisher = read("src/lib/repositories/premium-report-publica
 assert.match(sidebar, /const SEND_HREF = "\/enviar"/);
 assert.match(mobile, /const SEND_HREF = "\/enviar"/);
 assert.doesNotMatch(sidebar, /FLUXO PRINCIPAL|RECURSOS TÉCNICOS|GESTÃO|CAMPO/);
+assert.doesNotMatch(sidebar, /itens para revisar|9\+/);
 assert.doesNotMatch(mobile, /FLUXO PRINCIPAL|RECURSOS TÉCNICOS|GESTÃO|CAMPO/);
+assert.match(mobile, /href="\/resultados"/);
+assert.doesNotMatch(mobile, /canReview \?/);
 assert.match(home, /const SEND_HREF = "\/enviar"/);
+assert.match(home, /simple-alert-dot/);
+assert.doesNotMatch(home, /simple-attention has-items|simple-attention is-clear/);
+assert.doesNotMatch(home, /item esperando|itens esperando/);
 assert.match(dashboard, /redirect\("\/inicio"\)/);
 
 // O fluxo simples mantém evidência/readiness técnica por baixo sem publicar silenciosamente.
