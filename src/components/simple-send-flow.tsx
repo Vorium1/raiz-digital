@@ -244,7 +244,7 @@ export function SimpleSendFlow() {
                 onCreated={handleSetupCreated}
               />
 
-              {context.clients.length > 0 && (
+              {context.clients.length > 0 && setupStage == null && (
                 <details className="simple-area-new-menu">
                   <summary>Não encontrou a área?</summary>
                   <div>
