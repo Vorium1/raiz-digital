@@ -77,6 +77,8 @@ assert.match(simpleReview, /href=\{`\/resultado\/\$\{analysisId\}`\}/);
 assert.match(simpleReview, /<SimplePublishResultButton analysisId=\{analysisId\} interpretationId=\{interpretationId\}/);
 assert.doesNotMatch(simpleReview, /publish-report/);
 assert.match(simpleReview, /Preparar com os dados disponíveis/);
+assert.match(simpleReview, /Limites desta conclusão/);
+assert.doesNotMatch(simpleReview, /Ainda falta informação/);
 assert.doesNotMatch(simpleReview, /prescriptionCurrent && pkValid && !needsPkContext/);
 assert.match(simpleRecommendationContext, /conclui o relatório sem estimar a dose/);
 assert.match(prescriptionProvider, /return deterministicLimitedPrescriptionProvider/);
