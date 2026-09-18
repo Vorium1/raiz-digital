@@ -207,14 +207,14 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
          LEFT JOIN LATERAL (
            SELECT id, status, not_interpretable_reason, created_at
            FROM interpretations
-           WHERE interpretations.analysis_id = a.id
+           WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id
            ORDER BY revision DESC
            LIMIT 1
          ) li ON true
          LEFT JOIN LATERAL (
            SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
            FROM analysis_imports ai
-           WHERE ai.analysis_id = a.id
+           WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
          ) latest_import ON true
          LEFT JOIN LATERAL (
            SELECT max(cpp.updated_at) AS latest_parameter_rule_at
