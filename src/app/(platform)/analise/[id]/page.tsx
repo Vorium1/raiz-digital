@@ -56,7 +56,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const blockedCount = Array.isArray(output?.interpretation)
     ? output.interpretation.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length
     : 0;
+  const interpretationStatus = (interpretation as any)?.status ?? null;
   const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
+  const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
 
   let stateTitle = "Aguardando dados";
   let stateText = "Envie o resultado do laboratório para a RAIZ começar.";
@@ -72,11 +74,11 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
     stateTitle = "Resultado pronto";
     stateText = "Esta análise já foi revisada e publicada.";
     stateIcon = "check";
-  } else if ((interpretation as any)?.status === "APPROVED" && delivery?.prescriptionStatus === "APPROVED") {
+  } else if (interpretationStatus === "APPROVED" && delivery?.prescriptionStatus === "APPROVED") {
     stateTitle = "Revisão concluída";
     stateText = "A decisão técnica foi aprovada. Falta somente concluir a entrega.";
     stateIcon = "check";
-  } else if ((interpretation as any)?.status === "IN_REVIEW" || delivery?.prescriptionStatus === "PENDING_REVIEW") {
+  } else if (interpretationStatus === "IN_REVIEW" || delivery?.prescriptionStatus === "PENDING_REVIEW") {
     stateTitle = "Pronto para revisar";
     stateText = "A RAIZ já organizou a análise e preparou a etapa de decisão.";
     stateIcon = "shield";
@@ -102,9 +104,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
       <section className="simple-analysis-progress" aria-label="Andamento">
         <div className={imported ? "done" : "current"}><span><Icon name={imported ? "check" : "upload"} size={15}/></span><b>Dados</b><small>{imported ? "Recebidos" : "Aguardando"}</small></div>
         <i/>
-        <div className={analysisCurrent ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisCurrent ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisCurrent ? "Pronta" : imported ? "Atualizar" : "Em andamento"}</small></div>
+        <div className={analysisReady ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisReady ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisReady ? "Pronta" : analysisCurrent ? "Limitada" : imported ? "Atualizar" : "Em andamento"}</small></div>
         <i/>
-        <div className={(interpretation as any)?.status === "APPROVED" ? "done" : (interpretation as any)?.status === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={(interpretation as any)?.status === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{(interpretation as any)?.status === "APPROVED" ? "Concluída" : "Quando estiver pronta"}</small></div>
+        <div className={interpretationStatus === "APPROVED" ? "done" : interpretationStatus === "IN_REVIEW" ? "current" : "pending"}><span><Icon name={interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{interpretationStatus === "APPROVED" ? "Concluída" : "Quando estiver pronta"}</small></div>
         <i/>
         <div className={delivery?.currentReportCount ? "done" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : "Depois da revisão"}</small></div>
       </section>
@@ -125,9 +127,11 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
 
       {imported && !analysisCurrent
         ? <SimpleRefreshAnalysis analysisId={id} freshnessCode={evidenceState.freshness.code}/>
-        : imported
+        : imported && analysisReady
           ? <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>
-          : null}
+          : imported && analysisCurrent
+            ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para uma decisão técnica revisável. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
+            : null}
 
       <details className="simple-analysis-technical">
         <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={15}/></summary>
