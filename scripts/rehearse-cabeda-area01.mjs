@@ -141,22 +141,13 @@ if (matches.length === 0) {
     stage("interpretation-freshness", "CURRENT");
   }
 
-  // Parecer: pode ser gerado a partir da interpretação calculada; não muda recomendação oficial.
-  let narrative = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-narrative`);
+  // Parecer narrativo é opcional para este ensaio. Nunca gerar LLM aqui: apenas registrar se já existe.
+  const narrative = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-narrative`);
   if (!narrative.res.ok) throw new Error(`Falha ao ler parecer: HTTP ${narrative.res.status}`);
-  let latestNarrative = narrative.body?.latest ?? null;
-  if (!latestNarrative && latestInterpretation && WRITE) {
-    const generated = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-narrative`, { method: "POST" });
-    stage("agronomic-opinion", generated.res.ok ? "OK" : "FAIL", generated.res.ok ? { generationId: generated.body?.generation?.id, isRealLanguageModel: generated.body?.isRealLanguageModel } : generated.body);
-    if (generated.res.ok) {
-      narrative = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-narrative`);
-      latestNarrative = narrative.body?.latest ?? null;
-    }
-  } else if (latestNarrative) {
-    stage("agronomic-opinion", "OK", { generationId: latestNarrative.id, status: latestNarrative.status, provider: latestNarrative.provider, model: latestNarrative.model });
-  } else if (latestInterpretation) {
-    stage("agronomic-opinion", "NOT_RUN", "Parecer ainda não gerado; modo somente leitura.");
-  }
+  const latestNarrative = narrative.body?.latest ?? null;
+  stage("agronomic-opinion", latestNarrative ? "OK" : "OPTIONAL", latestNarrative
+    ? { generationId: latestNarrative.id, status: latestNarrative.status, provider: latestNarrative.provider, model: latestNarrative.model }
+    : "Parecer narrativo não é necessário para provar o fechamento técnico deste ensaio.");
 
   // Conclusão: rascunho pode existir em IN_REVIEW ou APPROVED, sempre PENDING_REVIEW.
   // O ensaio força o modo determinístico local para nunca consumir LLM externo.
@@ -173,12 +164,12 @@ if (matches.length === 0) {
       prescription = await authed(cookie, `/api/analyses/${analysis.id}/agronomic-prescription`);
       latestPrescription = prescription.body?.latest ?? null;
     } else {
-      blocker("PRESCRIPTION_PROVIDER_FAILED", typeof generated.body?.error === "string" ? generated.body.error : "Falha no provedor de prescrição.");
+      blocker("TECHNICAL_CONCLUSION_DRAFT_FAILED", typeof generated.body?.error === "string" ? generated.body.error : "Falha ao preparar a conclusão técnica local.");
     }
   } else if (latestPrescription) {
     stage("technical-conclusion-draft", "OK", { generationId: latestPrescription.id, status: latestPrescription.status, provider: latestPrescription.provider, model: latestPrescription.model });
   } else if (!readiness?.allowed) {
-    stage("technical-conclusion-draft", "BLOCKED", readiness?.reason ?? "Interpretação ainda não aprovada.");
+    stage("technical-conclusion-draft", "BLOCKED", readiness?.reason ?? "A análise ainda não está elegível para preparar a conclusão.");
   } else {
     stage("technical-conclusion-draft", "NOT_RUN", "Pronta para gerar, mas o ensaio está em modo somente leitura.");
   }
