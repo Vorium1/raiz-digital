@@ -3,6 +3,7 @@ import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldOverview } from "@/lib/repositories/field-overview";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
+import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 import { SimpleFieldOverview } from "@/components/simple-field-overview";
 
 export const metadata = { title: "Talhão" };
@@ -17,7 +18,7 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
 
   const currentSeason = overview.seasons[0] ?? null;
   const latestAnalysis = overview.analyses.find((analysis) => !currentSeason || analysis.cropSeasonId === currentSeason.id) ?? null;
-  const [alerts, analysisEvidence] = await Promise.all([
+  const [alerts, analysisEvidence, deliveryRows] = await Promise.all([
     listOperationalAlerts(session.tenantId, session.userId),
     latestAnalysis
       ? getAnalysisEvidenceState({
@@ -26,6 +27,9 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
           analysisId: latestAnalysis.id,
         })
       : Promise.resolve(null),
+    latestAnalysis
+      ? getDecisionDeliveryStatuses(session.tenantId, [latestAnalysis.id], session.userId)
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -34,6 +38,7 @@ export default async function FieldOverviewPage({ params }: { params: Promise<{ 
         overview={overview}
         alerts={alerts.filter((alert) => alert.fieldId === fieldId)}
         analysisFreshness={analysisEvidence?.freshness ?? null}
+        deliveryStatus={deliveryRows[0] ?? null}
         canRefreshAnalysis={AUTO_REFRESH_ROLES.has(session.role)}
       />
     </div>
