@@ -86,6 +86,48 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
      * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. `confirmedCount`
      * é mantido como alias de compatibilidade para componentes antigos e tem exatamente o mesmo valor.
      */
+    const pointsResult = await client.query(
+      `WITH latest_season AS (
+         SELECT id
+         FROM crop_seasons
+         WHERE tenant_id = $1::uuid AND field_id = $2::uuid
+         ORDER BY created_at DESC
+         LIMIT 1
+       ),
+       latest_order AS (
+         SELECT id
+         FROM collection_orders
+         WHERE tenant_id = $1::uuid AND crop_season_id = (SELECT id FROM latest_season)
+         ORDER BY created_at DESC
+         LIMIT 1
+       )
+       SELECT sp.id::text,
+              sp.code,
+              sp.sequence,
+              ST_Y(sp.position)::float8 AS latitude,
+              ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.collected_at::text AS "collectedAt",
+              sp.depth_from_cm::float8 AS "depthFromCm",
+              sp.depth_to_cm::float8 AS "depthToCm",
+              sp.subsample_count AS "subsampleCount",
+              sp.accuracy_m::float8 AS "accuracyM",
+              sp.gps_source AS "gpsSource",
+              sp.notes,
+              (
+                SELECT count(*)::int
+                FROM lab_results lr
+                JOIN lab_samples ls ON ls.tenant_id = lr.tenant_id AND ls.id = lr.lab_sample_id
+                WHERE ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
+              ) AS "labResultCount"
+       FROM sample_points sp
+       WHERE sp.tenant_id = $1::uuid
+         AND sp.collection_order_id = (SELECT id FROM latest_order)
+       ORDER BY coalesce(sp.sequence, 2147483647), sp.code`,
+      [tenantId, fieldId],
+    );
+
     const gpsQualityResult = await client.query(
       `SELECT count(*)::int AS total,
               count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "browserGpsCount",
@@ -117,6 +159,7 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       analyses: analysesResult.rows,
       yieldHistory: yieldResult.rows,
       ndviSnapshots: ndviResult.rows,
+      collectionPoints: pointsResult.rows,
       gpsQuality: gpsQualityResult.rows[0] as {
         total: number;
         verifiedCount: number;
