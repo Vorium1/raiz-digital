@@ -330,6 +330,83 @@
 }
 .simple-empty-map > a svg { color:currentColor; margin:0; }
 
+
+.simple-more-page { max-width:820px; }
+.simple-more-account {
+  align-items:center;
+  background:#fff;
+  border:1px solid var(--simple-line);
+  border-radius:20px;
+  display:flex;
+  gap:12px;
+  margin-bottom:16px;
+  padding:16px;
+}
+.simple-more-avatar {
+  align-items:center;
+  background:#edf5ec;
+  border-radius:50%;
+  color:var(--simple-green);
+  display:flex;
+  font-size:13px;
+  font-weight:850;
+  height:44px;
+  justify-content:center;
+  min-width:44px;
+}
+.simple-more-account strong,
+.simple-more-account small { display:block; }
+.simple-more-account strong { color:var(--simple-text); font-size:13px; }
+.simple-more-account small { color:var(--simple-muted); font-size:10px; margin-top:2px; }
+
+.simple-more-list {
+  background:#fff;
+  border:1px solid var(--simple-line);
+  border-radius:20px;
+  overflow:hidden;
+}
+.simple-more-list>a,
+.simple-more-logout {
+  align-items:center;
+  color:var(--simple-text);
+  display:grid;
+  gap:12px;
+  grid-template-columns:40px minmax(0,1fr) auto;
+  min-height:76px;
+  padding:13px 15px;
+  text-decoration:none;
+}
+.simple-more-list>a { border-bottom:1px solid #edf0ec; }
+.simple-more-list>a>span,
+.simple-more-logout>span {
+  align-items:center;
+  background:#f2f6ef;
+  border-radius:12px;
+  color:#426a4b;
+  display:flex;
+  height:40px;
+  justify-content:center;
+  width:40px;
+}
+.simple-more-list strong,
+.simple-more-list small { display:block; }
+.simple-more-list strong { font-size:12px; }
+.simple-more-list small { color:var(--simple-muted); font-size:9px; line-height:1.4; margin-top:2px; }
+.simple-more-list>a>svg { color:#9aa69f; }
+.simple-more-logout-button {
+  align-items:center;
+  background:transparent;
+  border:0;
+  color:#6b756f;
+  cursor:pointer;
+  display:inline-flex;
+  font:inherit;
+  font-size:10px;
+  font-weight:800;
+  gap:4px;
+  padding:8px 0 8px 8px;
+}
+
 .simple-mobile-nav { display: none; }
 
 @media (max-width: 1100px) {
@@ -353,6 +430,10 @@
   .simple-section-head { align-items: flex-start; padding: 18px; }
   .simple-section-head h2 { font-size: 21px; }
   .simple-section-head > a { margin-top: 3px; }
+
+  .simple-more-page { padding-bottom:110px; }
+  .simple-more-list>a,.simple-more-logout { grid-template-columns:38px minmax(0,1fr) auto; }
+  .simple-more-list>a>span,.simple-more-logout>span { height:38px; width:38px; }
 
   .simple-mobile-nav {
     align-items: end;
