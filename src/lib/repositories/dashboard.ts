@@ -17,43 +17,68 @@ export type DashboardSnapshot = {
 export async function getDashboardSnapshot(tenantId: string, userId?: string, clientId?: string | null) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query<DashboardSnapshot>(
-      `SELECT
-        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status NOT IN ('ARCHIVED','REPORT_SENT') AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "activeAnalyses",
-        (SELECT count(*)::int
-         FROM analyses a
-         JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-         JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+      `WITH scoped_fields AS (
+         SELECT f.id
+         FROM fields f
          JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-         LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
-         JOIN LATERAL (
-           SELECT i.status, i.created_at, i.crop_profile_id
+         WHERE ($1::uuid IS NULL OR p.client_id = $1::uuid)
+       ),
+       latest_seasons AS (
+         SELECT DISTINCT ON (cs.field_id)
+                cs.id, cs.field_id, cs.crop_profile_id, cs.created_at
+         FROM crop_seasons cs
+         WHERE cs.field_id IN (SELECT id FROM scoped_fields)
+         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
+       ),
+       latest_analyses AS (
+         SELECT DISTINCT ON (ls.field_id)
+                a.id, a.tenant_id, a.status, a.created_at,
+                ls.field_id, ls.crop_profile_id
+         FROM analyses a
+         JOIN latest_seasons ls ON ls.id = a.crop_season_id
+         ORDER BY ls.field_id, a.created_at DESC, a.id DESC
+       ),
+       current_review AS (
+         SELECT la.field_id,
+                li.status,
+                CASE
+                  WHEN li.id IS NULL THEN false
+                  WHEN li.crop_profile_id IS DISTINCT FROM la.crop_profile_id THEN false
+                  WHEN latest_import.latest_import_at IS NOT NULL AND li.created_at < latest_import.latest_import_at THEN false
+                  WHEN cp.id IS NOT NULL
+                   AND li.created_at < greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at)) THEN false
+                  ELSE true
+                END AS current
+         FROM latest_analyses la
+         LEFT JOIN crop_profiles cp ON cp.id = la.crop_profile_id
+         LEFT JOIN LATERAL (
+           SELECT i.id, i.status, i.created_at, i.crop_profile_id
            FROM interpretations i
-           WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
+           WHERE i.tenant_id = la.tenant_id AND i.analysis_id = la.id
            ORDER BY i.revision DESC
            LIMIT 1
          ) li ON true
          LEFT JOIN LATERAL (
            SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
            FROM analysis_imports ai
-           WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
+           WHERE ai.tenant_id = la.tenant_id AND ai.analysis_id = la.id
          ) latest_import ON true
          LEFT JOIN LATERAL (
            SELECT max(cpp.updated_at) AS latest_parameter_rule_at
            FROM crop_profile_parameters cpp
            WHERE cpp.crop_profile_id = cp.id
          ) rule_state ON cp.id IS NOT NULL
-         WHERE li.status = 'IN_REVIEW'
-           AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
-           AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
-           AND (
-             cp.id IS NULL
-             OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
-           )
-           AND ($1::uuid IS NULL OR p.client_id = $1::uuid)
-        ) AS "awaitingReview",
-        (SELECT count(*)::int FROM analyses a JOIN crop_seasons cs ON cs.id = a.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE a.status = 'INCONSISTENT' AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS inconsistent,
-        (SELECT count(*)::int FROM sample_points sp JOIN collection_orders co ON co.id = sp.collection_order_id JOIN crop_seasons cs ON cs.id = co.crop_season_id JOIN fields f ON f.id = cs.field_id JOIN properties p ON p.id = f.property_id WHERE sp.collected_at IS NOT NULL AND ($1::uuid IS NULL OR p.client_id = $1::uuid)) AS "collectedPoints",
-        (SELECT count(*)::int FROM clients WHERE ($1::uuid IS NULL OR id = $1::uuid)) AS clients`,
+       )
+       SELECT
+         (SELECT count(*)::int FROM latest_analyses WHERE status NOT IN ('ARCHIVED','REPORT_SENT')) AS "activeAnalyses",
+         (SELECT count(*)::int FROM current_review WHERE status = 'IN_REVIEW' AND current) AS "awaitingReview",
+         (SELECT count(*)::int FROM latest_analyses WHERE status = 'INCONSISTENT') AS inconsistent,
+         (SELECT count(*)::int
+          FROM sample_points sp
+          JOIN collection_orders co ON co.id = sp.collection_order_id
+          WHERE co.crop_season_id IN (SELECT id FROM latest_seasons)
+            AND sp.collected_at IS NOT NULL) AS "collectedPoints",
+         (SELECT count(*)::int FROM clients WHERE ($1::uuid IS NULL OR id = $1::uuid)) AS clients`,
       [clientId ?? null],
     );
     return result.rows[0];
