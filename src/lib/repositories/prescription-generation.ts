@@ -34,6 +34,8 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
+      latestInterpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
       latestRuleUpdatedAt: string | null;
     }>(
@@ -41,13 +43,15 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
+              li.crop_profile_id::text AS "latestInterpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
@@ -97,6 +101,8 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
       interpretationCreatedAt: state.latestInterpretationCreatedAt,
       latestImportCommittedAt: state.latestImportCommittedAt,
+      interpretationCropProfileId: state.latestInterpretationCropProfileId,
+      currentCropProfileId: state.currentCropProfileId,
       latestRuleUpdatedAt: state.latestRuleUpdatedAt,
     });
     if (!evidenceFreshness.current) {
