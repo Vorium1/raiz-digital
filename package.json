@@ -79,12 +79,15 @@
   },
   "dependencies": {
     "@node-rs/argon2": "2.0.2",
+    "geotiff": "3.0.5",
     "leaflet": "^1.9.4",
     "next": "^16.3.4",
     "pg": "8.16.3",
+    "proj4": "2.22.0",
     "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "sharp": "0.35.4",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
