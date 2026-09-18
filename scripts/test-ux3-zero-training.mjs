@@ -248,6 +248,8 @@ assert.match(technicalReport, /getAgronomicNarrativeFreshness/);
 assert.match(technicalReport, /getAgronomicPrescriptionFreshness/);
 assert.match(technicalReport, /getCurrentInputComparisonForAnalysis/);
 assert.match(technicalReport, /Interpretação histórica/);
+assert.match(technicalReport, /requestedPublished && !canShowPublishedView/);
+assert.match(technicalReport, /A versão atual permanece separada e não é usada como substituta do documento oficial/);
 assert.match(technicalReport, /STALE_RECOMMENDATION: "Recomendação histórica — não comparar"/);
 assert.match(reportsIndex, /\/relatorios\/talhao\/\$\{report\.analysisId\}\?versao=publicada/);
 assert.match(reportsIndex, /Abrir versão publicada/);
