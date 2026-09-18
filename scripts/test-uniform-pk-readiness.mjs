@@ -154,7 +154,12 @@ console.log("uniform-pk-readiness: heterogeneidade, fonte 2025, dose e barreira 
     interpretation: [
       { sampleCode: "A", parameterCode: "K", interpretable: true, classification: "Alto" },
       { sampleCode: "B", parameterCode: "K", interpretable: true, classification: "Alto" },
-      { sampleCode: "C", parameterCode: "K", interpretable: true, classification: "Muito Alto" },
+      { sampleCode: "C", parameterCode: "K", interpretable: true, classification: "Alto" },
+      { sampleCode: "D", parameterCode: "K", interpretable: true, classification: "Alto" },
+      { sampleCode: "E", parameterCode: "K", interpretable: true, classification: "Alto" },
+      { sampleCode: "F", parameterCode: "K", interpretable: true, classification: "Muito Alto" },
+      { sampleCode: "G", parameterCode: "K", interpretable: true, classification: "Muito Alto" },
+      { sampleCode: "H", parameterCode: "K", interpretable: true, classification: "Muito Alto" },
     ],
     yieldGoal: null,
     yieldGoalUnit: null,
