@@ -183,13 +183,21 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
 
     const analysesResult = await client.query(
       `SELECT a.id::text, a.code, a.created_at::text AS "createdAt", cs.season_label AS "seasonLabel",
-              i.structured_output AS "structuredOutput", i.status AS "interpretationStatus"
+              approved_i.structured_output AS "structuredOutput",
+              approved_i.status AS "interpretationStatus",
+              approved_i.revision AS "interpretationRevision",
+              approved_i.approved_at::text AS "interpretationApprovedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN LATERAL (
-         SELECT structured_output, status FROM interpretations
-         WHERE tenant_id = a.tenant_id AND analysis_id = a.id ORDER BY revision DESC LIMIT 1
-       ) i ON true
+         SELECT structured_output, status, revision, approved_at
+         FROM interpretations
+         WHERE tenant_id = a.tenant_id
+           AND analysis_id = a.id
+           AND status = 'APPROVED'
+         ORDER BY revision DESC
+         LIMIT 1
+       ) approved_i ON true
        WHERE a.tenant_id = $1::uuid AND cs.field_id = $2::uuid
        ORDER BY a.created_at`,
       [tenantId, fieldId],
