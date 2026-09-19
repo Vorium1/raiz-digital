@@ -3,7 +3,7 @@ import { ReportError } from "@/lib/repositories/reports";
 import { publishPremiumFieldAnalysisReport } from "@/lib/repositories/premium-report-publication";
 import { assertReportPublicationReady, ReportPublicationGateError } from "@/lib/repositories/report-publication-gate";
 
-const publishRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const publishRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
