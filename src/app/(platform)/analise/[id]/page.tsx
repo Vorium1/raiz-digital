@@ -97,7 +97,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
     stateIcon = "clock";
   } else if (delivery?.currentReportCount) {
     stateTitle = "Resultado pronto";
-    stateText = "Esta análise já foi revisada e publicada.";
+    stateText = "Esta análise já foi validada e publicada.";
     stateIcon = "check";
   } else if (finalReviewApproved) {
     stateTitle = "Base validada";
@@ -180,7 +180,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         : imported && analysisReady
           ? <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>
           : imported && analysisCurrent
-            ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para uma decisão técnica revisável. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
+            ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para concluir uma decisão técnica. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
             : null}
 
       {canViewTechnical && (
