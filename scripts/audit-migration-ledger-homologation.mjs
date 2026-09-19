@@ -58,6 +58,11 @@ try {
            AND column_name='prescription_generation_id'
        ) AS has_prescription_link,
        EXISTS (
+         SELECT 1 FROM pg_indexes
+         WHERE schemaname='public' AND tablename='ai_generations'
+           AND indexname='ai_generations_tenant_interpretation_generation_uidx'
+       ) AS has_generation_unique,
+       EXISTS (
          SELECT 1 FROM pg_constraint
          WHERE conname='reports_prescription_generation_fk'
        ) AS has_prescription_fk,
@@ -69,19 +74,44 @@ try {
        EXISTS (
          SELECT 1 FROM pg_indexes
          WHERE schemaname='public' AND tablename='reports'
+           AND indexname='reports_interpretation_published_idx'
+       ) AS has_interpretation_published_idx,
+       EXISTS (
+         SELECT 1 FROM pg_indexes
+         WHERE schemaname='public' AND tablename='reports'
            AND indexname='reports_decision_unique_idx'
-       ) AS has_legacy_decision_unique`,
+       ) AS has_legacy_decision_unique,
+       EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname='reports_tenant_id_interpretation_id_revision_key'
+       ) AS has_legacy_revision_constraint,
+       (SELECT count(*)::int FROM reports WHERE prescription_generation_id IS NULL) AS reports_without_prescription_link`,
   );
   const row = schema.rows[0] ?? {};
   const reportRepublicationContract = Boolean(
     row.has_prescription_link
+      && row.has_generation_unique
       && row.has_prescription_fk
       && row.has_decision_lookup
-      && !row.has_legacy_decision_unique,
+      && row.has_interpretation_published_idx
+      && !row.has_legacy_decision_unique
+      && !row.has_legacy_revision_constraint
+      && Number(row.reports_without_prescription_link) === 0,
   );
 
   const missingReportMigrations = missingFromLedger.filter((name) => /^03[89]_/.test(name));
   const schemaAheadOfLedger = reportRepublicationContract && missingReportMigrations.length > 0;
+  const ledgerCurrent = missingFromLedger.length === 0 && unknownInLedger.length === 0;
+  const reportMigrationsRecorded = ["038_report_snapshot_republication.sql", "039_report_republish_on_new_ndvi.sql"]
+    .every((name) => applied.has(name));
+  const recordedSchemaMismatch = reportMigrationsRecorded && !reportRepublicationContract;
+  const status = ledgerCurrent && !recordedSchemaMismatch
+    ? "PASS"
+    : schemaAheadOfLedger
+      ? "LEDGER_DRIFT"
+      : recordedSchemaMismatch
+        ? "SCHEMA_MISMATCH"
+        : "PENDING_MIGRATIONS";
 
   await client.query("ROLLBACK");
   txOpen = false;
@@ -94,12 +124,19 @@ try {
     lastRecordedMigration: ledger.rows.at(-1)?.name ?? null,
     missingFromLedger,
     unknownInLedger,
+    status,
+    ledgerCurrent,
     reportRepublicationContract,
     schemaAheadOfLedger,
+    recordedSchemaMismatch,
     requiresLedgerReconciliation: schemaAheadOfLedger || unknownInLedger.length > 0,
-    note: schemaAheadOfLedger
-      ? "O schema físico já contém o contrato de republicação, mas o ledger ainda não registra todas as migrations correspondentes. Não reaplicar/promover sem reconciliar o ledger de forma controlada."
-      : "Schema e ledger não apresentaram o drift conhecido de republicação.",
+    note: status === "PASS"
+      ? "Schema físico e ledger estão coerentes para o contrato atual de republicação."
+      : schemaAheadOfLedger
+        ? "O schema físico já contém o contrato de republicação, mas o ledger ainda não registra todas as migrations correspondentes. Não reaplicar/promover sem reconciliar o ledger de forma controlada."
+        : recordedSchemaMismatch
+          ? "O ledger declara as migrations de republicação, mas o schema físico não atende ao contrato esperado. Promoção deve permanecer bloqueada."
+          : "Há migrations ainda não registradas/aplicadas neste ambiente.",
   }, null, 2));
 } finally {
   if (txOpen) await client.query("ROLLBACK").catch(() => {});
