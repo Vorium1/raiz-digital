@@ -319,14 +319,14 @@ assert.ok(simpleAnalysis.includes("const canViewTechnical = TECHNICAL_DETAIL_ROL
 assert.ok(simpleAnalysis.includes("{canViewTechnical && ("));
 assert.match(simpleAnalysis, /summarizeSimpleInterpretation/);
 assert.match(simpleAnalysis, /Varia entre os pontos/);
-assert.match(simpleAnalysis, /METHOD_DETAIL_INCOMPLETE/);
-assert.match(simpleAnalysis, /detalhes suficientes da metodologia/);
+assert.match(simpleAnalysis, /observação técnica específica nesta versão/);
+assert.doesNotMatch(simpleAnalysis, /o laudo não informa detalhes suficientes da metodologia/);
 assert.match(simpleAnalysis, /joinHumanList/);
 assert.doesNotMatch(simpleAnalysis, /Pronto para revisar|Revisão concluída|<b>Revisão<\/b>|Aguardando você/);
 assert.doesNotMatch(simpleAnalysis, /Depois da revisão/);
 assert.doesNotMatch(simpleAnalysis, /já foi revisada|decisão técnica revisável/);
 assert.match(simpleAnalysis, /já foi validada e publicada/);
-assert.match(simpleAnalysis, /não encontrou base suficiente para concluir uma decisão técnica/);
+assert.match(simpleAnalysis, /Observações técnicas específicas ficam registradas sem transformar o laudo inteiro em erro/);
 assert.match(simpleAnalysis, /Validação em andamento/);
 assert.match(simpleAnalysis, /<b>Validação<\/b>/);
 assert.match(simpleAnalysis, /motor RAIZ/);
@@ -335,6 +335,10 @@ assert.match(simpleAnalysis, /const prescriptionCurrent = delivery\?\.prescripti
 assert.match(simpleAnalysis, /finalReviewApproved/);
 assert.match(simpleAnalysis, /reviewPending/);
 assert.match(simpleAnalysis, /Pronto para publicar/);
+assert.match(ux2TechnicalReview, /Dose única não indicada/);
+assert.match(ux2TechnicalReview, /Observações técnicas/);
+assert.match(ux2TechnicalReview, /P_NO_STRICT_PREDOMINANCE/);
+assert.doesNotMatch(ux2TechnicalReview, /resultado\(s\) permaneceram sem interpretação automática/);
 assert.match(simpleAnalysis, /currentCrop \|\| \(analysis as any\)\.nextCrop/);
 assert.match(simpleResult, /summarizeSimpleInterpretation/);
 assert.match(simpleResult, /Como está a área/);
