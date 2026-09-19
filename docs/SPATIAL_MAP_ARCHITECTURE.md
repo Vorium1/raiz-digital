@@ -38,6 +38,23 @@ Documentação oficial:
 - https://developers.google.com/maps/documentation/javascript/reference/image-overlay
 - https://developers.google.com/maps/documentation/javascript/datalayer
 
+### Standby — Mapbox Standard Satellite
+
+A RAIZ mantém o Mapbox pré-integrado como segunda opção, sem alterar a fonte de verdade espacial.
+
+```env
+NEXT_PUBLIC_RAIZ_MAP_PROVIDER=mapbox
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=
+```
+
+O estilo preparado é `mapbox://styles/mapbox/standard-satellite` via Mapbox GL JS v3.30.0. Em `auto`, a ordem é:
+
+1. Google Satellite, quando a chave Google estiver configurada;
+2. Mapbox Standard Satellite, quando houver token Mapbox;
+3. Leaflet + OpenTopoMap (relevo), como contingência sem credencial.
+
+NDVI, contorno, pontos e coordenadas continuam sendo dados RAIZ/Sentinel-2/PostGIS, independentemente do mapa-base.
+
 ### Contingência — Leaflet + OpenTopoMap (relevo)
 
 O defeito histórico de quadrantes pretos foi observado pelo usuário em qualquer tipo de tela, não apenas mobile. Isso reduz a probabilidade de ser somente um problema de responsividade/`invalidateSize` e torna inadequado depender da mesma camada aérea Esri no fallback.
@@ -162,7 +179,7 @@ Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeçã
 
 ## Checklist para vincular o Google Maps
 
-1. Criar/selecionar projeto no Google Cloud.
+1. Para preview/protótipo, pode ser usada uma Maps Demo Key sem billing; para produção, criar/selecionar projeto no Google Cloud e habilitar billing.
 2. Ativar **Maps JavaScript API**.
 3. Garantir billing da conta/projeto conforme exigido pelo Google Maps Platform.
 4. Criar chave de browser exclusiva da RAIZ.
