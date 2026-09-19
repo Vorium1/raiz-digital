@@ -221,6 +221,10 @@ assert.match(results, /analyses\.map\(\(analysis: any\) => String\(analysis\.id\
 assert.match(results, /Versões oficiais já emitidas/);
 assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
+assert.match(results, /const PREPARE_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(results, /PREPARE_ROLES[^\n]*FIELD_TECH/);
+assert.match(officialResultRoute, /const allowedRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(officialResultRoute, /allowedRoles[^\n]*FIELD_TECH/);
 assert.match(results, /VALIDADOS PELO MOTOR/);
 assert.match(results, /Prontos para gerar o laudo/);
 assert.match(results, /delivery\.prescriptionCurrent === true[\s\S]*?delivery\.prescriptionStatus === "APPROVED"/);
