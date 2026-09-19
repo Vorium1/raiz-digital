@@ -139,6 +139,15 @@ function nutrientLabel(value: "P2O5" | "K2O") {
   return value === "P2O5" ? "Fósforo (P₂O₅)" : "Potássio (K₂O)";
 }
 
+function humanizeDoseBlockers(nutrient: "P2O5" | "K2O", blockers: string[] | undefined) {
+  const values = blockers ?? [];
+  if (values.includes("P_NO_STRICT_PREDOMINANCE")) {
+    return "Dose única não indicada: o fósforo varia entre os pontos. O RAIZ não força uma dose uniforme para a área.";
+  }
+  if (values.length === 0) return "A regra determinística ainda não liberou uma dose uniforme para esta área.";
+  return `A regra de ${nutrientLabel(nutrient)} registrou uma condição técnica que impede uma dose uniforme nesta versão.`;
+}
+
 export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: string; canReview: boolean }) {
   const [interpretation, setInterpretation] = useState<Interpretation | null | undefined>(undefined);
   const [prescription, setPrescription] = useState<PrescriptionGeneration | null>(null);
@@ -170,10 +179,14 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
   const targetFindings = findings.filter((item) => item.classificationRole !== "AUXILIARY");
   const classified = targetFindings.filter((item) => item.interpretable);
   const blocked = targetFindings.filter((item) => !item.interpretable);
+  const targetParameterCodes = Array.from(new Set(targetFindings.map((item) => item.parameterCode)));
+  const classifiedParameterCodes = Array.from(new Set(classified.map((item) => item.parameterCode)));
+  const blockedParameterCodes = Array.from(new Set(blocked.map((item) => item.parameterCode)));
   const measuredFacts = facts.filter((item) => item.source !== "CALCULATED");
   const calculatedFacts = facts.filter((item) => item.source === "CALCULATED");
   const draft = prescription?.responsePayload?.prescription ?? null;
   const recommendations = draft?.recommendations ?? [];
+  const technicalNotes = Array.from(new Set(draft?.missingInformation ?? []));
   const doses = readiness?.recommendationContext?.deterministicPkDoses;
   const doseItems = useMemo(() => (["P2O5", "K2O"] as const).map((nutrient) => ({ nutrient, decision: doses?.[nutrient] })), [doses]);
   const readyDoses = doseItems.filter((item) => item.decision?.ready && item.decision.expected);
@@ -332,8 +345,8 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
                   {recommendations.length === 0 && <div className="ux2-review-placeholder"><Icon name="warning" size={18}/><span>O rascunho não propôs dose com a evidência atual.</span></div>}
                 </div>
 
-                {draft.missingInformation.length > 0 && (
-                  <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>Informações ainda ausentes:</strong> {draft.missingInformation.join(" · ")}</span></div>
+                {technicalNotes.length > 0 && (
+                  <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>Observações técnicas:</strong> {technicalNotes.join(" · ")}</span></div>
                 )}
 
                 {draft.managementPractices.length > 0 && (
@@ -370,19 +383,19 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
               {blockedDoses.map(({ nutrient, decision }) => (
                 <article key={nutrient} className="ux2-dose-item blocked">
                   <span className="ux2-dose-icon"><Icon name="warning" size={18}/></span>
-                  <div><small>{nutrientLabel(nutrient)}</small><strong>Dose não liberada</strong><span>{decision?.blockers?.slice(0, 2).join(" · ") || "Evidência insuficiente"}</span></div>
+                  <div><small>{nutrientLabel(nutrient)}</small><strong>Dose única não indicada</strong><span>{humanizeDoseBlockers(nutrient, decision?.blockers)}</span></div>
                 </article>
               ))}
             </div>
           </section>
 
           <section className="ux2-review-section">
-            <div className="ux2-review-section-head"><div><span className="eyebrow">DIAGNÓSTICO</span><h3>O que foi interpretado</h3></div><strong>{classified.length}/{targetFindings.length || 0}</strong></div>
+            <div className="ux2-review-section-head"><div><span className="eyebrow">DIAGNÓSTICO</span><h3>O que foi interpretado</h3></div><strong>{classifiedParameterCodes.length}/{targetParameterCodes.length || 0} parâmetros</strong></div>
             <div className="ux2-finding-summary">
               {classified.slice(0, 8).map((item, index) => <div key={`${item.sampleCode}-${item.parameterCode}-${index}`}><span>{item.parameterCode}</span><strong>{item.classification ?? "Classificado"}</strong><small>{item.sampleCode}</small></div>)}
               {classified.length === 0 && <div className="ux2-review-placeholder"><Icon name="warning" size={18}/><span>Nenhum parâmetro-alvo foi classificado com a evidência atual.</span></div>}
             </div>
-            {blocked.length > 0 && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>{blocked.length} resultado(s) permaneceram sem interpretação automática.</strong> Eles não autorizam dose.</span></div>}
+            {blockedParameterCodes.length > 0 && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>{blockedParameterCodes.length} parâmetro(s) têm observação técnica nesta versão:</strong> {blockedParameterCodes.join(", ")}. Os dados medidos permanecem preservados; isso não transforma o laudo inteiro em erro.</span></div>}
           </section>
         </div>
 
