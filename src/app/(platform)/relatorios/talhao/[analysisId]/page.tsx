@@ -394,7 +394,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
                     <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Práticas de manejo priorizadas</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{displayPrescription.responsePayload.prescription.managementPractices.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
                   )}
                   {displayPrescription.responsePayload.prescription.missingInformation.length > 0 && (
-                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Informações ainda necessárias para fechar a decisão</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{displayPrescription.responsePayload.prescription.missingInformation.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
+                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Critérios e limites desta recomendação</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{displayPrescription.responsePayload.prescription.missingInformation.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
                   )}
                   {displayPrescription.responsePayload.prescription.sources.length > 0 && (
                     <p className="report-empty-note" style={{ marginTop: 10 }}>Base técnica: {displayPrescription.responsePayload.prescription.sources.map((source: any) => `${source.title}${source.institution ? ` — ${source.institution}` : ""}`).join("; ")}</p>
