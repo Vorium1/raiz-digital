@@ -63,12 +63,11 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
   const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
   const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
-  const methodDetailParameterNames: string[] = Array.from(new Set<string>(
+  const blockedParameterNames: string[] = Array.from(new Set<string>(
     interpretationItems
       .filter((item: any) =>
         item?.classificationRole !== "AUXILIARY"
         && !item?.interpretable
-        && item?.code === "METHOD_DETAIL_INCOMPLETE"
         && typeof item?.parameterCode === "string")
       .map((item: any): string => parameterLabel(item.parameterCode)),
   ));
@@ -162,9 +161,9 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
             <div className="simple-analysis-note">
               <Icon name="shield" size={16}/>
               <span>
-                {methodDetailParameterNames.length > 0
-                  ? `${joinHumanList(methodDetailParameterNames)} ${methodDetailParameterNames.length === 1 ? "ficou" : "ficaram"} fora desta conclusão porque o laudo não informa detalhes suficientes da metodologia. Isso não impede o restante da análise.`
-                  : "Há parâmetros que ficaram fora desta conclusão por limitação técnica. Eles não impedem o restante da análise."}
+                {blockedParameterNames.length > 0
+                  ? `${joinHumanList(blockedParameterNames)} ${blockedParameterNames.length === 1 ? "tem" : "têm"} uma observação técnica específica nesta versão. A RAIZ preserva o dado e continua o restante da análise normalmente.`
+                  : "A análise foi concluída com as evidências disponíveis."}
               </span>
             </div>
           )}
@@ -180,7 +179,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         : imported && analysisReady
           ? <SimpleFinalReview analysisId={id} canPublish={PUBLISH_ROLES.has(session.role)}/>
           : imported && analysisCurrent
-            ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para concluir uma decisão técnica. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
+            ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise processada</strong><p>A RAIZ concluiu o que é determinístico nesta versão. Observações técnicas específicas ficam registradas sem transformar o laudo inteiro em erro.</p></div></section>
             : null}
 
       {canViewTechnical && (
