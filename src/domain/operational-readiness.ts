@@ -12,6 +12,21 @@ function present(value: string | undefined) {
   return Boolean(value?.trim());
 }
 
+export function getSatelliteNdviReadiness(env: EnvLike) {
+  const provider = (env.NDVI_SATELLITE_PROVIDER ?? "earth-search").trim().toLowerCase();
+  if (provider === "earth-search") {
+    return { provider, ready: true, credentialFree: true } as const;
+  }
+  if (provider === "copernicus") {
+    return {
+      provider,
+      ready: present(env.COPERNICUS_CLIENT_ID) && present(env.COPERNICUS_CLIENT_SECRET),
+      credentialFree: false,
+    } as const;
+  }
+  return { provider, ready: false, credentialFree: false } as const;
+}
+
 export function getOperationalIntegrationReadiness(env: EnvLike): OperationalIntegrationReadiness {
   const email = env.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
     && present(env.RESEND_API_KEY)
@@ -27,9 +42,9 @@ export function getOperationalIntegrationReadiness(env: EnvLike): OperationalInt
   const mercadoPago = present(env.MERCADO_PAGO_ACCESS_TOKEN)
     && present(env.MERCADO_PAGO_WEBHOOK_SECRET);
 
-  // O provider padrão atual usa Earth Search público + Sentinel-2 L2A/COG.
-  // A prontidão de configuração não depende de credenciais Copernicus.
-  const satelliteNdvi = true;
+  // Earth Search é o provider público padrão. Copernicus continua disponível somente
+  // quando explicitamente selecionado e com as próprias credenciais presentes.
+  const satelliteNdvi = getSatelliteNdviReadiness(env).ready;
 
   const reportStorage = env.REPORT_STORAGE_PROVIDER?.trim().toLowerCase() === "inline";
 
