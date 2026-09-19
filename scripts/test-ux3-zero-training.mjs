@@ -400,3 +400,6 @@ assert.match(yieldOutlook, /não uma previsão deste talhão/);
 assert.match(yieldOutlook, /FieldYieldHistoryManager/);
 assert.match(yieldOutlook, /Use somente produtividade realmente colhida/);
 assert.doesNotMatch(yieldOutlook, /coletas#produtividade/);
+
+assert.match(yieldOutlook, /Último ano municipal/);
+assert.match(yieldOutlook, /Mediana ·/);
