@@ -1,0 +1,99 @@
+name: Cabeda NDVI Custody Read-Only
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/cabeda-ndvi-custody-readonly.yml"
+      - "scripts/homologate-cabeda-ndvi-custody-readonly.mjs"
+      - "src/lib/ndvi-raster-storage.ts"
+      - "src/lib/satellite/earth-search-ndvi-provider.ts"
+      - "db/migrations/037_ndvi_raster_custody.sql"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabeda-ndvi-custody-readonly
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: audit-cabeda-ndvi-custody-readonly
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: homologation
+    env:
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+
+    steps:
+      - name: Checkout do candidato PR #88
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar banco de homologação sem expor valor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_DATABASE_URL:-}" ]; then
+            echo "::error::HOMOLOGATION_DATABASE_URL não está configurado no environment homologation."
+            exit 1
+          fi
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditar custódia NDVI Cabeda em modo read-only
+        id: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_FILE="cabeda-ndvi-custody-readonly.json"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+          node --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
+            scripts/homologate-cabeda-ndvi-custody-readonly.mjs | tee "${RESULT_FILE}"
+
+      - name: Resumo sanitizado
+        if: ${{ always() && steps.audit.outputs.result_file != '' }}
+        shell: bash
+        run: |
+          RESULT_FILE="${{ steps.audit.outputs.result_file }}"
+          if [ ! -s "${RESULT_FILE}" ]; then
+            echo "## Cabeda · custódia NDVI" >> "${GITHUB_STEP_SUMMARY}"
+            echo "" >> "${GITHUB_STEP_SUMMARY}"
+            echo "Auditoria não produziu JSON sanitizado." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          RESULT_FILE="${RESULT_FILE}" node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
+          console.log("## Cabeda · custódia NDVI · somente leitura");
+          console.log("");
+          for (const item of payload.results || []) {
+            console.log(`- **${item.code}**: storage=${item.storage}; ${item.rasterWidth}×${item.rasterHeight}; integridade=${item.objectIntegrityVerified}; PNG=${item.pngSignatureVerified}`);
+          }
+          console.log("");
+          console.log("Execução protegida por BEGIN READ ONLY + ROLLBACK. Nenhum snapshot/raster é alterado.");
+          NODE
+
+      - name: Salvar evidência sanitizada
+        if: ${{ always() && steps.audit.outputs.result_file != '' && hashFiles(steps.audit.outputs.result_file) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabeda-ndvi-custody-readonly
+          path: ${{ steps.audit.outputs.result_file }}
+          if-no-files-found: ignore
+          retention-days: 30
