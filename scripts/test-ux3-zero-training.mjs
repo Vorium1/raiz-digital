@@ -255,6 +255,9 @@ assert.ok(simpleAnalysis.includes("const canViewTechnical = TECHNICAL_DETAIL_ROL
 assert.ok(simpleAnalysis.includes("{canViewTechnical && ("));
 assert.match(simpleAnalysis, /summarizeSimpleInterpretation/);
 assert.match(simpleAnalysis, /Varia entre os pontos/);
+assert.match(simpleAnalysis, /METHOD_DETAIL_INCOMPLETE/);
+assert.match(simpleAnalysis, /detalhes suficientes da metodologia/);
+assert.match(simpleAnalysis, /joinHumanList/);
 assert.match(simpleAnalysis, /Aguardando você/);
 assert.match(simpleAnalysis, /const output = analysisCurrent \?/);
 assert.match(simpleAnalysis, /const prescriptionCurrent = delivery\?\.prescriptionCurrent === true/);
