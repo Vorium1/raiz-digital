@@ -126,6 +126,24 @@
 .simple-field-vigor-head button:disabled { cursor:not-allowed; opacity:.55; }
 .simple-field-vigor-meta { align-items:center; color:#68776e; display:flex; flex-wrap:wrap; font-size:10px; gap:8px 14px; margin-bottom:10px; }
 .simple-field-vigor-meta strong { color:#244b30; font-size:11px; }
+.simple-field-vigor-summary { display:grid; gap:10px; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0 0 12px; }
+.simple-field-vigor-summary > div { background:#f7faf6; border:1px solid #e4ebe2; border-radius:14px; min-width:0; padding:12px 13px; }
+.simple-field-vigor-summary span { color:#7d8a82; display:block; font-size:8px; font-weight:850; letter-spacing:.1em; margin-bottom:6px; }
+.simple-field-vigor-summary strong { color:#173b2a; display:block; font-family:var(--font-heading); font-size:22px; letter-spacing:-.03em; line-height:1; text-transform:capitalize; }
+.simple-field-vigor-summary small { color:#7a887f; display:block; font-size:9px; line-height:1.35; margin-top:5px; }
+.simple-field-vigor-zones { background:#fbfcfa; border:1px solid #e7ece5; border-radius:14px; margin:0 0 12px; padding:11px 12px; }
+.simple-field-vigor-zones-head { align-items:flex-end; display:flex; gap:8px; justify-content:space-between; margin-bottom:8px; }
+.simple-field-vigor-zones-head strong { color:#284c34; font-size:11px; }
+.simple-field-vigor-zones-head small { color:#87928b; font-size:8px; }
+.simple-field-vigor-zone-bar { background:#eef2ec; border-radius:999px; display:flex; height:10px; overflow:hidden; width:100%; }
+.simple-field-vigor-zone-bar > span { display:block; height:100%; min-width:2px; }
+.simple-field-vigor-zone-list { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:9px; }
+.simple-field-vigor-zone-list > span { align-items:center; color:#607068; display:inline-flex; font-size:9px; gap:5px; }
+.simple-field-vigor-zone-list i { border-radius:50%; display:inline-block; height:7px; width:7px; }
+.simple-field-vigor-zone-list b { color:#425a49; font-weight:750; }
+.simple-field-vigor-zone-list em { color:#77847c; font-style:normal; font-variant-numeric:tabular-nums; }
+.simple-field-vigor-note { color:#78857d; font-size:9px; line-height:1.45; margin:9px 2px 0; }
+.simple-field-vigor-note strong { color:#476153; }
 .simple-field-vigor .real-field-map,
 .simple-field-vigor .leaflet-container { border-radius:16px !important; }
 .simple-field-vigor-loading,
@@ -270,6 +288,10 @@
   .simple-field-vigor{padding:14px}
   .simple-field-vigor-head{align-items:stretch;flex-direction:column;gap:10px}
   .simple-field-vigor-head button{justify-content:center;width:100%}
+  .simple-field-vigor-summary{grid-template-columns:1fr 1fr}
+  .simple-field-vigor-summary>div:last-child{grid-column:1/-1}
+  .simple-field-vigor-zones-head{align-items:flex-start;flex-direction:column}
+  .simple-field-vigor-zone-list{display:grid;grid-template-columns:1fr 1fr}
   .simple-field-vigor .leaflet-container{min-height:300px !important}
   .simple-field-state { align-items:start; grid-template-columns:42px minmax(0,1fr); }
   .simple-field-state > a { grid-column:2; }
