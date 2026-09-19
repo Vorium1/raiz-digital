@@ -10,7 +10,7 @@ import { AiGenerationError } from "@/lib/repositories/ai-generations";
 import { InterpretationError } from "@/lib/repositories/interpretations";
 import { ReportError } from "@/lib/repositories/reports";
 
-const allowedRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const allowedRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 /**
  * Fluxo oficial RAIZ: um único comando sempre parte da base agronômica corrente.
