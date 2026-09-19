@@ -235,6 +235,9 @@ assert.match(legacyPublishRoute, /const publishRoles = new Set\(\["SUPER_ADMIN",
 assert.doesNotMatch(legacyPublishRoute, /publishRoles[^\n]*FIELD_TECH/);
 assert.match(results, /VALIDADOS PELO MOTOR/);
 assert.match(results, /Prontos para gerar o laudo/);
+assert.match(results, /Resultados validados/);
+assert.match(results, /A emissão oficial fica disponível para o perfil responsável/);
+assert.match(results, /const canPublishOfficial = PUBLISH_ROLES\.has\(session\.role\)/);
 assert.match(results, /delivery\.prescriptionCurrent === true[\s\S]*?delivery\.prescriptionStatus === "APPROVED"/);
 assert.match(results, /CONCLUÍDOS COM LIMITES/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
