@@ -35,6 +35,7 @@ const technicalAnalysis = read("src/app/(platform)/analises/[id]/page.tsx");
 const technicalAnalysesIndex = read("src/app/(platform)/analises/page.tsx");
 const analysesTable = read("src/components/analyses-table.tsx");
 const simpleResult = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
+const dataMode = read("src/lib/data-mode.ts");
 const producerReport = read("src/app/(platform)/relatorios/produtor/[analysisId]/page.tsx");
 const propertyReport = read("src/app/(platform)/relatorios/propriedade/[propertyId]/page.tsx");
 const technicalReport = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
@@ -403,3 +404,6 @@ assert.doesNotMatch(yieldOutlook, /coletas#produtividade/);
 
 assert.match(yieldOutlook, /Último ano municipal/);
 assert.match(yieldOutlook, /Mediana ·/);
+
+assert.match(dataMode, /process\.env\.NODE_ENV !== "production"/);
+assert.match(dataMode, /process\.env\.DATA_MODE === "demo"/);
