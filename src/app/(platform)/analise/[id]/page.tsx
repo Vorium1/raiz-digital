@@ -38,6 +38,12 @@ function parameterLabel(code: string) {
   return PARAMETER_LABEL[code.toUpperCase()] ?? code;
 }
 
+function joinHumanList(items: string[]) {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} e ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`;
+}
+
 export default async function SimpleAnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requirePlatformSession();
@@ -57,6 +63,15 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
   const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
   const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
+  const methodDetailParameterNames = Array.from(new Set(
+    interpretationItems
+      .filter((item: any) =>
+        item?.classificationRole !== "AUXILIARY"
+        && !item?.interpretable
+        && item?.code === "METHOD_DETAIL_INCOMPLETE"
+        && typeof item?.parameterCode === "string")
+      .map((item: any) => parameterLabel(item.parameterCode)),
+  ));
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
   const prescriptionCurrent = delivery?.prescriptionCurrent === true;
   const finalReviewApproved = analysisCurrent
@@ -143,7 +158,16 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
               );
             })}
           </div>
-          {blockedCount > 0 && <div className="simple-analysis-note"><Icon name="shield" size={16}/><span>Há parâmetros que ficaram fora desta conclusão por limitação técnica. Eles não impedem o restante da análise.</span></div>}
+          {blockedCount > 0 && (
+            <div className="simple-analysis-note">
+              <Icon name="shield" size={16}/>
+              <span>
+                {methodDetailParameterNames.length > 0
+                  ? `${joinHumanList(methodDetailParameterNames)} ${methodDetailParameterNames.length === 1 ? "ficou" : "ficaram"} fora desta conclusão porque o laudo não informa detalhes suficientes da metodologia. Isso não impede o restante da análise.`
+                  : "Há parâmetros que ficaram fora desta conclusão por limitação técnica. Eles não impedem o restante da análise."}
+              </span>
+            </div>
+          )}
         </section>
       )}
 
