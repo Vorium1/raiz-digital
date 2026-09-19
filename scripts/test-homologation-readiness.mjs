@@ -41,6 +41,17 @@ assert.ok(complete.checks.some((item) => item.name === "cabeda-audit-context" &&
 assert.ok(complete.checks.some((item) => item.name === "satellite-ndvi-provider" && item.status === "PASS"));
 assert.doesNotMatch(JSON.stringify(complete), /copernicus-config|Credenciais Copernicus/);
 
+const blankProviderReadiness = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "   ",
+});
+assert.equal(blankProviderReadiness.automatedOk, true);
+assert.ok(blankProviderReadiness.checks.some(
+  (item) => item.name === "satellite-ndvi-provider"
+    && item.status === "PASS"
+    && /Earth Search/.test(item.message),
+));
+
 const blockedExplicitCopernicus = evaluateHomologationReadiness({
   ...safeBase,
   NDVI_SATELLITE_PROVIDER: "copernicus",
