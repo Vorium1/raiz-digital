@@ -84,7 +84,7 @@ export const HOMOLOGATION_MANUAL_GATES = Object.freeze([
   "smoke test multi-dispositivo de sessões e 2FA",
   "persistência e abertura visual do arquivo bruto/original importado",
   "confirmação do bucket privado, criptografia e política de retenção/lifecycle",
-  "homologação funcional do Copernicus/Sentinel-2 com chamada real",
+  "homologação funcional do Earth Search/Sentinel-2 com chamada real e custódia do raster",
   "auditoria Cabeda Área 01 com readyForReliableSpatialEvidence=true",
   "validação de gps_source/audit trail e dos demais gates independentes de VRA",
   "homologação Mercado Pago: assinatura, reentrega idempotente e cenários negativos",
@@ -138,11 +138,11 @@ export function evaluateHomologationReadiness(env: EnvLike = process.env): Homol
   ));
 
   checks.push(automatedCheck(
-    "copernicus-config",
-    integrations.copernicus ? "PASS" : "BLOCKED",
-    integrations.copernicus
-      ? "Credenciais Copernicus estão presentes; chamada real ainda precisa ser homologada."
-      : "Credenciais Copernicus estão incompletas.",
+    "satellite-ndvi-provider",
+    integrations.satelliteNdvi ? "PASS" : "BLOCKED",
+    integrations.satelliteNdvi
+      ? "NDVI usa Earth Search público + Sentinel-2 L2A/COG sem credenciais privadas; a chamada real e a custódia do raster continuam sob homologação."
+      : "Provider público de NDVI não está disponível na arquitetura atual.",
   ));
 
   checks.push(automatedCheck(
