@@ -11,7 +11,7 @@ import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 
-const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
+const PUBLISH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const TECHNICAL_DETAIL_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
 const PARAMETER_LABEL: Record<string, string> = {
@@ -178,7 +178,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
       {imported && !analysisCurrent
         ? <SimpleRefreshAnalysis analysisId={id} freshnessCode={evidenceState.freshness.code}/>
         : imported && analysisReady
-          ? <SimpleFinalReview analysisId={id} canReview={REVIEW_ROLES.has(session.role)}/>
+          ? <SimpleFinalReview analysisId={id} canPublish={PUBLISH_ROLES.has(session.role)}/>
           : imported && analysisCurrent
             ? <section className="simple-analysis-empty"><span><Icon name="shield" size={27}/></span><div><strong>Análise concluída com limites</strong><p>A RAIZ processou os dados atuais, mas não encontrou base suficiente para concluir uma decisão técnica. Veja os limites acima ou abra os detalhes técnicos.</p></div></section>
             : null}
