@@ -26,6 +26,7 @@ on:
       - "src/domain/uniform-pk-readiness.ts"
       - "src/domain/report-publication-gate.ts"
       - "db/migrations/038_report_snapshot_republication.sql"
+      - "db/migrations/039_report_decision_republication.sql"
 
 permissions:
   contents: read
