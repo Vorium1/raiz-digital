@@ -118,7 +118,7 @@ type DeliveryStatus = {
 };
 
 const statusLabel: Record<string, string> = {
-  CALCULATED: "Contexto incompleto",
+  CALCULATED: "Calculada pelo motor",
   IN_REVIEW: "Aguardando revisão final",
   APPROVED: "Aprovada tecnicamente",
   PENDING_REVIEW: "Rascunho para revisão",
@@ -392,7 +392,7 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
           <section className="ux2-review-section">
             <div className="ux2-review-section-head"><div><span className="eyebrow">DIAGNÓSTICO</span><h3>O que foi interpretado</h3></div><strong>{classifiedParameterCodes.length}/{targetParameterCodes.length || 0} parâmetros</strong></div>
             <div className="ux2-finding-summary">
-              {classified.slice(0, 8).map((item, index) => <div key={`${item.sampleCode}-${item.parameterCode}-${index}`}><span>{item.parameterCode}</span><strong>{item.classification ?? "Classificado"}</strong><small>{item.sampleCode}</small></div>)}
+              {classified.map((item, index) => <div key={`${item.sampleCode}-${item.parameterCode}-${index}`}><span>{item.parameterCode}</span><strong>{item.classification ?? "Classificado"}</strong><small>{item.sampleCode}</small></div>)}
               {classified.length === 0 && <div className="ux2-review-placeholder"><Icon name="warning" size={18}/><span>Nenhum parâmetro-alvo foi classificado com a evidência atual.</span></div>}
             </div>
             {blockedParameterCodes.length > 0 && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span><strong>{blockedParameterCodes.length} parâmetro(s) têm observação técnica nesta versão:</strong> {blockedParameterCodes.join(", ")}. Os dados medidos permanecem preservados; isso não transforma o laudo inteiro em erro.</span></div>}
@@ -424,7 +424,7 @@ export function Ux2TechnicalReview({ analysisId, canReview }: { analysisId: stri
             </div>
           )}
 
-          {blocked.length > 0 && <details className="ux2-audit-blockers"><summary>Ver limitações ({blocked.length})</summary><ul>{blocked.slice(0, 12).map((item, index) => <li key={`${item.sampleCode}-${item.parameterCode}-${index}`}><strong>{item.parameterCode} · {item.sampleCode}</strong><span>{item.reason ?? item.code ?? "Sem regra aplicável"}</span></li>)}</ul></details>}
+          {blocked.length > 0 && <details className="ux2-audit-blockers"><summary>Ver limitações ({blocked.length})</summary><ul>{blocked.map((item, index) => <li key={`${item.sampleCode}-${item.parameterCode}-${index}`}><strong>{item.parameterCode} · {item.sampleCode}</strong><span>{item.reason ?? item.code ?? "Sem regra aplicável"}</span></li>)}</ul></details>}
 
           {!pkValidated && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span>O rascunho atual não passou pela revalidação P/K. A aprovação final permanece bloqueada.</span></div>}
           {!prescriptionCurrent && <div className="ux2-review-warning"><Icon name="warning" size={15}/><span>{readiness?.prescriptionFreshness?.reason ?? "O contexto mudou após a geração do rascunho."}</span></div>}
