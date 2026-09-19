@@ -40,6 +40,21 @@
 .simple-field-row strong { font-size: 14px; }
 .simple-field-row small { color: var(--simple-muted); font-size: 11px; margin-top: 3px; }
 .simple-field-row > svg { color: #9aa79f; }
+.simple-field-row-main { min-width:0; }
+.simple-field-ndvi {
+  align-items:center;
+  color:#2f6f45;
+  display:inline-flex;
+  font-size:10px;
+  font-weight:800;
+  gap:4px;
+  margin-top:6px;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.simple-field-ndvi svg { flex:0 0 auto; }
 
 .simple-field-dot {
   background: #aeb9b1;
@@ -63,7 +78,7 @@
 
 @media (max-width: 700px) {
   .simple-soft-button { min-height: 40px; }
-  .simple-field-row { grid-template-columns: 10px minmax(0,1fr) 16px; padding: 12px 14px; }
+  .simple-field-row { grid-template-columns: 10px minmax(0,1fr) 16px; min-height:82px; padding: 12px 14px; }
   .simple-field-state { grid-column: 2; justify-self: start; }
   .simple-field-row > svg { grid-column: 3; grid-row: 1 / span 2; }
 }
