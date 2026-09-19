@@ -4,6 +4,7 @@ import { deterministicLimitedPrescriptionProvider } from "@/lib/ai/providers/det
 import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
+import { validatePrescriptionSulfurRecommendation } from "@/domain/prescription-sulfur-validation";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { AiGenerationError, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
@@ -133,6 +134,21 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     }));
     throw new AiGenerationError(
       `A resposta do provedor tentou propor P/K fora do motor determinístico da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify(details)}`,
+      502,
+    );
+  }
+
+
+  const providerSulfurValidation = validatePrescriptionSulfurRecommendation({
+    recommendations,
+    deterministicDecision: evidence.deterministicSulfurDose,
+  });
+  if (!providerSulfurValidation.allowed) {
+    throw new AiGenerationError(
+      `A resposta do provedor divergiu da regra determinística de enxofre da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify({
+        blockers: providerSulfurValidation.blockers,
+        expectedKgSPerHa: providerSulfurValidation.expectedKgSPerHa,
+      })}`,
       502,
     );
   }
