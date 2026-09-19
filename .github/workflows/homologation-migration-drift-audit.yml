@@ -1,0 +1,98 @@
+name: Homologation Migration Drift Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/homologation-migration-drift-audit.yml"
+      - "scripts/audit-migration-ledger-homologation.mjs"
+      - "scripts/migrate.mjs"
+      - "scripts/migration-transaction.mjs"
+      - "db/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homologation-migration-drift-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: audit-migration-ledger-readonly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar contexto sem expor valor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then
+            echo "::error::HOMOLOGATION_DATABASE_URL ausente no environment homologation."
+            exit 1
+          fi
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditar ledger e schema somente leitura
+        id: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_FILE="homologation-migration-drift.json"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+          npm run --silent audit:migrations:homologation | tee "${RESULT_FILE}"
+
+      - name: Resumo sanitizado
+        if: ${{ always() && steps.audit.outputs.result_file != '' }}
+        shell: bash
+        env:
+          RESULT_FILE: ${{ steps.audit.outputs.result_file }}
+        run: |
+          set -euo pipefail
+          if [ ! -s "${RESULT_FILE}" ]; then
+            echo "## Migration drift · homologação" >> "${GITHUB_STEP_SUMMARY}"
+            echo "" >> "${GITHUB_STEP_SUMMARY}"
+            echo "Auditoria não produziu evidência JSON." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
+          console.log("## Migration drift · homologação · somente leitura");
+          console.log("");
+          console.log(`- Última migration registrada: **${payload.lastRecordedMigration ?? "nenhuma"}**`);
+          console.log(`- Migrations ausentes no ledger: **${payload.missingFromLedger?.length ?? 0}**`);
+          console.log(`- Contrato físico de republicação: **${payload.reportRepublicationContract === true}**`);
+          console.log(`- Schema à frente do ledger: **${payload.schemaAheadOfLedger === true}**`);
+          console.log(`- Requer reconciliação controlada: **${payload.requiresLedgerReconciliation === true}**`);
+          if (Array.isArray(payload.missingFromLedger) && payload.missingFromLedger.length) {
+            console.log(`- Ausentes: ${payload.missingFromLedger.join(", ")}`);
+          }
+          console.log("");
+          console.log("Execução protegida por BEGIN READ ONLY + ROLLBACK. Nenhuma migration foi aplicada.");
+          NODE
+
+      - name: Salvar evidência sanitizada
+        if: ${{ always() && steps.audit.outputs.result_file != '' && hashFiles(steps.audit.outputs.result_file) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homologation-migration-drift
+          path: ${{ steps.audit.outputs.result_file }}
+          if-no-files-found: ignore
+          retention-days: 30
