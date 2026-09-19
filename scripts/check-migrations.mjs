@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { assertUniqueMigrationNumbers, buildAtomicMigrationSql } from "./migration-transaction.mjs";
 
 const initial = await readFile(new URL("../db/migrations/001_initial.sql", import.meta.url), "utf8");
 const tenancy = await readFile(new URL("../db/migrations/002_tenancy_and_imports.sql", import.meta.url), "utf8");
@@ -32,6 +33,10 @@ const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_com
 const ndviRasterCustody = await readFile(new URL("../db/migrations/037_ndvi_raster_custody.sql", import.meta.url), "utf8");
 const reportSnapshotRepublication = await readFile(new URL("../db/migrations/038_report_snapshot_republication.sql", import.meta.url), "utf8");
 const reportRepublishOnNewNdvi = await readFile(new URL("../db/migrations/039_report_republish_on_new_ndvi.sql", import.meta.url), "utf8");
+const migrationRunner = await readFile(new URL("./migrate.mjs", import.meta.url), "utf8");
+const migrationFiles = (await readdir(new URL("../db/migrations/", import.meta.url)))
+  .filter((name) => /^\d+_.+\.sql$/.test(name))
+  .sort();
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -156,5 +161,32 @@ assert.match(reportRepublishOnNewNdvi, /CREATE INDEX IF NOT EXISTS reports_decis
 assert.match(reportRepublishOnNewNdvi, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, published_at DESC\)/i);
 assert.match(reportRepublishOnNewNdvi, /WHERE prescription_generation_id IS NOT NULL/i);
 assert.doesNotMatch(reportRepublishOnNewNdvi, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
+
+assert.doesNotThrow(() => assertUniqueMigrationNumbers(migrationFiles));
+assert.throws(
+  () => assertUniqueMigrationNumbers(["039_a.sql", "039_b.sql"]),
+  /Prefixo de migration duplicado 039/,
+);
+
+const wrapped = buildAtomicMigrationSql("BEGIN;\nSELECT 1;\nCOMMIT;", "040_atomic.sql");
+assert.match(wrapped, /^BEGIN;/);
+assert.match(wrapped, /SELECT 1;/);
+assert.match(wrapped, /INSERT INTO schema_migrations\(name\) VALUES \('040_atomic\.sql'\);[\s\S]*COMMIT;$/);
+assert.equal((wrapped.match(/\bBEGIN\s*;/gi) ?? []).length, 1);
+assert.equal((wrapped.match(/\bCOMMIT\s*;/gi) ?? []).length, 1);
+
+const unwrapped = buildAtomicMigrationSql("SELECT 2;", "041_wrapped.sql");
+assert.match(unwrapped, /^BEGIN;/);
+assert.match(unwrapped, /SELECT 2;/);
+assert.match(unwrapped, /INSERT INTO schema_migrations\(name\) VALUES \('041_wrapped\.sql'\);/);
+assert.match(unwrapped, /COMMIT;$/);
+assert.throws(
+  () => buildAtomicMigrationSql("BEGIN;\nSELECT 3;", "042_incomplete.sql"),
+  /wrapper transacional incompleto/,
+);
+
+assert.match(migrationRunner, /assertUniqueMigrationNumbers\(files\)/);
+assert.match(migrationRunner, /pool\.query\(buildAtomicMigrationSql\(sql, name\)\)/);
+assert.doesNotMatch(migrationRunner, /pool\.query\("INSERT INTO schema_migrations\(name\)/);
 
 console.log("migrations: contratos estruturais críticos até 039 aprovados");
