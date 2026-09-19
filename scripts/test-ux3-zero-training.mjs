@@ -227,6 +227,7 @@ assert.match(results, /const PUBLISH_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_A
 assert.match(resultsPreparation, /canRefresh: boolean/);
 assert.match(resultsPreparation, /canPublish: boolean/);
 assert.match(resultsPreparation, /if \(!canRefresh\) return false/);
+assert.match(resultsPreparation, /if \(automatic\) sessionStorage\.removeItem\(\`raiz:ux3:results-refresh:\$\{item\.id\}\`\)/);
 assert.match(resultsPreparation, /if \(!canPublish\) return/);
 assert.doesNotMatch(resultsPreparation, /canPrepare/);
 assert.match(officialResultRoute, /const allowedRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
