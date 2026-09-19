@@ -146,6 +146,25 @@
 .simple-field-vigor-note strong { color:#476153; }
 .simple-field-vigor .real-field-map,
 .simple-field-vigor .leaflet-container { border-radius:16px !important; }
+.simple-field-head + .simple-field-vigor { margin-top:0; }
+.simple-field-vigor + .simple-field-map-card { margin-top:18px; }
+.simple-field-vigor-map-loading,
+.real-field-map-deferred {
+  align-items:center;
+  background:linear-gradient(135deg,#edf3ea,#e4ece0);
+  color:#587063;
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  min-height:300px;
+  padding:18px;
+}
+.simple-field-vigor-map-loading { border:1px solid #dfe8dc; border-radius:16px; }
+.simple-field-vigor-map-loading strong,
+.simple-field-vigor-map-loading small { display:block; }
+.simple-field-vigor-map-loading strong { color:#31523c; font-size:12px; }
+.simple-field-vigor-map-loading small { color:#718078; font-size:9px; margin-top:3px; }
+.real-field-map-deferred span { font-size:10px; font-weight:800; }
 .simple-field-vigor-loading,
 .simple-field-vigor-empty { align-items:center; background:#f7f9f5; border-radius:16px; color:#708077; display:flex; gap:11px; min-height:100px; padding:16px; }
 .simple-field-vigor-empty > span { align-items:center; background:#edf5ec; border-radius:12px; color:#2f7d45; display:flex; height:42px; justify-content:center; min-width:42px; }
