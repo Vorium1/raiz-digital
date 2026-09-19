@@ -146,11 +146,10 @@ export function evaluateProductionReadiness(env: EnvLike = process.env): Product
     fail("assistant-mode", "RAIZ_ASSISTANT_MODE deve ser local ou hybrid.");
   }
 
-  if (!hasPlaceholder(env.COPERNICUS_CLIENT_ID) && !hasPlaceholder(env.COPERNICUS_CLIENT_SECRET)) {
-    pass("copernicus", "Credenciais Copernicus estão configuradas.");
-  } else {
-    warn("copernicus", "NDVI real por satélite ficará indisponível até configurar as credenciais Copernicus.");
-  }
+  pass(
+    "satellite-ndvi",
+    "Provider público Earth Search + Sentinel-2 L2A/COG não exige credenciais privadas no runtime.",
+  );
 
   const billingConfigured = !hasPlaceholder(env.MERCADO_PAGO_ACCESS_TOKEN)
     && !hasPlaceholder(env.MERCADO_PAGO_WEBHOOK_SECRET);
