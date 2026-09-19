@@ -402,7 +402,7 @@ assert.match(simpleRefresh, /interpret\?draft=local/);
 assert.match(simpleRefresh, /useEffect/);
 assert.match(simpleRefresh, /method:\s*"POST"/);
 assert.match(interpretationsRepository, /normalizeUnit\(row\.parameterCode, row\.unit\)/);
-assert.match(interpretationsRepository, /normalizeAnalyticalMethod\(row\.parameterCode, row\.method\)/);
+assert.match(interpretationsRepository, /normalizeAnalyticalMethod\(row\.parameterCode, row\.method, row\.protocol\)/);
 assert.match(prescriptionFreshnessRepository, /latestRuleUpdatedAt/);
 assert.match(prescriptionGenerationRepository, /latestInterpretationCropProfileId/);
 assert.match(prescriptionGenerationRepository, /currentCropProfileId/);
