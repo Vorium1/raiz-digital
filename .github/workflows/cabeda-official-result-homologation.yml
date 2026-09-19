@@ -22,7 +22,7 @@ jobs:
     name: generate-cabeda-official-results
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: homologation
+    environment: homologação
     env:
       APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
