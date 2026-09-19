@@ -5,7 +5,7 @@
 Separar responsabilidades para que troca de mapa-base não altere a evidência agronômica:
 
 1. **Google Maps Platform / Satellite**: mapa-base visual, navegação e contexto do terreno.
-2. **Copernicus Data Space / Sentinel-2 L2A**: raster NDVI real e série temporal.
+2. **AWS Earth Search / Sentinel-2 L2A COG**: raster NDVI real e série temporal; Copernicus permanece provider alternativo opcional.
 3. **PostgreSQL + PostGIS**: contorno oficial dos talhões, pontos planejados, pontos GPS observados e proveniência espacial.
 4. **Motor RAIZ**: classes de NDVI, interpretação agronômica, gates e auditoria. Google nunca calcula dose, classe agronômica ou coordenada oficial.
 
@@ -81,7 +81,7 @@ Cor do talhão = estado do fluxo agronômico (`sem análise`, `em andamento`, `n
 
 ### Zonas NDVI
 
-O backend gera PNG georreferenciado pelo Copernicus Process API usando o limite real do talhão. O frontend posiciona esse PNG pelo `bbox` retornado e mostra cinco classes determinísticas:
+O backend atual consulta Sentinel-2 L2A pelo AWS Earth Search, lê os COGs necessários dentro do limite real do talhão e gera o PNG categórico auditável. O frontend posiciona esse PNG pelo `bbox` persistido e mostra cinco classes determinísticas:
 
 - `< 0,20`: sem vegetação;
 - `0,20–0,40`: vigor baixo;
@@ -95,20 +95,20 @@ Essas classes são **zonas de vigor NDVI**, não “produtividade”. Para afirm
 
 A partir da migration `037_ndvi_raster_custody.sql`, um snapshot novo não depende mais de regenerar a imagem no futuro. O fluxo de atualização faz, na mesma operação lógica:
 
-1. consulta a série pela Statistical API;
-2. para cada data selecionada ainda sem artefato arquivado, gera o PNG pela Process API com a mesma política de mosaico `leastCC`;
-3. persiste o PNG em armazenamento durável/content-addressed **antes** de efetivar o snapshot auditável;
-4. grava no PostgreSQL a chave do objeto, SHA-256, número de bytes, `bbox`, largura, altura, versão do algoritmo, política de mosaico e horário de arquivamento;
+1. descobre aquisições Sentinel-2 L2A no Earth Search;
+2. para cada data selecionada ainda sem artefato arquivado, lê as bandas COG necessárias e calcula o NDVI com a política versionada do provider;
+3. persiste o PNG **antes** de efetivar o snapshot auditável — raster pequeno pode usar `INLINE_NEON`; S3 compatível fica disponível para artefatos maiores;
+4. grava no PostgreSQL a chave do artefato, SHA-256, número de bytes, `bbox`, largura, altura, versão do algoritmo, política de mosaico e horário de arquivamento;
 5. depois disso, a linha daquele `talhão + data + fonte` é preservada: refresh posterior não substitui estatística nem raster já arquivado;
-6. `/api/fields/[id]/ndvi/map` lê exclusivamente o objeto arquivado e confere tamanho + SHA-256 antes de servi-lo. Não existe fallback silencioso para uma nova chamada ao Copernicus.
+6. `/api/fields/[id]/ndvi/map` lê exclusivamente o artefato arquivado e confere tamanho + SHA-256 antes de servi-lo. Não existe fallback silencioso para recalcular outra imagem e fingir que é o mesmo snapshot.
 
 A imutabilidade também é protegida no próprio PostgreSQL, não apenas no código TypeScript. A migration 037 instala um trigger `BEFORE UPDATE OR DELETE` que rejeita qualquer alteração ou exclusão de uma linha cujo `raster_object_key` já esteja preenchido. Uma linha legada sem raster pode ser promovida uma única vez para receber o artefato; depois disso, torna-se imutável no banco. O privilégio `DELETE` também é revogado do papel de runtime `raiz_app`.
 
 Snapshots antigos, criados antes dessa cadeia, continuam válidos como histórico estatístico, mas não podem ser apresentados como raster histórico imutável. A rota retorna `NDVI_RASTER_ARCHIVE_REQUIRED` até que o refresh promova aquela data para o novo contrato.
 
-Em runtime hospedado, armazenamento local não é aceito para essa custódia; é necessário o mesmo provider S3 durável usado para fontes brutas (`STORAGE_PROVIDER=s3`). Uma falha de storage interrompe a criação do snapshot com raster — a RAIZ não marca uma imagem temporária como evidência preservada.
+Em runtime hospedado, armazenamento local efêmero não é aceito para essa custódia. O contrato atual admite `INLINE_NEON` para PNGs pequenos e S3 compatível quando o artefato exceder o limite inline. Uma falha de persistência interrompe a criação do snapshot — a RAIZ não marca uma imagem temporária como evidência preservada.
 
-`provider_scene_id` pode continuar nulo quando a Statistical API não fornece um identificador inequívoco. A prova histórica passa a ser o próprio artefato binário arquivado + SHA-256 + metadados espaciais, sem inventar um scene-id que o provedor não entregou.
+`provider_scene_id` pode continuar nulo quando o catálogo/provider não fornece um identificador inequívoco. A prova histórica passa a ser o próprio artefato binário arquivado + SHA-256 + metadados espaciais, sem inventar um scene-id que o provedor não entregou.
 
 ### Tendência NDVI
 
@@ -142,7 +142,7 @@ Para Cabeda e qualquer importação espacial real, a aceitação final depende d
 
 A visualização espacial da carteira carrega no máximo 12 rasters NDVI por vez. A tela detalhada do Talhão 360° permanece disponível para os demais.
 
-O refresh temporal considera no máximo 18 aquisições recentes. A Process API só é chamada para datas que ainda não possuem raster arquivado; repetir um refresh preserva os artefatos existentes e não os regenera. Isso limita consumo do Copernicus e mantém a cadeia histórica estável.
+O refresh temporal considera no máximo 18 aquisições recentes. O processamento do raster só ocorre para datas que ainda não possuem artefato arquivado; repetir um refresh preserva os artefatos existentes e não os regenera. Isso limita I/O/processamento e mantém a cadeia histórica estável.
 
 ## Auditoria de homologação da custódia NDVI
 
@@ -152,14 +152,11 @@ A prova externa do #84 deve ser feita em ambiente autorizado, sem copiar credenc
 HOMOLOGATION_DATABASE_URL=<banco-autorizado> \
 NDVI_AUDIT_TENANT_ID=<tenant-uuid> \
 NDVI_AUDIT_FIELD_ID=<field-uuid> \
-NDVI_AUDIT_DATE=2026-09-10 \
-STORAGE_PROVIDER=s3 \
-S3_ENDPOINT=<endpoint> \
-S3_BUCKET=<bucket> \
-S3_ACCESS_KEY=<access-key> \
-S3_SECRET_KEY=<secret-key> \
+NDVI_AUDIT_DATE=2026-09-18 \
 npm run ndvi:audit-raster
 ```
+
+O exemplo acima cobre o caminho `INLINE_NEON`. Se o snapshot apontar para S3, as credenciais S3 são exigidas somente para recuperar aquele objeto.
 
 `NDVI_AUDIT_DATE` é opcional; sem ela o auditor usa o snapshot Sentinel-2 mais recente do talhão. `NDVI_AUDIT_ACTOR_USER_ID` pode ser informado quando a política RLS do ambiente exigir identidade de usuário.
 
@@ -169,8 +166,8 @@ O comando `ndvi:audit-raster`:
 - confirma que as colunas da migration 037 existem;
 - confirma que o trigger de imutabilidade `UPDATE/DELETE` está instalado e que `raiz_app` não possui privilégio efetivo de `DELETE` na tabela de snapshots;
 - não escolhe tenant/talhão implicitamente;
-- exige `STORAGE_PROVIDER=s3` para a prova de homologação;
-- recupera o objeto já arquivado, sem chamar Copernicus;
+- aceita storage durável `INLINE_NEON` ou S3;
+- recupera o artefato já arquivado, sem consultar novamente o provider Sentinel;
 - valida SHA-256 e quantidade de bytes contra o snapshot;
 - valida presença de bbox/dimensões/algoritmo/mosaico;
 - não imprime bbox, latitude ou longitude do cliente.
@@ -194,7 +191,7 @@ Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeçã
    - alternância Avaliação / Zonas NDVI / Tendência NDVI;
    - migration 037 aplicada com trigger de imutabilidade ativo e sem `DELETE` efetivo para `raiz_app`;
    - raster arquivado alinhado ao contorno;
-   - hash/metadados do raster presentes no snapshot e rota servindo o mesmo objeto sem reconsulta ao Copernicus;
+   - hash/metadados do raster presentes no snapshot e rota servindo o mesmo artefato sem reconsulta ao provider Sentinel;
    - pontos GPS observados no local persistido;
    - pontos Cabeda de fonte auditada corretamente identificados como reais, não como planejados;
    - fallback de relevo quando Google é propositalmente bloqueado.
