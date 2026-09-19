@@ -8,7 +8,8 @@ import { SimpleResultsPreparation } from "@/components/simple-results-preparatio
 
 export const metadata = { title: "Resultados" };
 
-const PREPARE_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
+const REFRESH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const PUBLISH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 export default async function ResultadosPage() {
   const session = await requirePlatformSession();
@@ -86,7 +87,11 @@ export default async function ResultadosPage() {
         </section>
       )}
 
-      <SimpleResultsPreparation items={stale} canPrepare={PREPARE_ROLES.has(session.role)}/>
+      <SimpleResultsPreparation
+        items={stale}
+        canRefresh={REFRESH_ROLES.has(session.role)}
+        canPublish={PUBLISH_ROLES.has(session.role)}
+      />
 
       {publishReady.length > 0 && (
         <section className="simple-results-section">
