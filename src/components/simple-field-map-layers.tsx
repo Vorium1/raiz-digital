@@ -221,10 +221,76 @@ export function SimpleFieldMapLayers({
     const color = classificationColor(point.classification);
     return { stroke: color, fill: color, fillOpacity: point.classification ? 0.9 : 0.35 };
   }, []);
+
+  const collectionDisplayPoints = useMemo<MapPoint[]>(() => {
+    const result: MapPoint[] = [];
+    for (const point of collectionPoints) {
+      result.push(point);
+      const plannedLatitude = point.plannedLatitude;
+      const plannedLongitude = point.plannedLongitude;
+      if (plannedLatitude == null || plannedLongitude == null) continue;
+      const actualLatitude = point.observedLatitude ?? point.latitude;
+      const actualLongitude = point.observedLongitude ?? point.longitude;
+      const differs = Math.abs(plannedLatitude - actualLatitude) > 0.0000005
+        || Math.abs(plannedLongitude - actualLongitude) > 0.0000005;
+      if (!differs) continue;
+      result.push({
+        ...point,
+        id: `${point.id}:planned`,
+        code: `${point.code} · planejado`,
+        latitude: plannedLatitude,
+        longitude: plannedLongitude,
+        observedLatitude: null,
+        observedLongitude: null,
+        plannedLatitude: null,
+        plannedLongitude: null,
+        collectedAt: null,
+        accuracyM: null,
+        gpsSource: "PLANNED_GRID_SOURCE",
+        notes: "Posição originalmente planejada para comparar com o local real da coleta.",
+        labResultCount: 0,
+        value: undefined,
+        unit: undefined,
+        method: undefined,
+        interpretable: undefined,
+        classification: undefined,
+        notInterpretableReason: undefined,
+      });
+    }
+    return result;
+  }, [collectionPoints]);
+
+  const collectionColorFor = useCallback((point: MapPoint) => {
+    const source = (point.gpsSource ?? "").trim().toUpperCase();
+    if (source === "PLANNED_GRID_SOURCE") {
+      return { stroke: "#9A6A24", fill: "#F2C879", fillOpacity: 0.7 };
+    }
+    if (source === "SHAPEFILE_REAL_GPS_LONLAT" || source === "SHAPEFILE_REAL_EPSG4326") {
+      return { stroke: "#007F8E", fill: "#00C4D6", fillOpacity: 0.95 };
+    }
+    if (point.observedLatitude != null && point.observedLongitude != null) {
+      return { stroke: "#176C47", fill: "#2D9B69", fillOpacity: 0.95 };
+    }
+    return { stroke: "#8B765F", fill: "#C7B49D", fillOpacity: 0.72 };
+  }, []);
+
+  const collectionLegend = useMemo<MapLegendEntry[]>(() => {
+    const entries: MapLegendEntry[] = [];
+    const sources = new Set(collectionDisplayPoints.map((point) => (point.gpsSource ?? "").trim().toUpperCase()));
+    if (collectionDisplayPoints.some((point) => point.observedLatitude != null && point.observedLongitude != null)
+        && !sources.has("SHAPEFILE_REAL_GPS_LONLAT") && !sources.has("SHAPEFILE_REAL_EPSG4326")) {
+      entries.push({ label: "GPS coletado", color: "#2D9B69" });
+    }
+    if (sources.has("SHAPEFILE_REAL_GPS_LONLAT") || sources.has("SHAPEFILE_REAL_EPSG4326")) {
+      entries.push({ label: "Coleta real importada", color: "#00C4D6" });
+    }
+    if (sources.has("PLANNED_GRID_SOURCE")) entries.push({ label: "Ponto planejado", color: "#F2C879" });
+    return entries;
+  }, [collectionDisplayPoints]);
+
   const onTerrain3DFailure = useCallback(() => setTerrain3DFailed(true), []);
 
-
-  const mapPoints = mode === "soil" ? soilPoints : collectionPoints;
+  const mapPoints = mode === "soil" ? soilPoints : collectionDisplayPoints;
   const mapBoundary = layer?.fieldBoundary ?? boundary;
 
   return (
@@ -232,11 +298,11 @@ export function SimpleFieldMapLayers({
       <div className="simple-field-map-head layered">
         <div>
           <span>MAPA DA ÁREA</span>
-          <strong>{mode === "soil" ? "Solo por parâmetro" : mode === "terrain" ? "Relevo" : "Pontos de coleta"}</strong>
+          <strong>{mode === "soil" ? "Fertilidade por parâmetro" : mode === "terrain" ? "Relevo" : "Planejado × coletado"}</strong>
         </div>
         <div className="simple-map-layer-switch" role="group" aria-label="Camada do mapa">
-          <button type="button" className={mode === "soil" ? "active" : ""} onClick={() => setMode("soil")} disabled={!context || availableParameters.length === 0}>Solo</button>
-          <button type="button" className={mode === "collection" ? "active" : ""} onClick={() => setMode("collection")}>Coleta</button>
+          <button type="button" className={mode === "soil" ? "active" : ""} onClick={() => setMode("soil")} disabled={!context || availableParameters.length === 0}>Fertilidade</button>
+          <button type="button" className={mode === "collection" ? "active" : ""} onClick={() => setMode("collection")}>Pontos</button>
           <button type="button" className={mode === "terrain" ? "active" : ""} onClick={() => setMode("terrain")}>Relevo</button>
         </div>
       </div>
@@ -265,8 +331,8 @@ export function SimpleFieldMapLayers({
           boundary={mapBoundary}
           points={mode === "terrain" ? collectionPoints : mapPoints}
           height={390}
-          colorFor={mode === "soil" ? colorFor : undefined}
-          legend={mode === "soil" && legend.length ? legend : undefined}
+          colorFor={mode === "soil" ? colorFor : mode === "collection" ? collectionColorFor : undefined}
+          legend={mode === "soil" && legend.length ? legend : mode === "collection" && collectionLegend.length ? collectionLegend : undefined}
           baseLayer={mode === "terrain" ? "terrain" : "default"}
           hint={
             mode === "soil"
@@ -277,7 +343,9 @@ export function SimpleFieldMapLayers({
                 ? terrain3DFailed
                   ? "Relevo 3D indisponível nesta sessão; exibindo base topográfica."
                   : "Base topográfica para leitura do relevo da área."
-                : "Área e pontos desta coleta."
+                : collectionDisplayPoints.length > collectionPoints.length
+                  ? "Compare onde cada ponto foi planejado com o local real registrado na coleta."
+                  : "Mostra a posição real/auditada dos pontos e sua proveniência de coleta."
           }
         />
       )}
