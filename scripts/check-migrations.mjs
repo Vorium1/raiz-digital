@@ -144,8 +144,10 @@ assert.match(reportSnapshotRepublication, /ag\.kind = 'AGRONOMIC_PRESCRIPTION'/i
 assert.match(reportSnapshotRepublication, /ag\.interpretation_id = r\.interpretation_id/i);
 assert.match(reportSnapshotRepublication, /FOREIGN KEY \(tenant_id, interpretation_id, prescription_generation_id\)/i);
 assert.match(reportSnapshotRepublication, /REFERENCES ai_generations \(tenant_id, interpretation_id, id\)/i);
-assert.match(reportSnapshotRepublication, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
+assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx/i);
+assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, published_at DESC\)/i);
 assert.match(reportSnapshotRepublication, /WHERE prescription_generation_id IS NOT NULL/i);
+assert.doesNotMatch(reportSnapshotRepublication, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
 assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_interpretation_published_idx/i);
 assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, published_at DESC\)/i);
 
