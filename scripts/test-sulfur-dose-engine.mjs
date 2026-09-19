@@ -6,6 +6,7 @@ import {
   RICE_S_SOSBAI_2025_PROFILE,
   computeSoybeanSulfurRecommendation,
 } from "../src/domain/sulfur-dose-engine.ts";
+import { validatePrescriptionSulfurRecommendation } from "../src/domain/prescription-sulfur-validation.ts";
 
 const wheatDeficient = computeWheatSulfurRecommendation({ sulfurMgDm3: 4.9, methodValidated: true });
 assert.equal(wheatDeficient.status, "READY_FOR_IMPLEMENTATION");
@@ -129,6 +130,34 @@ const soybeanWrongMethod = computeSoybeanSulfurRecommendation({
 });
 assert.equal(soybeanWrongMethod.dose.kind, "BLOCKED");
 assert.deepEqual(soybeanWrongMethod.blockers, ["ANALYTICAL_METHOD_NOT_VALIDATED"]);
+
+
+const sulfurProviderOk = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 20, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderOk.allowed, true);
+
+const sulfurProviderWrong = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 15, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderWrong.allowed, false);
+assert.ok(sulfurProviderWrong.blockers.includes("S_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+const sulfurProviderMissing = validatePrescriptionSulfurRecommendation({
+  recommendations: [],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderMissing.allowed, false);
+assert.ok(sulfurProviderMissing.blockers.includes("S_EXPECTED_RECOMMENDATION_MISSING"));
+
+const sulfurProviderBlocked = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 20, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea03Tie,
+});
+assert.equal(sulfurProviderBlocked.allowed, false);
+assert.ok(sulfurProviderBlocked.blockers.includes("S_DETERMINISTIC_DOSE_NOT_READY"));
 
 assert.throws(() => computeWheatSulfurRecommendation({ sulfurMgDm3: -1, methodValidated: true }), /enxofre/i);
 assert.throws(() => computeRiceSulfurRecommendation({
