@@ -2,18 +2,46 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
-import { RealFieldMap, type MapImageOverlay } from "@/components/real-field-map";
+import { RealFieldMap, type MapImageOverlay, type MapLegendEntry } from "@/components/real-field-map";
+import type { VigorZone } from "@/domain/ndvi-engine";
+import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 
 type Snapshot = {
   id: string;
   capturedAt: string;
   meanNdvi: number;
+  minNdvi?: number | null;
+  maxNdvi?: number | null;
   cloudCoverPct: number | null;
   rasterObjectKey?: string | null;
-  zoneBreakdownPct?: Record<string, number>;
+  zoneBreakdownPct?: Partial<Record<VigorZone, number>>;
 };
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
+
+const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
+const ZONE_COLOR: Record<VigorZone, string> = {
+  SEM_VEGETACAO: "#9a8468",
+  BAIXO: "#d9655a",
+  MODERADO: "#d89943",
+  ALTO: "#8fbf6b",
+  MUITO_ALTO: "#29966f",
+};
+
+function dominantZone(breakdown: Partial<Record<VigorZone, number>> | undefined) {
+  if (!breakdown) return null;
+  let best: VigorZone | null = null;
+  let bestPct = -1;
+  for (const zone of ZONE_ORDER) {
+    const pct = breakdown[zone] ?? 0;
+    if (pct > bestPct) {
+      best = zone;
+      bestPct = pct;
+    }
+  }
+  return best && bestPct >= 0 ? { zone: best, pct: bestPct } : null;
+}
+
 
 function formatDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -44,6 +72,11 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
   const [error, setError] = useState("");
 
   const archived = useMemo(() => history.find(hasRaster) ?? null, [history]);
+  const dominant = useMemo(() => dominantZone(archived?.zoneBreakdownPct), [archived]);
+  const vigorLegend = useMemo<MapLegendEntry[]>(
+    () => ZONE_ORDER.map((zone) => ({ label: VIGOR_ZONE_LABELS[zone], color: ZONE_COLOR[zone] })),
+    [],
+  );
 
   function applyPayload(payload: any) {
     const nextHistory = Array.isArray(payload.history) ? payload.history as Snapshot[] : [];
@@ -153,16 +186,65 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
         <>
           <div className="simple-field-vigor-meta">
             <strong>{formatDate(archived.capturedAt)}</strong>
-            <span>NDVI médio {archived.meanNdvi.toFixed(2)}</span>
+            <span>Sentinel-2 · leitura real da área</span>
             {archived.cloudCoverPct != null && <span>{Math.round(archived.cloudCoverPct)}% sem pixel válido</span>}
           </div>
+
+          <div className="simple-field-vigor-summary">
+            <div>
+              <span>MÉDIA DO TALHÃO</span>
+              <strong>{archived.meanNdvi.toFixed(2)}</strong>
+              <small>NDVI médio</small>
+            </div>
+            <div>
+              <span>MAIOR VIGOR</span>
+              <strong>{archived.maxNdvi != null ? archived.maxNdvi.toFixed(2) : "—"}</strong>
+              <small>maior NDVI observado</small>
+            </div>
+            <div>
+              <span>FAIXA DOMINANTE</span>
+              <strong>{dominant ? VIGOR_ZONE_LABELS[dominant.zone].replace("Vigor ", "") : "—"}</strong>
+              <small>{dominant ? `${dominant.pct.toFixed(1)}% da área` : "sem distribuição disponível"}</small>
+            </div>
+          </div>
+
+          <div className="simple-field-vigor-zones">
+            <div className="simple-field-vigor-zones-head">
+              <strong>Faixas de vigor</strong>
+              <small>Quanto da área aparece em cada faixa no satélite</small>
+            </div>
+            <div className="simple-field-vigor-zone-bar" aria-label="Distribuição das faixas de vigor">
+              {ZONE_ORDER.map((zone) => {
+                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
+                return pct > 0 ? <span key={zone} style={{ width: `${pct}%`, background: ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${pct.toFixed(1)}%`} /> : null;
+              })}
+            </div>
+            <div className="simple-field-vigor-zone-list">
+              {ZONE_ORDER.map((zone) => {
+                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
+                if (pct <= 0) return null;
+                return (
+                  <span key={zone}>
+                    <i style={{ background: ZONE_COLOR[zone] }} />
+                    <b>{VIGOR_ZONE_LABELS[zone].replace("Vigor ", "")}</b>
+                    <em>{pct.toFixed(1)}%</em>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
           <RealFieldMap
             boundary={boundary}
             points={[]}
-            height={340}
-            hint={overlay ? `Vigor da área · ${formatDate(archived.capturedAt)}` : "Carregando imagem de vigor…"}
+            height={360}
+            hint={overlay ? `Mapa de vigor · ${formatDate(archived.capturedAt)}` : "Carregando imagem de vigor…"}
             imageOverlay={overlay}
+            legend={overlay ? vigorLegend : undefined}
           />
+          <p className="simple-field-vigor-note">
+            O ponto mais alto acima é o maior <strong>NDVI</strong> observado, um indicador de vigor da vegetação. Ele não é uma previsão direta de produtividade em sacas.
+          </p>
         </>
       ) : (
         <div className="simple-field-vigor-empty">
