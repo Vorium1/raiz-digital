@@ -154,7 +154,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("Formato inesperado da imagem NDVI.");
         objectUrl = URL.createObjectURL(blob);
-        if (!controller.signal.aborted) setOverlay({ url: objectUrl, bounds, opacity: 0.78 });
+        if (!controller.signal.aborted) setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
       } catch (caught) {
         if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Não foi possível abrir o mapa de vigor.");
       }
@@ -234,14 +234,24 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
             </div>
           </div>
 
-          <RealFieldMap
-            boundary={boundary}
-            points={[]}
-            height={360}
-            hint={overlay ? `Mapa de vigor · ${formatDate(archived.capturedAt)}` : "Carregando imagem de vigor…"}
-            imageOverlay={overlay}
-            legend={overlay ? vigorLegend : undefined}
-          />
+          {overlay ? (
+            <RealFieldMap
+              boundary={boundary}
+              points={[]}
+              height={390}
+              hint={`Mapa de vigor · ${formatDate(archived.capturedAt)}`}
+              imageOverlay={overlay}
+              legend={vigorLegend}
+            />
+          ) : (
+            <div className="simple-field-vigor-map-loading">
+              <Icon name="leaf" size={21}/>
+              <div>
+                <strong>Preparando o mapa de vigor…</strong>
+                <small>A imagem Sentinel-2 está sendo posicionada sobre o talhão.</small>
+              </div>
+            </div>
+          )}
           <p className="simple-field-vigor-note">
             O ponto mais alto acima é o maior <strong>NDVI</strong> observado, um indicador de vigor da vegetação. Ele não é uma previsão direta de produtividade em sacas.
           </p>
