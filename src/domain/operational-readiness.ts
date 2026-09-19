@@ -13,7 +13,7 @@ function present(value: string | undefined) {
 }
 
 export function getSatelliteNdviReadiness(env: EnvLike) {
-  const provider = (env.NDVI_SATELLITE_PROVIDER ?? "earth-search").trim().toLowerCase();
+  const provider = env.NDVI_SATELLITE_PROVIDER?.trim().toLowerCase() || "earth-search";
   if (provider === "earth-search") {
     return { provider, ready: true, credentialFree: true } as const;
   }
