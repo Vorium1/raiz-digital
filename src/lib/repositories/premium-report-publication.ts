@@ -216,9 +216,9 @@ async function getLatestDecisionPublication(
  * confirmação de fonte mudarem durante o processo. A interpretação fica bloqueada para atualização pela
  * transação inteira, serializando publicações concorrentes da mesma decisão; análise/safra permanecem
  * protegidas por lock compartilhado. `reports.prescription_generation_id` ancora cada publicação na
- * decisão exata; a unicidade de migration 039 é por decisão + revisão do relatório, permitindo preservar
- * novas versões imutáveis da MESMA decisão somente quando evidência congelada posterior (hoje NDVI)
- * justificar republicação. Sem evidência nova, `alreadyCurrent` devolve a publicação existente.
+ * decisão exata. A migration 039 remove a unicidade por decisão para permitir preservar uma NOVA revisão
+ * imutável quando evidência congelada posterior (hoje NDVI) justificar republicação. A serialização pelo
+ * lock da interpretação + a checagem `alreadyCurrent` impedem republicação sem evidência nova.
  * O snapshot no storage é imutável; se uma falha ocorrer na gravação externa, nenhum registro oficial
  * incompleto nasce em `reports`.
  */
