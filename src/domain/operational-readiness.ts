@@ -2,7 +2,7 @@ export type OperationalIntegrationReadiness = {
   email: boolean;
   rawStorage: boolean;
   mercadoPago: boolean;
-  copernicus: boolean;
+  satelliteNdvi: boolean;
   reportStorage: boolean;
 };
 
@@ -27,12 +27,13 @@ export function getOperationalIntegrationReadiness(env: EnvLike): OperationalInt
   const mercadoPago = present(env.MERCADO_PAGO_ACCESS_TOKEN)
     && present(env.MERCADO_PAGO_WEBHOOK_SECRET);
 
-  const copernicus = present(env.COPERNICUS_CLIENT_ID)
-    && present(env.COPERNICUS_CLIENT_SECRET);
+  // O provider padrão atual usa Earth Search público + Sentinel-2 L2A/COG.
+  // A prontidão de configuração não depende de credenciais Copernicus.
+  const satelliteNdvi = true;
 
   const reportStorage = env.REPORT_STORAGE_PROVIDER?.trim().toLowerCase() === "inline";
 
-  return { email, rawStorage, mercadoPago, copernicus, reportStorage };
+  return { email, rawStorage, mercadoPago, satelliteNdvi, reportStorage };
 }
 
 export function operationalIntegrationScore(readiness: OperationalIntegrationReadiness) {
