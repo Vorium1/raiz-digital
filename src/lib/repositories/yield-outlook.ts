@@ -73,6 +73,8 @@ export async function getFieldYieldOutlook(input: { tenantId: string; userId: st
         municipalityCode: municipal.municipalityCode,
         source: "IBGE/PAM · SIDRA tabela 5457",
         sourceUrl: municipal.sourceUrl,
+        latestScHa: regional.latest == null ? null : kgHaToScHa(regional.latest.yieldKgHa),
+        medianScHa: regional.medianKgHa == null ? null : kgHaToScHa(regional.medianKgHa),
         scenarioScHa: scenarioKgHa == null ? null : kgHaToScHa(scenarioKgHa),
         scenarioTotalKg: scenarioKgHa == null ? null : scenarioKgHa * areaHa,
         scenarioTotalT: scenarioKgHa == null ? null : scenarioKgHa * areaHa / 1000,
