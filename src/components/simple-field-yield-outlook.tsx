@@ -38,19 +38,21 @@ export function SimpleFieldYieldOutlook({ fieldId, fieldName, areaHa, canManage 
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function loadOutlook(signal?: AbortSignal) {
+    const response = await fetch(`/api/fields/${fieldId}/yield-outlook`, { cache: "no-store", signal });
+    if (!response.ok) throw new Error("Não foi possível carregar o cenário de produtividade.");
+    const payload = await response.json();
+    setData(payload.outlook ?? null);
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    fetch(`/api/fields/${fieldId}/yield-outlook`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Não foi possível carregar o cenário de produtividade.");
-        return response.json();
-      })
-      .then((payload) => setData(payload.outlook ?? null))
-      .catch((error) => { if (!controller.signal.aborted) setData(null); })
+    void loadOutlook(controller.signal)
+      .catch(() => { if (!controller.signal.aborted) setData(null); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [fieldId]);
+  }, [fieldId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <section className="simple-yield-outlook"><div className="simple-field-section-title"><span>PRODUTIVIDADE</span><h2>Preparando referência regional…</h2></div></section>;
   if (!data) return null;
@@ -92,7 +94,10 @@ export function SimpleFieldYieldOutlook({ fieldId, fieldName, areaHa, canManage 
         <details className="simple-technical-details">
           <summary><span><Icon name="history" size={16}/> Registrar histórico real do talhão</span><Icon name="chevron" size={15}/></summary>
           <div className="simple-technical-explainer">Use somente produtividade realmente colhida. Esse histórico será a base de calibração local da previsão futura.</div>
-          <FieldYieldHistoryManager fields={[{ id: fieldId, name: fieldName, areaHa }]}/>
+          <FieldYieldHistoryManager
+            fields={[{ id: fieldId, name: fieldName, areaHa }]}
+            onChanged={() => loadOutlook()}
+          />
         </details>
       )}
     </section>
