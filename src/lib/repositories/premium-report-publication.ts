@@ -354,6 +354,8 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       }
     }
 
+    const reportRevision = previousReport ? previousReport.revision + 1 : interpretation.revision;
+
     // Releitura imediatamente antes de congelar o artefato externo.
     await assertCurrentPublicationState(client, {
       tenantId: input.tenantId,
@@ -366,7 +368,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     const snapshotPayload: PremiumReportSnapshotV3 = {
       reportSnapshotVersion: PREMIUM_REPORT_SNAPSHOT_VERSION,
       interpretationId: interpretation.id,
-      revision: interpretation.revision,
+      revision: reportRevision,
       publishedContext,
       structuredOutput: interpretation.structuredOutput,
       brandingSnapshot,
@@ -384,7 +386,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     const stored = await saveReportSnapshot({
       tenantId: input.tenantId,
       interpretationId: interpretation.id,
-      revision: interpretation.revision,
+      revision: reportRevision,
       content: snapshot,
     });
     if (!stored?.key) throw new ReportError("Não foi possível persistir o snapshot oficial do relatório. Publicação cancelada sem criar registro incompleto.", 503);
@@ -401,7 +403,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       `INSERT INTO reports (tenant_id, interpretation_id, prescription_generation_id, revision, storage_key, sha256, published_at, published_by)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::timestamptz, $8::uuid)
        RETURNING id::text, revision, storage_key AS "storageKey", published_at::text AS "publishedAt"`,
-      [input.tenantId, interpretation.id, approvedPrescription.id, interpretation.revision, stored.key, sha256, publishedAt, input.userId],
+      [input.tenantId, interpretation.id, approvedPrescription.id, reportRevision, stored.key, sha256, publishedAt, input.userId],
     );
     const report = result.rows[0];
     await writeAudit(client, {
