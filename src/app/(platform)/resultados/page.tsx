@@ -13,6 +13,8 @@ const PUBLISH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 export default async function ResultadosPage() {
   const session = await requirePlatformSession();
+  const canRefresh = REFRESH_ROLES.has(session.role);
+  const canPublishOfficial = PUBLISH_ROLES.has(session.role);
   const [published, analyses] = await Promise.all([
     listPublishedReports(session.tenantId, session.userId),
     listAnalyses(session.tenantId, session.userId),
@@ -89,18 +91,24 @@ export default async function ResultadosPage() {
 
       <SimpleResultsPreparation
         items={stale}
-        canRefresh={REFRESH_ROLES.has(session.role)}
-        canPublish={PUBLISH_ROLES.has(session.role)}
+        canRefresh={canRefresh}
+        canPublish={canPublishOfficial}
       />
 
       {publishReady.length > 0 && (
         <section className="simple-results-section">
-          <div className="simple-results-section-head"><span>VALIDADOS PELO MOTOR</span><h2>Prontos para gerar o laudo</h2><p>A base atual já passou pelos validadores determinísticos. Falta apenas emitir a nova versão oficial.</p></div>
+          <div className="simple-results-section-head">
+            <span>VALIDADOS PELO MOTOR</span>
+            <h2>{canPublishOfficial ? "Prontos para gerar o laudo" : "Resultados validados"}</h2>
+            <p>{canPublishOfficial
+              ? "A base atual já passou pelos validadores determinísticos. Falta apenas emitir a nova versão oficial."
+              : "A base atual já passou pelos validadores determinísticos. A emissão oficial fica disponível para o perfil responsável."}</p>
+          </div>
           <div className="simple-results-grid">
             {publishReady.map((analysis: any) => (
               <Link href={`/analise/${analysis.id}`} key={analysis.id} className="simple-result-card publish-ready">
                 <span className="simple-result-icon"><Icon name="check" size={23}/></span>
-                <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>Validado pelo motor · gerar resultado</time></div>
+                <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>{canPublishOfficial ? "Validado pelo motor · gerar resultado" : "Validado pelo motor"}</time></div>
                 <Icon name="arrow" size={17}/>
               </Link>
             ))}
