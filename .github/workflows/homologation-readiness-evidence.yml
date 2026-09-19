@@ -2,6 +2,11 @@ name: Homologation Readiness Evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "SHA completo (40 hex) do head atual do PR candidato"
+        required: true
+        type: string
   push:
     branches:
       - "audit/homologation-readiness"
@@ -10,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: homologation-readiness-evidence
@@ -17,9 +23,9 @@ concurrency:
 
 jobs:
   readiness:
-    name: readiness-sanitized
+    name: readiness-candidate-sha
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: homologation
     env:
       DATA_MODE: ${{ vars.DATA_MODE }}
@@ -36,31 +42,136 @@ jobs:
       MERCADO_PAGO_CHECKOUT_ENABLED: ${{ vars.MERCADO_PAGO_CHECKOUT_ENABLED }}
 
     steps:
-      - name: Usar código auditado de develop
+      - name: Ler disparo controlado
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Validar origem do disparo
+      - name: Resolver SHA candidato
+        id: candidate
         shell: bash
+        env:
+          DISPATCH_SHA: ${{ inputs.candidate_sha }}
         run: |
           set -euo pipefail
+
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             if [ "${GITHUB_REF_NAME}" != "audit/homologation-readiness" ]; then
               echo "::error::Branch não autorizada para readiness de homologação."
               exit 1
             fi
-          elif [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            TRIGGER_FILE=".homologation-trigger/candidate-sha.txt"
+            if [ ! -f "${TRIGGER_FILE}" ]; then
+              echo "::error::Trigger controlado sem candidate-sha.txt."
+              exit 1
+            fi
+            CANDIDATE_SHA="$(tr -d '[:space:]' < "${TRIGGER_FILE}")"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            CANDIDATE_SHA="$(printf '%s' "${DISPATCH_SHA:-}" | tr -d '[:space:]')"
+          else
             echo "::error::Evento não autorizado para readiness de homologação."
             exit 1
           fi
-          echo "Disparo autorizado. A avaliação usa o código corrente de develop."
 
-      - name: Gerar evidência sanitizada
+          if ! [[ "${CANDIDATE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::candidate_sha deve ser um SHA Git completo de 40 caracteres hexadecimais."
+            exit 1
+          fi
+
+          CANDIDATE_SHA="${CANDIDATE_SHA,,}"
+          echo "sha=${CANDIDATE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "SHA candidato declarado: ${CANDIDATE_SHA}"
+
+      - name: Autorizar apenas head atual de PR aberto para base permitida
+        id: candidate_guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          RESPONSE_FILE="${RUNNER_TEMP}/candidate-associated-prs.json"
+          HTTP_CODE="$(curl --silent --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out '%{http_code}' \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/pulls")"
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Não foi possível confirmar a associação do SHA candidato a um PR autorizado (HTTP ${HTTP_CODE})."
+            exit 1
+          fi
+
+          set +e
+          CANDIDATE_PR="$(
+            RESPONSE_FILE="${RESPONSE_FILE}" CANDIDATE_SHA="${CANDIDATE_SHA}" REPOSITORY="${GITHUB_REPOSITORY}" node <<'NODE'
+          const fs = require("node:fs");
+          const prs = JSON.parse(fs.readFileSync(process.env.RESPONSE_FILE, "utf8"));
+          const matches = Array.isArray(prs) ? prs.filter((pr) =>
+            pr?.state === "open" &&
+            ["develop", "feature/spatial-map-architecture"].includes(pr?.base?.ref) &&
+            pr?.head?.sha === process.env.CANDIDATE_SHA &&
+            pr?.head?.repo?.full_name === process.env.REPOSITORY
+          ) : [];
+          if (matches.length !== 1) process.exit(2);
+          process.stdout.write(String(matches[0].number));
+          NODE
+          )"
+          STATUS=$?
+          set -e
+
+          rm -f "${RESPONSE_FILE}"
+          if [ "${STATUS}" -ne 0 ] || ! [[ "${CANDIDATE_PR}" =~ ^[0-9]+$ ]]; then
+            echo "::error::SHA rejeitado: ele deve ser exatamente o head atual de um único PR aberto, do mesmo repositório, com base develop ou feature/spatial-map-architecture."
+            exit 1
+          fi
+
+          echo "pr_number=${CANDIDATE_PR}" >> "${GITHUB_OUTPUT}"
+          echo "SHA candidato autorizado como head atual do PR #${CANDIDATE_PR}."
+
+      - name: Checkout exato do candidato
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Confirmar identidade do código auditado
+        id: identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+          CANDIDATE_PR: ${{ steps.candidate_guard.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          RESOLVED_SHA="$(git rev-parse HEAD)"
+          if [ "${RESOLVED_SHA}" != "${EXPECTED_SHA}" ]; then
+            echo "::error::Checkout não corresponde ao SHA candidato declarado."
+            exit 1
+          fi
+          echo "resolved_sha=${RESOLVED_SHA}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## RAIZ Digital · candidato de homologação"
+            echo
+            echo "PR autorizado: **#${CANDIDATE_PR}**"
+            echo "SHA auditado: \`${RESOLVED_SHA}\`"
+            echo
+            echo "O workflow não executa merge, deploy ou promoção de ambiente."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências do SHA candidato
+        run: npm ci
+
+      - name: Gerar readiness sanitizada
         id: readiness
         shell: bash
         env:
@@ -71,8 +182,6 @@ jobs:
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
           S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COPERNICUS_CLIENT_ID: ${{ secrets.COPERNICUS_CLIENT_ID }}
-          COPERNICUS_CLIENT_SECRET: ${{ secrets.COPERNICUS_CLIENT_SECRET }}
           MERCADO_PAGO_ACCESS_TOKEN: ${{ secrets.MERCADO_PAGO_ACCESS_TOKEN }}
           MERCADO_PAGO_WEBHOOK_SECRET: ${{ secrets.MERCADO_PAGO_WEBHOOK_SECRET }}
           HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
@@ -89,61 +198,177 @@ jobs:
 
           echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
           test -s "${RESULT_FILE}"
-          echo "Evidência sanitizada gerada. Nenhum valor de secret/configuração bruta é serializado."
+          echo "Evidência de readiness gerada sem serializar valores brutos de secrets/configuração."
 
-      - name: Registrar resumo privacy-safe
-        if: ${{ always() && steps.readiness.outputs.result_file != '' }}
+      - name: Validar contexto mínimo NDVI sem expor valores
+        id: ndvi_context
         shell: bash
+        env:
+          HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          NDVI_AUDIT_TENANT_ID: ${{ secrets.NDVI_AUDIT_TENANT_ID }}
+          NDVI_AUDIT_FIELD_ID: ${{ secrets.NDVI_AUDIT_FIELD_ID }}
         run: |
           set -euo pipefail
-          RESULT_FILE="${{ steps.readiness.outputs.result_file }}"
-          test -s "${RESULT_FILE}"
-          RESULT_FILE="${RESULT_FILE}" node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          READY=true
+          MISSING=0
+          for name in HOMOLOGATION_DATABASE_URL NDVI_AUDIT_TENANT_ID NDVI_AUDIT_FIELD_ID; do
+            if [ -z "${!name:-}" ]; then
+              READY=false
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          echo "ready=${READY}" >> "${GITHUB_OUTPUT}"
+          echo "missing_count=${MISSING}" >> "${GITHUB_OUTPUT}"
+          echo "Contexto NDVI avaliado de forma privacy-safe; campos obrigatórios ausentes: ${MISSING}."
+
+      - name: Auditar cadeia de custódia NDVI read-only
+        id: ndvi
+        if: ${{ steps.ndvi_context.outputs.ready == 'true' }}
+        shell: bash
+        env:
+          HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          NDVI_AUDIT_TENANT_ID: ${{ secrets.NDVI_AUDIT_TENANT_ID }}
+          NDVI_AUDIT_FIELD_ID: ${{ secrets.NDVI_AUDIT_FIELD_ID }}
+          NDVI_AUDIT_ACTOR_USER_ID: ${{ secrets.NDVI_AUDIT_ACTOR_USER_ID }}
+          NDVI_AUDIT_DATE: ${{ vars.NDVI_AUDIT_DATE }}
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+          NDVI_RASTER_STORAGE_PROVIDER: ${{ vars.NDVI_RASTER_STORAGE_PROVIDER }}
+        run: |
+          set -u
+          RAW_FILE="ndvi-raster-audit-raw.json"
+          ERROR_FILE="ndvi-raster-audit-error.txt"
+          echo "raw_file=${RAW_FILE}" >> "${GITHUB_OUTPUT}"
+
+          set +e
+          npm run --silent ndvi:audit-raster > "${RAW_FILE}" 2> "${ERROR_FILE}"
+          STATUS=$?
+          set -e
+
+          echo "exit_code=${STATUS}" >> "${GITHUB_OUTPUT}"
+          if [ "${STATUS}" -eq 0 ]; then
+            echo "Auditoria NDVI concluiu com evidência imutável positiva."
+          elif [ "${STATUS}" -eq 2 ]; then
+            echo "Auditoria NDVI concluiu com blocker de custódia."
+          else
+            echo "Auditoria NDVI ficou indisponível operacionalmente; detalhes de infraestrutura não serão impressos."
+          fi
+
+      - name: Gerar evidência NDVI sanitizada
+        id: ndvi_evidence
+        if: always()
+        shell: bash
+        env:
+          CANDIDATE_PR: ${{ steps.candidate_guard.outputs.pr_number }}
+          CANDIDATE_SHA: ${{ steps.identity.outputs.resolved_sha }}
+          CONTEXT_READY: ${{ steps.ndvi_context.outputs.ready }}
+          MISSING_COUNT: ${{ steps.ndvi_context.outputs.missing_count }}
+          AUDIT_STATUS: ${{ steps.ndvi.outputs.exit_code }}
+          RAW_FILE: ${{ steps.ndvi.outputs.raw_file }}
+        run: |
+          set -euo pipefail
+          OUTPUT="ndvi-raster-audit-evidence.json"
+          echo "result_file=${OUTPUT}" >> "${GITHUB_OUTPUT}"
+          node <<'NODE'
           const fs = require("node:fs");
-          const evidence = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
-          const checks = Array.isArray(evidence.checks) ? evidence.checks : [];
-          const summary = evidence.summary || {};
-          console.log("## RAIZ Digital · readiness de homologação");
-          console.log("");
-          console.log(`Status automatizado: **${evidence.status || "unavailable"}**`);
-          console.log(`Release ready: **${evidence.releaseReady === false ? "não" : "estado inválido"}**`);
-          console.log(`Blockers automatizados: **${summary.blockedCount ?? "n/a"}**`);
-          console.log(`Gates manuais/externos restantes: **${summary.manualGateCount ?? "n/a"}**`);
-          console.log("");
-          for (const check of checks) console.log(`- **${check.status}** · ${check.name}: ${check.message}`);
-          console.log("");
-          console.log("Esta evidência não autoriza produção e não substitui homologação externa, #24, #27 ou GO humano.");
+          const candidatePr = Number(process.env.CANDIDATE_PR || 0) || null;
+          const candidateSha = process.env.CANDIDATE_SHA || null;
+          const contextReady = process.env.CONTEXT_READY === "true";
+          const missingCount = Number(process.env.MISSING_COUNT || 0);
+          const auditStatus = process.env.AUDIT_STATUS || "";
+          let raw = null;
+          const rawFile = process.env.RAW_FILE;
+          if (contextReady && rawFile && fs.existsSync(rawFile) && fs.statSync(rawFile).size > 0) {
+            try { raw = JSON.parse(fs.readFileSync(rawFile, "utf8")); } catch {}
+          }
+          const evidence = {
+            schemaVersion: 1,
+            evidenceType: "RAIZ_NDVI_IMMUTABLE_RASTER_AUDIT",
+            candidatePr,
+            candidateSha,
+            status: !contextReady ? "BLOCKED_CONTEXT" : auditStatus === "0" ? "PASS" : auditStatus === "2" ? "BLOCKED" : "UNAVAILABLE",
+            readyForImmutableRasterEvidence: raw?.readyForImmutableRasterEvidence === true,
+            missingContextCount: contextReady ? 0 : missingCount,
+            capturedAt: raw?.capturedAt || null,
+            storage: raw?.storage || null,
+            algorithm: raw?.algorithm || null,
+            mosaickingOrder: raw?.mosaickingOrder || null,
+            objectIntegrityVerified: raw?.objectIntegrityVerified === true,
+            databaseImmutabilityVerified: raw?.databaseImmutabilityVerified === true,
+            runtimeDeletePrivilegeRevoked: raw?.runtimeDeletePrivilegeRevoked === true,
+            blockers: Array.isArray(raw?.blockers) ? raw.blockers : [],
+            note: "Evidência sanitizada: nenhum secret, bbox, coordenada, chave de objeto ou hash do raster é serializado."
+          };
+          fs.writeFileSync("ndvi-raster-audit-evidence.json", `${JSON.stringify(evidence, null, 2)}\n`);
           NODE
 
-      - name: Salvar evidência sanitizada
-        if: ${{ always() && steps.readiness.outputs.result_file != '' }}
+      - name: Registrar resumos privacy-safe
+        if: always()
+        shell: bash
+        env:
+          READINESS_FILE: ${{ steps.readiness.outputs.result_file }}
+          NDVI_FILE: ${{ steps.ndvi_evidence.outputs.result_file }}
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          console.log("## Readiness automatizada");
+          const readinessFile = process.env.READINESS_FILE;
+          if (readinessFile && fs.existsSync(readinessFile)) {
+            const evidence = JSON.parse(fs.readFileSync(readinessFile, "utf8"));
+            const summary = evidence.summary || {};
+            console.log(`- Status: **${evidence.status || "unavailable"}**`);
+            console.log(`- Blockers automatizados: **${summary.blockedCount ?? "n/a"}**`);
+            console.log(`- Gates manuais/externos: **${summary.manualGateCount ?? "n/a"}**`);
+          } else {
+            console.log("- Status: **unavailable**");
+          }
+          console.log("");
+          console.log("## Custódia NDVI");
+          const ndviFile = process.env.NDVI_FILE;
+          if (ndviFile && fs.existsSync(ndviFile)) {
+            const evidence = JSON.parse(fs.readFileSync(ndviFile, "utf8"));
+            console.log(`- Status: **${evidence.status}**`);
+            console.log(`- readyForImmutableRasterEvidence: **${evidence.readyForImmutableRasterEvidence}**`);
+            console.log(`- Imutabilidade PostgreSQL: **${evidence.databaseImmutabilityVerified}**`);
+            console.log(`- Integridade do objeto: **${evidence.objectIntegrityVerified}**`);
+            if (evidence.missingContextCount) console.log(`- Campos obrigatórios ausentes: **${evidence.missingContextCount}**`);
+          }
+          console.log("");
+          console.log("Esta execução não autoriza produção e não substitui #24, #25, #27, aceitação agronômica nem GO humano.");
+          NODE
+
+      - name: Salvar evidências sanitizadas
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: homologation-readiness-evidence
-          path: ${{ steps.readiness.outputs.result_file }}
-          if-no-files-found: error
+          name: homologation-candidate-evidence-${{ steps.identity.outputs.resolved_sha }}
+          path: |
+            homologation-readiness.json
+            ndvi-raster-audit-evidence.json
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Aplicar resultado fail-closed
         if: always()
         shell: bash
+        env:
+          READINESS_STATUS: ${{ steps.readiness.outputs.exit_code }}
+          NDVI_CONTEXT_READY: ${{ steps.ndvi_context.outputs.ready }}
+          NDVI_STATUS: ${{ steps.ndvi.outputs.exit_code }}
         run: |
           set -euo pipefail
-          STATUS="${{ steps.readiness.outputs.exit_code }}"
-          if [ -z "${STATUS}" ]; then
-            echo "::error::Readiness não produziu estado verificável."
+          if [ "${READINESS_STATUS:-}" != "0" ]; then
+            echo "::error::Readiness automatizada não passou para o SHA candidato."
             exit 1
           fi
-          case "${STATUS}" in
-            0)
-              echo "Configuração automatizável passou. Homologação externa e GO continuam pendentes."
-              ;;
-            2)
-              echo "::error::Readiness encontrou blocker(s) automatizados. Consulte o resumo sanitizado."
-              exit 1
-              ;;
-            *)
-              echo "::error::Readiness ficou indisponível (exit=${STATUS}); falha fechada."
-              exit 1
-              ;;
-          esac
+          if [ "${NDVI_CONTEXT_READY:-}" != "true" ]; then
+            echo "::error::Contexto obrigatório da auditoria NDVI está incompleto no Environment homologation."
+            exit 1
+          fi
+          if [ "${NDVI_STATUS:-}" != "0" ]; then
+            echo "::error::A auditoria NDVI não comprovou readyForImmutableRasterEvidence=true."
+            exit 1
+          fi
+          echo "SHA candidato passou nos gates automatizados executáveis. Gates externos/manuais continuam independentes."
