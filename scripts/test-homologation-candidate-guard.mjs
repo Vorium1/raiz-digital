@@ -30,4 +30,11 @@ assert.doesNotMatch(workflow, /cat\s+"?\$\{?RESPONSE_FILE\}?"?/, "resposta bruta
 
 console.log("homologation-candidate-guard: SHA explícito, PR aberto same-repo/base permitida, ordem antes de secrets e checkout exato aprovados");
 
-assert.doesNotMatch(workflow, /COPERNICUS_CLIENT_ID|COPERNICUS_CLIENT_SECRET/, "workflow atual não pode depender de credenciais Copernicus para NDVI");
+assert.match(workflow, /NDVI_SATELLITE_PROVIDER: \$\{\{ vars\.NDVI_SATELLITE_PROVIDER \}\}/, "workflow deve propagar o provider NDVI selecionado");
+assert.match(workflow, /COPERNICUS_CLIENT_ID: \$\{\{ secrets\.COPERNICUS_CLIENT_ID \}\}/, "provider Copernicus explícito precisa receber credencial somente após o candidate guard");
+assert.match(workflow, /COPERNICUS_CLIENT_SECRET: \$\{\{ secrets\.COPERNICUS_CLIENT_SECRET \}\}/, "provider Copernicus explícito precisa receber credencial somente após o candidate guard");
+assert.ok(
+  workflow.indexOf("COPERNICUS_CLIENT_ID:") > guardIndex
+    && workflow.indexOf("COPERNICUS_CLIENT_SECRET:") > guardIndex,
+  "credenciais opcionais do Copernicus só podem existir depois da autorização do SHA candidato",
+);
