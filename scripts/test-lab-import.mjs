@@ -20,6 +20,23 @@ assert.equal(valid.rows.length, 4);
 assert.equal(valid.blockers, 0);
 assert.ok(valid.confidence.score >= 90);
 
+
+const tedescoProtocol = "Tedesco, M. J. et al. Boletim técnico n° 5 - Análises de Solo, Plantas e Outros Materiais. 2 ed. Porto Alegre, 1995";
+const protocolCsv = `Amostra;Parametro;Valor;Unidade;Metodo;Protocolo
+SQC1;B;0,3;mg/dm3;;${tedescoProtocol}
+SQC1;Mn;30,9;mg/dm3;KCl 1 mol/L;${tedescoProtocol}
+SQC1;S;9,8;mg/dm3;Turbidimetria;${tedescoProtocol}
+SQC1;Cu;2,8;mg/dm3;;${tedescoProtocol}
+SQC1;Zn;4,4;mg/dm3;;${tedescoProtocol}`;
+const protocolPreview = buildLabImportPreview(protocolCsv, "tedesco.csv", { hasAgronomicContext: true, spatialLinked: true });
+assert.equal(protocolPreview.blockers, 0, "Protocolo global reconhecido deve resolver os métodos por parâmetro.");
+assert.equal(protocolPreview.rows.find((row) => row.parameterCode === "B")?.method, "Água quente, colorimetria com curcumina");
+assert.equal(protocolPreview.rows.find((row) => row.parameterCode === "MN")?.method, "KCl 1 mol/L (Tedesco 1995)");
+assert.equal(protocolPreview.rows.find((row) => row.parameterCode === "S")?.method, "Ca(H2PO4)2 500mg P/L, turbidimetria");
+assert.equal(protocolPreview.rows.find((row) => row.parameterCode === "CU")?.method, "HCl 0,1 mol/L (Tedesco 1995)");
+assert.equal(protocolPreview.rows.find((row) => row.parameterCode === "ZN")?.method, "HCl 0,1 mol/L (Tedesco 1995)");
+assert.ok(protocolPreview.rows.every((row) => row.methodDerivedFromProtocol));
+
 const duplicateCsv = `${longCsv}\nP01;P;13,0;mg/dm3;Mehlich-1`;
 const duplicate = buildLabImportPreview(duplicateCsv, "duplicate.csv", { hasAgronomicContext: true, spatialLinked: true });
 assert.ok(duplicate.blockers >= 1);
@@ -66,4 +83,4 @@ assert.equal(compact.rows.length, LAB_UPLOAD_LIMITS.previewRows);
 assert.equal(compact.issues.length, LAB_UPLOAD_LIMITS.previewIssues);
 assert.equal(compact.marker, "preservado");
 
-console.log("lab-import: 4 cenários agronômicos + limites/compactação de transporte aprovados");
+console.log("lab-import: protocolo global + cenários agronômicos + limites/compactação de transporte aprovados");
