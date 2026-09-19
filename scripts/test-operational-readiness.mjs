@@ -55,4 +55,24 @@ assert.deepEqual(incomplete, {
 });
 assert.deepEqual(operationalIntegrationScore(incomplete), { ready: 2, total: 5 });
 
+const explicitCopernicusMissing = getOperationalIntegrationReadiness({
+  REPORT_STORAGE_PROVIDER: "inline",
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+});
+assert.equal(explicitCopernicusMissing.satelliteNdvi, false, "Copernicus explícito sem credenciais deve falhar fechado.");
+
+const explicitCopernicusReady = getOperationalIntegrationReadiness({
+  REPORT_STORAGE_PROVIDER: "inline",
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  COPERNICUS_CLIENT_ID: "client",
+  COPERNICUS_CLIENT_SECRET: "secret",
+});
+assert.equal(explicitCopernicusReady.satelliteNdvi, true);
+
+const unsupportedProvider = getOperationalIntegrationReadiness({
+  REPORT_STORAGE_PROVIDER: "inline",
+  NDVI_SATELLITE_PROVIDER: "inventado",
+});
+assert.equal(unsupportedProvider.satelliteNdvi, false);
+
 console.log("✓ Observabilidade: prontidão agregada sem exposição de segredos validada");
