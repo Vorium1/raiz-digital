@@ -290,7 +290,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
             )}
             {(prescription.missingInformation?.length ?? 0) > 0 && (
-              <div className="simple-result-limitation"><Icon name="shield" size={17}/><span><strong>Limites desta conclusão</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
+              <div className="simple-result-limitation"><Icon name="shield" size={17}/><span><strong>Critérios preservados pelo motor</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
             )}
           </section>
         ) : (
