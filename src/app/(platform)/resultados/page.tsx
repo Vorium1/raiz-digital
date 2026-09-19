@@ -8,7 +8,7 @@ import { SimpleResultsPreparation } from "@/components/simple-results-preparatio
 
 export const metadata = { title: "Resultados" };
 
-const PREPARE_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const PREPARE_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 export default async function ResultadosPage() {
   const session = await requirePlatformSession();
