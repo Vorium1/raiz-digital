@@ -64,6 +64,9 @@ const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draf
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const officialResultRoute = read("src/app/api/analyses/[id]/official-result/route.ts");
 const legacyPublishRoute = read("src/app/api/interpretations/[id]/publish-report/route.ts");
+const interpretationReviewRoute = read("src/app/api/interpretations/[id]/review/route.ts");
+const prescriptionReviewRoute = read("src/app/api/agronomic-prescriptions/[id]/review/route.ts");
+const finalReviewRoute = read("src/app/api/analyses/[id]/final-review/route.ts");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
 const reportsRepository = read("src/lib/repositories/reports.ts");
 const decisionDeliveryStatus = read("src/lib/repositories/decision-delivery-status.ts");
@@ -234,6 +237,12 @@ assert.match(officialResultRoute, /const allowedRoles = new Set\(\["SUPER_ADMIN"
 assert.doesNotMatch(officialResultRoute, /allowedRoles[^\n]*FIELD_TECH/);
 assert.match(legacyPublishRoute, /const publishRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
 assert.doesNotMatch(legacyPublishRoute, /publishRoles[^\n]*FIELD_TECH/);
+assert.match(finalReviewRoute, /const reviewRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(finalReviewRoute, /reviewRoles[^\n]*FIELD_TECH/);
+assert.match(prescriptionReviewRoute, /const reviewRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(prescriptionReviewRoute, /reviewRoles[^\n]*FIELD_TECH/);
+assert.match(interpretationReviewRoute, /const reviewRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(interpretationReviewRoute, /reviewRoles[^\n]*FIELD_TECH/);
 assert.match(results, /VALIDADOS PELO MOTOR/);
 assert.match(results, /Prontos para gerar o laudo/);
 assert.match(results, /Resultados validados/);
