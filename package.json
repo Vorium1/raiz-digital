@@ -10,6 +10,7 @@
     "test:domain": "node --experimental-strip-types scripts/test-lab-import.mjs",
     "test:security": "node --experimental-strip-types scripts/test-security.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
+    "audit:migrations:homologation": "node scripts/audit-migration-ledger-homologation.mjs",
     "check:production-readiness": "node scripts/check-production-readiness.mjs",
     "seed:dev": "node scripts/seed-dev.mjs",
     "db:migrate": "node scripts/migrate.mjs",
