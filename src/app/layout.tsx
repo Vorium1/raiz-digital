@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 import "./ux2.css";
@@ -27,6 +27,12 @@ const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variabl
 export const metadata: Metadata = {
   title: { default: "Raiz Digital", template: "%s · Raiz Digital" },
   description: "Inteligência agronômica do solo à decisão.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
