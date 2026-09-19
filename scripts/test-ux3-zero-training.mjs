@@ -386,7 +386,7 @@ assert.match(simpleResult, /kg\/ha/);
 
 assert.match(simpleResult, /RASTREABILIDADE/);
 assert.match(simpleResult, /Base agronômica/);
-assert.match(simpleResult, /RAIZ Agronomic Engine/);
+assert.match(simpleResult, /<small>Motor<\\/small><strong>\{engineValidated \? "Motor RAIZ"/);
 assert.match(simpleResult, /Versão do motor/);
 
 assert.match(simplePublish, /label = "Gerar laudo RAIZ"/);
