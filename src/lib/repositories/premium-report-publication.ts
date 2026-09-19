@@ -32,6 +32,8 @@ export type FrozenSamplePoint = {
 export type FrozenNdviSnapshot = {
   id: string;
   capturedAt: string;
+  createdAt: string;
+  rasterArchivedAt: string | null;
   source: string;
   cloudCoverPct: number | null;
   pixelCount: number;
@@ -181,12 +183,19 @@ async function assertCurrentPublicationState(
   return state;
 }
 
-async function assertDecisionNotAlreadyPublished(
+type ExistingDecisionPublication = {
+  id: string;
+  revision: number;
+  storageKey: string;
+  publishedAt: string;
+};
+
+async function getLatestDecisionPublication(
   client: PoolClient,
   input: { tenantId: string; interpretationId: string; prescriptionId: string },
-) {
-  const duplicate = await client.query<{ id: string }>(
-    `SELECT r.id::text
+): Promise<ExistingDecisionPublication | null> {
+  const existing = await client.query<ExistingDecisionPublication>(
+    `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.published_at::text AS "publishedAt"
      FROM reports r
      WHERE r.tenant_id=$1::uuid
        AND r.interpretation_id=$2::uuid
@@ -195,12 +204,7 @@ async function assertDecisionNotAlreadyPublished(
      LIMIT 1`,
     [input.tenantId, input.interpretationId, input.prescriptionId],
   );
-  if (duplicate.rows[0]) {
-    throw new ReportError(
-      "Esta decisão técnica já possui uma versão oficial publicada. Só publique novamente depois de uma nova conclusão técnica aprovada.",
-      409,
-    );
-  }
+  return existing.rows[0] ?? null;
 }
 
 /**
@@ -225,14 +229,6 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     if (!currentPrescriptionId) {
       throw new ReportError("A decisão atual não possui conclusão técnica aprovada para publicação.", 409);
     }
-
-    // A interpretação está sob FOR UPDATE desde a leitura acima. Publicações concorrentes da mesma
-    // decisão ficam serializadas e a segunda requisição encontra o vínculo nativo antes de tocar storage.
-    await assertDecisionNotAlreadyPublished(client, {
-      tenantId: input.tenantId,
-      interpretationId: input.interpretationId,
-      prescriptionId: currentPrescriptionId,
-    });
 
     const interpretationResult = await client.query(
       `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.revision, i.status::text,
@@ -320,6 +316,8 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     const ndviResult = await client.query<FrozenNdviSnapshot>(
       `SELECT id::text,
               captured_at::text AS "capturedAt",
+              created_at::text AS "createdAt",
+              raster_archived_at::text AS "rasterArchivedAt",
               source,
               cloud_cover_pct::float8 AS "cloudCoverPct",
               pixel_count AS "pixelCount",
@@ -336,6 +334,25 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       [input.tenantId, publishedContext.fieldId],
     );
     const ndviSnapshot = ndviResult.rows[0] ?? null;
+
+    const previousReport = await getLatestDecisionPublication(client, {
+      tenantId: input.tenantId,
+      interpretationId: interpretation.id,
+      prescriptionId: approvedPrescription.id,
+    });
+    if (previousReport) {
+      const previousPublishedAt = new Date(previousReport.publishedAt).getTime();
+      const ndviEvidenceTimes = ndviSnapshot
+        ? [ndviSnapshot.createdAt, ndviSnapshot.rasterArchivedAt]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => new Date(value).getTime())
+            .filter(Number.isFinite)
+        : [];
+      const ndviChangedAfterPreviousReport = ndviEvidenceTimes.some((value) => value > previousPublishedAt);
+      if (!ndviChangedAfterPreviousReport) {
+        return { ...previousReport, alreadyCurrent: true as const };
+      }
+    }
 
     // Releitura imediatamente antes de congelar o artefato externo.
     await assertCurrentPublicationState(client, {
@@ -402,8 +419,10 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
         frozenPointCount: pointsResult.rows.length,
         sourceHumanVerified: initialState.sourceHumanVerified,
         sourceVerificationRequired: initialState.sourceVerificationRequired,
+        republishedFromReportId: previousReport?.id ?? null,
+        ndviEvidenceUpdatedAfterPreviousReport: Boolean(previousReport),
       },
     });
-    return report;
+    return { ...report, alreadyCurrent: false as const };
   });
 }
