@@ -312,7 +312,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
                 {structured.trace?.cropProfileVersion ? ` · v${structured.trace.cropProfileVersion}` : ""}
               </strong>
             </div>
-            <div><small>Motor</small><strong>{engineValidated ? "RAIZ Agronomic Engine" : (v3?.approvedPrescription.model ?? "Motor registrado")}</strong></div>
+            <div><small>Motor</small><strong>{engineValidated ? "Motor RAIZ" : (v3?.approvedPrescription.model ?? "Motor registrado")}</strong></div>
             <div><small>Versão do motor</small><strong>{v3?.approvedPrescription.promptVersion ?? "Snapshot publicado"}</strong></div>
           </div>
         </section>
