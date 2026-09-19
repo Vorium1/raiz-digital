@@ -26,3 +26,23 @@ export function buildAtomicMigrationSql(sql, name) {
 
   return `BEGIN;\n\n${trimmed}\n\n${ledger}\n\nCOMMIT;`;
 }
+
+
+/**
+ * Cada número de migration identifica uma única etapa de schema.
+ * Dois arquivos com o mesmo prefixo (ex.: 039_*) tornam a ordem ambígua e podem
+ * produzir bancos diferentes conforme o histórico do ambiente.
+ */
+export function assertUniqueMigrationNumbers(names) {
+  const seen = new Map();
+  for (const name of names) {
+    const match = /^(\d+)_([A-Za-z0-9_.-]+)\.sql$/.exec(name);
+    if (!match) throw new Error(`Nome de migration inválido: ${name}`);
+    const number = match[1];
+    const previous = seen.get(number);
+    if (previous) {
+      throw new Error(`Prefixo de migration duplicado ${number}: ${previous} e ${name}`);
+    }
+    seen.set(number, name);
+  }
+}
