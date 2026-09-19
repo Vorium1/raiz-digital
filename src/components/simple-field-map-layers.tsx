@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { RealFieldMap, type MapLegendEntry, type MapPoint, type SpatialGeometry } from "@/components/real-field-map";
@@ -68,6 +68,8 @@ export function SimpleFieldMapLayers({
   canRefresh: boolean;
 }) {
   const router = useRouter();
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [activated, setActivated] = useState(false);
   const [mode, setMode] = useState<"soil" | "collection" | "terrain">("soil");
   const [context, setContext] = useState<SoilContext | null>(null);
   const [availableParameters, setAvailableParameters] = useState<string[]>([]);
@@ -78,6 +80,27 @@ export function SimpleFieldMapLayers({
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    const node = sectionRef.current;
+    if (!node || activated) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setActivated(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setActivated(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "180px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activated]);
+
+  useEffect(() => {
+    if (!activated) return;
     let cancelled = false;
 
     void (async () => {
@@ -142,7 +165,7 @@ export function SimpleFieldMapLayers({
     })();
 
     return () => { cancelled = true; };
-  }, [analysisId, canRefresh, fieldId, freshnessCode, router]);
+  }, [activated, analysisId, canRefresh, fieldId, freshnessCode, router]);
 
   useEffect(() => {
     if (!context || !parameter) {
@@ -191,16 +214,16 @@ export function SimpleFieldMapLayers({
     }));
   }, [soilPoints]);
 
-  const colorFor = (point: MapPoint) => {
+  const colorFor = useCallback((point: MapPoint) => {
     const color = classificationColor(point.classification);
     return { stroke: color, fill: color, fillOpacity: point.classification ? 0.9 : 0.35 };
-  };
+  }, []);
 
   const mapPoints = mode === "soil" ? soilPoints : collectionPoints;
   const mapBoundary = layer?.fieldBoundary ?? boundary;
 
   return (
-    <section className="simple-field-map-card simple-field-map-layers">
+    <section ref={sectionRef} className="simple-field-map-card simple-field-map-layers">
       <div className="simple-field-map-head layered">
         <div>
           <span>MAPA DA ÁREA</span>
@@ -228,8 +251,8 @@ export function SimpleFieldMapLayers({
         </div>
       )}
 
-      {loading || (mode === "soil" && layerLoading) ? (
-        <div className="simple-map-loading"><Icon name="clock" size={17}/> Preparando o mapa…</div>
+      {!activated || loading || (mode === "soil" && layerLoading) ? (
+        <div className="simple-map-loading"><Icon name="clock" size={17}/> {activated ? "Preparando o mapa…" : "Mapa pronto quando você chegar aqui…"}</div>
       ) : (
         <RealFieldMap
           boundary={mapBoundary}
