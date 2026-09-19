@@ -51,7 +51,7 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      - name: Validar B/Mn/S fail-closed contra dados Cabeda
+      - name: Validar resolução de protocolo e métodos Cabeda
         id: validate
         shell: bash
         run: |
@@ -77,8 +77,8 @@ jobs:
           const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
           console.log("## Cabeda · metodologia laboratorial · somente leitura");
           console.log("");
-          console.log("B, Mn e S precisam permanecer fail-closed quando o laudo traz apenas parte da metodologia homologada.");
-          console.log("CTC/P/K validam as canonizações explícitas já aprovadas.");
+          console.log("Quando o laudo declara protocolo ou método reconhecido, o motor deve resolver o método compatível por parâmetro e interpretar o resultado.");
+          console.log("Fail-closed fica restrito aos casos em que protocolo/método realmente não possa ser resolvido com segurança; nunca à ausência de repetição textual do método em cada linha.");
           console.log("");
           for (const item of payload.results || []) {
             console.log(`- **${item.code}**: amostras=${item.sampleCount}; resultados=${item.resultCount}; confiança=${item.confidence}`);
