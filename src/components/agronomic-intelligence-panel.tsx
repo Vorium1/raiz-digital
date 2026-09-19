@@ -296,7 +296,7 @@ export function AgronomicIntelligencePanel({
                     : classifiedResultCount === 0
                       ? `0 de ${targetTotalCount} resultados interpretados.`
                       : classifiedResultCount < targetTotalCount
-                        ? `Interpretação parcial — ${classifiedResultCount}/${targetTotalCount} resultados cobertos.`
+                        ? `Interpretação em atualização técnica — ${classifiedParamCodes.length}/${classifiedParamCodes.length + pendingParamCodes.length} parâmetros cobertos.`
                         : `${classifiedResultCount}/${targetTotalCount} resultados interpretados.`}
                   {globalImpedimentGroups.length > 0 && ` ${globalImpedimentGroups[0].reason}`}
                 </span>
@@ -304,9 +304,9 @@ export function AgronomicIntelligencePanel({
               {/* Item 2 do fechamento técnico (auditoria Cabeda): 3 categorias reais, nunca só
                   "interpretável/não" -- um dado auxiliar nunca é mostrado como erro/pendência. */}
               <div className="agro-role-summary">
-                <span className="agro-role-chip agro-role-classified">{classifiedParamCodes.length} parâmetro{classifiedParamCodes.length === 1 ? "" : "s"} classificado{classifiedParamCodes.length === 1 ? "" : "s"} ({classifiedResultCount} resultado{classifiedResultCount === 1 ? "" : "s"})</span>
-                <span className="agro-role-chip agro-role-pending">{pendingParamCodes.length} aguardando homologação ({pendingResultCount} resultado{pendingResultCount === 1 ? "" : "s"})</span>
-                <span className="agro-role-chip agro-role-auxiliary">{auxiliaryParamCodes.length} dado{auxiliaryParamCodes.length === 1 ? "" : "s"} auxiliar{auxiliaryParamCodes.length === 1 ? "" : "es"} ({auxiliaryResultCount} resultado{auxiliaryResultCount === 1 ? "" : "s"})</span>
+                <span className="agro-role-chip agro-role-classified">{classifiedParamCodes.length} parâmetro{classifiedParamCodes.length === 1 ? "" : "s"} classificado{classifiedParamCodes.length === 1 ? "" : "s"}</span>
+                {pendingParamCodes.length > 0 && <span className="agro-role-chip agro-role-pending">{pendingParamCodes.length} parâmetro{pendingParamCodes.length === 1 ? "" : "s"} com observação técnica</span>}
+                <span className="agro-role-chip agro-role-auxiliary">{auxiliaryParamCodes.length} dado{auxiliaryParamCodes.length === 1 ? "" : "s"} auxiliar{auxiliaryParamCodes.length === 1 ? "" : "es"}</span>
               </div>
               {auxiliaryParamCodes.length > 0 && (
                 <p className="agro-auxiliary-note">
@@ -318,7 +318,7 @@ export function AgronomicIntelligencePanel({
           {impedimentGroups.length > 0 && (
             <div className="agro-impediments">
               <button type="button" className="button ghost small" onClick={() => setShowAllImpediments((v) => !v)}>
-                {showAllImpediments ? "Ocultar impedimentos" : "Ver todos os impedimentos"} ({impedimentGroups.reduce((sum, g) => sum + g.count, 0)})
+                {showAllImpediments ? "Ocultar detalhes técnicos" : "Ver detalhes técnicos"} ({impedimentGroups.length})
               </button>
               {showAllImpediments && (
                 <ul className="agro-impediments-list">
