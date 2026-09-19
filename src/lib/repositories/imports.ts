@@ -62,7 +62,15 @@ async function promoteRowsToLabResults(
           row.value,
           row.unit,
           row.method,
-          JSON.stringify({ sourceLine: row.sourceLine, importId: input.importId, unitInferred: row.unitInferred, methodInferred: row.methodInferred }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            importId: input.importId,
+            unitInferred: row.unitInferred,
+            methodInferred: row.methodInferred,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+          }),
         ],
       );
       promotedResults += 1;
@@ -203,7 +211,13 @@ export async function commitCsvImport(input: {
           row.method,
           row.unitInferred,
           row.methodInferred,
-          JSON.stringify({ sourceLine: row.sourceLine, source: row.source }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            source: row.source,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+          }),
         ],
       );
     }
