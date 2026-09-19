@@ -359,7 +359,7 @@ export function FieldNdviPanel({
           <span>
             NDVI real ainda não está conectado neste ambiente.
             {runtime.missing.length > 0 ? ` Falta configurar: ${runtime.missing.join(", ")}.` : ""}
-            {" "}Depois dessas credenciais, “Buscar histórico” passa a adquirir e arquivar o raster Sentinel-2 real.
+            {" "}Depois dessa configuração, “Buscar histórico” passa a adquirir e arquivar o raster Sentinel-2 real.
           </span>
         </div>
       )}
