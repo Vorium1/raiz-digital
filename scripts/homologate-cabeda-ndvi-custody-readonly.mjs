@@ -76,7 +76,11 @@ async function main() {
     const guardState = guard.rows[0];
     assert.equal(guardState?.has_guard, true, "Banco não possui o sentinela isolado do PR #88.");
     assert.equal(guardState?.has_037, true, "Migration 037 não está comprovadamente aplicada.");
-    assert.match(String(guardState?.trigger_definition ?? ""), /BEFORE[\s\S]*UPDATE[\s\S]*DELETE/i);
+    const triggerDefinition = String(guardState?.trigger_definition ?? "");
+    assert.match(triggerDefinition, /BEFORE/i);
+    assert.match(triggerDefinition, /UPDATE/i);
+    assert.match(triggerDefinition, /DELETE/i);
+    assert.match(triggerDefinition, /protect_archived_ndvi_snapshot/i);
     assert.equal(guardState?.runtime_delete_allowed, false, "raiz_app não pode possuir DELETE sobre snapshots NDVI.");
 
     const query = await client.query(
