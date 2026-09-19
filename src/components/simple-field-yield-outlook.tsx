@@ -17,6 +17,8 @@ type Payload = {
     p25KgHa: number | null;
     p75KgHa: number | null;
     goodYearScenarioKgHa: number | null;
+    latestScHa: number | null;
+    medianScHa: number | null;
     scenarioScHa: number | null;
     scenarioTotalT: number | null;
     scenarioTotalSacks60kg: number | null;
@@ -67,7 +69,8 @@ export function SimpleFieldYieldOutlook({ fieldId, fieldName, areaHa, canManage 
       {data.regional ? (
         <div className="simple-result-ndvi-grid">
           <div><small>Referência</small><strong>{data.regional.municipality}/{data.regional.state}</strong></div>
-          <div><small>Mediana municipal</small><strong>{fmt(data.regional.medianKgHa, 0)} kg/ha</strong></div>
+          <div><small>Último ano municipal{data.regional.latest ? ` · ${data.regional.latest.year}` : ""}</small><strong>{fmt(data.regional.latestScHa, 1)} sc/ha</strong></div>
+          <div><small>Mediana · {data.regional.sampleYears} anos</small><strong>{fmt(data.regional.medianScHa, 1)} sc/ha</strong></div>
           <div><small>Cenário regional de ano bom (P75)</small><strong>{fmt(data.regional.scenarioScHa, 1)} sc/ha</strong></div>
           <div><small>Total nesse cenário</small><strong>{fmt(data.regional.scenarioTotalSacks60kg, 0)} sc · {fmt(data.regional.scenarioTotalT, 1)} t</strong></div>
         </div>
