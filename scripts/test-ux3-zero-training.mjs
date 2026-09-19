@@ -351,7 +351,11 @@ assert.doesNotMatch(simpleReview, /Pedir ajuste/);
 assert.match(officialResultRoute, /runInterpretationForAnalysis/);
 assert.match(officialResultRoute, /mode: "deterministic"/);
 assert.match(officialResultRoute, /publishPremiumFieldAnalysisReport/);
-assert.match(officialResultRoute, /currentReportCount/);
+assert.doesNotMatch(officialResultRoute, /currentReportCount/);
+assert.match(officialResultRoute, /report\.alreadyCurrent/);
+assert.match(premiumReportPublisher, /raster_archived_at::text AS "rasterArchivedAt"/);
+assert.match(premiumReportPublisher, /getLatestDecisionPublication/);
+assert.match(premiumReportPublisher, /ndviChangedAfterPreviousReport/);
 
 assert.match(deterministicFallback, /Premissas automáticas rastreadas/);
 
