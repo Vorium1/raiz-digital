@@ -11,7 +11,7 @@ on:
       - ".github/workflows/cabeda-official-result-homologation.yml"
       - "scripts/homologate-cabeda-official-result.mjs"
       - "scripts/node-ts-alias-loader.mjs"
-      - "src/app/api/analyses/[id]/official-result/route.ts"
+      - "src/app/api/analyses/**/official-result/route.ts"
       - "src/lib/repositories/analysis-evidence.ts"
       - "src/lib/repositories/ai-generations.ts"
       - "src/lib/repositories/decision-delivery-status.ts"
