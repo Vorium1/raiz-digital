@@ -173,6 +173,11 @@ assert.match(analyticsDashboardRepository, /JOIN current_interpretation ci ON ci
 assert.match(dashboardRepository, /latest_parameter_rule_at/);
 assert.match(dashboardRepository, /status = 'IN_REVIEW' AND current/);
 assert.match(dashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM la\.crop_profile_id/);
+assert.match(dashboardRepository, /field_ndvi_snapshots/);
+assert.match(dashboardRepository, /AS "ndviMean"/);
+assert.match(dashboardRepository, /AS "ndviZoneBreakdown"/);
+assert.match(fieldsPage, /NDVI \{field\.ndviMean/);
+assert.match(fieldsPage, /VIGOR_ZONE_LABELS/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.ok(reviewInbox.includes('redirect("/resultados")'));
