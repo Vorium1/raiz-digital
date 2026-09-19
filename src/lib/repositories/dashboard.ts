@@ -224,6 +224,10 @@ export async function getExecutiveDashboard(tenantId: string, filters: Executive
 export type PortfolioFieldSummary = {
   id: string; name: string; boundary: unknown; clientName: string; propertyName: string;
   plannedPoints: number; collectedPoints: number;
+  ndviMean: number | null;
+  ndviMax: number | null;
+  ndviCapturedAt: string | null;
+  ndviZoneBreakdown: Record<string, number> | null;
   /** Status real de avaliação, nunca "saudável" pra área não avaliada (achado real da auditoria, item B) --
    * ver `evaluationTone` no componente do mapa pra saber como cada valor vira cor. */
   evaluationStatus: "SEM_ANALISE" | "NAO_INTERPRETAVEL" | "EM_ANDAMENTO" | "APROVADO";
@@ -324,6 +328,10 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
        SELECT sf.id::text, sf.name, sf.boundary, sf."clientName", sf."propertyName",
               coalesce(pc.planned_points, 0)::int AS "plannedPoints",
               coalesce(pc.collected_points, 0)::int AS "collectedPoints",
+              ndvi.mean_ndvi::float8 AS "ndviMean",
+              ndvi.max_ndvi::float8 AS "ndviMax",
+              ndvi.captured_at::text AS "ndviCapturedAt",
+              ndvi.zone_breakdown_pct AS "ndviZoneBreakdown",
               CASE
                 WHEN la.id IS NULL THEN 'SEM_ANALISE'
                 WHEN ce.latest_interpretation_status = 'APPROVED' THEN 'APROVADO'
@@ -336,6 +344,13 @@ export async function getPortfolioFieldSummaries(tenantId: string, filters: Exec
        LEFT JOIN point_counts pc ON pc.field_id = sf.id
        LEFT JOIN latest_analyses la ON la.field_id = sf.id
        LEFT JOIN current_evaluation ce ON ce.field_id = sf.id
+       LEFT JOIN LATERAL (
+         SELECT s.mean_ndvi, s.max_ndvi, s.captured_at, s.zone_breakdown_pct
+         FROM field_ndvi_snapshots s
+         WHERE s.field_id = sf.id
+         ORDER BY s.captured_at DESC, s.created_at DESC
+         LIMIT 1
+       ) ndvi ON true
        ORDER BY sf.name`,
       [filters.clientId ?? null, filters.propertyId ?? null, filters.cropSeasonId ?? null],
     );
