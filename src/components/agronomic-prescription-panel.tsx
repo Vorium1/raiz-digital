@@ -366,7 +366,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           )}
 
           {latest.responsePayload.prescription.missingInformation.length > 0 && (
-            <div className="narrative-block attention"><h4><Icon name="warning" size={12}/> Informação necessária para fechar a decisão</h4><ul>{latest.responsePayload.prescription.missingInformation.map((item, i) => <li key={i}>{item}</li>)}</ul></div>
+            <div className="narrative-block attention"><h4><Icon name="shield" size={12}/> Critérios e limites da decisão</h4><ul>{latest.responsePayload.prescription.missingInformation.map((item, i) => <li key={i}>{item}</li>)}</ul></div>
           )}
 
           {latest.responsePayload.prescription.sources.length > 0 && (
