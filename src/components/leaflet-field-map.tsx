@@ -121,7 +121,6 @@ export function LeafletFieldMap({
       // O fallback precisa priorizar disponibilidade, não manter imagem aérea a qualquer custo.
       // Enquanto Google Satellite não estiver configurado, usamos relevo/topografia como base visual.
       // Isso evita o "mapa branco" do OSM padrão e mantém o contexto do terreno sem fingir imagem aérea.
-      const terrain = true;
       L.tileLayer(
         "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
         {
