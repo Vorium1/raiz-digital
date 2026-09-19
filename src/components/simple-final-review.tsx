@@ -99,8 +99,12 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
           <strong>{currentEngineValidation ? "Base validada pelo motor RAIZ" : "Gerar laudo com a base agronômica atual"}</strong>
           <p>
             {currentEngineValidation
-              ? "Os dados correntes já passaram pelo motor determinístico. O próximo comando gera a versão oficial."
-              : "A RAIZ recalcula automaticamente a interpretação com as regras atuais antes de gerar o laudo. Versões antigas permanecem congeladas."}
+              ? canPublish
+                ? "Os dados correntes já passaram pelo motor determinístico. O próximo comando gera a versão oficial."
+                : "Os dados correntes já passaram pelo motor determinístico. A emissão oficial fica disponível para o perfil responsável."
+              : canPublish
+                ? "A RAIZ recalcula automaticamente a interpretação com as regras atuais antes de gerar o laudo. Versões antigas permanecem congeladas."
+                : "A RAIZ recalcula automaticamente a interpretação com as regras atuais. A emissão oficial fica disponível para o perfil responsável."}
           </p>
         </div>
       </div>
