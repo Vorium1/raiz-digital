@@ -8,6 +8,9 @@ export type MapPoint = {
   longitude: number;
   observedLatitude: number | null;
   observedLongitude: number | null;
+  /** Posição originalmente planejada, quando a fonte real substituiu/confirmou o ponto de campo. */
+  plannedLatitude?: number | null;
+  plannedLongitude?: number | null;
   collectedAt: string | null;
   depthFromCm: number;
   depthToCm: number;
