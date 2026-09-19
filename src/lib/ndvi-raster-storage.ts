@@ -153,7 +153,7 @@ export async function saveRequiredNdviRasterArtifact(input: {
   throw new NdviRasterPersistenceError(`NDVI_RASTER_STORAGE_PROVIDER/STORAGE_PROVIDER "${provider}" não oferece armazenamento durável para raster NDVI.`);
 }
 
-/** Lê somente o artefato já arquivado; nunca reconsulta o Copernicus como fallback histórico. */
+/** Lê somente o artefato já arquivado; nunca reconsulta o provider de satélite como fallback histórico. */
 export async function readNdviRasterArtifact(input: {
   tenantId: string;
   fieldId: string;
