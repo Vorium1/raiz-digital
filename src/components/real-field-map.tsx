@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleFieldMap } from "@/components/google-field-map";
 import { LeafletFieldMap, MAP_NEUTRAL_COLOR } from "@/components/leaflet-field-map";
 import type { FieldMapProps } from "@/components/spatial-map-types";
@@ -16,7 +16,37 @@ export type { MapImageOverlay, MapLegendEntry, MapPoint, SpatialGeometry } from 
 export function RealFieldMap(props: FieldMapProps) {
   const resolution = useMemo(() => resolveSpatialMapProvider(), []);
   const [googleFailed, setGoogleFailed] = useState(false);
+  const [shouldMountMap, setShouldMountMap] = useState(false);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const onProviderFailure = useCallback(() => setGoogleFailed(true), []);
+
+  useEffect(() => {
+    const node = hostRef.current;
+    if (!node || shouldMountMap) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setShouldMountMap(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldMountMap(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "420px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shouldMountMap]);
+
+  if (!shouldMountMap) {
+    return (
+      <div ref={hostRef} className="real-field-map real-field-map-deferred" style={{ minHeight: props.height ?? 360 }}>
+        <span>Preparando mapa…</span>
+      </div>
+    );
+  }
 
   if (resolution.provider === "GOOGLE" && !googleFailed) {
     return <GoogleFieldMap {...props} onProviderFailure={onProviderFailure} />;
