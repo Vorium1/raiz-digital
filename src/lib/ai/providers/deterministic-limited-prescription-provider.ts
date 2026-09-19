@@ -58,8 +58,10 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
       });
     } else if (sulfur.blockers.includes("S_NO_STRICT_PREDOMINANCE")) {
       limitations.push("Enxofre: os pontos não sustentam uma dose única para toda a área; o RAIZ preservou a variação em vez de forçar uma recomendação uniforme.");
-    } else {
+    } else if (sulfur.dose.kind === "BLOCKED") {
       limitations.push(`Enxofre: ${sulfur.dose.reason}`);
+    } else {
+      limitations.push(`Enxofre: a regra determinística retornou uma faixa de ${sulfur.dose.minKgSPerHa}–${sulfur.dose.maxKgSPerHa} kg S/ha; o RAIZ não escolheu um ponto dentro da faixa por conta própria.`);
     }
   }
 
