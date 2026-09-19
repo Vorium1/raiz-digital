@@ -24,8 +24,6 @@ const safeBase = {
   ...s3,
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
-  COPERNICUS_CLIENT_ID: "copernicus-client",
-  COPERNICUS_CLIENT_SECRET: "copernicus-secret",
 };
 
 const good = evaluateProductionReadiness({
@@ -39,6 +37,7 @@ assert.equal(good.failures.length, 0);
 assert.ok(good.checks.some((item) => item.name === "raw-import-archive" && item.level === "PASS"));
 assert.ok(good.checks.some((item) => item.name === "billing" && item.level === "PASS"));
 assert.ok(good.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"));
+assert.ok(good.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"));
 
 const goodWithCheckout = evaluateProductionReadiness({
   ...safeBase,
@@ -77,6 +76,7 @@ for (const required of ["data-mode", "app-database", "least-privilege", "databas
   assert.ok(unsafe.failures.some((item) => item.name === required), `Preflight deveria bloquear ${required}.`);
 }
 assert.ok(unsafe.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"), "Checkout ausente/desligado deve continuar sendo um estado seguro.");
+assert.ok(unsafe.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"), "Earth Search público não deve depender de segredo Copernicus.");
 
 const noAdminRuntime = evaluateProductionReadiness({
   DATA_MODE: "database",
