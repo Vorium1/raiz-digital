@@ -31,6 +31,7 @@ export function SimpleResultsPreparation({
       const response = await fetch(`/api/analyses/${item.id}/interpret?draft=local`, { method: "POST" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível atualizar esta análise.");
+      if (automatic) sessionStorage.removeItem(`raiz:ux3:results-refresh:${item.id}`);
       return true;
     } catch (caught) {
       setErrors((current) => ({
