@@ -276,7 +276,7 @@ export function SimpleSendFlow() {
       {error && <div className="simple-send-error final"><Icon name="warning" size={17}/><span>{error}</span></div>}
 
       <div className="simple-send-finish">
-        <div><strong>A RAIZ faz o restante.</strong><small>Organiza, analisa e leva para revisão. Nada é publicado automaticamente.</small></div>
+        <div><strong>A RAIZ faz o restante.</strong><small>Organiza, analisa e prepara o laudo. Nada é publicado automaticamente.</small></div>
         <button type="button" disabled={!importReady || !areaReady || !areaConfirmed || busy} onClick={() => void submit()}>{busy ? "Analisando…" : "Enviar e analisar"}<Icon name="arrow" size={16}/></button>
       </div>
     </div>
