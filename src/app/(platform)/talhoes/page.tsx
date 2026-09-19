@@ -3,8 +3,26 @@ import { Icon } from "@/components/icon";
 import { SimplePortfolioMap } from "@/components/simple-portfolio-map";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
+import { VIGOR_ZONE_LABELS, type VigorZone } from "@/domain/ndvi-engine";
 
 export const metadata = { title: "Talhões" };
+
+const VIGOR_ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
+
+function dominantVigor(zoneBreakdown: Record<string, number> | null) {
+  if (!zoneBreakdown) return null;
+  let best: VigorZone | null = null;
+  let bestPct = -1;
+  for (const zone of VIGOR_ZONE_ORDER) {
+    const pct = Number(zoneBreakdown[zone] ?? 0);
+    if (pct > bestPct) {
+      best = zone;
+      bestPct = pct;
+    }
+  }
+  return best && bestPct >= 0 ? { zone: best, pct: bestPct } : null;
+}
+
 
 const STATUS_COPY = {
   SEM_ANALISE: "Sem dados ainda",
@@ -32,14 +50,27 @@ export default async function TalhoesPage() {
           </section>
 
           <section className="simple-field-list" aria-label="Lista de talhões">
-            {fields.map((field) => (
-              <Link href={`/talhoes/${field.id}`} key={field.id} className="simple-field-row">
-                <span className={`simple-field-dot state-${field.evaluationStatus.toLowerCase()}`} />
-                <div><strong>{field.name}</strong><small>{field.propertyName} · {field.clientName}</small></div>
-                <span className="simple-field-state">{STATUS_COPY[field.evaluationStatus]}</span>
-                <Icon name="chevron" size={17}/>
-              </Link>
-            ))}
+            {fields.map((field) => {
+              const dominant = dominantVigor(field.ndviZoneBreakdown);
+              return (
+                <Link href={`/talhoes/${field.id}`} key={field.id} className="simple-field-row">
+                  <span className={`simple-field-dot state-${field.evaluationStatus.toLowerCase()}`} />
+                  <div className="simple-field-row-main">
+                    <strong>{field.name}</strong>
+                    <small>{field.propertyName} · {field.clientName}</small>
+                    {field.ndviMean != null && (
+                      <span className="simple-field-ndvi">
+                        <Icon name="leaf" size={12}/>
+                        NDVI {field.ndviMean.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {dominant ? ` · ${VIGOR_ZONE_LABELS[dominant.zone]}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <span className="simple-field-state">{STATUS_COPY[field.evaluationStatus]}</span>
+                  <Icon name="chevron" size={17}/>
+                </Link>
+              );
+            })}
           </section>
         </>
       ) : (
