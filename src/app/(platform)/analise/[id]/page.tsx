@@ -133,7 +133,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <i/>
         <div className={analysisCurrent && interpretationStatus === "APPROVED" ? "done" : reviewPending ? "current" : "pending"}><span><Icon name={analysisCurrent && interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Validação</b><small>{analysisCurrent && interpretationStatus === "APPROVED" ? "Concluída" : reviewPending ? "Preparando" : "Depois da análise"}</small></div>
         <i/>
-        <div className={delivery?.currentReportCount ? "done" : finalReviewApproved ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : finalReviewApproved ? "Pronto para publicar" : "Depois da revisão"}</small></div>
+        <div className={delivery?.currentReportCount ? "done" : finalReviewApproved ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : finalReviewApproved ? "Pronto para publicar" : "Depois da validação"}</small></div>
       </section>
 
       {findingSummaries.length > 0 && (
