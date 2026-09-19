@@ -16,8 +16,6 @@ const completeEnv = {
   S3_SECRET_KEY: "storage-secret-key",
   MERCADO_PAGO_ACCESS_TOKEN: "mp-access-token-secret",
   MERCADO_PAGO_WEBHOOK_SECRET: "mp-webhook-secret",
-  COPERNICUS_CLIENT_ID: "copernicus-client",
-  COPERNICUS_CLIENT_SECRET: "copernicus-secret",
   REPORT_STORAGE_PROVIDER: "inline",
 };
 
@@ -26,7 +24,7 @@ assert.deepEqual(ready, {
   email: true,
   rawStorage: true,
   mercadoPago: true,
-  copernicus: true,
+  satelliteNdvi: true,
   reportStorage: true,
 });
 assert.deepEqual(operationalIntegrationScore(ready), { ready: 5, total: 5 });
@@ -38,7 +36,6 @@ for (const secret of [
   completeEnv.S3_SECRET_KEY,
   completeEnv.MERCADO_PAGO_ACCESS_TOKEN,
   completeEnv.MERCADO_PAGO_WEBHOOK_SECRET,
-  completeEnv.COPERNICUS_CLIENT_SECRET,
 ]) {
   assert.equal(serialized.includes(secret), false, "o resumo operacional nunca pode carregar o valor de um segredo");
 }
@@ -48,15 +45,14 @@ const incomplete = getOperationalIntegrationReadiness({
   STORAGE_PROVIDER: "local",
   REPORT_STORAGE_PROVIDER: "inline",
   MERCADO_PAGO_ACCESS_TOKEN: "somente-token",
-  COPERNICUS_CLIENT_ID: "somente-id",
 });
 assert.deepEqual(incomplete, {
   email: false,
   rawStorage: false,
   mercadoPago: false,
-  copernicus: false,
+  satelliteNdvi: true,
   reportStorage: true,
 });
-assert.deepEqual(operationalIntegrationScore(incomplete), { ready: 1, total: 5 });
+assert.deepEqual(operationalIntegrationScore(incomplete), { ready: 2, total: 5 });
 
 console.log("✓ Observabilidade: prontidão agregada sem exposição de segredos validada");
