@@ -379,3 +379,8 @@ assert.match(simpleResult, /RASTREABILIDADE/);
 assert.match(simpleResult, /Base agronômica/);
 assert.match(simpleResult, /RAIZ Agronomic Engine/);
 assert.match(simpleResult, /Versão do motor/);
+
+assert.match(simplePublish, /label = "Gerar laudo RAIZ"/);
+assert.match(simplePublish, /busyLabel = "Gerando laudo…"/);
+assert.match(simpleResult, /Atualizar laudo com dados atuais/);
+assert.match(simpleResult, /Atualizando laudo…/);
