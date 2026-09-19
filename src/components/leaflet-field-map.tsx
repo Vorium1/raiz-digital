@@ -119,16 +119,14 @@ export function LeafletFieldMap({
       // Contingência deliberadamente SEM Esri. O bug histórico de quadrantes pretos ocorre em qualquer
       // viewport e pode vir de tile opaco inválido (HTTP 200), caso em que uma camada inferior não aparece.
       // O fallback precisa priorizar disponibilidade, não manter imagem aérea a qualquer custo.
-      const terrain = baseLayer === "terrain";
+      // Enquanto Google Satellite não estiver configurado, usamos relevo/topografia como base visual.
+      // Isso evita o "mapa branco" do OSM padrão e mantém o contexto do terreno sem fingir imagem aérea.
+      const terrain = true;
       L.tileLayer(
-        terrain
-          ? "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
         {
-          maxZoom: terrain ? 17 : 19,
-          attribution: terrain
-            ? "Map data &copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap (CC-BY-SA)"
-            : "&copy; OpenStreetMap contributors",
+          maxZoom: 17,
+          attribution: "Map data &copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap (CC-BY-SA)",
         },
       ).addTo(map);
 
