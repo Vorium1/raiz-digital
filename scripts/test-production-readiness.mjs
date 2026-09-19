@@ -39,6 +39,38 @@ assert.ok(good.checks.some((item) => item.name === "billing" && item.level === "
 assert.ok(good.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"));
 assert.ok(good.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"));
 
+const explicitCopernicusMissing = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(explicitCopernicusMissing.ok, false);
+assert.ok(explicitCopernicusMissing.failures.some((item) => item.name === "satellite-ndvi"));
+
+const explicitCopernicusReady = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  COPERNICUS_CLIENT_ID: "copernicus-client",
+  COPERNICUS_CLIENT_SECRET: "copernicus-secret",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(explicitCopernicusReady.ok, true);
+assert.ok(explicitCopernicusReady.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"));
+
+const invalidSatelliteProvider = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "inventado",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(invalidSatelliteProvider.ok, false);
+assert.ok(invalidSatelliteProvider.failures.some((item) => item.name === "satellite-ndvi"));
+
 const goodWithCheckout = evaluateProductionReadiness({
   ...safeBase,
   MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
