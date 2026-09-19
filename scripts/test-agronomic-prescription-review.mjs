@@ -126,3 +126,7 @@ assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDeci
 assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
 
 console.log("agronomic-prescription-review: publicação exata, imutável, concorrente-segura e republicável somente com NDVI mais novo");
+
+assert.match(premiumPublicationSource, /const reportRevision = previousReport \? previousReport\.revision \+ 1 : interpretation\.revision/);
+assert.match(premiumPublicationSource, /revision: reportRevision/);
+assert.match(premiumPublicationSource, /approvedPrescription\.id, reportRevision, stored\.key/);
