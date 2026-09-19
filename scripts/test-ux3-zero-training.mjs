@@ -266,6 +266,9 @@ assert.match(simpleAnalysis, /detalhes suficientes da metodologia/);
 assert.match(simpleAnalysis, /joinHumanList/);
 assert.doesNotMatch(simpleAnalysis, /Pronto para revisar|Revisão concluída|<b>Revisão<\/b>|Aguardando você/);
 assert.doesNotMatch(simpleAnalysis, /Depois da revisão/);
+assert.doesNotMatch(simpleAnalysis, /já foi revisada|decisão técnica revisável/);
+assert.match(simpleAnalysis, /já foi validada e publicada/);
+assert.match(simpleAnalysis, /não encontrou base suficiente para concluir uma decisão técnica/);
 assert.match(simpleAnalysis, /Validação em andamento/);
 assert.match(simpleAnalysis, /<b>Validação<\/b>/);
 assert.match(simpleAnalysis, /motor RAIZ/);
@@ -420,3 +423,6 @@ assert.match(yieldOutlook, /Mediana ·/);
 
 assert.match(dataMode, /process\.env\.NODE_ENV !== "production"/);
 assert.match(dataMode, /process\.env\.DATA_MODE === "demo"/);
+
+assert.match(send, /Organiza, analisa e prepara o laudo/);
+assert.doesNotMatch(send, /leva para revisão/);
