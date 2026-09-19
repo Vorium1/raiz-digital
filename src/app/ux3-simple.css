@@ -440,13 +440,17 @@
     background: rgba(255,255,255,.97);
     border-top: 1px solid var(--simple-line);
     bottom: 0;
+    box-sizing: border-box;
     display: grid;
-    grid-template-columns: repeat(5,1fr);
-    height: 76px;
+    grid-template-columns: repeat(5,minmax(0,1fr));
+    height: calc(70px + env(safe-area-inset-bottom));
     left: 0;
-    padding: 7px 6px max(7px, env(safe-area-inset-bottom));
+    max-width: 100vw;
+    overflow: hidden;
+    padding: 5px max(4px, env(safe-area-inset-left)) max(5px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-right));
     position: fixed;
     right: 0;
+    width: 100%;
     z-index: 1000;
   }
   .simple-mobile-nav > a {
@@ -456,13 +460,23 @@
     flex-direction: column;
     font-size: 9px;
     font-weight: 700;
-    gap: 4px;
+    gap: 3px;
     justify-content: center;
     min-width: 0;
+    overflow: hidden;
+    padding-inline: 2px;
     text-decoration: none;
+    width: 100%;
+  }
+  .simple-mobile-nav > a span,
+  .simple-mobile-nav > a b {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .simple-mobile-nav > a.active { color: var(--simple-green); }
-  .simple-mobile-send { transform: translateY(-12px); }
+  .simple-mobile-send { transform: translateY(-8px); }
   .simple-mobile-send > span {
     align-items: center;
     background: var(--simple-green);
@@ -471,9 +485,9 @@
     box-shadow: 0 8px 20px rgba(47,125,69,.23);
     color: #fff;
     display: flex;
-    height: 54px;
+    height: 50px;
     justify-content: center;
-    width: 54px;
+    width: 50px;
   }
   .simple-mobile-send b { font-size: 9px; margin-top: -1px; }
 }
