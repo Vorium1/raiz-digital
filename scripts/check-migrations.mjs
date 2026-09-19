@@ -163,6 +163,13 @@ assert.match(reportRepublishOnNewNdvi, /WHERE prescription_generation_id IS NOT 
 assert.doesNotMatch(reportRepublishOnNewNdvi, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
 
 assert.doesNotThrow(() => assertUniqueMigrationNumbers(migrationFiles));
+for (const migrationName of migrationFiles) {
+  const migrationSql = await readFile(new URL(`../db/migrations/${migrationName}`, import.meta.url), "utf8");
+  assert.doesNotThrow(
+    () => buildAtomicMigrationSql(migrationSql, migrationName),
+    `Migration incompatível com o runner atômico: ${migrationName}`,
+  );
+}
 assert.throws(
   () => assertUniqueMigrationNumbers(["039_a.sql", "039_b.sql"]),
   /Prefixo de migration duplicado 039/,
