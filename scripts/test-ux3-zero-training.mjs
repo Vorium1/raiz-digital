@@ -63,6 +63,7 @@ const ndviPanel = read("src/components/field-ndvi-panel.tsx");
 const prescriptionWorkflow = read("src/lib/workflows/agronomic-prescription-draft.ts");
 const simplePublish = read("src/components/simple-publish-result-button.tsx");
 const officialResultRoute = read("src/app/api/analyses/[id]/official-result/route.ts");
+const legacyPublishRoute = read("src/app/api/interpretations/[id]/publish-report/route.ts");
 const premiumReportPublisher = read("src/lib/repositories/premium-report-publication.ts");
 const reportsRepository = read("src/lib/repositories/reports.ts");
 const decisionDeliveryStatus = read("src/lib/repositories/decision-delivery-status.ts");
@@ -225,6 +226,8 @@ assert.match(results, /const PREPARE_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_A
 assert.doesNotMatch(results, /PREPARE_ROLES[^\n]*FIELD_TECH/);
 assert.match(officialResultRoute, /const allowedRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
 assert.doesNotMatch(officialResultRoute, /allowedRoles[^\n]*FIELD_TECH/);
+assert.match(legacyPublishRoute, /const publishRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.doesNotMatch(legacyPublishRoute, /publishRoles[^\n]*FIELD_TECH/);
 assert.match(results, /VALIDADOS PELO MOTOR/);
 assert.match(results, /Prontos para gerar o laudo/);
 assert.match(results, /delivery\.prescriptionCurrent === true[\s\S]*?delivery\.prescriptionStatus === "APPROVED"/);
