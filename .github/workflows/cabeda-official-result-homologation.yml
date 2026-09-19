@@ -1,5 +1,5 @@
 name: Cabeda Official Result Homologation
-# retrigger-after-homologation-secret-2026-09-18
+# retrigger-after-correct-environment-name-2026-09-18
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ jobs:
     name: generate-cabeda-official-results
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: homologação
+    environment: homologation
     env:
       APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
