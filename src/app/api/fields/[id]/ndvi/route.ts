@@ -5,6 +5,7 @@ import {
   detectWithinFieldVariability,
 } from "@/domain/ndvi-engine";
 import { getPlatformSession } from "@/lib/auth/session";
+import { getSatelliteNdviReadiness } from "@/domain/operational-readiness";
 import {
   NDVI_RASTER_ALGORITHM_VERSION,
   NdviRasterPersistenceError,
@@ -31,12 +32,10 @@ const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
 
 function ndviRuntimeReadiness() {
   const missing: string[] = [];
-  const satelliteProvider = (process.env.NDVI_SATELLITE_PROVIDER ?? "earth-search").trim().toLowerCase();
-  const copernicusConfigured = Boolean(
-    process.env.COPERNICUS_CLIENT_ID?.trim() && process.env.COPERNICUS_CLIENT_SECRET?.trim(),
-  );
-  const satelliteConfigured = satelliteProvider === "earth-search"
-    || (satelliteProvider === "copernicus" && copernicusConfigured);
+  const satelliteReadiness = getSatelliteNdviReadiness(process.env);
+  const satelliteProvider = satelliteReadiness.provider;
+  const copernicusConfigured = satelliteProvider === "copernicus" && satelliteReadiness.ready;
+  const satelliteConfigured = satelliteReadiness.ready;
 
   if (satelliteProvider === "copernicus") {
     if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
