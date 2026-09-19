@@ -105,7 +105,7 @@ export function SimpleFieldOverview({
 
       <SimpleFieldVigor fieldId={field.id}/>
 
-      <SimpleFieldYieldOutlook fieldId={field.id}/>
+      <SimpleFieldYieldOutlook fieldId={field.id} fieldName={field.name} areaHa={field.areaHa} canManage={canRefreshAnalysis}/>
 
       <section className="simple-field-status">
         <div className={`simple-field-state ${stateIcon === "check" ? "ready" : stateIcon === "shield" ? "review" : ""}`}>
