@@ -396,3 +396,7 @@ assert.doesNotMatch(fieldOverviewTabs, /Aguardando revisão profissional|Valida�
 assert.match(yieldOutlook, /Cenário regional de ano bom \(P75\)/);
 assert.match(yieldOutlook, /Previsão RAIZ: ainda não liberada/);
 assert.match(yieldOutlook, /não uma previsão deste talhão/);
+
+assert.match(yieldOutlook, /FieldYieldHistoryManager/);
+assert.match(yieldOutlook, /Use somente produtividade realmente colhida/);
+assert.doesNotMatch(yieldOutlook, /coletas#produtividade/);
