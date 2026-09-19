@@ -62,7 +62,9 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     const resultsResult = await client.query<LabResultInput>(
       `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS "value",
-              lr.unit, lr.analytical_method AS "method", lr.source, ls.sample_type AS "sampleType",
+              lr.unit, lr.analytical_method AS "method",
+              lr.original_payload->>'protocol' AS "protocol",
+              lr.source, ls.sample_type AS "sampleType",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
        FROM lab_samples ls
        JOIN lab_results lr ON lr.lab_sample_id = ls.id
@@ -74,7 +76,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
     const labResults = resultsResult.rows.map((row) => ({
       ...row,
       unit: normalizeUnit(row.parameterCode, row.unit),
-      method: normalizeAnalyticalMethod(row.parameterCode, row.method),
+      method: normalizeAnalyticalMethod(row.parameterCode, row.method, row.protocol),
       depthFromCm: row.depthFromCm ?? null,
       depthToCm: row.depthToCm ?? null,
     }));
