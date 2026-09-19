@@ -39,7 +39,7 @@ export default async function SystemOperationPage() {
     ["E-mail transacional", readiness.email, "Resend + remetente configurado"],
     ["Storage bruto", readiness.rawStorage, "S3 compatível para arquivos originais"],
     ["Mercado Pago", readiness.mercadoPago, "Access Token + segredo do webhook"],
-    ["Copernicus", readiness.copernicus, "OAuth client para Sentinel-2"],
+    ["NDVI Sentinel-2", readiness.satelliteNdvi, "Earth Search público + Sentinel-2 L2A/COG"],
     ["Snapshot de relatório", readiness.reportStorage, "REPORT_STORAGE_PROVIDER=inline"],
   ] as const;
 
