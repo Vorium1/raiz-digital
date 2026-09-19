@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
+import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
@@ -322,7 +323,17 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
 
         <footer className="simple-result-footer">
           <div><span><Icon name="shield" size={16}/> Validado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
-          <div className="no-print"><PrintButton/>{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}</div>
+          <div className="no-print">
+            <PrintButton/>
+            {canViewTechnical && (
+              <SimplePublishResultButton
+                analysisId={analysisId}
+                label="Atualizar laudo com dados atuais"
+                busyLabel="Atualizando laudo…"
+              />
+            )}
+            {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}
+          </div>
         </footer>
       </article>
     </div>
