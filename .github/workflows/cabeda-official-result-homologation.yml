@@ -11,6 +11,21 @@ on:
       - ".github/workflows/cabeda-official-result-homologation.yml"
       - "scripts/homologate-cabeda-official-result.mjs"
       - "scripts/node-ts-alias-loader.mjs"
+      - "src/app/api/analyses/[id]/official-result/route.ts"
+      - "src/lib/repositories/analysis-evidence.ts"
+      - "src/lib/repositories/ai-generations.ts"
+      - "src/lib/repositories/decision-delivery-status.ts"
+      - "src/lib/repositories/interpretations.ts"
+      - "src/lib/repositories/prescription-freshness.ts"
+      - "src/lib/repositories/prescription-review.ts"
+      - "src/lib/repositories/report-publication-gate.ts"
+      - "src/lib/repositories/premium-report-publication.ts"
+      - "src/lib/repositories/prescription-generation.ts"
+      - "src/lib/workflows/agronomic-prescription-draft.ts"
+      - "src/domain/prescription-pk-validation.ts"
+      - "src/domain/uniform-pk-readiness.ts"
+      - "src/domain/report-publication-gate.ts"
+      - "db/migrations/038_report_snapshot_republication.sql"
 
 permissions:
   contents: read
