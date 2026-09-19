@@ -1,7 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
-import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 import { getLatestInterpretation, runInterpretationForAnalysis } from "@/lib/repositories/interpretations";
 import { getAgronomicPrescriptionFreshness } from "@/lib/repositories/prescription-freshness";
 import { prepareAgronomicPrescriptionDraft } from "@/lib/workflows/agronomic-prescription-draft";
@@ -114,20 +113,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       );
     }
 
-    const delivery = (await getDecisionDeliveryStatuses(
-      session.tenantId,
-      [analysisId],
-      session.userId,
-    ))[0];
-    if ((delivery?.currentReportCount ?? 0) > 0) {
-      return Response.json({
-        alreadyPublished: true,
-        analysisId,
-        interpretationId: interpretation.id,
-        prescriptionId: prescription.id,
-      });
-    }
-
     await assertReportPublicationReady(session.tenantId, interpretation.id, session.userId);
     const report = await publishPremiumFieldAnalysisReport({
       tenantId: session.tenantId,
@@ -137,11 +122,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
     return Response.json({
       report,
+      alreadyPublished: report.alreadyCurrent,
       analysisId,
       interpretationId: interpretation.id,
       prescriptionId: prescription.id,
       recalculatedWithCurrentKnowledge: true,
-    }, { status: 201 });
+    }, { status: report.alreadyCurrent ? 200 : 201 });
   } catch (error) {
     if (error instanceof InterpretationError) return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof AiGenerationError) return Response.json({ error: error.message }, { status: error.status });
