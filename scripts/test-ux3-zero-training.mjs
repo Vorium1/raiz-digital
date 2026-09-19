@@ -222,8 +222,13 @@ assert.match(results, /analyses\.map\(\(analysis: any\) => String\(analysis\.id\
 assert.match(results, /Versões oficiais já emitidas/);
 assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
-assert.match(results, /const PREPARE_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
-assert.doesNotMatch(results, /PREPARE_ROLES[^\n]*FIELD_TECH/);
+assert.match(results, /const REFRESH_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"\]\)/);
+assert.match(results, /const PUBLISH_ROLES = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
+assert.match(resultsPreparation, /canRefresh: boolean/);
+assert.match(resultsPreparation, /canPublish: boolean/);
+assert.match(resultsPreparation, /if \(!canRefresh\) return false/);
+assert.match(resultsPreparation, /if \(!canPublish\) return/);
+assert.doesNotMatch(resultsPreparation, /canPrepare/);
 assert.match(officialResultRoute, /const allowedRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
 assert.doesNotMatch(officialResultRoute, /allowedRoles[^\n]*FIELD_TECH/);
 assert.match(legacyPublishRoute, /const publishRoles = new Set\(\["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"\]\)/);
