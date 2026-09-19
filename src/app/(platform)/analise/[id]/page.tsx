@@ -61,7 +61,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const analysisCurrent = Boolean(interpretation) && evidenceState.freshness.current;
   const output = analysisCurrent ? (interpretation as any)?.structuredOutput ?? null : null;
   const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
-  const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
+  const findingSummaries = summarizeSimpleInterpretation(interpretationItems);
   const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
   const blockedParameterNames: string[] = Array.from(new Set<string>(
     interpretationItems
