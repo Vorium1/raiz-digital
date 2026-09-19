@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleFieldMap } from "@/components/google-field-map";
+import { MapboxFieldMap } from "@/components/mapbox-field-map";
 import { LeafletFieldMap, MAP_NEUTRAL_COLOR } from "@/components/leaflet-field-map";
 import type { FieldMapProps } from "@/components/spatial-map-types";
 import { resolveSpatialMapProvider } from "@/lib/maps/spatial-map-provider";
@@ -11,14 +12,16 @@ export type { MapImageOverlay, MapLegendEntry, MapPoint, SpatialGeometry } from 
 /**
  * Fachada única para mapas de talhão. Em produção, a base preferencial pode ser Google Satellite;
  * NDVI, pontos e contorno continuam sendo dados RAIZ/Copernicus/PostGIS e não dependem do provedor-base.
- * Se Google falhar em runtime, cai para Leaflet com camada de contingência sem quebrar a análise.
+ * Google é a preferência. Mapbox fica pré-integrado como segunda opção; se ambos falharem, Leaflet + relevo preserva a análise.
  */
 export function RealFieldMap(props: FieldMapProps) {
   const resolution = useMemo(() => resolveSpatialMapProvider(), []);
   const [googleFailed, setGoogleFailed] = useState(false);
+  const [mapboxFailed, setMapboxFailed] = useState(false);
   const [shouldMountMap, setShouldMountMap] = useState(false);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const onProviderFailure = useCallback(() => setGoogleFailed(true), []);
+  const onGoogleFailure = useCallback(() => setGoogleFailed(true), []);
+  const onMapboxFailure = useCallback(() => setMapboxFailed(true), []);
 
   useEffect(() => {
     const node = hostRef.current;
@@ -49,14 +52,20 @@ export function RealFieldMap(props: FieldMapProps) {
   }
 
   if (resolution.provider === "GOOGLE" && !googleFailed) {
-    return <GoogleFieldMap {...props} onProviderFailure={onProviderFailure} />;
+    return <GoogleFieldMap {...props} onProviderFailure={onGoogleFailure} />;
   }
 
-  const providerNote = googleFailed
-    ? "Google Satellite ficou indisponível nesta sessão; a RAIZ ativou o mapa-base de contingência sem alterar NDVI, contorno ou coordenadas."
+  if ((resolution.provider === "MAPBOX" || googleFailed) && !mapboxFailed) {
+    return <MapboxFieldMap {...props} onProviderFailure={onMapboxFailure} />;
+  }
+
+  const providerNote = googleFailed && mapboxFailed
+    ? "Google Satellite e Mapbox ficaram indisponíveis nesta sessão; a RAIZ ativou o relevo de contingência sem alterar NDVI, contorno ou coordenadas."
     : resolution.reason === "GOOGLE_KEY_MISSING"
-      ? "Google Satellite está selecionado, mas a chave pública ainda não foi vinculada; usando mapa-base de contingência."
-      : null;
+      ? "Google Satellite está selecionado, mas a chave pública ainda não foi vinculada; usando o melhor mapa-base disponível."
+      : resolution.reason === "MAPBOX_TOKEN_MISSING"
+        ? "Mapbox está selecionado, mas o token público ainda não foi vinculado; usando o melhor mapa-base disponível."
+        : null;
 
   return <LeafletFieldMap {...props} providerNote={providerNote} />;
 }
