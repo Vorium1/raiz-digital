@@ -94,6 +94,8 @@ export function SimpleFieldOverview({
         <Link href={actionHref} className="simple-field-primary-action"><Icon name={stateIcon} size={19}/><span><strong>{stateTitle}</strong><small>{actionLabel}</small></span><Icon name="chevron" size={16}/></Link>
       </header>
 
+      <SimpleFieldVigor fieldId={field.id}/>
+
       <SimpleFieldMapLayers
         fieldId={field.id}
         boundary={field.boundary as any}
@@ -102,8 +104,6 @@ export function SimpleFieldOverview({
         freshnessCode={analysisFreshness?.code ?? null}
         canRefresh={canRefreshAnalysis}
       />
-
-      <SimpleFieldVigor fieldId={field.id}/>
 
       <SimpleFieldYieldOutlook fieldId={field.id} fieldName={field.name} areaHa={field.areaHa} canManage={canRefreshAnalysis}/>
 
