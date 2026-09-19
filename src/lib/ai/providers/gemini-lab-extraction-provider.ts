@@ -24,13 +24,15 @@ export type LabExtractionResult = { csvContent: string; provider: "google"; mode
 const PROMPT = [
   "Você está transcrevendo, número por número, um laudo real de análise de solo ou foliar. Pode ter várias amostras, pontos ou profundidades no mesmo documento.",
   "NÃO interprete, NÃO classifique (ex.: não diga se é \"baixo\" ou \"adequado\"), NÃO calcule nada -- apenas transcreva cada resultado exatamente como está impresso.",
-  "Responda SOMENTE com uma tabela CSV, separador ponto e vírgula (;), sem nenhum texto antes ou depois, sem bloco de código markdown, com EXATAMENTE estas 5 colunas na primeira linha: amostra;parametro;valor;unidade;metodo",
+  "Responda SOMENTE com uma tabela CSV, separador ponto e vírgula (;), sem nenhum texto antes ou depois, sem bloco de código markdown, com EXATAMENTE estas 6 colunas na primeira linha: amostra;parametro;valor;unidade;metodo;protocolo",
   "Regras:",
   "- Uma linha de dado por resultado. Se o laudo tem várias profundidades ou pontos, cada um é uma \"amostra\" diferente -- use o identificador exato impresso (ex.: \"0-20cm\", \"Ponto 1\", \"P1-0-20\"). Se não houver identificador nenhum, use \"AMOSTRA-1\" para todas as linhas.",
   "- Coluna \"parametro\": o nome ou sigla exatamente como impresso no laudo (ex.: \"pH\", \"Fósforo\", \"P\", \"Potássio\", \"Ca\", \"V%\", \"MO\"). Não troque por outro código nem traduza.",
   "- Coluna \"valor\": só o número. Nunca escreva a unidade junto.",
   "- Coluna \"unidade\": exatamente como impressa (ex.: \"mg/dm³\", \"cmolc/dm³\", \"%\"). Se não tiver certeza, deixe vazio -- nunca invente.",
-  "- Coluna \"metodo\": o método/extrator, se estiver impresso (ex.: \"Mehlich-1\", \"Resina\"). Se não estiver impresso, deixe vazio.",
+  "- Coluna \"metodo\": o método/extrator específico daquela linha, SOMENTE se estiver explicitamente associado ao parâmetro no documento. Se não estiver, deixe vazio.",
+  "- Coluna \"protocolo\": procure no DOCUMENTO INTEIRO (cabeçalho, rodapé, observações, notas, título ou quadro de metodologia) a referência global de método/protocolo usada pelo laboratório (ex.: \"Tedesco, M. J. et al. Boletim técnico n° 5 - Análises de Solo, Plantas e Outros Materiais. 2 ed. Porto Alegre, 1995\"). Se existir e valer para os ensaios da página/documento, transcreva a referência e REPITA a mesma referência em todas as linhas correspondentes. Se não existir, deixe vazio. Não deduza o protocolo por logo, laboratório ou aparência.",
+  "- Nunca complete uma técnica específica a partir do nome do protocolo. Ex.: se o documento só diz Tedesco 1995, transcreva isso em protocolo e deixe metodo vazio; a resolução protocolo→método é responsabilidade do código determinístico do RAIZ.",
   "- Se um número estiver ilegível ou você não tiver certeza do valor, NÃO inclua essa linha -- é preferível omitir um resultado a transcrever um valor errado.",
   "- Nunca invente amostra, parâmetro ou valor que não esteja realmente impresso no documento.",
 ].join("\n");
