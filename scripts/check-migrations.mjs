@@ -193,7 +193,11 @@ assert.throws(
 );
 
 assert.match(migrationRunner, /assertUniqueMigrationNumbers\(files\)/);
-assert.match(migrationRunner, /pool\.query\(buildAtomicMigrationSql\(sql, name\)\)/);
+assert.match(migrationRunner, /const client = await pool\.connect\(\)/);
+assert.match(migrationRunner, /pg_advisory_lock\(hashtext\('raiz-digital'\), hashtext\('schema-migrations'\)\)/);
+assert.match(migrationRunner, /pg_advisory_unlock\(hashtext\('raiz-digital'\), hashtext\('schema-migrations'\)\)/);
+assert.match(migrationRunner, /client\.release\(\)/);
+assert.match(migrationRunner, /client\.query\(buildAtomicMigrationSql\(sql, name\)\)/);
 assert.doesNotMatch(migrationRunner, /pool\.query\("INSERT INTO schema_migrations\(name\)/);
 
 console.log("migrations: contratos estruturais críticos até 039 aprovados");
