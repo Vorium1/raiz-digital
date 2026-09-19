@@ -154,6 +154,8 @@ export type LabResultInput = {
   value: number;
   unit: string;
   method: string;
+  /** Protocolo laboratorial global declarado no documento, quando disponível. */
+  protocol?: string | null;
   sampleType: SampleType;
   depthFromCm: number | null;
   depthToCm: number | null;
@@ -174,6 +176,7 @@ export type ParameterFact = {
   value: number;
   unit: string;
   method: string;
+  protocol?: string | null;
   source?: "MEASURED" | "CALCULATED";
 };
 
@@ -430,7 +433,15 @@ function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: s
 }
 
 export function runAgronomicEngine(input: EngineInput): EngineResult {
-  const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method, source: row.source }));
+  const facts: ParameterFact[] = input.labResults.map((row) => ({
+    sampleCode: row.sampleCode,
+    parameterCode: row.parameterCode,
+    value: row.value,
+    unit: row.unit,
+    method: row.method,
+    protocol: row.protocol ?? null,
+    source: row.source,
+  }));
   const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));
 
   const derivedParameters = (input.cropProfile?.parameters ?? []).filter((param) => param.status === "ACTIVE" && param.derivedParameterCode);
