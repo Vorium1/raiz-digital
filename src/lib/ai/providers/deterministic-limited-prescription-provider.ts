@@ -46,6 +46,23 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     });
   }
 
+
+  const sulfur = evidence.deterministicSulfurDose;
+  if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
+    if (sulfur.dose.kind === "EXACT") {
+      recommendations.push({
+        inputType: "S",
+        quantity: sulfur.dose.kgSPerHa,
+        unit: "kg/ha",
+        rationale: `Dose exata do motor determinístico ${sulfur.ruleId}. Base: teor crítico de S da soja + ${sulfur.basis === "STRICT_PREDOMINANCE" ? "predominância estrita entre os pontos" : "amostra única"}.`,
+      });
+    } else if (sulfur.blockers.includes("S_NO_STRICT_PREDOMINANCE")) {
+      limitations.push("Enxofre: os pontos não sustentam uma dose única para toda a área; o RAIZ preservou a variação em vez de forçar uma recomendação uniforme.");
+    } else {
+      limitations.push(`Enxofre: ${sulfur.dose.reason}`);
+    }
+  }
+
   return { recommendations, limitations };
 }
 
@@ -105,7 +122,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
 
     return {
       prescription: {
-        summary: "Análise técnica preparada com os dados disponíveis. A RAIZ incluiu somente classificações e doses exatas produzidas pelo motor determinístico; qualquer nutriente sem contexto ou predominância suficiente permanece explicitamente bloqueado.",
+        summary: "Análise técnica preparada pelo motor RAIZ a partir das medições, métodos laboratoriais e regras agronômicas versionadas. Doses uniformes só entram quando a evidência do próprio talhão sustenta essa decisão.",
         diagnosis,
         recommendations: deterministic.recommendations,
         managementPractices: [],
