@@ -119,13 +119,14 @@ async function ensureOfficialResult(analysisId, code) {
   }
 
   const before = (await getDecisionDeliveryStatuses(tenantId, [analysisId], userId))[0];
-  let publishedNow = false;
-  let report = null;
-  if ((before?.currentReportCount ?? 0) === 0) {
-    await assertReportPublicationReady(tenantId, interpretation.id, userId);
-    report = await publishPremiumFieldAnalysisReport({ tenantId, userId, interpretationId: interpretation.id });
-    publishedNow = true;
-  }
+
+  await assertReportPublicationReady(tenantId, interpretation.id, userId);
+  const report = await publishPremiumFieldAnalysisReport({
+    tenantId,
+    userId,
+    interpretationId: interpretation.id,
+  });
+  const publishedNow = report.alreadyCurrent !== true;
 
   const after = (await getDecisionDeliveryStatuses(tenantId, [analysisId], userId))[0];
   return {
@@ -138,6 +139,7 @@ async function ensureOfficialResult(analysisId, code) {
     recommendations: recommendationSummary(prescription),
     currentReportCount: after?.currentReportCount ?? 0,
     reportRevision: report?.revision ?? null,
+    reportAlreadyCurrent: report?.alreadyCurrent === true,
   };
 }
 
