@@ -15,9 +15,50 @@ const ANALYTICAL_METHOD_ALIASES: Array<{ parameterCode: string; rawMethod: strin
   { parameterCode: "CTC", rawMethod: "Calculado: Ca+Mg+K+(H+Al)", canonicalMethod: "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)" },
 ];
 
-function normalizeAnalyticalMethod(parameterCode: string, rawMethod: string): string {
+const TEDESCO_1995_METHODS: Record<string, string> = {
+  CLAY: "Densímetro",
+  PH: "H2O",
+  SMP: "Índice SMP",
+  P: "Mehlich-1",
+  K: "Mehlich-1",
+  MO: "Oxidação sulfocrômica",
+  AL: "KCl 1 mol/L",
+  CA: "KCl 1 mol/L",
+  MG: "KCl 1 mol/L",
+  H_AL: "SMP",
+  CTC: "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)",
+  S: "Ca(H2PO4)2 500mg P/L, turbidimetria",
+  B: "Água quente, colorimetria com curcumina",
+  MN: "KCl 1 mol/L (Tedesco 1995)",
+  CU: "HCl 0,1 mol/L (Tedesco 1995)",
+  ZN: "HCl 0,1 mol/L (Tedesco 1995)",
+};
+
+function isTedesco1995(protocol: string) {
+  const text = protocol.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return (text.includes("tedesco") && text.includes("1995"))
+    || (text.includes("boletim tecnico") && /\b5\b/.test(text) && text.includes("1995"));
+}
+
+function protocolMethodFor(parameterCode: string, protocol: string): string {
+  return protocol && isTedesco1995(protocol) ? (TEDESCO_1995_METHODS[parameterCode] ?? "") : "";
+}
+
+function normalizeAnalyticalMethod(parameterCode: string, rawMethod: string, protocol = ""): string {
   const alias = ANALYTICAL_METHOD_ALIASES.find((a) => a.parameterCode === parameterCode && a.rawMethod === rawMethod);
-  return alias ? alias.canonicalMethod : rawMethod;
+  if (alias) return alias.canonicalMethod;
+  const fromProtocol = protocolMethodFor(parameterCode, protocol);
+  if (!fromProtocol) return rawMethod;
+
+  if (!rawMethod) return fromProtocol;
+  const acceptedAbbreviation: Record<string, string[]> = {
+    B: ["Água quente"],
+    S: ["Turbidimetria"],
+    MN: ["KCl 1 mol/L"],
+    CU: ["HCl 0,1 mol/L"],
+    ZN: ["HCl 0,1 mol/L"],
+  };
+  return (acceptedAbbreviation[parameterCode] ?? []).includes(rawMethod) ? fromProtocol : rawMethod;
 }
 
 export type LabImportSeverity = "BLOCKER" | "WARNING" | "INFO";
@@ -35,10 +76,15 @@ export type LabImportRow = {
   value: number;
   unit: string;
   method: string;
+  /** Protocolo global transcrito do documento (ex.: Tedesco et al. 1995). */
+  protocol: string;
+  /** Texto do método exatamente como veio na linha, antes da resolução por protocolo. */
+  rawMethod: string;
   sourceLine: number;
   source: "MEASURED";
   unitInferred: boolean;
   methodInferred: boolean;
+  methodDerivedFromProtocol: boolean;
 };
 
 export type LabImportConfidence = {
@@ -159,6 +205,7 @@ const PARAMETER_HEADERS = ["parametro", "elemento", "analito", "nutriente", "par
 const VALUE_HEADERS = ["valor", "resultado", "result", "value"];
 const UNIT_HEADERS = ["unidade", "unit", "uom"];
 const METHOD_HEADERS = ["metodo", "method", "extrator", "extractor"];
+const PROTOCOL_HEADERS = ["protocolo", "protocol", "metodologia", "referenciametodo", "methodprotocol"];
 
 function stripDiacritics(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -320,6 +367,7 @@ export function buildLabImportPreviewFromMatrix(
   const valueIndex = findHeaderIndex(detectedHeaders, VALUE_HEADERS);
   const unitIndex = findHeaderIndex(detectedHeaders, UNIT_HEADERS);
   const methodIndex = findHeaderIndex(detectedHeaders, METHOD_HEADERS);
+  const protocolIndex = findHeaderIndex(detectedHeaders, PROTOCOL_HEADERS);
   const format: "LONG" | "WIDE" = parameterIndex >= 0 && valueIndex >= 0 ? "LONG" : "WIDE";
   const issues: LabImportIssue[] = [];
   let rows: LabImportRow[] = [];
@@ -341,7 +389,14 @@ export function buildLabImportPreviewFromMatrix(
       // o nome canônico homologado, ANTES de decidir se precisa de fallback/inferência -- ver
       // `ANALYTICAL_METHOD_ALIASES` acima. Sem correspondência conhecida, devolve o texto original.
       const methodRawFromFile = methodIndex >= 0 ? (sourceRow[methodIndex] ?? "").trim() : "";
-      const methodRaw = methodRawFromFile ? normalizeAnalyticalMethod(parameterCode, methodRawFromFile) : methodRawFromFile;
+      const protocol = protocolIndex >= 0 ? (sourceRow[protocolIndex] ?? "").trim() : "";
+      const protocolMethod = protocolMethodFor(parameterCode, protocol);
+      const normalizedExplicitMethod = methodRawFromFile
+        ? normalizeAnalyticalMethod(parameterCode, methodRawFromFile, protocol)
+        : "";
+      const methodDerivedFromProtocol = Boolean(protocolMethod)
+        && (!methodRawFromFile || normalizedExplicitMethod === protocolMethod);
+      const methodRaw = normalizedExplicitMethod || protocolMethod;
       const inferredUnit = !unitRaw && Boolean(DEFAULT_UNITS[parameterCode]);
       const fallbackForParameter = inferMethod(parameterCode, context.fallbackMethod);
       const inferredMethod = !methodRaw && Boolean(fallbackForParameter);
@@ -357,7 +412,11 @@ export function buildLabImportPreviewFromMatrix(
       if (inferredMethod) addIssue(issues, "WARNING", "METHOD_INFERRED", `Método de ${parameterCode} foi preenchido pelo método principal selecionado.`, sourceLine);
 
       if (sampleCode && parameterRaw.trim() && Number.isFinite(value)) {
-        rows.push({ sampleCode, parameterCode, value, unit, method, sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod });
+        rows.push({
+          sampleCode, parameterCode, value, unit, method, protocol, rawMethod: methodRawFromFile,
+          sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod,
+          methodDerivedFromProtocol,
+        });
       }
     });
   } else {
@@ -383,10 +442,13 @@ export function buildLabImportPreviewFromMatrix(
         const value = parseNumber(raw);
         const explicitUnit = column.unit.trim();
         const unit = explicitUnit || DEFAULT_UNITS[column.parameterCode] || "NÃO INFORMADA";
+        const protocol = protocolIndex >= 0 ? (sourceRow[protocolIndex] ?? "").trim() : "";
+        const protocolMethod = protocolMethodFor(column.parameterCode, protocol);
         const fallbackForParameter = inferMethod(column.parameterCode, context.fallbackMethod);
-        const method = fallbackForParameter || "NÃO INFORMADO";
+        const method = protocolMethod || fallbackForParameter || "NÃO INFORMADO";
         const inferredUnit = !explicitUnit;
-        const inferredMethod = Boolean(fallbackForParameter);
+        const inferredMethod = !protocolMethod && Boolean(fallbackForParameter);
+        const methodDerivedFromProtocol = Boolean(protocolMethod);
 
         if (!Number.isFinite(value)) {
           addIssue(issues, "BLOCKER", "INVALID_VALUE", `Valor inválido em ${column.header}: “${raw}”.`, sourceLine);
@@ -397,7 +459,11 @@ export function buildLabImportPreviewFromMatrix(
         if (inferredUnit) addIssue(issues, "WARNING", "UNIT_INFERRED", `Unidade de ${column.parameterCode} foi inferida e precisa de conferência humana.`, sourceLine);
         if (inferredMethod) addIssue(issues, "WARNING", "METHOD_INFERRED", `Método de ${column.parameterCode} foi preenchido pelo método principal selecionado.`, sourceLine);
 
-        rows.push({ sampleCode, parameterCode: column.parameterCode, value, unit, method, sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod });
+        rows.push({
+          sampleCode, parameterCode: column.parameterCode, value, unit, method, protocol, rawMethod: "",
+          sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod,
+          methodDerivedFromProtocol,
+        });
       });
     });
   }
