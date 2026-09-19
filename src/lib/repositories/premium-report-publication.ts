@@ -215,9 +215,12 @@ async function getLatestDecisionPublication(
  * A entrega falha fechada se a interpretação, o laudo, a recomendação, o contexto da safra ou a
  * confirmação de fonte mudarem durante o processo. A interpretação fica bloqueada para atualização pela
  * transação inteira, serializando publicações concorrentes da mesma decisão; análise/safra permanecem
- * protegidas por lock compartilhado. `reports.prescription_generation_id` e seu índice UNIQUE reforçam
- * no banco que uma mesma decisão só nasce uma vez. O snapshot no storage é imutável; se uma falha ocorrer
- * na gravação externa, nenhum registro oficial incompleto nasce em `reports`.
+ * protegidas por lock compartilhado. `reports.prescription_generation_id` ancora cada publicação na
+ * decisão exata; a unicidade de migration 039 é por decisão + revisão do relatório, permitindo preservar
+ * novas versões imutáveis da MESMA decisão somente quando evidência congelada posterior (hoje NDVI)
+ * justificar republicação. Sem evidência nova, `alreadyCurrent` devolve a publicação existente.
+ * O snapshot no storage é imutável; se uma falha ocorrer na gravação externa, nenhum registro oficial
+ * incompleto nasce em `reports`.
  */
 export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
