@@ -11,7 +11,7 @@ type YieldEntry = {
 
 const YIELD_UNITS = ["sc/ha", "t/ha", "kg/ha", "@/ha"];
 
-export function FieldYieldHistoryManager({ fields }: { fields: FieldOption[] }) {
+export function FieldYieldHistoryManager({ fields, onChanged }: { fields: FieldOption[]; onChanged?: () => void | Promise<void> }) {
   const [fieldId, setFieldId] = useState("");
   const [entries, setEntries] = useState<YieldEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,6 +55,7 @@ export function FieldYieldHistoryManager({ fields }: { fields: FieldOption[] }) 
       setSeasonLabel(""); setCrop(""); setCultivar(""); setYieldValue(""); setSource("");
       setMessage({ tone: "success", text: "Produtividade registrada no histórico." });
       await reload();
+      await onChanged?.();
     } catch (error) {
       setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao registrar produtividade." });
     } finally { setBusy(""); }
@@ -69,6 +70,7 @@ export function FieldYieldHistoryManager({ fields }: { fields: FieldOption[] }) 
       if (!response.ok) throw new Error(payload.error ?? "Falha ao excluir registro.");
       setMessage({ tone: "success", text: "Registro excluído." });
       await reload();
+      await onChanged?.();
     } catch (error) {
       setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Falha ao excluir registro." });
     } finally { setBusy(""); }

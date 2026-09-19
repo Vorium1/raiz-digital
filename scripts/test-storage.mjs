@@ -27,6 +27,21 @@ try {
   const readBack = await readRawStoredFile(stored.key);
   assert.equal(readBack.toString("utf8"), content);
 
+  // O provider local também precisa ser imutável entre duas publicações da MESMA interpretação/revisão.
+  // O conteúdo/hash faz parte da chave para impedir overwrite silencioso quando uma nova prescrição é
+  // aprovada sem recalcular a interpretação determinística.
+  process.env.REPORT_STORAGE_PROVIDER = "local";
+  const localContentA = JSON.stringify({ reportSnapshotVersion: 3, prescription: "A" });
+  const localContentB = JSON.stringify({ reportSnapshotVersion: 3, prescription: "B" });
+  const localA = await saveReportSnapshot({ tenantId: "tenant", interpretationId: "same-interpretation", revision: 7, content: localContentA });
+  const localB = await saveReportSnapshot({ tenantId: "tenant", interpretationId: "same-interpretation", revision: 7, content: localContentB });
+  assert.notEqual(localA.key, localB.key, "snapshots diferentes da mesma revisão não podem compartilhar a chave local");
+  assert.ok(localA.key.includes(localA.sha256));
+  assert.ok(localB.key.includes(localB.sha256));
+  assert.equal((await readRawStoredFile(localA.key)).toString("utf8"), localContentA);
+  assert.equal((await readRawStoredFile(localB.key)).toString("utf8"), localContentB);
+  process.env.REPORT_STORAGE_PROVIDER = "inline";
+
   const raw = await saveRawImportFile({ tenantId: "tenant", analysisId: "analysis", fileName: "laudo.csv", content: "x", encoding: "utf8" });
   assert.equal(raw, null, "arquivos brutos não devem usar inline");
   await assert.rejects(
@@ -49,7 +64,7 @@ try {
   assert.equal(unwrapped.source?.key, source.key);
   assert.equal(unwrapped.source?.sha256, source.sha256);
   assert.equal(unwrapped.source?.fileName, source.fileName);
-  assert.equal(unwrapped.source?.sourceType, "PDF_OCR");
+  assert.equal(unwrapped.source?.sourceType, source.sourceType);
   assert.match(unwrapped.source?.extractedSha256 ?? "", /^[a-f0-9]{64}$/);
   assert.match(unwrapped.source?.signature ?? "", /^[a-f0-9]{64}$/);
 
@@ -123,7 +138,7 @@ try {
     /não possui persistência de relatório implementada/,
   );
 
-  console.log("OK — storage: snapshot inline + proveniência HMAC para PDF/CSV/XLSX + anti-tampering + persistência bruta fail-closed.");
+  console.log("OK — storage: snapshot inline/local imutável + proveniência HMAC para PDF/CSV/XLSX + anti-tampering + persistência bruta fail-closed.");
 } finally {
   if (previousStorage === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previousStorage;
   if (previousReportStorage === undefined) delete process.env.REPORT_STORAGE_PROVIDER; else process.env.REPORT_STORAGE_PROVIDER = previousReportStorage;

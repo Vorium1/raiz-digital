@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { assertUniqueMigrationNumbers, buildAtomicMigrationSql } from "./migration-transaction.mjs";
 
 const initial = await readFile(new URL("../db/migrations/001_initial.sql", import.meta.url), "utf8");
 const tenancy = await readFile(new URL("../db/migrations/002_tenancy_and_imports.sql", import.meta.url), "utf8");
@@ -30,6 +31,12 @@ const nitrogenContext = await readFile(new URL("../db/migrations/032_nitrogen_re
 const commercialInputCatalog = await readFile(new URL("../db/migrations/033_commercial_input_catalog.sql", import.meta.url), "utf8");
 const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
 const ndviRasterCustody = await readFile(new URL("../db/migrations/037_ndvi_raster_custody.sql", import.meta.url), "utf8");
+const reportSnapshotRepublication = await readFile(new URL("../db/migrations/038_report_snapshot_republication.sql", import.meta.url), "utf8");
+const reportRepublishOnNewNdvi = await readFile(new URL("../db/migrations/039_report_republish_on_new_ndvi.sql", import.meta.url), "utf8");
+const migrationRunner = await readFile(new URL("./migrate.mjs", import.meta.url), "utf8");
+const migrationFiles = (await readdir(new URL("../db/migrations/", import.meta.url)))
+  .filter((name) => /^\d+_.+\.sql$/.test(name))
+  .sort();
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -133,4 +140,64 @@ assert.match(ndviRasterCustody, /CREATE TRIGGER field_ndvi_snapshots_protect_arc
 assert.match(ndviRasterCustody, /BEFORE UPDATE OR DELETE ON field_ndvi_snapshots/i);
 assert.match(ndviRasterCustody, /REVOKE DELETE ON field_ndvi_snapshots FROM raiz_app/i);
 
-console.log("migrations: contratos estruturais críticos 001-037 aprovados");
+assert.match(reportSnapshotRepublication, /DROP CONSTRAINT IF EXISTS reports_tenant_id_interpretation_id_revision_key/i);
+assert.match(reportSnapshotRepublication, /ADD COLUMN IF NOT EXISTS prescription_generation_id uuid/i);
+assert.match(reportSnapshotRepublication, /CREATE UNIQUE INDEX IF NOT EXISTS ai_generations_tenant_interpretation_generation_uidx/i);
+assert.match(reportSnapshotRepublication, /ON ai_generations \(tenant_id, interpretation_id, id\)/i);
+assert.match(reportSnapshotRepublication, /approvedPrescriptionId/i);
+assert.match(reportSnapshotRepublication, /ag\.kind = 'AGRONOMIC_PRESCRIPTION'/i);
+assert.match(reportSnapshotRepublication, /ag\.interpretation_id = r\.interpretation_id/i);
+assert.match(reportSnapshotRepublication, /FOREIGN KEY \(tenant_id, interpretation_id, prescription_generation_id\)/i);
+assert.match(reportSnapshotRepublication, /REFERENCES ai_generations \(tenant_id, interpretation_id, id\)/i);
+assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx/i);
+assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, published_at DESC\)/i);
+assert.match(reportSnapshotRepublication, /WHERE prescription_generation_id IS NOT NULL/i);
+assert.doesNotMatch(reportSnapshotRepublication, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
+assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_interpretation_published_idx/i);
+assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, published_at DESC\)/i);
+
+assert.match(reportRepublishOnNewNdvi, /DROP INDEX IF EXISTS reports_decision_unique_idx/i);
+assert.match(reportRepublishOnNewNdvi, /CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx/i);
+assert.match(reportRepublishOnNewNdvi, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, published_at DESC\)/i);
+assert.match(reportRepublishOnNewNdvi, /WHERE prescription_generation_id IS NOT NULL/i);
+assert.doesNotMatch(reportRepublishOnNewNdvi, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
+
+assert.doesNotThrow(() => assertUniqueMigrationNumbers(migrationFiles));
+for (const migrationName of migrationFiles) {
+  const migrationSql = await readFile(new URL(`../db/migrations/${migrationName}`, import.meta.url), "utf8");
+  assert.doesNotThrow(
+    () => buildAtomicMigrationSql(migrationSql, migrationName),
+    `Migration incompatível com o runner atômico: ${migrationName}`,
+  );
+}
+assert.throws(
+  () => assertUniqueMigrationNumbers(["039_a.sql", "039_b.sql"]),
+  /Prefixo de migration duplicado 039/,
+);
+
+const wrapped = buildAtomicMigrationSql("BEGIN;\nSELECT 1;\nCOMMIT;", "040_atomic.sql");
+assert.match(wrapped, /^BEGIN;/);
+assert.match(wrapped, /SELECT 1;/);
+assert.match(wrapped, /INSERT INTO schema_migrations\(name\) VALUES \('040_atomic\.sql'\);[\s\S]*COMMIT;$/);
+assert.equal((wrapped.match(/\bBEGIN\s*;/gi) ?? []).length, 1);
+assert.equal((wrapped.match(/\bCOMMIT\s*;/gi) ?? []).length, 1);
+
+const unwrapped = buildAtomicMigrationSql("SELECT 2;", "041_wrapped.sql");
+assert.match(unwrapped, /^BEGIN;/);
+assert.match(unwrapped, /SELECT 2;/);
+assert.match(unwrapped, /INSERT INTO schema_migrations\(name\) VALUES \('041_wrapped\.sql'\);/);
+assert.match(unwrapped, /COMMIT;$/);
+assert.throws(
+  () => buildAtomicMigrationSql("BEGIN;\nSELECT 3;", "042_incomplete.sql"),
+  /wrapper transacional incompleto/,
+);
+
+assert.match(migrationRunner, /assertUniqueMigrationNumbers\(files\)/);
+assert.match(migrationRunner, /const client = await pool\.connect\(\)/);
+assert.match(migrationRunner, /pg_advisory_lock\(hashtext\('raiz-digital'\), hashtext\('schema-migrations'\)\)/);
+assert.match(migrationRunner, /pg_advisory_unlock\(hashtext\('raiz-digital'\), hashtext\('schema-migrations'\)\)/);
+assert.match(migrationRunner, /client\.release\(\)/);
+assert.match(migrationRunner, /client\.query\(buildAtomicMigrationSql\(sql, name\)\)/);
+assert.doesNotMatch(migrationRunner, /pool\.query\("INSERT INTO schema_migrations\(name\)/);
+
+console.log("migrations: contratos estruturais críticos até 039 aprovados");

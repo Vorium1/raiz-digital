@@ -2,7 +2,7 @@ export type OperationalIntegrationReadiness = {
   email: boolean;
   rawStorage: boolean;
   mercadoPago: boolean;
-  copernicus: boolean;
+  satelliteNdvi: boolean;
   reportStorage: boolean;
 };
 
@@ -10,6 +10,21 @@ type EnvLike = Record<string, string | undefined>;
 
 function present(value: string | undefined) {
   return Boolean(value?.trim());
+}
+
+export function getSatelliteNdviReadiness(env: EnvLike) {
+  const provider = env.NDVI_SATELLITE_PROVIDER?.trim().toLowerCase() || "earth-search";
+  if (provider === "earth-search") {
+    return { provider, ready: true, credentialFree: true } as const;
+  }
+  if (provider === "copernicus") {
+    return {
+      provider,
+      ready: present(env.COPERNICUS_CLIENT_ID) && present(env.COPERNICUS_CLIENT_SECRET),
+      credentialFree: false,
+    } as const;
+  }
+  return { provider, ready: false, credentialFree: false } as const;
 }
 
 export function getOperationalIntegrationReadiness(env: EnvLike): OperationalIntegrationReadiness {
@@ -27,12 +42,13 @@ export function getOperationalIntegrationReadiness(env: EnvLike): OperationalInt
   const mercadoPago = present(env.MERCADO_PAGO_ACCESS_TOKEN)
     && present(env.MERCADO_PAGO_WEBHOOK_SECRET);
 
-  const copernicus = present(env.COPERNICUS_CLIENT_ID)
-    && present(env.COPERNICUS_CLIENT_SECRET);
+  // Earth Search é o provider público padrão. Copernicus continua disponível somente
+  // quando explicitamente selecionado e com as próprias credenciais presentes.
+  const satelliteNdvi = getSatelliteNdviReadiness(env).ready;
 
   const reportStorage = env.REPORT_STORAGE_PROVIDER?.trim().toLowerCase() === "inline";
 
-  return { email, rawStorage, mercadoPago, copernicus, reportStorage };
+  return { email, rawStorage, mercadoPago, satelliteNdvi, reportStorage };
 }
 
 export function operationalIntegrationScore(readiness: OperationalIntegrationReadiness) {

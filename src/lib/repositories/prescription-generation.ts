@@ -1,4 +1,5 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
+import { checkPrescriptionDraftGate, PRESCRIPTION_DRAFT_STATUS } from "@/domain/agronomic-prescription-gate";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
@@ -7,6 +8,10 @@ import { AiGenerationError } from "@/lib/repositories/ai-generations";
  * Persiste uma prescrição somente se o snapshot validado antes/depois do provedor ainda for o snapshot
  * corrente dentro da própria transação de INSERT. O lock SHARE na análise/safra conflita com importação
  * (FOR UPDATE) e com UPDATE do contexto da safra, fechando a janela entre o último check HTTP e o save.
+ *
+ * UX 2.0 permite salvar o RASCUNHO quando a mesma interpretação continua IN_REVIEW ou APPROVED. O registro
+ * nasce explicitamente PENDING_REVIEW. Promoção de doses e publicação continuam protegidas pelos gates
+ * estritos de revisão/publicação e exigem interpretação APPROVED.
  */
 export async function recordAgronomicPrescriptionGenerationSafely(input: {
   tenantId: string;
@@ -29,17 +34,24 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
+      latestInterpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
     }>(
       `SELECT cs.updated_at::text AS "seasonUpdatedAt",
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
-              latest_import.latest_import_at::text AS "latestImportCommittedAt"
+              li.crop_profile_id::text AS "latestInterpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
@@ -50,6 +62,11 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
          FROM analysis_imports ai
          WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
        LIMIT 1
        FOR SHARE OF a, cs`,
@@ -58,12 +75,16 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     const state = stateResult.rows[0];
     if (!state) throw new AiGenerationError("Análise não encontrada.", 404);
 
-    if (
-      state.latestInterpretationId !== input.interpretationId
-      || state.latestInterpretationStatus !== "APPROVED"
-    ) {
+    if (state.latestInterpretationId !== input.interpretationId) {
       throw new AiGenerationError(
-        "A interpretação determinística mudou antes de salvar a prescrição. A resposta foi descartada; gere novamente com a revisão APPROVED atual.",
+        "A interpretação determinística mudou antes de salvar a prescrição. A resposta foi descartada; gere novamente com a revisão atual.",
+        409,
+      );
+    }
+    const interpretationGate = checkPrescriptionDraftGate(state.latestInterpretationStatus);
+    if (!interpretationGate.allowed) {
+      throw new AiGenerationError(
+        `${interpretationGate.reason} A resposta foi descartada antes de persistir o rascunho.`,
         409,
       );
     }
@@ -80,6 +101,9 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     const evidenceFreshness = evaluateAnalysisEvidenceFreshness({
       interpretationCreatedAt: state.latestInterpretationCreatedAt,
       latestImportCommittedAt: state.latestImportCommittedAt,
+      interpretationCropProfileId: state.latestInterpretationCropProfileId,
+      currentCropProfileId: state.currentCropProfileId,
+      latestRuleUpdatedAt: state.latestRuleUpdatedAt,
     });
     if (!evidenceFreshness.current) {
       throw new AiGenerationError(
@@ -90,8 +114,8 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
 
     const result = await client.query(
       `INSERT INTO ai_generations
-       (tenant_id, kind, interpretation_id, analysis_id, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, created_by)
-       VALUES ($1::uuid, 'AGRONOMIC_PRESCRIPTION', $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::uuid)
+       (tenant_id, kind, interpretation_id, analysis_id, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
+       VALUES ($1::uuid, 'AGRONOMIC_PRESCRIPTION', $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11::ai_review_status, $12::uuid)
        RETURNING id::text, status, created_at::text AS "createdAt"`,
       [
         input.tenantId,
@@ -104,6 +128,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
         JSON.stringify(input.responsePayload),
         input.tokensUsed ?? null,
         input.costUsd ?? null,
+        PRESCRIPTION_DRAFT_STATUS,
         input.userId,
       ],
     );
@@ -131,6 +156,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
         promptVersion: input.promptVersion,
         tokensUsed: input.tokensUsed ?? null,
         interpretationId: input.interpretationId,
+        reviewStatus: PRESCRIPTION_DRAFT_STATUS,
       },
     });
 

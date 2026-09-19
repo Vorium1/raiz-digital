@@ -1,0 +1,26 @@
+name: IBGE Yield Reference Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/ibge-yield-reference-smoke.yml"
+      - "scripts/smoke-ibge-pam-yield.mjs"
+      - "src/lib/yield/ibge-pam-yield-provider.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validar referência municipal oficial
+        run: node scripts/smoke-ibge-pam-yield.mjs

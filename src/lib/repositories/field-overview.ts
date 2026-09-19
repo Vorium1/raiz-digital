@@ -79,20 +79,74 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
      * Antes esta métrica só reconhecia `BROWSER_GPS`, então um ponto real importado de shapefile/GPS
      * auditado apareceria como 0% confirmado no Talhão 360° — exatamente o oposto do dado real. A métrica
      * agora separa as origens em vez de usar um LIKE único:
-     * - BROWSER_GPS: captura direta pelo navegador/dispositivo;
-     * - SHAPEFILE_REAL_*: geometria executada em campo importada de fonte espacial auditada;
-     * - ESTIMADO_*: aproximação/legado, nunca conta como origem rastreável.
+     * - observed_position: captura observada em campo; prevalece sobre qualquer rótulo de origem;
+     * - SHAPEFILE_REAL_GPS_LONLAT / SHAPEFILE_REAL_EPSG4326: únicas fontes importadas aceitas como
+     *   coordenada real auditada quando não existe observed_position;
+     * - qualquer outro rótulo, inclusive prefixo/sufixo parecido, continua não verificado.
      *
      * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. `confirmedCount`
      * é mantido como alias de compatibilidade para componentes antigos e tem exatamente o mesmo valor.
      */
+    const pointsResult = await client.query(
+      `WITH latest_season AS (
+         SELECT id
+         FROM crop_seasons
+         WHERE tenant_id = $1::uuid AND field_id = $2::uuid
+         ORDER BY created_at DESC
+         LIMIT 1
+       ),
+       latest_order AS (
+         SELECT id
+         FROM collection_orders
+         WHERE tenant_id = $1::uuid AND crop_season_id = (SELECT id FROM latest_season)
+         ORDER BY created_at DESC
+         LIMIT 1
+       )
+       SELECT sp.id::text,
+              sp.code,
+              sp.sequence,
+              ST_Y(sp.position)::float8 AS latitude,
+              ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.collected_at::text AS "collectedAt",
+              sp.depth_from_cm::float8 AS "depthFromCm",
+              sp.depth_to_cm::float8 AS "depthToCm",
+              sp.subsample_count AS "subsampleCount",
+              sp.accuracy_m::float8 AS "accuracyM",
+              sp.gps_source AS "gpsSource",
+              sp.notes,
+              (
+                SELECT count(*)::int
+                FROM lab_results lr
+                JOIN lab_samples ls ON ls.tenant_id = lr.tenant_id AND ls.id = lr.lab_sample_id
+                WHERE ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
+              ) AS "labResultCount"
+       FROM sample_points sp
+       WHERE sp.tenant_id = $1::uuid
+         AND sp.collection_order_id = (SELECT id FROM latest_order)
+       ORDER BY coalesce(sp.sequence, 2147483647), sp.code`,
+      [tenantId, fieldId],
+    );
+
     const gpsQualityResult = await client.query(
       `SELECT count(*)::int AS total,
-              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%')::int AS "browserGpsCount",
-              count(*) FILTER (WHERE sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "shapefileRealCount",
-              count(*) FILTER (WHERE sp.gps_source LIKE 'ESTIMADO_%' OR sp.gps_source IS NULL)::int AS "estimatedCount",
-              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "verifiedCount",
-              count(*) FILTER (WHERE sp.gps_source LIKE '%BROWSER_GPS%' OR sp.gps_source LIKE 'SHAPEFILE_REAL_%')::int AS "confirmedCount"
+              count(*) FILTER (WHERE sp.observed_position IS NOT NULL)::int AS "browserGpsCount",
+              count(*) FILTER (
+                WHERE upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
+              )::int AS "shapefileRealCount",
+              count(*) FILTER (
+                WHERE sp.observed_position IS NULL
+                  AND upper(trim(coalesce(sp.gps_source, ''))) NOT IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
+              )::int AS "estimatedCount",
+              count(*) FILTER (
+                WHERE sp.observed_position IS NOT NULL
+                   OR upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
+              )::int AS "verifiedCount",
+              count(*) FILTER (
+                WHERE sp.observed_position IS NOT NULL
+                   OR upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
+              )::int AS "confirmedCount"
        FROM sample_points sp
        JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
        WHERE sp.tenant_id = $1::uuid AND co.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
@@ -117,6 +171,7 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
       analyses: analysesResult.rows,
       yieldHistory: yieldResult.rows,
       ndviSnapshots: ndviResult.rows,
+      collectionPoints: pointsResult.rows,
       gpsQuality: gpsQualityResult.rows[0] as {
         total: number;
         verifiedCount: number;

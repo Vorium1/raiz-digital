@@ -1,3 +1,5 @@
+import { getSatelliteNdviReadiness } from "./operational-readiness.ts";
+
 export type ProductionReadinessLevel = "PASS" | "FAIL" | "WARN";
 
 export type ProductionReadinessCheck = {
@@ -146,10 +148,15 @@ export function evaluateProductionReadiness(env: EnvLike = process.env): Product
     fail("assistant-mode", "RAIZ_ASSISTANT_MODE deve ser local ou hybrid.");
   }
 
-  if (!hasPlaceholder(env.COPERNICUS_CLIENT_ID) && !hasPlaceholder(env.COPERNICUS_CLIENT_SECRET)) {
-    pass("copernicus", "Credenciais Copernicus estão configuradas.");
+  const satelliteNdvi = getSatelliteNdviReadiness(env);
+  if (satelliteNdvi.provider === "earth-search") {
+    pass("satellite-ndvi", "Provider público Earth Search + Sentinel-2 L2A/COG está selecionado e não exige credenciais privadas.");
+  } else if (satelliteNdvi.provider === "copernicus" && satelliteNdvi.ready) {
+    pass("satellite-ndvi", "Provider alternativo Copernicus foi selecionado explicitamente e possui credenciais completas.");
+  } else if (satelliteNdvi.provider === "copernicus") {
+    fail("satellite-ndvi", "NDVI_SATELLITE_PROVIDER=copernicus exige COPERNICUS_CLIENT_ID e COPERNICUS_CLIENT_SECRET completos.");
   } else {
-    warn("copernicus", "NDVI real por satélite ficará indisponível até configurar as credenciais Copernicus.");
+    fail("satellite-ndvi", `NDVI_SATELLITE_PROVIDER="${satelliteNdvi.provider}" não é suportado; use earth-search ou copernicus.`);
   }
 
   const billingConfigured = !hasPlaceholder(env.MERCADO_PAGO_ACCESS_TOKEN)

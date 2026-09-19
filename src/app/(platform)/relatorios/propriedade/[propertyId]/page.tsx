@@ -75,7 +75,7 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
                   </tr>
                 ))}</tbody>
               </table></div>
-            ) : <p className="report-empty-note">Nenhuma área exigindo atenção nos dados atuais — todos os talhões com análise estão avaliados e aprovados, ou ainda não têm nenhuma pendência registrada.</p>}
+            ) : <p className="report-empty-note">Nenhuma área pendente nos dados atuais — todos os talhões desta propriedade estão avaliados e aprovados na versão corrente.</p>}
           </section>
 
           <section className="report-section">
@@ -95,7 +95,13 @@ export default async function PropertyExecutiveReportPage({ params }: { params: 
             {attentionFields.length ? (
               <ul className="report-pendencies">
                 {attentionFields.map((field: any) => (
-                  <li key={field.id}><Icon name="warning" size={12}/> {field.name}: {field.evaluationStatus === "SEM_ANALISE" ? "iniciar coleta/análise." : "resolver o impedimento técnico registrado e recalcular a interpretação."}</li>
+                  <li key={field.id}><Icon name="warning" size={12}/> {field.name}: {
+                    field.evaluationStatus === "SEM_ANALISE"
+                      ? "iniciar coleta/análise."
+                      : field.evaluationStatus === "NAO_INTERPRETAVEL"
+                        ? "resolver o impedimento técnico registrado e recalcular a interpretação."
+                        : "concluir ou atualizar a análise corrente e finalizar a revisão necessária."
+                  }</li>
                 ))}
               </ul>
             ) : <p className="report-empty-note">Nenhuma ação pendente identificada nos dados atuais.</p>}

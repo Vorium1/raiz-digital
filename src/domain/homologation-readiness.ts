@@ -1,5 +1,5 @@
 import { evaluateProductionReadiness, type ProductionReadinessResult } from "./production-readiness.ts";
-import { getOperationalIntegrationReadiness, type OperationalIntegrationReadiness } from "./operational-readiness.ts";
+import { getOperationalIntegrationReadiness, getSatelliteNdviReadiness, type OperationalIntegrationReadiness } from "./operational-readiness.ts";
 
 export type HomologationCheckStatus = "PASS" | "BLOCKED" | "READY_TO_EXECUTE";
 
@@ -84,7 +84,7 @@ export const HOMOLOGATION_MANUAL_GATES = Object.freeze([
   "smoke test multi-dispositivo de sessões e 2FA",
   "persistência e abertura visual do arquivo bruto/original importado",
   "confirmação do bucket privado, criptografia e política de retenção/lifecycle",
-  "homologação funcional do Copernicus/Sentinel-2 com chamada real",
+  "homologação funcional do Earth Search/Sentinel-2 com chamada real e custódia do raster",
   "auditoria Cabeda Área 01 com readyForReliableSpatialEvidence=true",
   "validação de gps_source/audit trail e dos demais gates independentes de VRA",
   "homologação Mercado Pago: assinatura, reentrega idempotente e cenários negativos",
@@ -103,6 +103,7 @@ function automatedCheck(name: string, status: HomologationCheckStatus, message: 
 export function evaluateHomologationReadiness(env: EnvLike = process.env): HomologationReadinessResult {
   const production = evaluateProductionReadiness(env);
   const integrations = getOperationalIntegrationReadiness(env);
+  const satelliteNdvi = getSatelliteNdviReadiness(env);
   const checks: HomologationCheck[] = [];
 
   checks.push(automatedCheck(
@@ -138,11 +139,15 @@ export function evaluateHomologationReadiness(env: EnvLike = process.env): Homol
   ));
 
   checks.push(automatedCheck(
-    "copernicus-config",
-    integrations.copernicus ? "PASS" : "BLOCKED",
-    integrations.copernicus
-      ? "Credenciais Copernicus estão presentes; chamada real ainda precisa ser homologada."
-      : "Credenciais Copernicus estão incompletas.",
+    "satellite-ndvi-provider",
+    integrations.satelliteNdvi ? "PASS" : "BLOCKED",
+    integrations.satelliteNdvi
+      ? satelliteNdvi.provider === "earth-search"
+        ? "NDVI usa Earth Search público + Sentinel-2 L2A/COG sem credenciais privadas; a chamada real e a custódia do raster continuam sob homologação."
+        : "Provider alternativo Copernicus foi selecionado explicitamente com credenciais completas; chamada real e custódia continuam sob homologação."
+      : satelliteNdvi.provider === "copernicus"
+        ? "Copernicus foi selecionado explicitamente, mas suas credenciais estão incompletas."
+        : `NDVI_SATELLITE_PROVIDER="${satelliteNdvi.provider}" não é suportado.`,
   ));
 
   checks.push(automatedCheck(

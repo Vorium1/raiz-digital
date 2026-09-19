@@ -20,16 +20,24 @@ export async function getAgronomicNarrativeFreshness(input: {
       generationInterpretationId: string | null;
       latestInterpretationId: string | null;
       latestInterpretationCreatedAt: string | null;
+      latestInterpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
     }>(
       `SELECT g.interpretation_id::text AS "generationInterpretationId",
               li.id::text AS "latestInterpretationId",
               li.created_at::text AS "latestInterpretationCreatedAt",
-              latest_import.latest_import_at::text AS "latestImportCommittedAt"
+              li.crop_profile_id::text AS "latestInterpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM ai_generations g
        JOIN analyses a ON a.tenant_id=g.tenant_id AND a.id=g.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.created_at
+         SELECT i.id, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
          ORDER BY i.revision DESC
@@ -40,6 +48,11 @@ export async function getAgronomicNarrativeFreshness(input: {
          FROM analysis_imports ai
          WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id=cp.id
+       ) rule_state ON cp.id IS NOT NULL
        WHERE g.tenant_id=$1::uuid AND g.analysis_id=$2::uuid AND g.id=$3::uuid AND g.kind='AGRONOMIC_NARRATIVE'
        LIMIT 1`,
       [input.tenantId, input.analysisId, input.generationId],
@@ -58,6 +71,9 @@ export async function getAgronomicNarrativeFreshness(input: {
     const freshness = evaluateAnalysisEvidenceFreshness({
       interpretationCreatedAt: row.latestInterpretationCreatedAt,
       latestImportCommittedAt: row.latestImportCommittedAt,
+      interpretationCropProfileId: row.latestInterpretationCropProfileId,
+      currentCropProfileId: row.currentCropProfileId,
+      latestRuleUpdatedAt: row.latestRuleUpdatedAt,
     });
     return { ...freshness, generationInterpretationId: row.generationInterpretationId, latestInterpretationId: row.latestInterpretationId };
   });
@@ -70,14 +86,22 @@ async function lockCurrentNarrativeEvidence(
   const result = await client.query<{
     latestInterpretationId: string | null;
     latestInterpretationCreatedAt: string | null;
+    latestInterpretationCropProfileId: string | null;
+    currentCropProfileId: string | null;
     latestImportCommittedAt: string | null;
+    latestRuleUpdatedAt: string | null;
   }>(
     `SELECT li.id::text AS "latestInterpretationId",
             li.created_at::text AS "latestInterpretationCreatedAt",
-            latest_import.latest_import_at::text AS "latestImportCommittedAt"
+            li.crop_profile_id::text AS "latestInterpretationCropProfileId",
+            cs.crop_profile_id::text AS "currentCropProfileId",
+            latest_import.latest_import_at::text AS "latestImportCommittedAt",
+            rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
      FROM analyses a
+     JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+     LEFT JOIN crop_profiles cp ON cp.id=cs.crop_profile_id
      LEFT JOIN LATERAL (
-       SELECT i.id, i.created_at
+       SELECT i.id, i.created_at, i.crop_profile_id
        FROM interpretations i
        WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
        ORDER BY i.revision DESC
@@ -88,6 +112,11 @@ async function lockCurrentNarrativeEvidence(
        FROM analysis_imports ai
        WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
      ) latest_import ON true
+     LEFT JOIN LATERAL (
+       SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+       FROM crop_profile_parameters cpp
+       WHERE cpp.crop_profile_id=cp.id
+     ) rule_state ON cp.id IS NOT NULL
      WHERE a.tenant_id=$1::uuid AND a.id=$2::uuid
      LIMIT 1
      FOR SHARE OF a`,
@@ -101,6 +130,9 @@ async function lockCurrentNarrativeEvidence(
   const freshness = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: state.latestInterpretationCreatedAt,
     latestImportCommittedAt: state.latestImportCommittedAt,
+    interpretationCropProfileId: state.latestInterpretationCropProfileId,
+    currentCropProfileId: state.currentCropProfileId,
+    latestRuleUpdatedAt: state.latestRuleUpdatedAt,
   });
   if (!freshness.current) throw new AiGenerationError(freshness.reason ?? "O laudo mudou. Recalcule a interpretação antes de continuar.", 409);
   return freshness;

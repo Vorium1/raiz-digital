@@ -159,8 +159,8 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     const notInterpretable = seasonAnalyses.filter((a) => a.latestInterpretationStatus === "CALCULATED" && a.notInterpretableReason);
     const approved = seasonAnalyses.filter((a) => a.latestInterpretationStatus === "APPROVED");
     const inReview = seasonAnalyses.filter((a) => a.latestInterpretationStatus === "IN_REVIEW");
-    if (approved.length === seasonAnalyses.length) return { label: "Avaliado e aprovado", tone: "success" as const };
-    if (inReview.length > 0) return { label: "Aguardando revisão profissional", tone: "review" as const };
+    if (approved.length === seasonAnalyses.length) return { label: "Validado pelo motor RAIZ", tone: "success" as const };
+    if (inReview.length > 0) return { label: "Resultado técnico preparado", tone: "review" as const };
     if (notInterpretable.length > 0) return { label: `${notInterpretable.length} de ${seasonAnalyses.length} sem parâmetro interpretável`, tone: "waiting" as const };
     return { label: "Avaliação em andamento", tone: "waiting" as const };
   }, [seasonAnalyses]);
@@ -183,8 +183,8 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     for (const a of seasonAnalyses) {
       events.push({ date: a.createdAt, label: `Cadastrado em — análise ${a.code}`, detail: "Entrada laboratorial", icon: "flask" });
       if (a.interpretedAt) events.push({ date: a.interpretedAt, label: `Interpretação calculada — ${a.code}`, detail: a.notInterpretableReason ?? "Motor determinístico executado", icon: "sparkles" });
-      if (a.reviewedAt) events.push({ date: a.reviewedAt, label: `Revisão registrada — ${a.code}`, detail: "Profissional revisou a interpretação", icon: "shield" });
-      if (a.approvedAt) events.push({ date: a.approvedAt, label: `Interpretação aprovada — ${a.code}`, detail: "Validação profissional concluída", icon: "shield" });
+      if (a.reviewedAt) events.push({ date: a.reviewedAt, label: `Validação registrada — ${a.code}`, detail: "Estado de validação registrado na trilha técnica", icon: "shield" });
+      if (a.approvedAt) events.push({ date: a.approvedAt, label: `Interpretação validada — ${a.code}`, detail: "Decisão registrada na trilha técnica", icon: "shield" });
     }
     for (const n of ndviSnapshots) events.push({ date: n.capturedAt, label: "Leitura de satélite (histórico do talhão)", detail: `NDVI médio ${n.meanNdvi.toFixed(2)} · ${n.source}`, icon: "sparkles" });
     for (const r of seasonReports) events.push({ date: r.publishedAt, label: `Relatório publicado — ${r.analysisCode}`, detail: `Revisão #${r.revision}`, icon: "file" });

@@ -5,10 +5,18 @@ import { Icon } from "@/components/icon";
 import type { LabImportPreview } from "@/domain/lab-import";
 import { jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 
+export type LabImporterReadyFile = {
+  fileName: string;
+  content: string;
+  sourceType: "CSV" | "XLSX" | "PDF_OCR";
+  originalFileName: string;
+};
+
 type Props = {
   method: string;
   onPreviewChange: (preview: LabImportPreview | null) => void;
-  onFileReady?: (file: { fileName: string; content: string } | null) => void;
+  onFileReady?: (file: LabImporterReadyFile | null) => void;
+  simple?: boolean;
 };
 
 type PreviewWithSource = LabImportPreview & {
@@ -49,13 +57,17 @@ const levelLabel: Record<LabImportPreview["confidence"]["level"], string> = {
   INSUFFICIENT: "Insuficiente",
 };
 
-export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
+export function LabImporter({ method, onPreviewChange, onFileReady, simple = false }: Props) {
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<PreviewWithSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const visibleIssues = useMemo(() => preview?.issues.slice(0, 6) ?? [], [preview]);
+  const simpleBlockers = useMemo(
+    () => preview?.issues.filter((issue) => issue.severity === "BLOCKER").slice(0, 2) ?? [],
+    [preview],
+  );
 
   async function processFile(file?: File) {
     if (!file) return;
@@ -96,7 +108,12 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
         if (!response.ok) throw new Error(payload.error ?? "Falha ao ler o arquivo com IA.");
         setPreview(payload as PreviewWithSource);
         onPreviewChange(payload as LabImportPreview);
-        onFileReady?.({ fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`, content: (payload as PreviewWithSource).csvContent ?? "" });
+        onFileReady?.({
+          fileName: `${file.name.replace(/\.[^.]+$/, "")}.csv`,
+          content: (payload as PreviewWithSource).csvContent ?? "",
+          sourceType: "PDF_OCR",
+          originalFileName: file.name,
+        });
         return;
       }
 
@@ -117,7 +134,12 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
       if (!response.ok) throw new Error(payload.error ?? "Falha ao validar o arquivo.");
       setPreview(payload as PreviewWithSource);
       onPreviewChange(payload as LabImportPreview);
-      onFileReady?.({ fileName: file.name, content: (payload as PreviewWithSource).transportContent ?? content });
+      onFileReady?.({
+        fileName: file.name,
+        content: (payload as PreviewWithSource).transportContent ?? content,
+        sourceType: isSpreadsheet ? "XLSX" : "CSV",
+        originalFileName: file.name,
+      });
     } catch (processingError) {
       setError(processingError instanceof Error ? processingError.message : "Não foi possível processar o arquivo.");
     } finally {
@@ -139,9 +161,13 @@ export function LabImporter({ method, onPreviewChange, onFileReady }: Props) {
 
       {error && <div className="import-message danger"><Icon name="warning" size={18}/><div><strong>Arquivo não processado</strong><small>{error}</small></div></div>}
 
-      {preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>O original já foi arquivado antes da leitura automática. Revise o preview e, após criar a análise, abra o arquivo original no painel de proveniência para fazer a conferência humana antes da entrega oficial.</small></div></div>}
+      {simple && preview?.aiExtracted && <div className="import-message review simple-import-note"><Icon name="sparkles" size={18}/><div><strong>Leitura automática concluída</strong><small>A RAIZ leu este PDF ou imagem. O arquivo original continua disponível para conferência antes da entrega oficial.</small></div></div>}
 
-      {preview && <div className="import-preview">
+      {simple && preview && preview.blockers > 0 && <div className="import-message danger simple-import-note"><Icon name="warning" size={18}/><div><strong>Precisamos conferir este arquivo</strong><small>{simpleBlockers.length ? simpleBlockers.map((issue) => issue.message).join(" · ") : "Há informação obrigatória que não pôde ser confirmada automaticamente."}</small></div></div>}
+
+      {!simple && preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>O original já foi arquivado antes da leitura automática. Revise o preview e, após criar a análise, abra o arquivo original no painel de proveniência para fazer a conferência humana antes da entrega oficial.</small></div></div>}
+
+      {!simple && preview && <div className="import-preview">
         <div className="import-preview-head">
           <div>
             <span className="eyebrow">PRÉ-VALIDAÇÃO REAL</span>

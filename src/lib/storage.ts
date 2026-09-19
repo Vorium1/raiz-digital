@@ -256,7 +256,9 @@ export async function saveReportSnapshot(input: { tenantId: string; interpretati
     if (process.env.VERCEL) {
       throw new Error("Armazenamento local não é durável na Vercel. Configure REPORT_STORAGE_PROVIDER=inline antes de publicar.");
     }
-    const key = `reports/${input.tenantId}/${input.interpretationId}/rev-${input.revision}.json`;
+    // O hash faz parte da chave: uma nova decisão publicada sobre a mesma revisão de interpretação
+    // nunca sobrescreve o snapshot anterior. Conteúdo idêntico continua idempotente.
+    const key = `reports/${input.tenantId}/${input.interpretationId}/rev-${input.revision}-${digest}.json`;
     const fullPath = path.join(LOCAL_STORAGE_ROOT, key);
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, buffer);

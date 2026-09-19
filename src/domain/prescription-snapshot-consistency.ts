@@ -3,21 +3,19 @@ export type PrescriptionSnapshotConsistency = {
   reason: string | null;
 };
 
-/**
- * Confirma que o snapshot de evidências usado por uma geração ainda é exatamente o snapshot corrente.
- *
- * `seasonUpdatedAt` é tratado como token de versão, não como aproximação temporal: qualquer diferença
- * significa que algum dado da safra mudou. A interpretação também precisa ser a MESMA revisão e continuar
- * APPROVED. Isso fecha a janela em que o provedor de IA responde enquanto outro usuário altera o contexto
- * ou cria/revisa uma nova interpretação.
- */
-export function evaluatePrescriptionSnapshotConsistency(input: {
+type PrescriptionSnapshotConsistencyInput = {
   snapshotSeasonUpdatedAt: string | null | undefined;
   currentSeasonUpdatedAt: string | null | undefined;
   snapshotInterpretationId: string | null | undefined;
   currentInterpretationId: string | null | undefined;
   currentInterpretationStatus: string | null | undefined;
-}): PrescriptionSnapshotConsistency {
+};
+
+function evaluatePrescriptionSnapshotConsistencyForStatuses(
+  input: PrescriptionSnapshotConsistencyInput,
+  allowedInterpretationStatuses: readonly string[],
+  invalidStatusReason: string,
+): PrescriptionSnapshotConsistency {
   if (!input.snapshotSeasonUpdatedAt || !input.currentSeasonUpdatedAt) {
     return { current: false, reason: "Não foi possível comprovar a versão atual do contexto da safra." };
   }
@@ -27,8 +25,39 @@ export function evaluatePrescriptionSnapshotConsistency(input: {
   if (!input.snapshotInterpretationId || !input.currentInterpretationId) {
     return { current: false, reason: "Não foi possível comprovar a revisão determinística vinculada à prescrição." };
   }
-  if (input.snapshotInterpretationId !== input.currentInterpretationId || input.currentInterpretationStatus !== "APPROVED") {
-    return { current: false, reason: "A interpretação determinística mudou ou deixou de ser a revisão APPROVED atual." };
+  if (input.snapshotInterpretationId !== input.currentInterpretationId) {
+    return { current: false, reason: "A interpretação determinística mudou durante a geração." };
+  }
+  if (!input.currentInterpretationStatus || !allowedInterpretationStatuses.includes(input.currentInterpretationStatus)) {
+    return { current: false, reason: invalidStatusReason };
   }
   return { current: true, reason: null };
+}
+
+/**
+ * Política estrita para qualquer fluxo oficial/pós-revisão. A interpretação precisa continuar sendo
+ * exatamente a mesma revisão e permanecer APPROVED.
+ */
+export function evaluatePrescriptionSnapshotConsistency(
+  input: PrescriptionSnapshotConsistencyInput,
+): PrescriptionSnapshotConsistency {
+  return evaluatePrescriptionSnapshotConsistencyForStatuses(
+    input,
+    ["APPROVED"],
+    "A interpretação determinística deixou de ser a revisão APPROVED atual.",
+  );
+}
+
+/**
+ * Política exclusiva de preparação de rascunho UX 2.0. A mesma interpretação pode permanecer IN_REVIEW
+ * ou APPROVED durante a geração, mas qualquer troca de revisão, contexto ou status inesperado falha fechado.
+ */
+export function evaluatePrescriptionDraftSnapshotConsistency(
+  input: PrescriptionSnapshotConsistencyInput,
+): PrescriptionSnapshotConsistency {
+  return evaluatePrescriptionSnapshotConsistencyForStatuses(
+    input,
+    ["IN_REVIEW", "APPROVED"],
+    "A interpretação determinística deixou de estar em IN_REVIEW/APPROVED durante a preparação do rascunho.",
+  );
 }

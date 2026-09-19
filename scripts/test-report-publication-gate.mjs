@@ -33,7 +33,7 @@ const staleLabEvidence = evaluateReportPublicationGate({
   prescriptionCurrent: true,
 });
 assert.equal(staleLabEvidence.allowed, false);
-assert.match(staleLabEvidence.reason, /laudo laboratorial mudou/i);
+assert.match(staleLabEvidence.reason, /dados ou as regras agronômicas/i);
 
 const sourceRequired = evaluateReportPublicationGate({
   interpretationExists: true,
@@ -51,7 +51,7 @@ assert.match(sourceRequired.reason, /conferência humana/i);
 
 const noPrescription = evaluateReportPublicationGate({ interpretationExists: true, interpretationStatus: "APPROVED", interpretationEvidenceCurrent: true, prescriptionId: null, prescriptionStatus: null });
 assert.equal(noPrescription.allowed, false);
-assert.match(noPrescription.reason, /recomendação assistida raiz/i);
+assert.match(noPrescription.reason, /conclusão técnica/i);
 
 for (const status of ["PENDING_REVIEW", "CHANGES_REQUESTED", "REJECTED"]) {
   const result = evaluateReportPublicationGate({ interpretationExists: true, interpretationStatus: "APPROVED", interpretationEvidenceCurrent: true, prescriptionId: "00000000-0000-4000-8000-000000000001", prescriptionStatus: status });
@@ -87,4 +87,4 @@ assert.equal(approved.allowed, true);
 assert.equal(approved.reason, null);
 assert.equal(approved.prescriptionStatus, "APPROVED");
 
-console.log("report publication gate: latest interpretation + current lab evidence + source verification + current prescription enforced");
+console.log("report publication gate: interpretação/regra corrente + fonte + conclusão técnica aprovada enforced");

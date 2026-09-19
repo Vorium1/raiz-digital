@@ -253,7 +253,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         {latest && statusMeta && <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>}
       </div>
 
-      <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ só libera esta etapa depois de uma interpretação determinística aprovada. Toda recomendação gerada continua exigindo revisão profissional antes de virar recomendação oficial.</p>
+      <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ pode preparar o rascunho quando a interpretação determinística corrente entra em revisão. A recomendação só vira oficial depois da aprovação profissional e dos gates de integridade.</p>
 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
 
@@ -332,8 +332,8 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         <div className="pending-engine" style={{ margin: 0 }}>
           <Icon name={readyToGenerate ? "sparkles" : "shield"} size={22}/>
           <div>
-            <p>{readyToGenerate ? "Interpretação aprovada. A análise está pronta para gerar uma proposta de manejo rastreável." : readiness?.reason ?? "A recomendação será liberada após a aprovação técnica da interpretação."}</p>
-            {canRun && <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar recomendação assistida" : "Aguardando aprovação técnica"}</button>}
+            <p>{readyToGenerate ? "Interpretação corrente e revisável. A análise está pronta para preparar uma proposta de manejo rastreável." : readiness?.reason ?? "A recomendação será liberada após a aprovação técnica da interpretação."}</p>
+            {canRun && <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar recomendação assistida" : "Aguardando interpretação revisável"}</button>}
           </div>
         </div>
       ) : (

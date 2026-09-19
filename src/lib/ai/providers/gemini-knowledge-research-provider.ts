@@ -1,5 +1,6 @@
 import type { KnowledgeResearchProvider, KnowledgeResearchRequest, KnowledgeResearchResult } from "@/lib/ai/knowledge-research-provider";
 import { validateKnowledgeResearchSources } from "@/lib/ai/knowledge-research-schema";
+import { AGRONOMY_KNOWLEDGE_COVERAGE_TEXT } from "@/domain/agronomy-knowledge-domains";
 
 /**
  * TESTADO CONTRA A API REAL EM 2026-09-04 (chave gratuita, nível free do
@@ -33,13 +34,14 @@ const GROUNDING_UNAVAILABLE_HINT =
 
 function buildPrompt(request: KnowledgeResearchRequest): string {
   return [
-    "Você é um agrônomo pesquisador, especialista em fertilidade do solo, produzindo material de referência técnica para uma base de conhecimento interna.",
-    "Pesquise metodologia técnica atual e reconhecida sobre manejo de fertilidade e correção de solo para a cultura informada, priorizando o Manual de Calagem e Adubação para os Estados do Rio Grande do Sul e Santa Catarina (CQFS RS/SC), publicações da Embrapa, e universidades/institutos de pesquisa brasileiros equivalentes.",
+    "Você é um pesquisador agrônomo multidisciplinar, produzindo material de referência técnica para uma base de conhecimento interna.",
+    "Pesquise conhecimento técnico atual e reconhecido para a cultura informada. Priorize fontes oficiais, manuais regionais, Embrapa, universidades, sociedades científicas e artigos revisados por pares. Não limite a pesquisa a fertilidade.",
     "Você NUNCA inventa um dado ou uma faixa técnica — cada item que você devolver precisa vir de uma fonte real que você encontrou pesquisando. Se não encontrar informação suficiente e confiável sobre algum tema, simplesmente não inclua um item para ele.",
-    "Produza de 2 a 5 itens, cada um cobrindo um tema técnico específico (ex.: correção de acidez/calagem, fósforo, potássio, micronutrientes, compactação física).",
+    "Produza de 4 a 8 itens cobrindo áreas diferentes e relevantes da matriz curricular abaixo; não repita o mesmo tema só para preencher quantidade.",
+    "Matriz de cobertura agronômica (define O QUE investigar, nunca a dose):\n" + AGRONOMY_KNOWLEDGE_COVERAGE_TEXT,
     "Responda SOMENTE com um array JSON válido, sem nenhum texto antes ou depois, exatamente no formato:",
-    `[{"title": string, "institution": string|null, "editionYear": number|null, "subject": string, "content": string, "regionCode": string|null}]`,
-    "`content` deve ser o resumo técnico completo e citável do que você encontrou — não uma frase, um parágrafo técnico de verdade.",
+    `[{"title": string, "institution": string|null, "editionYear": number|null, "subject": string, "content": string, "regionCode": string|null, "sourceUrl": string|null, "doi": string|null, "evidenceType": "REGIONAL_MANUAL"|"SYSTEMATIC_REVIEW"|"META_ANALYSIS"|"MULTILOCATION_TRIAL"|"CONTROLLED_FIELD_TRIAL"|"OBSERVATIONAL_FIELD"|"MECHANISTIC"|"UNCLASSIFIED", "evidenceStrength": "DIRECT_STRONG"|"TRANSFERRED_STRONG"|"MODERATE"|"EXPERIMENTAL"|"OBSERVATIONAL"|"CONFLICTING"|"INSUFFICIENT"|"UNASSESSED", "requiresLocalCalibration": boolean, "requiresAgronomistReview": boolean, "quantitativeUseStatus": "CONTEXT_ONLY"|"REVIEW_ONLY"}]`,
+    "`content` deve resumir fielmente o que a fonte sustenta, incluindo condições e limites. `sourceUrl` ou `doi` deve identificar a fonte original sempre que disponível. Não marque uma afirmação quantitativa como homologada; pesquisa não cria regra de dose.",
     "",
     `Cultura: ${request.cropName} (código ${request.cropCode}).`,
     `Regiões técnicas já cadastradas na plataforma: ${request.regionCodes.length ? request.regionCodes.join(", ") : "nenhuma cadastrada ainda — pesquise de forma geral para RS/SC."}`,

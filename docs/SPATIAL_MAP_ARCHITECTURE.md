@@ -38,11 +38,28 @@ Documentação oficial:
 - https://developers.google.com/maps/documentation/javascript/reference/image-overlay
 - https://developers.google.com/maps/documentation/javascript/datalayer
 
-### Contingência — Leaflet + OpenStreetMap
+### Standby — Mapbox Standard Satellite
+
+A RAIZ mantém o Mapbox pré-integrado como segunda opção, sem alterar a fonte de verdade espacial.
+
+```env
+NEXT_PUBLIC_RAIZ_MAP_PROVIDER=mapbox
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=
+```
+
+O estilo preparado é `mapbox://styles/mapbox/standard-satellite` via Mapbox GL JS v3.30.0. Em `auto`, a ordem é:
+
+1. Google Satellite, quando a chave Google estiver configurada;
+2. Mapbox Standard Satellite, quando houver token Mapbox;
+3. Leaflet + OpenTopoMap (relevo), como contingência sem credencial.
+
+NDVI, contorno, pontos e coordenadas continuam sendo dados RAIZ/Sentinel-2/PostGIS, independentemente do mapa-base.
+
+### Contingência — Leaflet + OpenTopoMap (relevo)
 
 O defeito histórico de quadrantes pretos foi observado pelo usuário em qualquer tipo de tela, não apenas mobile. Isso reduz a probabilidade de ser somente um problema de responsividade/`invalidateSize` e torna inadequado depender da mesma camada aérea Esri no fallback.
 
-Por isso, se Google não estiver configurado ou falhar em runtime, o mapa continua operacional com **Leaflet + OpenStreetMap**, sem Esri. O objetivo da contingência é disponibilidade e leitura espacial estável; imagem aérea permanece responsabilidade do Google Satellite no caminho principal.
+Por isso, se Google não estiver configurado ou falhar em runtime, o mapa continua operacional com **Leaflet + OpenTopoMap (relevo)**, sem Esri. O objetivo da contingência é disponibilidade e leitura espacial estável; imagem aérea permanece responsabilidade do Google Satellite no caminho principal.
 
 Essa decisão também cobre o caso em que um servidor de imagem devolve um tile preto como PNG aparentemente válido (HTTP 200): nesse cenário, ter OSM abaixo não resolve porque o tile opaco continua cobrindo a base.
 
@@ -113,7 +130,7 @@ Para Cabeda e qualquer importação espacial real, a aceitação final depende d
 
 ## Comportamento em falhas
 
-- Google Maps falha: fallback Leaflet + OpenStreetMap automático.
+- Google Maps falha: fallback Leaflet + OpenTopoMap (relevo) automático.
 - A contingência não carrega Esri; portanto não reproduz deliberadamente a dependência associada ao defeito histórico dos quadrantes pretos.
 - Raster NDVI arquivado falha em integridade/recuperação: talhão continua com contorno, mensagem explícita e nenhuma imagem é regenerada para fingir continuidade histórica.
 - Snapshot legado sem artefato: solicita refresh antes de exibir mapa histórico.
@@ -162,7 +179,7 @@ Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeçã
 
 ## Checklist para vincular o Google Maps
 
-1. Criar/selecionar projeto no Google Cloud.
+1. Para preview/protótipo, pode ser usada uma Maps Demo Key sem billing; para produção, criar/selecionar projeto no Google Cloud e habilitar billing.
 2. Ativar **Maps JavaScript API**.
 3. Garantir billing da conta/projeto conforme exigido pelo Google Maps Platform.
 4. Criar chave de browser exclusiva da RAIZ.
@@ -180,7 +197,7 @@ Somente um resultado `readyForImmutableRasterEvidence: true` junto com inspeçã
    - hash/metadados do raster presentes no snapshot e rota servindo o mesmo objeto sem reconsulta ao Copernicus;
    - pontos GPS observados no local persistido;
    - pontos Cabeda de fonte auditada corretamente identificados como reais, não como planejados;
-   - fallback OSM quando Google é propositalmente bloqueado.
+   - fallback de relevo quando Google é propositalmente bloqueado.
 
 ## Fora de escopo desta integração
 

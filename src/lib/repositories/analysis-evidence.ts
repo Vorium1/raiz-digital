@@ -6,7 +6,10 @@ export type AnalysisEvidenceState = {
   interpretationId: string | null;
   interpretationStatus: string | null;
   interpretationCreatedAt: string | null;
+  interpretationCropProfileId: string | null;
+  currentCropProfileId: string | null;
   latestImportCommittedAt: string | null;
+  latestRuleUpdatedAt: string | null;
   freshness: AnalysisEvidenceFreshness;
 };
 
@@ -22,16 +25,24 @@ export async function getAnalysisEvidenceState(input: {
       interpretationId: string | null;
       interpretationStatus: string | null;
       interpretationCreatedAt: string | null;
+      interpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
     }>(
       `SELECT a.id::text AS "analysisId",
               li.id::text AS "interpretationId",
               li.status::text AS "interpretationStatus",
               li.created_at::text AS "interpretationCreatedAt",
-              latest_import.latest_import_at::text AS "latestImportCommittedAt"
+              li.crop_profile_id::text AS "interpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
+              latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
        FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = a.tenant_id AND i.analysis_id = a.id
          ORDER BY i.revision DESC
@@ -42,6 +53,11 @@ export async function getAnalysisEvidenceState(input: {
          FROM analysis_imports ai
          WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
        LIMIT 1`,
       [input.tenantId, input.analysisId],
@@ -53,7 +69,10 @@ export async function getAnalysisEvidenceState(input: {
         interpretationId: null,
         interpretationStatus: null,
         interpretationCreatedAt: null,
+        interpretationCropProfileId: null,
+        currentCropProfileId: null,
         latestImportCommittedAt: null,
+        latestRuleUpdatedAt: null,
         freshness: {
           current: false,
           code: "INTERPRETATION_TIMESTAMP_MISSING",
@@ -67,11 +86,17 @@ export async function getAnalysisEvidenceState(input: {
       interpretationId: row.interpretationId,
       interpretationStatus: row.interpretationStatus,
       interpretationCreatedAt: row.interpretationCreatedAt,
+      interpretationCropProfileId: row.interpretationCropProfileId,
+      currentCropProfileId: row.currentCropProfileId,
       latestImportCommittedAt: row.latestImportCommittedAt,
+      latestRuleUpdatedAt: row.latestRuleUpdatedAt,
       freshness: row.interpretationId
         ? evaluateAnalysisEvidenceFreshness({
             interpretationCreatedAt: row.interpretationCreatedAt,
             latestImportCommittedAt: row.latestImportCommittedAt,
+            interpretationCropProfileId: row.interpretationCropProfileId,
+            currentCropProfileId: row.currentCropProfileId,
+            latestRuleUpdatedAt: row.latestRuleUpdatedAt,
           })
         : {
             current: false,
