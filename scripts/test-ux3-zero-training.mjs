@@ -43,6 +43,9 @@ const collectionReport = read("src/app/(platform)/relatorios/coleta/[orderId]/pa
 const spatialMapTypes = read("src/components/spatial-map-types.ts");
 const simpleRefresh = read("src/components/simple-refresh-analysis.tsx");
 const simpleReview = read("src/components/simple-final-review.tsx");
+const simpleFieldOverview = read("src/components/simple-field-overview.tsx");
+const fieldOverviewTabs = read("src/components/field-overview-tabs.tsx");
+const yieldOutlook = read("src/components/simple-field-yield-outlook.tsx");
 const simpleRecommendationContext = read("src/components/simple-recommendation-context.tsx");
 const technicalIntelligence = read("src/components/agronomic-intelligence-panel.tsx");
 const ux2TechnicalReview = read("src/components/ux2-technical-review.tsx");
@@ -384,3 +387,12 @@ assert.match(simplePublish, /label = "Gerar laudo RAIZ"/);
 assert.match(simplePublish, /busyLabel = "Gerando laudo…"/);
 assert.match(simpleResult, /Atualizar laudo com dados atuais/);
 assert.match(simpleResult, /Atualizando laudo…/);
+
+assert.match(simpleFieldOverview, /SimpleFieldYieldOutlook fieldId=\{field\.id\}/);
+assert.match(simpleFieldOverview, /Validado pelo motor RAIZ/);
+assert.doesNotMatch(simpleFieldOverview, /Revisão concluída|Revisar agora/);
+assert.match(fieldOverviewTabs, /Validado pelo motor RAIZ/);
+assert.doesNotMatch(fieldOverviewTabs, /Aguardando revisão profissional|Validação profissional concluída/);
+assert.match(yieldOutlook, /Cenário regional de ano bom \(P75\)/);
+assert.match(yieldOutlook, /Previsão RAIZ: ainda não liberada/);
+assert.match(yieldOutlook, /não uma previsão deste talhão/);
