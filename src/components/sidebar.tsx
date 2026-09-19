@@ -14,19 +14,16 @@ type SidebarProps = {
   pendingAnalyses?: number;
 };
 
-const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 const SEND_HREF = "/enviar";
 
 export function Sidebar({ userName, role }: SidebarProps) {
   const pathname = usePathname();
-  const canReview = Boolean(role && REVIEW_ROLES.has(role));
   const avatar = userName ? initials(userName) || "R" : "R";
 
   const items = [
     { href: "/inicio", label: "Início", icon: "home" as const },
     { href: SEND_HREF, label: "Enviar", icon: "upload" as const },
     { href: "/talhoes", label: "Talhões", icon: "layers" as const },
-    ...(canReview ? [{ href: "/revisar", label: "Revisar", icon: "shield" as const }] : []),
     { href: "/resultados", label: "Resultados", icon: "file" as const },
   ];
 
