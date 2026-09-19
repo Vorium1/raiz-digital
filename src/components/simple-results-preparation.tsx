@@ -8,17 +8,19 @@ type Item = { id: string; fieldName: string; reason: string | null };
 
 export function SimpleResultsPreparation({
   items,
-  canPrepare,
+  canRefresh,
+  canPublish,
 }: {
   items: Item[];
-  canPrepare: boolean;
+  canRefresh: boolean;
+  canPublish: boolean;
 }) {
   const router = useRouter();
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function prepare(item: Item, automatic = false) {
-    if (!canPrepare) return false;
+    if (!canRefresh) return false;
     setBusyIds((current) => current.includes(item.id) ? current : [...current, item.id]);
     setErrors((current) => {
       const next = { ...current };
@@ -43,7 +45,7 @@ export function SimpleResultsPreparation({
   }
 
   async function updateOfficial(item: Item) {
-    if (!canPrepare) return;
+    if (!canPublish) return;
     setBusyIds((current) => current.includes(item.id) ? current : [...current, item.id]);
     setErrors((current) => {
       const next = { ...current };
@@ -66,7 +68,7 @@ export function SimpleResultsPreparation({
   }
 
   useEffect(() => {
-    if (!canPrepare || items.length === 0) return;
+    if (!canRefresh || items.length === 0) return;
     let cancelled = false;
     void (async () => {
       let changed = false;
@@ -81,7 +83,7 @@ export function SimpleResultsPreparation({
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canPrepare, items.map((item) => item.id).join("|")]);
+  }, [canRefresh, items.map((item) => item.id).join("|")]);
 
   if (items.length === 0) return null;
 
@@ -103,7 +105,7 @@ export function SimpleResultsPreparation({
                 <strong>{item.fieldName}</strong>
                 <small>{error ?? (busy ? "Atualizando análise e preparando a conclusão…" : item.reason ?? "Análise precisa ser atualizada.")}</small>
               </div>
-              {canPrepare && !busy && (
+              {canPublish && !busy && (
                 <button type="button" onClick={() => void updateOfficial(item)}>
                   Atualizar laudo
                 </button>
