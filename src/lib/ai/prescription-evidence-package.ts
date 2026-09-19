@@ -6,6 +6,7 @@ import {
   type UniformPkReadiness,
 } from "@/domain/uniform-pk-readiness";
 import { withTenant } from "@/lib/db";
+import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision } from "@/domain/sulfur-dose-engine";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -31,6 +32,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   pkDoseReadiness: PkDoseReadiness;
   uniformPkReadiness: UniformPkReadiness;
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
+  deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
   deterministicInterpretation: {
@@ -41,7 +43,16 @@ export type AgronomicPrescriptionEvidencePackage = {
     structuredOutput: unknown;
     warnings: unknown;
   } | null;
-  results: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string; method: string }>;
+  results: Array<{
+    sampleCode: string;
+    parameterCode: string;
+    value: number;
+    unit: string;
+    method: string;
+    protocol?: string | null;
+    depthFromCm?: number | null;
+    depthToCm?: number | null;
+  }>;
   yieldHistory: Array<{ seasonLabel: string; crop: string; cultivar: string | null; yieldValue: number; yieldUnit: string }>;
   technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null; content: string | null }>;
 };
@@ -91,9 +102,15 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
 
     const [resultsResult, interpretationResult] = await Promise.all([
       client.query(
-        `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method
-         FROM lab_samples ls JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
-         WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid ORDER BY ls.laboratory_code, lr.parameter_code`,
+        `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode",
+                lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
+                lr.original_payload->>'protocol' AS protocol,
+                sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
+         FROM lab_samples ls
+         JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+         LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
+         WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid
+         ORDER BY ls.laboratory_code, lr.parameter_code`,
         [tenantId, analysisId],
       ),
       client.query(
@@ -149,6 +166,19 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       }),
     };
 
+    const deterministicSulfurDose = computeSoybeanSulfurRecommendation({
+      cropCode: base.cropProfileCode,
+      observations: resultsResult.rows
+        .filter((row) => row.parameterCode === "S")
+        .map((row) => ({
+          sampleCode: row.sampleCode,
+          sulfurMgDm3: row.value,
+          method: row.method,
+          depthFromCm: row.depthFromCm ?? null,
+          depthToCm: row.depthToCm ?? null,
+        })),
+    });
+
     return {
       tenant: { id: tenant.id, name: tenant.name },
       client: { id: base.clientId, name: base.clientName },
@@ -168,6 +198,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       pkDoseReadiness,
       uniformPkReadiness,
       deterministicPkDoses,
+      deterministicSulfurDose,
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
       deterministicInterpretation,
