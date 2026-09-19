@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
+import { FieldYieldHistoryManager } from "@/components/field-yield-history-manager";
 import { YIELD_OUTLOOK_BLOCKER_LABELS, type YieldOutlookBlocker } from "@/domain/yield-outlook";
 
 type Payload = {
@@ -33,7 +34,7 @@ type Payload = {
 const fmt = (value: number | null | undefined, digits = 1) =>
   value == null || !Number.isFinite(value) ? "—" : value.toLocaleString("pt-BR", { maximumFractionDigits: digits });
 
-export function SimpleFieldYieldOutlook({ fieldId }: { fieldId: string }) {
+export function SimpleFieldYieldOutlook({ fieldId, fieldName, areaHa, canManage }: { fieldId: string; fieldName: string; areaHa: number; canManage: boolean }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -87,7 +88,13 @@ export function SimpleFieldYieldOutlook({ fieldId }: { fieldId: string }) {
         </div>
       </div>
 
-      <a className="button ghost small" href="/coletas#produtividade">Registrar histórico real do talhão</a>
+      {canManage && (
+        <details className="simple-technical-details">
+          <summary><span><Icon name="history" size={16}/> Registrar histórico real do talhão</span><Icon name="chevron" size={15}/></summary>
+          <div className="simple-technical-explainer">Use somente produtividade realmente colhida. Esse histórico será a base de calibração local da previsão futura.</div>
+          <FieldYieldHistoryManager fields={[{ id: fieldId, name: fieldName, areaHa }]}/>
+        </details>
+      )}
     </section>
   );
 }
