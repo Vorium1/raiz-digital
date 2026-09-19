@@ -47,10 +47,12 @@ ALTER TABLE reports
   FOREIGN KEY (tenant_id, interpretation_id, prescription_generation_id)
   REFERENCES ai_generations (tenant_id, interpretation_id, id);
 
--- Uma mesma prescrição aprovada só pode originar uma publicação oficial por interpretação.
--- Uma nova prescrição (novo id) pode ser publicada sobre a mesma revisão determinística sem apagar histórico.
-CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx
-  ON reports (tenant_id, interpretation_id, prescription_generation_id)
+-- A mesma decisão pode ganhar uma NOVA revisão imutável quando evidência congelada posterior
+-- (por exemplo, NDVI arquivado depois da publicação) precisar ser incorporada ao laudo.
+-- A deduplicação de publicação sem evidência nova é serializada no publisher; aqui mantemos um
+-- índice de lookup, sem unicidade por decisão, para preservar histórico sem sobrescrever snapshots.
+CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx
+  ON reports (tenant_id, interpretation_id, prescription_generation_id, published_at DESC)
   WHERE prescription_generation_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS reports_interpretation_published_idx
