@@ -22,8 +22,8 @@ const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TE
 const HISTORY_LOOKBACK_DAYS = 120;
 const MAX_SCENES_PER_REFRESH = 18;
 /**
- * Cada raster exige Process API + PUT durável. Fazer 18 pares seriais em uma única Vercel Function
- * transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
+ * Cada raster exige leitura/processamento da cena + persistência durável. Fazer 18 pares seriais em uma
+ * única Vercel Function transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
  * mas cada chamada arquiva no máximo quatro datas ainda pendentes (das mais recentes para trás).
  * Repetir o refresh progride de forma idempotente até zerar `pendingArchiveCount`.
  */
@@ -122,8 +122,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 }
 
 /**
- * POST atualiza o histórico do talhão pela Statistical API e, antes de efetivar cada snapshot novo,
- * gera o PNG espacial correspondente pela Process API e o arquiva de forma content-addressed.
+ * POST atualiza o histórico do talhão pelo provider Sentinel-2 configurado e, antes de efetivar cada
+ * snapshot novo, gera o PNG espacial correspondente e o arquiva de forma content-addressed.
  *
  * Uma linha que já possui raster arquivado vira evidência imutável: refresh posterior preserva tanto
  * a estatística quanto o artefato daquele dia. Linhas legadas sem raster podem ser promovidas uma única
