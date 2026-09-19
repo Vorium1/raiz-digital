@@ -70,7 +70,7 @@ jobs:
           RESULT_FILE="cabeda-official-result.json"
           echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
           set +e
-          node --experimental-strip-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
+          node --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
             scripts/homologate-cabeda-official-result.mjs | tee "${RESULT_FILE}"
           STATUS=${PIPESTATUS[0]}
           set -e
