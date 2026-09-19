@@ -41,6 +41,28 @@ assert.ok(complete.checks.some((item) => item.name === "cabeda-audit-context" &&
 assert.ok(complete.checks.some((item) => item.name === "satellite-ndvi-provider" && item.status === "PASS"));
 assert.doesNotMatch(JSON.stringify(complete), /copernicus-config|Credenciais Copernicus/);
 
+const blockedExplicitCopernicus = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+});
+assert.equal(blockedExplicitCopernicus.automatedOk, false);
+assert.ok(blockedExplicitCopernicus.blocked.some((item) => item.name === "satellite-ndvi-provider"));
+
+const readyExplicitCopernicus = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  COPERNICUS_CLIENT_ID: "client",
+  COPERNICUS_CLIENT_SECRET: "secret",
+});
+assert.ok(readyExplicitCopernicus.checks.some((item) => item.name === "satellite-ndvi-provider" && item.status === "PASS"));
+
+const blockedInvalidProvider = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "inventado",
+});
+assert.equal(blockedInvalidProvider.automatedOk, false);
+assert.ok(blockedInvalidProvider.blocked.some((item) => item.name === "satellite-ndvi-provider"));
+
 const missingCabeda = evaluateHomologationReadiness({
   ...safeBase,
   HOMOLOGATION_DATABASE_URL: "",
