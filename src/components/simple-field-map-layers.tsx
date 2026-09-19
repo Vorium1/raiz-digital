@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
+import { GoogleFieldTerrain3D } from "@/components/google-field-terrain-3d";
 import { RealFieldMap, type MapLegendEntry, type MapPoint, type SpatialGeometry } from "@/components/real-field-map";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import type { AnalysisEvidenceFreshnessCode } from "@/domain/analysis-evidence-freshness";
 import { classificationColor } from "@/lib/classification-colors";
+import { hasGoogleMapsBrowserKey } from "@/lib/maps/google-maps-loader";
 
 type SoilContext = {
   collectionOrderId: string;
@@ -78,6 +80,7 @@ export function SimpleFieldMapLayers({
   const [loading, setLoading] = useState(true);
   const [layerLoading, setLayerLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [terrain3DFailed, setTerrain3DFailed] = useState(false);
 
   useEffect(() => {
     const node = sectionRef.current;
@@ -218,6 +221,8 @@ export function SimpleFieldMapLayers({
     const color = classificationColor(point.classification);
     return { stroke: color, fill: color, fillOpacity: point.classification ? 0.9 : 0.35 };
   }, []);
+  const onTerrain3DFailure = useCallback(() => setTerrain3DFailed(true), []);
+
 
   const mapPoints = mode === "soil" ? soilPoints : collectionPoints;
   const mapBoundary = layer?.fieldBoundary ?? boundary;
@@ -253,6 +258,8 @@ export function SimpleFieldMapLayers({
 
       {!activated || loading || (mode === "soil" && layerLoading) ? (
         <div className="simple-map-loading"><Icon name="clock" size={17}/> {activated ? "Preparando o mapa…" : "Mapa pronto quando você chegar aqui…"}</div>
+      ) : mode === "terrain" && hasGoogleMapsBrowserKey() && !terrain3DFailed ? (
+        <GoogleFieldTerrain3D boundary={mapBoundary} height={390} onFailure={onTerrain3DFailure}/>
       ) : (
         <RealFieldMap
           boundary={mapBoundary}
@@ -267,7 +274,9 @@ export function SimpleFieldMapLayers({
                 ? `${parameterLabel(parameter)} · ${classifiedCount} ponto(s) classificados`
                 : "A análise ainda não gerou classificação atual para este parâmetro."
               : mode === "terrain"
-                ? "Base topográfica para leitura do relevo da área."
+                ? terrain3DFailed
+                  ? "Relevo 3D indisponível nesta sessão; exibindo base topográfica."
+                  : "Base topográfica para leitura do relevo da área."
                 : "Área e pontos desta coleta."
           }
         />
