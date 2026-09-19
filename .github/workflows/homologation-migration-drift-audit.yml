@@ -76,10 +76,13 @@ jobs:
           const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
           console.log("## Migration drift · homologação · somente leitura");
           console.log("");
+          console.log(`- Status: **${payload.status ?? "UNKNOWN"}**`);
           console.log(`- Última migration registrada: **${payload.lastRecordedMigration ?? "nenhuma"}**`);
+          console.log(`- Ledger corrente: **${payload.ledgerCurrent === true}**`);
           console.log(`- Migrations ausentes no ledger: **${payload.missingFromLedger?.length ?? 0}**`);
           console.log(`- Contrato físico de republicação: **${payload.reportRepublicationContract === true}**`);
           console.log(`- Schema à frente do ledger: **${payload.schemaAheadOfLedger === true}**`);
+          console.log(`- Mismatch schema/ledger: **${payload.recordedSchemaMismatch === true}**`);
           console.log(`- Requer reconciliação controlada: **${payload.requiresLedgerReconciliation === true}**`);
           if (Array.isArray(payload.missingFromLedger) && payload.missingFromLedger.length) {
             console.log(`- Ausentes: ${payload.missingFromLedger.join(", ")}`);
