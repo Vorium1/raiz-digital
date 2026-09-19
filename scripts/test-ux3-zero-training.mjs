@@ -166,10 +166,8 @@ assert.match(dashboardRepository, /status = 'IN_REVIEW' AND current/);
 assert.match(dashboardRepository, /li\.crop_profile_id IS NOT DISTINCT FROM la\.crop_profile_id/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
-assert.match(reviewInbox, /href=\{`\/analise\/\$\{item\.id\}`\}/);
-assert.match(reviewInbox, /getAnalysisEvidenceState/);
-assert.match(reviewInbox, /freshness\.current === true/);
-assert.match(reviewInbox, /item\.currentCrop \|\| item\.nextCrop/);
+assert.match(reviewInbox, /redirect\\("\\/resultados"\\)/);
+assert.doesNotMatch(reviewInbox, /Pronto para revisar|listAnalyses|getAnalysisEvidenceState/);
 assert.match(field, /`\/analise\/\$\{latest\.id\}`/);
 assert.match(field, /Detalhes técnicos/);
 assert.doesNotMatch(field, /Falta uma informação para a RAIZ concluir esta análise/);
