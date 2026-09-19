@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
+import { SimpleFieldYieldOutlook } from "@/components/simple-field-yield-outlook";
 import { SimpleFieldMapLayers } from "@/components/simple-field-map-layers";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
 import type { DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
@@ -57,17 +58,17 @@ export function SimpleFieldOverview({
     && deliveryStatus?.prescriptionCurrent === true
     && deliveryStatus.prescriptionStatus === "APPROVED"
   ) {
-    stateTitle = "Revisão concluída";
-    stateText = "A decisão técnica corrente foi aprovada. Falta somente concluir a entrega.";
+    stateTitle = "Validado pelo motor RAIZ";
+    stateText = "A decisão determinística corrente está pronta. Falta somente concluir a entrega.";
     stateIcon = "check";
     actionHref = `/analise/${latest.id}`;
     actionLabel = "Concluir entrega";
   } else if (latest?.latestInterpretationStatus === "IN_REVIEW" || latest?.status === "AWAITING_REVIEW") {
-    stateTitle = "Pronto para revisar";
-    stateText = "A RAIZ já preparou a análise. Agora é só conferir e decidir.";
+    stateTitle = "Resultado técnico preparado";
+    stateText = "A RAIZ já calculou a análise. Abra para ver os dados, limites e próximos passos.";
     stateIcon = "shield";
     actionHref = `/analise/${latest.id}`;
-    actionLabel = "Revisar agora";
+    actionLabel = "Ver análise";
   } else if (latest) {
     stateTitle = latest.notInterpretableReason ? "Análise precisa continuar" : "Em análise";
     stateText = latest.notInterpretableReason
@@ -103,6 +104,8 @@ export function SimpleFieldOverview({
       />
 
       <SimpleFieldVigor fieldId={field.id}/>
+
+      <SimpleFieldYieldOutlook fieldId={field.id}/>
 
       <section className="simple-field-status">
         <div className={`simple-field-state ${stateIcon === "check" ? "ready" : stateIcon === "shield" ? "review" : ""}`}>
