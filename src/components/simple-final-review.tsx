@@ -42,7 +42,7 @@ type Readiness = {
 
 type Delivery = { currentReportCount?: number };
 
-export function SimpleFinalReview({ analysisId, canReview }: { analysisId: string; canReview: boolean }) {
+export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: string; canPublish: boolean }) {
   const [interpretation, setInterpretation] = useState<Interpretation | null | undefined>(undefined);
   const [prescription, setPrescription] = useState<Prescription | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
@@ -148,7 +148,7 @@ export function SimpleFinalReview({ analysisId, canReview }: { analysisId: strin
         </div>
       )}
 
-      {canReview ? (
+      {canPublish ? (
         <div className="simple-review-actions">
           <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretation?.id}/>
         </div>
