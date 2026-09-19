@@ -31,7 +31,7 @@ const commercialInputCatalog = await readFile(new URL("../db/migrations/033_comm
 const commercialPlanSnapshots = await readFile(new URL("../db/migrations/034_commercial_plan_snapshots.sql", import.meta.url), "utf8");
 const ndviRasterCustody = await readFile(new URL("../db/migrations/037_ndvi_raster_custody.sql", import.meta.url), "utf8");
 const reportSnapshotRepublication = await readFile(new URL("../db/migrations/038_report_snapshot_republication.sql", import.meta.url), "utf8");
-const reportDecisionRepublication = await readFile(new URL("../db/migrations/039_report_decision_republication.sql", import.meta.url), "utf8");
+const reportRepublishOnNewNdvi = await readFile(new URL("../db/migrations/039_report_republish_on_new_ndvi.sql", import.meta.url), "utf8");
 
 assert.match(initial, /CREATE EXTENSION IF NOT EXISTS postgis/i);
 assert.match(tenancy, /CREATE POLICY tenant_isolation/i);
@@ -149,11 +149,10 @@ assert.match(reportSnapshotRepublication, /WHERE prescription_generation_id IS N
 assert.match(reportSnapshotRepublication, /CREATE INDEX IF NOT EXISTS reports_interpretation_published_idx/i);
 assert.match(reportSnapshotRepublication, /ON reports \(tenant_id, interpretation_id, published_at DESC\)/i);
 
-assert.match(reportDecisionRepublication, /DROP INDEX IF EXISTS reports_decision_unique_idx/i);
-assert.match(reportDecisionRepublication, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_revision_unique_idx/i);
-assert.match(reportDecisionRepublication, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, revision\)/i);
-assert.match(reportDecisionRepublication, /WHERE prescription_generation_id IS NOT NULL/i);
-assert.match(reportDecisionRepublication, /CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx/i);
-assert.match(reportDecisionRepublication, /published_at DESC/i);
+assert.match(reportRepublishOnNewNdvi, /DROP INDEX IF EXISTS reports_decision_unique_idx/i);
+assert.match(reportRepublishOnNewNdvi, /CREATE INDEX IF NOT EXISTS reports_decision_lookup_idx/i);
+assert.match(reportRepublishOnNewNdvi, /ON reports \(tenant_id, interpretation_id, prescription_generation_id, published_at DESC\)/i);
+assert.match(reportRepublishOnNewNdvi, /WHERE prescription_generation_id IS NOT NULL/i);
+assert.doesNotMatch(reportRepublishOnNewNdvi, /CREATE UNIQUE INDEX IF NOT EXISTS reports_decision_unique_idx/i);
 
 console.log("migrations: contratos estruturais críticos até 039 aprovados");
