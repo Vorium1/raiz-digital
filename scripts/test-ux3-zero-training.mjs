@@ -258,6 +258,7 @@ assert.match(simpleAnalysis, /METHOD_DETAIL_INCOMPLETE/);
 assert.match(simpleAnalysis, /detalhes suficientes da metodologia/);
 assert.match(simpleAnalysis, /joinHumanList/);
 assert.doesNotMatch(simpleAnalysis, /Pronto para revisar|Revisão concluída|<b>Revisão<\/b>|Aguardando você/);
+assert.doesNotMatch(simpleAnalysis, /Depois da revisão/);
 assert.match(simpleAnalysis, /Validação em andamento/);
 assert.match(simpleAnalysis, /<b>Validação<\/b>/);
 assert.match(simpleAnalysis, /motor RAIZ/);
@@ -386,7 +387,7 @@ assert.match(simpleResult, /kg\/ha/);
 
 assert.match(simpleResult, /RASTREABILIDADE/);
 assert.match(simpleResult, /Base agronômica/);
-assert.match(simpleResult, /<small>Motor<\\/small><strong>\{engineValidated \? "Motor RAIZ"/);
+assert.ok(simpleResult.includes('<small>Motor</small><strong>{engineValidated ? "Motor RAIZ"'));
 assert.match(simpleResult, /Versão do motor/);
 
 assert.match(simplePublish, /label = "Gerar laudo RAIZ"/);
