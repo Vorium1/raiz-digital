@@ -213,7 +213,7 @@ export function GoogleFieldMap({
             <button type="button" className="icon-button" aria-label="Fechar" onClick={() => setSelectedPoint(null)}><Icon name="close" size={13}/></button>
           </div>
           <dl>
-            <div><dt>Status</dt><dd>{selectedPoint.collectedAt ? "Coletado" : "Pendente"}</dd></div>
+            <div><dt>Status</dt><dd>{pointPositionKind(selectedPoint) === "PLANNED" ? "Planejado" : selectedPoint.collectedAt ? "Coletado" : "Coordenada real"}</dd></div>
             {showAgronomicFields && (
               <>
                 <div><dt>Valor</dt><dd>{selectedPoint.value != null ? `${selectedPoint.value} ${selectedPoint.unit ?? ""}` : "Sem resultado"}</dd></div>
