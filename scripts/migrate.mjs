@@ -2,6 +2,7 @@ import pg from "pg";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { assertUniqueMigrationNumbers, buildAtomicMigrationSql } from "./migration-transaction.mjs";
 
 const { Pool } = pg;
 const databaseUrl = process.env.DATABASE_URL;
@@ -22,6 +23,7 @@ try {
   const appliedRows = await pool.query("SELECT name FROM schema_migrations");
   const applied = new Set(appliedRows.rows.map((row) => row.name));
   const files = (await readdir(migrationDir)).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
+  assertUniqueMigrationNumbers(files);
 
   for (const name of files) {
     if (applied.has(name)) {
@@ -30,8 +32,7 @@ try {
     }
     const sql = await readFile(join(migrationDir, name), "utf8");
     console.log(`apply ${name}`);
-    await pool.query(sql);
-    await pool.query("INSERT INTO schema_migrations(name) VALUES ($1)", [name]);
+    await pool.query(buildAtomicMigrationSql(sql, name));
   }
   console.log("migrations: banco atualizado");
 } finally {
