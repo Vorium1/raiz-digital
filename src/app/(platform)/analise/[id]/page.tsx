@@ -63,14 +63,14 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
   const interpretationItems = Array.isArray(output?.interpretation) ? output.interpretation : [];
   const findingSummaries = summarizeSimpleInterpretation(interpretationItems).slice(0, 8);
   const blockedCount = interpretationItems.filter((item: any) => item?.classificationRole !== "AUXILIARY" && !item?.interpretable).length;
-  const methodDetailParameterNames = Array.from(new Set(
+  const methodDetailParameterNames: string[] = Array.from(new Set<string>(
     interpretationItems
       .filter((item: any) =>
         item?.classificationRole !== "AUXILIARY"
         && !item?.interpretable
         && item?.code === "METHOD_DETAIL_INCOMPLETE"
         && typeof item?.parameterCode === "string")
-      .map((item: any) => parameterLabel(item.parameterCode)),
+      .map((item: any): string => parameterLabel(item.parameterCode)),
   ));
   const analysisReady = analysisCurrent && (interpretationStatus === "IN_REVIEW" || interpretationStatus === "APPROVED");
   const prescriptionCurrent = delivery?.prescriptionCurrent === true;
