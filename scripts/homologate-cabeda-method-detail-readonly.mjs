@@ -5,7 +5,7 @@ import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 import { normalizeAnalyticalMethod, normalizeUnit } from "../src/domain/lab-method-normalization.ts";
 
 const analysisCodes = ["AN-CABEDA-01", "AN-CABEDA-02", "AN-CABEDA-03"];
-const incompleteMethodParameters = ["B", "MN", "S"];
+const protocolResolvedParameters = ["B", "MN", "S", "CU", "ZN"];
 const canonicalizedParameters = ["CTC", "P", "K"];
 
 function requireEnv(name, value) {
@@ -107,6 +107,7 @@ async function main() {
            lr.numeric_value::float8 AS value,
            lr.unit,
            lr.analytical_method AS method,
+           lr.original_payload->>'protocol' AS protocol,
            lr.source,
            ls.sample_type AS "sampleType",
            sp.depth_from_cm::float8 AS "depthFromCm",
@@ -135,7 +136,7 @@ async function main() {
       const labResults = labResult.rows.map((row) => ({
         ...row,
         unit: normalizeUnit(row.parameterCode, row.unit),
-        method: normalizeAnalyticalMethod(row.parameterCode, row.method),
+        method: normalizeAnalyticalMethod(row.parameterCode, row.method, row.protocol),
         depthFromCm: row.depthFromCm ?? null,
         depthToCm: row.depthToCm ?? null,
       }));
@@ -149,9 +150,14 @@ async function main() {
       const engineResult = runAgronomicEngine({ cropProfile, labResults });
 
       const checks = {};
-      for (const parameterCode of incompleteMethodParameters) {
+      for (const parameterCode of protocolResolvedParameters) {
         const rawRows = rawByParameter.get(parameterCode) ?? [];
-        assert.ok(rawRows.length > 0, `${analysis.code}: faltam resultados reais de ${parameterCode} para validar o bloqueio.`);
+        assert.ok(rawRows.length > 0, `${analysis.code}: faltam resultados reais de ${parameterCode} para validar o protocolo.`);
+
+        assert.ok(
+          rawRows.every((row) => row.protocol?.includes("Tedesco") && row.protocol?.includes("1995")),
+          `${analysis.code}/${parameterCode}: protocolo Tedesco 1995 não foi persistido em todas as linhas.`,
+        );
 
         const items = engineResult.interpretation.filter(
           (item) => item.parameterCode === parameterCode && item.classificationRole === "TARGET",
@@ -162,22 +168,9 @@ async function main() {
           `${analysis.code}/${parameterCode}: quantidade de interpretações divergiu dos resultados laboratoriais.`,
         );
         assert.ok(
-          items.every((item) => !item.interpretable && item.code === "METHOD_DETAIL_INCOMPLETE"),
-          `${analysis.code}/${parameterCode}: método abreviado não ficou fail-closed como METHOD_DETAIL_INCOMPLETE.`,
+          items.every((item) => item.interpretable),
+          `${analysis.code}/${parameterCode}: protocolo declarado ainda deixou resultado sem interpretação.`,
         );
-
-        const normalizedMethods = [
-          ...new Set(
-            rawRows.map((row) => normalizeAnalyticalMethod(parameterCode, row.method)),
-          ),
-        ];
-        const rawMethods = [...new Set(rawRows.map((row) => row.method))];
-        assert.deepEqual(
-          normalizedMethods,
-          rawMethods,
-          `${analysis.code}/${parameterCode}: equivalência pendente foi canonizada indevidamente.`,
-        );
-
         checks[parameterCode] = compactCounts(items);
       }
 
@@ -213,7 +206,7 @@ async function main() {
       environment: "isolated-homologation-read-only",
       mode: "BEGIN READ ONLY + ROLLBACK",
       assertions: {
-        incompleteMethodParameters,
+        protocolResolvedParameters,
         safeCanonicalizationParameters: canonicalizedParameters,
       },
       results,
