@@ -55,6 +55,12 @@ assert.deepEqual(incomplete, {
 });
 assert.deepEqual(operationalIntegrationScore(incomplete), { ready: 2, total: 5 });
 
+const blankProvider = getOperationalIntegrationReadiness({
+  REPORT_STORAGE_PROVIDER: "inline",
+  NDVI_SATELLITE_PROVIDER: "   ",
+});
+assert.equal(blankProvider.satelliteNdvi, true, "Provider vazio deve cair no padrão Earth Search.");
+
 const explicitCopernicusMissing = getOperationalIntegrationReadiness({
   REPORT_STORAGE_PROVIDER: "inline",
   NDVI_SATELLITE_PROVIDER: "copernicus",
