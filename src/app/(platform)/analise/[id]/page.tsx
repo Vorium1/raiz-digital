@@ -100,12 +100,12 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
     stateText = "Esta análise já foi revisada e publicada.";
     stateIcon = "check";
   } else if (finalReviewApproved) {
-    stateTitle = "Revisão concluída";
-    stateText = "A decisão técnica foi aprovada. Falta somente concluir a entrega.";
+    stateTitle = "Base validada";
+    stateText = "A decisão técnica foi validada pelo motor RAIZ. Falta somente gerar o laudo oficial.";
     stateIcon = "check";
   } else if (reviewPending) {
-    stateTitle = "Pronto para revisar";
-    stateText = "A RAIZ já organizou a análise e preparou a etapa de decisão.";
+    stateTitle = "Validação em andamento";
+    stateText = "A RAIZ já organizou a análise e está preparando a base determinística para o laudo.";
     stateIcon = "shield";
   } else if (imported) {
     stateTitle = "Em análise";
@@ -131,7 +131,7 @@ export default async function SimpleAnalysisPage({ params }: { params: Promise<{
         <i/>
         <div className={analysisReady ? "done" : imported ? "current" : "pending"}><span><Icon name={analysisReady ? "check" : "clock"} size={15}/></span><b>Análise</b><small>{analysisReady ? "Pronta" : analysisCurrent ? "Limitada" : imported ? "Atualizar" : "Em andamento"}</small></div>
         <i/>
-        <div className={analysisCurrent && interpretationStatus === "APPROVED" ? "done" : reviewPending ? "current" : "pending"}><span><Icon name={analysisCurrent && interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Revisão</b><small>{analysisCurrent && interpretationStatus === "APPROVED" ? "Concluída" : reviewPending ? "Aguardando você" : "Depois da análise"}</small></div>
+        <div className={analysisCurrent && interpretationStatus === "APPROVED" ? "done" : reviewPending ? "current" : "pending"}><span><Icon name={analysisCurrent && interpretationStatus === "APPROVED" ? "check" : "shield"} size={15}/></span><b>Validação</b><small>{analysisCurrent && interpretationStatus === "APPROVED" ? "Concluída" : reviewPending ? "Preparando" : "Depois da análise"}</small></div>
         <i/>
         <div className={delivery?.currentReportCount ? "done" : finalReviewApproved ? "current" : "pending"}><span><Icon name={delivery?.currentReportCount ? "check" : "file"} size={15}/></span><b>Resultado</b><small>{delivery?.currentReportCount ? "Disponível" : finalReviewApproved ? "Pronto para publicar" : "Depois da revisão"}</small></div>
       </section>
