@@ -165,6 +165,7 @@ const maize = assessCropClimateRisk({
   stateCode: "RS",
   plannedStart: "2026-11-01",
   plannedEnd: "2027-02-28",
+  waterRegime: "SEQUEIRO",
   stages: ["FLOWERING", "REPRODUCTIVE", "GRAIN_FILL"],
   signal: {
     source: "INMET",
