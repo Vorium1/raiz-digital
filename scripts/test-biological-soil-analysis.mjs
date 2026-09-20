@@ -43,10 +43,13 @@ const southAnnual = evaluateBiologicalSoilEvidence({
 });
 assert.equal(southAnnual.coreBioAs.complete, true);
 assert.equal(southAnnual.interpretation.automaticRaizInterpretationAllowed, false);
+assert.equal(southAnnual.interpretation.officialNationalBioAsInterpretationUsable, true);
 assert.equal(southAnnual.interpretation.labReportedInterpretationCanBePreserved, true);
+assert.equal(southAnnual.interpretation.nationalBioAsNetworkEvidenceAllowed, true);
+assert.equal(southAnnual.interpretation.raizRecomputationOfOfficialIndexesAllowed, false);
 assert.equal(southAnnual.interpretation.crossRegionAlgorithmTransferAllowed, false);
 assert.equal(southAnnual.interpretation.labIndexesMustBePreservedNotRecomputed, true);
-assert.ok(southAnnual.warnings.includes("BIOAS_RAIZ_REGIONAL_CALIBRATION_NOT_HOMOLOGATED_FOR_SOUTH_BRAZIL"));
+assert.equal(southAnnual.warnings.includes("BIOAS_RAIZ_REGIONAL_CALIBRATION_NOT_HOMOLOGATED_FOR_SOUTH_BRAZIL"), false);
 assert.equal(southAnnual.analysisPolicy.automaticNutrientCreditAllowed, false);
 assert.equal(southAnnual.analysisPolicy.automaticDoseReductionAllowed, false);
 assert.equal(southAnnual.analysisPolicy.automaticDoseIncreaseAllowed, false);
@@ -71,7 +74,7 @@ const horticulture = evaluateBiologicalSoilEvidence({
 });
 assert.equal(horticulture.hasAnyBiology, true);
 assert.equal(horticulture.interpretation.automaticRaizInterpretationAllowed, false);
-assert.ok(horticulture.warnings.includes("BIOLOGICAL_VALUES_AVAILABLE_WITHOUT_RAIZ_AUTOMATIC_INTERPRETATION_DOMAIN"));
+assert.ok(horticulture.warnings.includes("BIOAS_RAW_ENZYMES_REQUIRE_OFFICIAL_OR_VERSIONED_INTERPRETATION"));
 assert.equal(horticulture.analysisPolicy.missingBiologyBlocksAnalysis, false);
 
 const incomplete = evaluateBiologicalSoilEvidence({
@@ -109,7 +112,8 @@ const cerradoAnnual = evaluateBiologicalSoilEvidence({
     },
   ],
 });
-assert.equal(cerradoAnnual.interpretation.automaticRaizInterpretationAllowed, true);
-assert.equal(cerradoAnnual.interpretation.raizAutomaticCalibrationScope, "CERRADO_ANNUAL_GRAIN_FIBER");
+assert.equal(cerradoAnnual.interpretation.automaticRaizInterpretationAllowed, false);
+assert.equal(cerradoAnnual.interpretation.officialNationalBioAsInterpretationUsable, false);
+assert.ok(cerradoAnnual.warnings.includes("BIOAS_RAW_ENZYMES_REQUIRE_OFFICIAL_OR_VERSIONED_INTERPRETATION"));
 
 console.log("biological-soil-analysis: evidência opcional, domínio BioAS e firewall de dose validados");
