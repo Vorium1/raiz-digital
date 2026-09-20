@@ -31,7 +31,8 @@ export function SimpleFieldOverview({
   const latest = seasonAnalyses[0] ?? null;
   const latestReport = latest ? reports.find((report) => report.analysisId === latest.id) ?? null : null;
   const currentReport = latestReport && (deliveryStatus?.currentReportCount ?? 0) > 0 ? latestReport : null;
-  const actionableAlerts = userActionAlerts(alerts).slice(0, 3);
+  const allActionableAlerts = userActionAlerts(alerts);
+  const actionableAlerts = allActionableAlerts.slice(0, 3);
 
   let stateTitle = "Ainda não analisado";
   let stateText = "Envie os dados desta área e a RAIZ organiza o restante.";
@@ -123,6 +124,9 @@ export function SimpleFieldOverview({
               <Link key={alert.id} href={userAttentionHref(alert)}><span><Icon name="warning" size={17}/></span><div><strong>{userAttentionTitle(alert.category)}</strong><small>{alert.context}</small></div><b>Resolver</b><Icon name="chevron" size={15}/></Link>
             ))}
           </div>
+          {allActionableAlerts.length > actionableAlerts.length && (
+            <Link href="/atencao" className="simple-field-attention-more">Ver todas as {allActionableAlerts.length} ações pendentes <Icon name="arrow" size={13}/></Link>
+          )}
         </section>
       )}
 
