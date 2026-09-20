@@ -1,8 +1,8 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import {
   AnalysisContextError,
-  getAnalysisPlannedManagementNotes,
-  updateAnalysisPlannedManagementNotes,
+  getAnalysisPlanningContext,
+  updateAnalysisPlanningContext,
 } from "@/lib/repositories/analyses";
 
 const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
@@ -13,16 +13,16 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
 
   try {
-    const plannedManagement = await getAnalysisPlannedManagementNotes({
+    const planningContext = await getAnalysisPlanningContext({
       tenantId: session.tenantId,
       userId: session.userId,
       analysisId: id,
     });
-    if (!plannedManagement) return Response.json({ error: "Análise não encontrada." }, { status: 404 });
-    return Response.json({ plannedManagement });
+    if (!planningContext) return Response.json({ error: "Análise não encontrada." }, { status: 404 });
+    return Response.json({ planningContext, plannedManagement: planningContext });
   } catch (error) {
     if (error instanceof AnalysisContextError) return Response.json({ error: error.message }, { status: error.status });
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível carregar o manejo planejado." }, { status: 422 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível carregar o planejamento agronômico." }, { status: 422 });
   }
 }
 
@@ -34,20 +34,36 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   try {
     const body = await request.json() as Record<string, unknown>;
-    if (!Object.prototype.hasOwnProperty.call(body, "plannedManagementNotes")) {
-      throw new AnalysisContextError("Informe o campo plannedManagementNotes.", 400);
-    }
-    const plannedManagementNotes = body.plannedManagementNotes == null ? "" : String(body.plannedManagementNotes);
+    const hasPlannedManagement = Object.prototype.hasOwnProperty.call(body, "plannedManagementNotes");
+    const hasHorizon = Object.prototype.hasOwnProperty.call(body, "fertilityPlanningHorizonYears");
+    const hasCycleNotes = Object.prototype.hasOwnProperty.call(body, "fertilityCyclePlanNotes");
 
-    const plannedManagement = await updateAnalysisPlannedManagementNotes({
+    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes) {
+      throw new AnalysisContextError("Informe ao menos um campo de planejamento.", 400);
+    }
+
+    const horizonRaw = hasHorizon && body.fertilityPlanningHorizonYears != null && body.fertilityPlanningHorizonYears !== ""
+      ? Number(body.fertilityPlanningHorizonYears)
+      : null;
+
+    const planningContext = await updateAnalysisPlanningContext({
       tenantId: session.tenantId,
       userId: session.userId,
       analysisId: id,
-      plannedManagementNotes,
+      plannedManagementNotes: hasPlannedManagement
+        ? (body.plannedManagementNotes == null ? "" : String(body.plannedManagementNotes))
+        : undefined,
+      fertilityPlanningHorizonYears: hasHorizon
+        ? (horizonRaw as 2 | 3 | 4 | 5 | null)
+        : undefined,
+      fertilityCyclePlanNotes: hasCycleNotes
+        ? (body.fertilityCyclePlanNotes == null ? "" : String(body.fertilityCyclePlanNotes))
+        : undefined,
     });
-    return Response.json({ plannedManagement });
+
+    return Response.json({ planningContext, plannedManagement: planningContext });
   } catch (error) {
     if (error instanceof AnalysisContextError) return Response.json({ error: error.message }, { status: error.status });
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o manejo planejado." }, { status: 422 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o planejamento agronômico." }, { status: 422 });
   }
 }
