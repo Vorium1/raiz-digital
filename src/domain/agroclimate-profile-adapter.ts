@@ -223,7 +223,9 @@ function parseMetricRule(value: unknown): MetricRulePayload | null {
 function parseDisease(value: unknown): DiseasePayload | null {
   const obj = objectValue(value);
   if (!obj || typeof obj.diseaseName !== "string" || !obj.diseaseName.trim()) return null;
-  const stages = obj.stages == null ? undefined : stageList(obj.stages);
+  const stages: CropPhenologicalStage[] | undefined = obj.stages == null
+    ? undefined
+    : (stageList(obj.stages) ?? undefined);
   if (obj.stages != null && (!stages || !stages.length)) return null;
 
   const conditions = objectValue(obj.conditions);
