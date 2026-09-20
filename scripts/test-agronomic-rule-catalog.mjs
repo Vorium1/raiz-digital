@@ -37,6 +37,9 @@ for (const ruleId of [
   "K-ARROZ-CONTINUO-SOSBAI-2025",
   "S-ARROZ-SOSBAI-2025",
   "FE-ARROZ-RISCO-SOSBAI-2025",
+  "LIMING-SOYBEAN-RS-SC-2025-CONVENTIONAL",
+  "LIMING-SOYBEAN-RS-SC-2025-NO-TILL-ESTABLISHMENT",
+  "LIMING-SOYBEAN-RS-SC-2025-NO-TILL-CONSOLIDATED",
   "CALAGEM-ARROZ-SECO-SOSBAI-2025",
   "MICRO-CLASS-CQFS-2016",
   "LIME-PRNT",
@@ -92,6 +95,11 @@ assert.equal(riceTrace.ruleVersion, "1.1.0");
 assert.equal(riceTrace.sourceSnapshotId, CROSSCHECK_SNAPSHOT_ID);
 assert.equal(riceTrace.sourceInstitution, "SOSBAI");
 assert.equal(riceTrace.executionStatus, "READY_FOR_IMPLEMENTATION");
+
+const soybeanConsolidatedLimeTrace = buildRuleTrace("LIMING-SOYBEAN-RS-SC-2025-NO-TILL-CONSOLIDATED");
+assert.equal(soybeanConsolidatedLimeTrace.executionStatus, "READY_FOR_IMPLEMENTATION");
+assert.match(soybeanConsolidatedLimeTrace.sourceLocator, /1\/2 SMP/);
+assert.match(soybeanConsolidatedLimeTrace.sourceLocator, /Al>=10%/);
 
 const dryRiceLimeTrace = buildRuleTrace("CALAGEM-ARROZ-SECO-SOSBAI-2025");
 assert.equal(dryRiceLimeTrace.ruleVersion, "1.1.0");
