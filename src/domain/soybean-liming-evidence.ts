@@ -322,12 +322,20 @@ function evaluateSample(input: {
             restrictionAssessment: input.restrictionAssessment ?? null,
           });
 
-  const blocked = engine.decision.startsWith("BLOCKED");
+  const blocked = engine.decision === "BLOCKED_CONTEXT"
+    || engine.decision === "BLOCKED_SOURCE_CONFLICT"
+    || engine.decision === "BLOCKED_SOURCE_DOMAIN"
+    || engine.decision === "BLOCKED_PROFESSIONAL_REVIEW";
+  const decision: SoybeanLimingSampleDecision["decision"] = blocked
+    ? "BLOCKED"
+    : engine.decision === "APPLY"
+      ? "APPLY"
+      : "DO_NOT_APPLY";
   return {
     sampleCode,
     depthFromCm: depth.from,
     depthToCm: depth.to,
-    decision: blocked ? "BLOCKED" as const : engine.decision,
+    decision,
     automaticDoseAllowed: engine.automaticDoseAllowed,
     recommendedDoseTonHaPrnt100: engine.recommendedDoseTonHaPrnt100,
     applicationMode: engine.applicationMode,
