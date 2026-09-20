@@ -44,6 +44,11 @@ export type FertilityInvestmentSeason = {
   estimatedCostPerHa: number | null;
 };
 
+export type SeasonalYieldTargetPosture =
+  | "KEEP_USER_TARGET_REVIEW"
+  | "CONSIDER_CONSERVATIVE_SCENARIO"
+  | "CONSIDER_UPSIDE_SCENARIO";
+
 export type FertilityInvestmentScenario = {
   strategy: FertilityCycleCorrectionStrategy;
   label: string;
@@ -150,9 +155,11 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       scenarios,
       preferredStrategy: null as FertilityCycleCorrectionStrategy | null,
       posture: "NO_CLIMATE_PREFERENCE" as const,
+      seasonalYieldTargetPosture: "KEEP_USER_TARGET_REVIEW" as const,
+      automaticYieldTargetChangeAllowed: false as const,
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
-      rationale: "Sem sinal climático oficial com confiança suficiente, o RAIZ compara custo e fluxo de caixa, mas não usa clima para preferir uma estratégia.",
+      rationale: "Sem sinal climático oficial com confiança suficiente, o RAIZ compara custo e fluxo de caixa, mas não usa clima para preferir uma estratégia nem altera a meta produtiva.",
       warnings: climate?.confidence === "LOW" ? ["LOW_FORECAST_CONFIDENCE"] : [],
     };
   }
@@ -168,9 +175,11 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       scenarios,
       preferredStrategy: "TOTAL_AT_START" as const,
       posture: "CONSIDER_ACCELERATING_VALID_CORRECTION" as const,
+      seasonalYieldTargetPosture: "CONSIDER_UPSIDE_SCENARIO" as const,
+      automaticYieldTargetChangeAllowed: false as const,
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
-      rationale: "O sinal climático é favorável e o risco ZARC informado não é elevado. Se caixa e preço dos insumos forem compatíveis, faz sentido considerar antecipar a correção estrutural tecnicamente válida, preservando a manutenção do cultivo.",
+      rationale: "O sinal climático é favorável e o risco ZARC informado não é elevado. Se caixa, preço dos insumos e potencial do talhão forem compatíveis, faz sentido comparar um cenário de maior investimento e antecipar a correção estrutural tecnicamente válida. A meta produtiva só muda se o agrônomo/produtor escolher explicitamente o cenário.",
       warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
     };
   }
@@ -183,9 +192,11 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       scenarios,
       preferredStrategy: "GRADUAL_TWO_CROPS" as const,
       posture: "PRESERVE_CASH_WITHIN_VALID_PHASING" as const,
+      seasonalYieldTargetPosture: "CONSIDER_CONSERVATIVE_SCENARIO" as const,
+      automaticYieldTargetChangeAllowed: false as const,
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
-      rationale: "O cenário climático aumenta o risco econômico da safra. O RAIZ pode preferir a correção gradual já homologada para reduzir desembolso inicial, sem reduzir a necessidade agronômica total nem eliminar a manutenção da cultura.",
+      rationale: "O cenário climático aumenta o risco econômico da safra. O RAIZ pode preferir a correção gradual já homologada e abrir uma simulação de meta econômica mais conservadora para reduzir desembolso inicial. A necessidade estrutural do solo não muda e a meta produtiva só é alterada por decisão explícita do responsável.",
       warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
     };
   }
@@ -194,9 +205,11 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
     scenarios,
     preferredStrategy: null as FertilityCycleCorrectionStrategy | null,
     posture: "BALANCED_REVIEW" as const,
+    seasonalYieldTargetPosture: "KEEP_USER_TARGET_REVIEW" as const,
+    automaticYieldTargetChangeAllowed: false as const,
     climateCanChangeAgronomicNeed: false as const,
     maintenanceProtected: true as const,
-    rationale: "O sinal climático não sustenta uma preferência automática entre as estratégias válidas. Compare preços, caixa, janela operacional e risco ZARC.",
+    rationale: "O sinal climático não sustenta preferência automática entre as estratégias válidas nem mudança automática da meta. Compare preços, caixa, janela operacional, potencial do talhão e risco ZARC.",
     warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
   };
 }
