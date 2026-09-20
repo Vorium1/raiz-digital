@@ -477,6 +477,8 @@ assert.match(officialResultRoute, /OFFICIAL_RESULT_MANAGEMENT_CONTEXT_REQUIRED/)
 assert.match(officialResultRoute, /Defina o sistema de manejo do solo antes de emitir o laudo/);
 assert.match(deterministicPrescriptionProvider, /a regra oficial usa a camada 0–10 cm/);
 assert.match(deterministicPrescriptionProvider, /evidências separadas de 0–10 e 10–20 cm/);
+assert.match(deterministicPrescriptionProvider, /Modo de aplicação: superficial/);
+assert.match(deterministicPrescriptionProvider, /Modo de aplicação: incorporada/);
 assert.doesNotMatch(deterministicPrescriptionProvider, /PH_0_10_MISSING_OR_INVALID/);
 assert.doesNotMatch(deterministicPrescriptionProvider, /SMP_0_10_AND_10_20_REQUIRED/);
 assert.match(simpleRecommendationContext, /needsManagement = cropProfileCode === "SOJA"/);
