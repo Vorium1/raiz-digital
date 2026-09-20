@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
-import { manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
+import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 type Props = {
   cropSeasonId: string;
@@ -126,6 +126,12 @@ export function SimpleRecommendationContext({
               <b>{yieldDisplayUnit}</b>
             </div>
           </label>
+        )}
+
+        {needsYield && selectedPreset && (
+          <small className="simple-review-help">
+            O dimensionamento usará o teto da faixa: {displayYieldFromTonPerHa(cropProfileCode, selectedPreset.targetTonPerHa)?.toLocaleString("pt-BR")} {yieldDisplayUnit} ({selectedPreset.targetTonPerHa.toLocaleString("pt-BR")} t/ha).
+          </small>
         )}
 
         {needsOrder && (
