@@ -76,13 +76,74 @@ export function AnalysisContextIntake({
               />
             </label>
             <label>
-              <span>Regime hídrico *</span>
+              <span>Regime hídrico <small>(opcional)</small></span>
               <select value={value.waterRegime} onChange={(event) => update({ waterRegime: event.target.value as AnalysisContextDraft["waterRegime"] })}>
                 <option value="">Selecione</option>
                 <option value="SEQUEIRO">Sequeiro</option>
                 <option value="IRRIGADO">Irrigado</option>
               </select>
             </label>
+            {value.waterRegime === "IRRIGADO" && (
+              <>
+                <label>
+                  <span>Sistema de irrigação <small>(opcional)</small></span>
+                  <input
+                    value={value.irrigationSystem}
+                    onChange={(event) => update({ irrigationSystem: event.target.value })}
+                    placeholder="Ex.: pivô central, gotejamento, aspersão"
+                  />
+                </label>
+                <label>
+                  <span>Lâmina aplicada <small>(opcional)</small></span>
+                  <div className="simple-context-input">
+                    <input
+                      inputMode="decimal"
+                      value={value.irrigationDepthMm ?? ""}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        update({ irrigationDepthMm: raw === "" ? null : Number(raw) });
+                      }}
+                      placeholder="Ex.: 12"
+                    />
+                    <b>mm</b>
+                  </div>
+                </label>
+                <label>
+                  <span>Intervalo entre irrigações <small>(opcional)</small></span>
+                  <div className="simple-context-input">
+                    <input
+                      inputMode="decimal"
+                      value={value.irrigationFrequencyDays ?? ""}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        update({ irrigationFrequencyDays: raw === "" ? null : Number(raw) });
+                      }}
+                      placeholder="Ex.: 4"
+                    />
+                    <b>dias</b>
+                  </div>
+                </label>
+                <label>
+                  <span>Horário usual <small>(opcional)</small></span>
+                  <input
+                    type="time"
+                    value={value.irrigationApplicationTime}
+                    onChange={(event) => update({ irrigationApplicationTime: event.target.value })}
+                  />
+                </label>
+                <label style={{ gridColumn: "1 / -1" }}>
+                  <span>Detalhes da irrigação <small>(opcional)</small></span>
+                  <textarea
+                    value={value.irrigationNotes}
+                    onChange={(event) => update({ irrigationNotes: event.target.value })}
+                    placeholder="Fonte da água, vazão, fertirrigação, restrições operacionais, histórico de excesso ou déficit etc."
+                    rows={2}
+                  />
+                  <small>Informar apenas “irrigado” já é válido. Quanto mais detalhe houver, mais preciso fica o diagnóstico hídrico.</small>
+                </label>
+              </>
+            )}
+
             <label>
               <span>Sistema de preparo do solo <small>(opcional)</small></span>
               <select
