@@ -1,0 +1,345 @@
+import type {
+  CropClimateHazard,
+  CropClimateImpact,
+  CropClimateProfile,
+  CropClimateSeverity,
+  CropPhenologicalStage,
+} from "./crop-climate-risk.ts";
+import type {
+  AgroclimateMetric,
+  CropClimateMetricRule,
+} from "./crop-climate-metric-engine.ts";
+import type { DiseaseClimateProfile } from "./crop-disease-climate-risk.ts";
+
+export type ActiveAgroclimateCatalogRow = {
+  id: string;
+  code: string;
+  semanticVersion: string;
+  kind: "PHYSIOLOGY" | "REGIONAL_CLIMATE" | "DISEASE" | "ZARC_CONTEXT";
+  diseaseCode: string | null;
+  phenologicalStages: string[];
+  payload: unknown;
+  technicalRegionCode: string;
+  technicalSourceId: string;
+  cropCode: string;
+  technicalRegionName: string;
+  countryCode: string;
+  stateCodes: string[];
+  municipalityCodes: string[];
+  climateZoneCode: string | null;
+  technicalSourceTitle: string;
+  technicalSourceInstitution: string | null;
+};
+
+type ClimateRulePayload = {
+  hazard: CropClimateHazard;
+  stages: CropPhenologicalStage[];
+  impact: CropClimateImpact;
+  severity: CropClimateSeverity;
+  rationale: string;
+};
+
+type MetricRulePayload = {
+  id?: string;
+  stages: CropPhenologicalStage[];
+  metric: AgroclimateMetric;
+  condition: CropClimateMetricRule["condition"];
+  hazard: CropClimateHazard;
+};
+
+type DiseasePayload = {
+  diseaseName: string;
+  stages?: CropPhenologicalStage[];
+  conditions: DiseaseClimateProfile["conditions"];
+};
+
+type CatalogPayloadV1 = {
+  schemaVersion: 1;
+  climateRules?: ClimateRulePayload[];
+  metricRules?: MetricRulePayload[];
+  disease?: DiseasePayload;
+  zarc?: Record<string, unknown>;
+};
+
+export type AdaptedAgroclimateCatalog = {
+  climateProfiles: CropClimateProfile[];
+  metricRules: CropClimateMetricRule[];
+  diseaseProfiles: DiseaseClimateProfile[];
+  zarcContexts: Array<{
+    profileCode: string;
+    technicalRegionCode: string;
+    cropCode: string;
+    payload: Record<string, unknown>;
+    source: { institution: string; title: string };
+  }>;
+  rejected: Array<{ profileCode: string; reason: string }>;
+};
+
+const CLIMATE_HAZARDS = new Set<CropClimateHazard>([
+  "WATER_DEFICIT",
+  "EXCESS_RAIN",
+  "WATERLOGGING",
+  "HEAT",
+  "COLD",
+  "HOT_NIGHTS",
+  "COLD_NIGHTS",
+  "FROST",
+  "HIGH_HUMIDITY",
+  "LEAF_WETNESS",
+  "LOW_RADIATION",
+  "HIGH_VPD",
+  "LOW_SOIL_TEMPERATURE",
+  "HIGH_SOIL_TEMPERATURE",
+  "HAIL",
+  "WIND",
+]);
+
+const STAGES = new Set<CropPhenologicalStage>([
+  "PRE_SOWING",
+  "SOWING_EMERGENCE",
+  "VEGETATIVE",
+  "FLOWERING",
+  "REPRODUCTIVE",
+  "GRAIN_FILL",
+  "MATURATION",
+  "HARVEST",
+  "FRUIT_SET",
+  "BULKING",
+  "DORMANCY",
+  "OTHER",
+]);
+
+const IMPACTS = new Set<CropClimateImpact>(["ADVERSE", "FAVORABLE", "CONTEXTUAL"]);
+const SEVERITIES = new Set<CropClimateSeverity>(["LOW", "MEDIUM", "HIGH"]);
+
+const METRICS = new Set<AgroclimateMetric>([
+  "DAY_MAX_TEMP_C",
+  "DAY_MEAN_TEMP_C",
+  "NIGHT_MEAN_TEMP_C",
+  "NIGHT_MIN_TEMP_C",
+  "SOIL_TEMP_C",
+  "SOLAR_RADIATION_ANOMALY_PCT",
+  "RELATIVE_HUMIDITY_PCT",
+  "LEAF_WETNESS_HOURS",
+  "PRECIPITATION_MM",
+  "WATER_BALANCE_MM",
+  "VPD_KPA",
+  "WIND_KMH",
+]);
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stageList(value: unknown): CropPhenologicalStage[] | null {
+  if (!Array.isArray(value)) return null;
+  const stages = value.filter((item): item is CropPhenologicalStage =>
+    typeof item === "string" && STAGES.has(item as CropPhenologicalStage)
+  );
+  return stages.length === value.length ? stages : null;
+}
+
+function validCondition(value: unknown): value is CropClimateMetricRule["condition"] {
+  const obj = objectValue(value);
+  if (!obj || typeof obj.operator !== "string") return false;
+  if (obj.operator === "BETWEEN") {
+    return Number.isFinite(obj.min) && Number.isFinite(obj.max) && Number(obj.min) <= Number(obj.max);
+  }
+  if (!["GT", "GTE", "LT", "LTE"].includes(obj.operator)) return false;
+  return Number.isFinite(obj.value);
+}
+
+function source(row: ActiveAgroclimateCatalogRow) {
+  return {
+    institution: row.technicalSourceInstitution?.trim() || "Fonte técnica cadastrada",
+    title: row.technicalSourceTitle,
+  };
+}
+
+function region(row: ActiveAgroclimateCatalogRow) {
+  return {
+    countryCode: row.countryCode,
+    stateCodes: row.stateCodes,
+    municipalityCodes: row.municipalityCodes,
+    technicalRegionCodes: [row.technicalRegionCode],
+  };
+}
+
+function parseClimateRule(value: unknown): ClimateRulePayload | null {
+  const obj = objectValue(value);
+  if (!obj) return null;
+  const stages = stageList(obj.stages);
+  if (
+    typeof obj.hazard !== "string"
+    || !CLIMATE_HAZARDS.has(obj.hazard as CropClimateHazard)
+    || !stages
+    || !stages.length
+    || typeof obj.impact !== "string"
+    || !IMPACTS.has(obj.impact as CropClimateImpact)
+    || typeof obj.severity !== "string"
+    || !SEVERITIES.has(obj.severity as CropClimateSeverity)
+    || typeof obj.rationale !== "string"
+    || !obj.rationale.trim()
+  ) return null;
+
+  return {
+    hazard: obj.hazard as CropClimateHazard,
+    stages,
+    impact: obj.impact as CropClimateImpact,
+    severity: obj.severity as CropClimateSeverity,
+    rationale: obj.rationale.trim(),
+  };
+}
+
+function parseMetricRule(value: unknown): MetricRulePayload | null {
+  const obj = objectValue(value);
+  if (!obj) return null;
+  const stages = stageList(obj.stages);
+  if (
+    !stages
+    || !stages.length
+    || typeof obj.metric !== "string"
+    || !METRICS.has(obj.metric as AgroclimateMetric)
+    || typeof obj.hazard !== "string"
+    || !CLIMATE_HAZARDS.has(obj.hazard as CropClimateHazard)
+    || !validCondition(obj.condition)
+  ) return null;
+
+  return {
+    id: typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : undefined,
+    stages,
+    metric: obj.metric as AgroclimateMetric,
+    condition: obj.condition,
+    hazard: obj.hazard as CropClimateHazard,
+  };
+}
+
+function parseDisease(value: unknown): DiseasePayload | null {
+  const obj = objectValue(value);
+  if (!obj || typeof obj.diseaseName !== "string" || !obj.diseaseName.trim()) return null;
+  const stages = obj.stages == null ? undefined : stageList(obj.stages);
+  if (obj.stages != null && (!stages || !stages.length)) return null;
+
+  const conditions = objectValue(obj.conditions);
+  if (!conditions) return null;
+
+  return {
+    diseaseName: obj.diseaseName.trim(),
+    stages,
+    conditions: conditions as DiseaseClimateProfile["conditions"],
+  };
+}
+
+function parsePayload(value: unknown): CatalogPayloadV1 | null {
+  const obj = objectValue(value);
+  if (!obj || obj.schemaVersion !== 1) return null;
+  return obj as CatalogPayloadV1;
+}
+
+export function adaptAgroclimateCatalogRows(
+  rows: ActiveAgroclimateCatalogRow[],
+): AdaptedAgroclimateCatalog {
+  const out: AdaptedAgroclimateCatalog = {
+    climateProfiles: [],
+    metricRules: [],
+    diseaseProfiles: [],
+    zarcContexts: [],
+    rejected: [],
+  };
+
+  for (const row of rows) {
+    const payload = parsePayload(row.payload);
+    if (!payload) {
+      out.rejected.push({ profileCode: row.code, reason: "UNSUPPORTED_OR_INVALID_SCHEMA_VERSION" });
+      continue;
+    }
+
+    if (row.kind === "PHYSIOLOGY" || row.kind === "REGIONAL_CLIMATE") {
+      const climateRulesRaw = payload.climateRules ?? [];
+      const metricRulesRaw = payload.metricRules ?? [];
+      const climateRules = climateRulesRaw.map(parseClimateRule);
+      const metricRules = metricRulesRaw.map(parseMetricRule);
+
+      if (climateRules.some((rule) => !rule) || metricRules.some((rule) => !rule)) {
+        out.rejected.push({ profileCode: row.code, reason: "INVALID_CLIMATE_OR_METRIC_RULE" });
+        continue;
+      }
+      if (!climateRules.length && !metricRules.length) {
+        out.rejected.push({ profileCode: row.code, reason: "EMPTY_CLIMATE_PROFILE" });
+        continue;
+      }
+
+      if (climateRules.length) {
+        out.climateProfiles.push({
+          id: row.code,
+          cropCode: row.cropCode,
+          region: region(row),
+          rules: climateRules as ClimateRulePayload[],
+          source: source(row),
+          status: "HOMOLOGATED",
+        });
+      }
+
+      for (const [index, rule] of (metricRules as MetricRulePayload[]).entries()) {
+        out.metricRules.push({
+          id: rule.id || `${row.code}:METRIC:${index + 1}`,
+          cropCode: row.cropCode,
+          region: region(row),
+          stages: rule.stages,
+          metric: rule.metric,
+          condition: rule.condition,
+          hazard: rule.hazard,
+          source: source(row),
+          status: "HOMOLOGATED",
+        });
+      }
+      continue;
+    }
+
+    if (row.kind === "DISEASE") {
+      const disease = parseDisease(payload.disease);
+      if (!row.diseaseCode || !disease) {
+        out.rejected.push({ profileCode: row.code, reason: "INVALID_DISEASE_PROFILE" });
+        continue;
+      }
+
+      const defaultStages = stageList(row.phenologicalStages);
+      const stages = disease.stages ?? defaultStages;
+      if (!stages || !stages.length) {
+        out.rejected.push({ profileCode: row.code, reason: "DISEASE_STAGES_REQUIRED" });
+        continue;
+      }
+
+      out.diseaseProfiles.push({
+        id: row.code,
+        cropCode: row.cropCode,
+        diseaseCode: row.diseaseCode,
+        diseaseName: disease.diseaseName,
+        region: region(row),
+        stages,
+        conditions: disease.conditions,
+        source: source(row),
+        status: "HOMOLOGATED",
+      });
+      continue;
+    }
+
+    if (row.kind === "ZARC_CONTEXT") {
+      if (!payload.zarc || !objectValue(payload.zarc)) {
+        out.rejected.push({ profileCode: row.code, reason: "INVALID_ZARC_CONTEXT" });
+        continue;
+      }
+      out.zarcContexts.push({
+        profileCode: row.code,
+        technicalRegionCode: row.technicalRegionCode,
+        cropCode: row.cropCode,
+        payload: payload.zarc,
+        source: source(row),
+      });
+    }
+  }
+
+  return out;
+}
