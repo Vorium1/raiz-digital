@@ -101,6 +101,14 @@ const extendedDisease = assessDiseaseClimateFavorability({
   },
   pathogenPresenceStatus: "REGIONAL_ALERT",
   hostSusceptibility: "SUSCEPTIBLE",
+  fieldContext: {
+    canopyDensity: "DENSE",
+    irrigationMethod: "CENTER_PIVOT",
+    drainage: "POOR",
+    residueLevel: "HIGH",
+    recentDiseaseHistory: true,
+    cropRotationBreak: false,
+  },
   profiles: [{
     id: "TOMATE-RS-DISEASE-WEATHER-TEST",
     cropCode: "TOMATE",
@@ -125,6 +133,14 @@ const extendedDisease = assessDiseaseClimateFavorability({
       sunshineHours: { max: 4 },
       cloudCoverPct: { min: 80 },
     },
+    fieldContextConditions: {
+      canopyDensityIn: ["DENSE"],
+      irrigationMethodIn: ["CENTER_PIVOT", "SPRINKLER"],
+      drainageIn: ["POOR"],
+      residueLevelIn: ["HIGH"],
+      recentDiseaseHistory: true,
+      cropRotationBreak: false,
+    },
     source: { institution: "TEST", title: "Perfil estrutural de teste" },
     status: "HOMOLOGATED",
   }],
@@ -137,6 +153,10 @@ assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("DEW_POINT"));
 assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("VPD"));
 assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("CONSECUTIVE_WET_DAYS"));
 assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("SUNSHINE"));
+assert.equal(extendedDisease.diseaseRisks[0].fieldContextAlignment, "MATCHED");
+assert.ok(extendedDisease.diseaseRisks[0].matchedFieldFactors.includes("CANOPY_DENSITY"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFieldFactors.includes("IRRIGATION_METHOD"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFieldFactors.includes("RECENT_DISEASE_HISTORY"));
 assert.equal(extendedDisease.diseaseRisks[0].treatmentAutomaticallyAuthorized, false);
 
 const maize = assessCropClimateRisk({
