@@ -2,18 +2,36 @@ import type { CropPhenologicalStage } from "./crop-climate-risk.ts";
 
 export type DiseaseClimateFactor =
   | "AIR_TEMPERATURE"
+  | "NIGHT_TEMPERATURE"
+  | "DEW_POINT"
   | "RELATIVE_HUMIDITY"
+  | "VPD"
   | "LEAF_WETNESS"
   | "RAINFALL"
+  | "RAINFALL_INTENSITY"
+  | "CONSECUTIVE_WET_DAYS"
+  | "SOIL_MOISTURE"
   | "WIND"
+  | "WIND_GUST"
+  | "SUNSHINE"
+  | "CLOUD_COVER"
   | "LOW_RADIATION";
 
 export type DiseaseClimateObservation = {
   airTemperatureC?: number | null;
+  nightTemperatureC?: number | null;
+  dewPointC?: number | null;
   relativeHumidityPct?: number | null;
+  vpdKpa?: number | null;
   leafWetnessHours?: number | null;
   rainfallMm?: number | null;
+  rainfallIntensityMmH?: number | null;
+  consecutiveWetDays?: number | null;
+  soilMoisturePct?: number | null;
   windKmh?: number | null;
+  windGustKmh?: number | null;
+  sunshineHours?: number | null;
+  cloudCoverPct?: number | null;
   lowRadiationSignal?: boolean | null;
 };
 
@@ -35,10 +53,19 @@ export type DiseaseClimateProfile = {
    */
   conditions: {
     temperatureC?: { min?: number; max?: number };
+    nightTemperatureC?: { min?: number; max?: number };
+    dewPointC?: { min?: number; max?: number };
     relativeHumidityPct?: { min?: number; max?: number };
+    vpdKpa?: { min?: number; max?: number };
     leafWetnessHours?: { min?: number; max?: number };
     rainfallMm?: { min?: number; max?: number };
+    rainfallIntensityMmH?: { min?: number; max?: number };
+    consecutiveWetDays?: { min?: number; max?: number };
+    soilMoisturePct?: { min?: number; max?: number };
     windKmh?: { min?: number; max?: number };
+    windGustKmh?: { min?: number; max?: number };
+    sunshineHours?: { min?: number; max?: number };
+    cloudCoverPct?: { min?: number; max?: number };
     lowRadiationRequired?: boolean;
   };
   source: {
@@ -154,8 +181,17 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
   const t = within(input.observation.airTemperatureC, profile.conditions.temperatureC);
   checks.push({ factor: "AIR_TEMPERATURE", configured: Boolean(profile.conditions.temperatureC), ...t });
 
+  const nightT = within(input.observation.nightTemperatureC, profile.conditions.nightTemperatureC);
+  checks.push({ factor: "NIGHT_TEMPERATURE", configured: Boolean(profile.conditions.nightTemperatureC), ...nightT });
+
+  const dew = within(input.observation.dewPointC, profile.conditions.dewPointC);
+  checks.push({ factor: "DEW_POINT", configured: Boolean(profile.conditions.dewPointC), ...dew });
+
   const rh = within(input.observation.relativeHumidityPct, profile.conditions.relativeHumidityPct);
   checks.push({ factor: "RELATIVE_HUMIDITY", configured: Boolean(profile.conditions.relativeHumidityPct), ...rh });
+
+  const vpd = within(input.observation.vpdKpa, profile.conditions.vpdKpa);
+  checks.push({ factor: "VPD", configured: Boolean(profile.conditions.vpdKpa), ...vpd });
 
   const wet = within(input.observation.leafWetnessHours, profile.conditions.leafWetnessHours);
   checks.push({ factor: "LEAF_WETNESS", configured: Boolean(profile.conditions.leafWetnessHours), ...wet });
@@ -163,8 +199,26 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
   const rain = within(input.observation.rainfallMm, profile.conditions.rainfallMm);
   checks.push({ factor: "RAINFALL", configured: Boolean(profile.conditions.rainfallMm), ...rain });
 
+  const rainIntensity = within(input.observation.rainfallIntensityMmH, profile.conditions.rainfallIntensityMmH);
+  checks.push({ factor: "RAINFALL_INTENSITY", configured: Boolean(profile.conditions.rainfallIntensityMmH), ...rainIntensity });
+
+  const wetDays = within(input.observation.consecutiveWetDays, profile.conditions.consecutiveWetDays);
+  checks.push({ factor: "CONSECUTIVE_WET_DAYS", configured: Boolean(profile.conditions.consecutiveWetDays), ...wetDays });
+
+  const soilMoisture = within(input.observation.soilMoisturePct, profile.conditions.soilMoisturePct);
+  checks.push({ factor: "SOIL_MOISTURE", configured: Boolean(profile.conditions.soilMoisturePct), ...soilMoisture });
+
   const wind = within(input.observation.windKmh, profile.conditions.windKmh);
   checks.push({ factor: "WIND", configured: Boolean(profile.conditions.windKmh), ...wind });
+
+  const gust = within(input.observation.windGustKmh, profile.conditions.windGustKmh);
+  checks.push({ factor: "WIND_GUST", configured: Boolean(profile.conditions.windGustKmh), ...gust });
+
+  const sunshine = within(input.observation.sunshineHours, profile.conditions.sunshineHours);
+  checks.push({ factor: "SUNSHINE", configured: Boolean(profile.conditions.sunshineHours), ...sunshine });
+
+  const cloud = within(input.observation.cloudCoverPct, profile.conditions.cloudCoverPct);
+  checks.push({ factor: "CLOUD_COVER", configured: Boolean(profile.conditions.cloudCoverPct), ...cloud });
 
   if (profile.conditions.lowRadiationRequired != null) {
     const present = typeof input.observation.lowRadiationSignal === "boolean";
@@ -219,7 +273,10 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
  *
  * A função nunca diagnostica infecção e nunca recomenda fungicida por clima isolado.
  * Uma decisão fitossanitária posterior deve combinar: favorabilidade + presença/alerta
- * do patógeno + cultivar suscetível + estádio + histórico + monitoramento de campo.
+ * do patógeno + suscetibilidade do material + estádio + histórico + monitoramento de campo.
+ * Temperatura noturna, ponto de orvalho, VPD, umidade/molhamento, chuva/intensidade,
+ * dias úmidos consecutivos, solo, vento/rajadas e radiação podem participar somente
+ * quando o perfil homologado da doença declarar esses fatores.
  */
 export function assessDiseaseClimateFavorability(
   input: DiseaseClimateAssessmentInput,
