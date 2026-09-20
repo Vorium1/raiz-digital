@@ -31,6 +31,10 @@ export type SoilMicrobiologyMethodFamily =
   | "PLFA"
   | "MICROBIAL_BIOMASS_C"
   | "BASAL_RESPIRATION"
+  | "METABOLIC_QUOTIENT_QCO2"
+  | "FDA_HYDROLYSIS"
+  | "DEHYDROGENASE_ACTIVITY"
+  | "PHOSPHATASE_ACTIVITY"
   | "MYCORRHIZAL_COLONIZATION"
   | "SPORE_COUNT"
   | "LAB_DERIVED_INDEX"
@@ -155,15 +159,67 @@ export function evaluateSoilMicrobiologyEvidence(input: SoilMicrobiologyEvidence
 export const NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES = {
   BIOAS_EMBRAPA: {
     scope: "SOIL_HEALTH" as const,
+    methodFamily: "ENZYME_ACTIVITY" as const,
+    status: "ROUTINE_TECHNOLOGY" as const,
     description:
       "BioAS/Embrapa: atividade de beta-glicosidase e arilsulfatase como bioindicadores da saúde do solo; integra química e biologia em índices de qualidade.",
+    sourceTitle: "Tecnologia BioAS — Embrapa Cerrados",
     standardSamplingDepthCm: { from: 0, to: 10 },
+    automaticCrossRegionInterpretationAllowed: false as const,
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  MICROBIAL_BIOMASS_C_FUMIGATION_EXTRACTION: {
+    scope: "MICROBIAL_BIOMASS" as const,
+    methodFamily: "MICROBIAL_BIOMASS_C" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Carbono da biomassa microbiana por fumigação-extração: quantifica o compartimento microbiano de C; protocolo e fator de conversão devem ser preservados do laboratório.",
+    sourceTitle: "Embrapa Agrobiologia — determinação do carbono da biomassa microbiana do solo por fumigação-extração",
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  BASAL_RESPIRATION_AND_QCO2: {
+    scope: "MICROBIAL_ACTIVITY" as const,
+    methodFamily: "BASAL_RESPIRATION" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Respiração basal quantifica CO2 liberado pela atividade microbiana; qCO2 relaciona respiração e biomassa e é indicador de eficiência/estresse, dependente do protocolo.",
+    sourceTitle: "Embrapa Agrobiologia — respiração basal do solo e quociente metabólico qCO2",
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  FDA_HYDROLYSIS: {
+    scope: "MICROBIAL_ACTIVITY" as const,
+    methodFamily: "FDA_HYDROLYSIS" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Hidrólise de diacetato de fluoresceína (FDA) estima atividade microbiana/enzimática ampla; valores dependem fortemente do protocolo e não devem ser comparados entre métodos distintos sem validação.",
+    sourceTitle: "Embrapa — método de hidrólise de diacetato de fluoresceína como indicador de atividade microbiana",
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  DEHYDROGENASE_ACTIVITY: {
+    scope: "MICROBIAL_ACTIVITY" as const,
+    methodFamily: "DEHYDROGENASE_ACTIVITY" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Atividade de desidrogenase é indicador bioquímico de atividade microbiana; substrato, incubação e unidade precisam acompanhar o resultado.",
+    sourceTitle: "Embrapa — Indicadores biológicos e bioquímicos da qualidade do solo: manual técnico",
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  PHOSPHATASE_ACTIVITY: {
+    scope: "PHOSPHORUS_CYCLING" as const,
+    methodFamily: "PHOSPHATASE_ACTIVITY" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Fosfatases ácida/alcalina descrevem atividade enzimática ligada à ciclagem de P; não equivalem a fósforo disponível nem autorizam crédito automático de P2O5.",
+    sourceTitle: "Embrapa — Indicadores biológicos e bioquímicos da qualidade do solo: manual técnico",
     nutrientDoseCreditAllowedByMethodAlone: false as const,
   },
   MAPA_INOCULANT_OFFICIAL_METHODS: {
     scope: "INOCULANT_PRODUCT_QUALITY" as const,
+    methodFamily: "CULTURE_COUNT_CFU" as const,
+    status: "PRODUCT_QUALITY_METHOD" as const,
     description:
       "Métodos oficiais MAPA para contagem, identificação e pureza de inoculantes. Servem ao controle/qualidade do produto e não equivalem, por si, a diagnóstico quantitativo de fertilidade do solo.",
+    sourceTitle: "Métodos oficiais de controle de inoculantes — MAPA",
     nutrientDoseCreditAllowedByMethodAlone: false as const,
   },
 } as const;
