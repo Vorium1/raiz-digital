@@ -3,9 +3,16 @@ export type CropClimateHazard =
   | "EXCESS_RAIN"
   | "WATERLOGGING"
   | "HEAT"
+  | "COLD"
+  | "HOT_NIGHTS"
+  | "COLD_NIGHTS"
   | "FROST"
   | "HIGH_HUMIDITY"
+  | "LEAF_WETNESS"
   | "LOW_RADIATION"
+  | "HIGH_VPD"
+  | "LOW_SOIL_TEMPERATURE"
+  | "HIGH_SOIL_TEMPERATURE"
   | "HAIL"
   | "WIND";
 
