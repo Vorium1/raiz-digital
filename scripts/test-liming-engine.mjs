@@ -14,6 +14,7 @@ import {
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
 import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
+import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
 assert.equal(targetBaseSaturationForPh("5.5"), 65);
@@ -369,5 +370,50 @@ const missingManagement = evaluateSoybeanLimingFromEvidence({
 });
 assert.equal(missingManagement.status, "BLOCKED");
 assert.ok(missingManagement.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING"));
+
+
+// 24. Firewall de prescrição de calcário: dose uniforme exata passa; qualquer divergência falha.
+const validUniformLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 5.4, unit: "t/ha" }],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(validUniformLime.allowed, true);
+assert.equal(validUniformLime.expectedTonHaPrnt100, 5.4);
+
+const wrongUniformLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "calcário PRNT 100", quantity: 4.9, unit: "t/ha" }],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(wrongUniformLime.allowed, false);
+assert.ok(wrongUniformLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+const missingExpectedLime = validatePrescriptionLimingRecommendation({
+  recommendations: [],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(missingExpectedLime.allowed, false);
+assert.ok(missingExpectedLime.blockers.includes("LIME_EXPECTED_RECOMMENDATION_MISSING"));
+
+// 25. Área espacial/heterogênea nunca pode ser comprimida em uma dose única pelo provedor.
+const forbiddenSpatialLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.8, unit: "t/ha" }],
+  deterministicDecision: spatialEvidence,
+});
+assert.equal(forbiddenSpatialLime.allowed, false);
+assert.ok(forbiddenSpatialLime.blockers.includes("LIME_UNIFORM_DOSE_FORBIDDEN_FOR_SPATIAL_DECISION"));
+
+// 26. Decisão uniforme de não aplicar aceita ausência de calcário e rejeita dose positiva.
+const noApplyWithoutLime = validatePrescriptionLimingRecommendation({
+  recommendations: [],
+  deterministicDecision: noApplyEvidence,
+});
+assert.equal(noApplyWithoutLime.allowed, true);
+
+const forbiddenNoApplyLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 1, unit: "t/ha" }],
+  deterministicDecision: noApplyEvidence,
+});
+assert.equal(forbiddenNoApplyLime.allowed, false);
+assert.ok(forbiddenNoApplyLime.blockers.includes("LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");
