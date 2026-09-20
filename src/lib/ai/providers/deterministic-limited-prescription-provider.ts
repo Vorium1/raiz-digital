@@ -79,6 +79,20 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     } else if (liming.status === "UNIFORM_NO_APPLY") {
       managementPractices.push("Calagem: não indicada pelo critério determinístico atual para os pontos avaliados.");
     } else if (liming.status === "SPATIAL") {
+      if (
+        liming.automaticGeneralDoseAllowed
+        && liming.operationalGeneralDoseTonHaPrnt100 != null
+        && liming.operationalGeneralDoseTonHaPrnt100 > 0
+      ) {
+        const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+        const range = liming.doseRangeTonHaPrnt100;
+        recommendations.push({
+          inputType: "CALCARIO_PRNT100",
+          quantity: liming.operationalGeneralDoseTonHaPrnt100,
+          unit: "t/ha",
+          rationale: `Dose geral operacional do talhão calculada pelo motor como média simples das necessidades dos ${liming.sampleDecisions.length} pontos, equivalentes a PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A média assume representatividade equivalente entre os pontos; quando houver zonas/polígonos com área conhecida, a RAIZ deve preferir ponderação por área.`,
+        });
+      }
       const bySample = liming.sampleDecisions
         .map((item) => {
           if (item.decision === "DO_NOT_APPLY") return `${item.sampleCode}: não aplicar`;
@@ -99,9 +113,9 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
             ? " Modo de aplicação: superficial."
             : " Modo de aplicação: incorporada."
           : "";
-        managementPractices.push(`Calagem por amostra: ${bySample.join("; ")}. Dose uniforme não indicada para toda a área.${modeText}`);
+        managementPractices.push(`Calagem por ponto: ${bySample.join("; ")}. A recomendação principal do talhão usa a média operacional dos pontos; os valores individuais permanecem visíveis para auditoria e futura taxa variável.${modeText}`);
       }
-      limitations.push("Calagem: os pontos não sustentam uma dose única para todo o talhão; a RAIZ preservou a variação em vez de calcular média simples.");
+      if (liming.generalDoseBasis === "EQUAL_WEIGHT_SAMPLE_MEAN") limitations.push("Calagem: a dose geral considera peso igual entre os pontos de amostragem. Se a área representada por cada ponto for diferente, refaça a consolidação com ponderação por zona/área.");
     } else if (liming.status === "BLOCKED") {
       if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
         limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
