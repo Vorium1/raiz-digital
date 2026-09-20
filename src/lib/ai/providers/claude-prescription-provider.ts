@@ -3,7 +3,7 @@ import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-s
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v6-deterministic-pk-gate";
+const PROMPT_VERSION = "prescription-v7-deterministic-liming-gate";
 
 function buildSystemPrompt(): string {
   return [
@@ -16,6 +16,9 @@ function buildSystemPrompt(): string {
     "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` representa apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
     "P/K tem regra especial e rígida: `pkDoseReadiness` valida contexto; `uniformPkReadiness` valida cultura/regra e representatividade dos pontos; `deterministicPkDoses` contém a dose/faixa calculada pelo motor. Se qualquer gate estiver bloqueado para um nutriente, NÃO gere P2O5/K2O para ele e registre os blockers em `missingInformation`.",
     "Quando `deterministicPkDoses.P2O5` ou `.K2O` estiver `ready=true`, NÃO recalcule nem estime a dose: use somente o valor/faixa fornecido pelo motor. Para valor não discricionário, a quantidade deve ser exatamente `expected.doseKgPerHa` em kg/ha. A aprovação no servidor recalculará e rejeitará divergências.",
+    "`deterministicLimingDecision` é a única autoridade para calagem. Se `status=UNIFORM_APPLY`, inclua exatamente uma recomendação com `inputType=CALCARIO_PRNT100`, quantidade exatamente `uniformDoseTonHaPrnt100` e unidade `t/ha`. Não recalcule, não arredonde além do valor recebido e não escolha produto comercial.",
+    "Se `deterministicLimingDecision.status=UNIFORM_NO_APPLY`, NÃO gere dose positiva de calcário. Se `status=SPATIAL`, NÃO transforme as doses por amostra em média/dose única: preserve-as apenas como informação por ponto em `managementPractices`. Se `status=BLOCKED`, não gere calcário e registre os blockers em `missingInformation`.",
+    "Uma dose em PRNT 100% é necessidade agronômica, não um produto comercial. Nunca converta para um calcário real sem PRNT declarado e nunca escolha marca/fonte por conta própria.",
     "Nunca transforme maioria simples, média de pontos ou 50% de concordância em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
     "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados, não assuma produtividade de referência, média regional ou meta implícita.",
     "`season.technologyLevel` é metadado/cenário e NÃO é multiplicador de dose. Não aumente ou reduza adubação apenas por BAIXO/MEDIO/ALTO sem uma regra quantitativa homologada.",
