@@ -10,7 +10,10 @@ export type CropClimateHazard =
   | "HIGH_HUMIDITY"
   | "LEAF_WETNESS"
   | "LOW_RADIATION"
+  | "EXCESS_RADIATION"
   | "HIGH_VPD"
+  | "THERMAL_AMPLITUDE_STRESS"
+  | "INSUFFICIENT_CHILL"
   | "LOW_SOIL_TEMPERATURE"
   | "HIGH_SOIL_TEMPERATURE"
   | "HAIL"
@@ -19,6 +22,8 @@ export type CropClimateHazard =
 export type CropPhenologicalStage =
   | "PRE_SOWING"
   | "SOWING_EMERGENCE"
+  | "TRANSPLANT_ESTABLISHMENT"
+  | "BUD_BREAK"
   | "VEGETATIVE"
   | "FLOWERING"
   | "REPRODUCTIVE"
@@ -26,7 +31,10 @@ export type CropPhenologicalStage =
   | "MATURATION"
   | "HARVEST"
   | "FRUIT_SET"
+  | "FRUIT_DEVELOPMENT"
+  | "TUBER_INITIATION"
   | "BULKING"
+  | "RIPENING"
   | "DORMANCY"
   | "OTHER";
 
