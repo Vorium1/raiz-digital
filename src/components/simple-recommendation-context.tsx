@@ -134,8 +134,6 @@ export function SimpleRecommendationContext({
     }
   }
 
-  if (!needsYield && !needsOrder && !showOptionalSoilPrep) return null;
-
   return (
     <details className="simple-context-question">
       <summary className="simple-context-question-head">
