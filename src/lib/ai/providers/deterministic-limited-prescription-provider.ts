@@ -95,8 +95,12 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     } else if (liming.status === "BLOCKED") {
       if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
         limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
+      } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS") {
+        limitations.push("Calagem em plantio direto consolidado: a regra oficial usa a camada 0–10 cm. O laudo atual não possui essa camada separada; uma amostra composta de 0–20 cm não é dividida artificialmente pela RAIZ.");
+      } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS") {
+        limitations.push("Calagem em plantio direto consolidado com restrições: a decisão exige evidências separadas de 0–10 e 10–20 cm. O laudo atual não contém essas duas camadas; a RAIZ preserva a amostragem real em vez de fabricar valores por profundidade.");
       } else {
-        limitations.push(`Calagem: decisão uniforme ainda não liberada pelo motor (${liming.blockers.join(", ") || "contexto técnico insuficiente"}).`);
+        limitations.push("Calagem: a evidência atual não sustenta uma dose oficial uniforme para este sistema de manejo. A RAIZ manteve a decisão sem dose em vez de estimar um valor sem base técnica.");
       }
     }
   }
