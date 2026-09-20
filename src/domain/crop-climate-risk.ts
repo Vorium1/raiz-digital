@@ -49,6 +49,7 @@ export type ClimateDriver =
 
 export type CropClimateImpact = "ADVERSE" | "FAVORABLE" | "CONTEXTUAL";
 export type CropClimateSeverity = "LOW" | "MEDIUM" | "HIGH";
+export type CropWaterRegime = "SEQUEIRO" | "IRRIGADO";
 
 export type CropClimateProfile = {
   id: string;
@@ -63,6 +64,8 @@ export type CropClimateProfile = {
   rules: Array<{
     hazard: CropClimateHazard;
     stages: CropPhenologicalStage[];
+    /** Ausente = regra válida para ambos os regimes. */
+    waterRegimes?: CropWaterRegime[];
     impact: CropClimateImpact;
     severity: CropClimateSeverity;
     rationale: string;
@@ -97,14 +100,16 @@ export type CropClimateAssessmentInput = {
   technicalRegionCodes?: string[];
   plannedStart: string;
   plannedEnd: string;
+  waterRegime: CropWaterRegime | null;
   stages: CropPhenologicalStage[];
   signal: RegionalClimateHazardSignal;
   profiles: CropClimateProfile[];
 };
 
 export type CropClimateAssessment = {
-  status: "READY" | "NO_APPLICABLE_PROFILE" | "OUTSIDE_FORECAST_WINDOW" | "LOW_CONFIDENCE";
+  status: "READY" | "NO_APPLICABLE_PROFILE" | "OUTSIDE_FORECAST_WINDOW" | "LOW_CONFIDENCE" | "WATER_REGIME_REQUIRED";
   cropCode: string;
+  waterRegime: CropWaterRegime | null;
   driver: ClimateDriver;
   appliesToPlannedCropWindow: boolean;
   riskClass: "FAVORABLE" | "ADVERSE" | "MIXED" | "NO_DEFINED_IMPACT";
@@ -116,6 +121,7 @@ export type CropClimateAssessment = {
     severity: CropClimateSeverity;
     rationale: string;
     profileId: string;
+    waterRegime: CropWaterRegime;
   }>;
   warnings: string[];
 };
@@ -183,12 +189,29 @@ function classifyRisk(impacts: CropClimateAssessment["impacts"]) {
  * - ENOS é apenas um driver; a decisão vem dos riscos físicos previstos;
  * - sem perfil homologado, retorna NO_APPLICABLE_PROFILE;
  * - um risco só se aplica quando a janela climática cruza a janela planejada e
- *   existe regra para o estádio fenológico em questão.
+ *   existe regra para o estádio fenológico em questão;
+ * - o regime hídrico é explícito. Uma regra específica de sequeiro não pode ser
+ *   aplicada em área irrigada e vice-versa;
+ * - irrigação não neutraliza automaticamente seca/calor: capacidade, método e
+ *   disponibilidade de água exigem evidência própria antes de reduzir o risco.
  */
 export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropClimateAssessment {
   const cropCode = normalized(input.cropCode);
   if (!cropCode) throw new Error("Código da cultura é obrigatório.");
   if (!input.stages.length) throw new Error("Informe ao menos um estádio fenológico planejado.");
+  if (input.waterRegime == null) {
+    return {
+      status: "WATER_REGIME_REQUIRED",
+      cropCode,
+      waterRegime: null,
+      driver: input.signal.driver,
+      appliesToPlannedCropWindow: false,
+      riskClass: "NO_DEFINED_IMPACT",
+      matchedProfileIds: [],
+      impacts: [],
+      warnings: ["WATER_REGIME_REQUIRED_FOR_CLIMATE_ASSESSMENT"],
+    };
+  }
 
   const homologatedProfiles = input.profiles.filter((profile) =>
     profile.status === "HOMOLOGATED"
@@ -200,6 +223,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
     return {
       status: "NO_APPLICABLE_PROFILE",
       cropCode,
+      waterRegime: input.waterRegime,
       driver: input.signal.driver,
       appliesToPlannedCropWindow: false,
       riskClass: "NO_DEFINED_IMPACT",
@@ -213,6 +237,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
     return {
       status: "OUTSIDE_FORECAST_WINDOW",
       cropCode,
+      waterRegime: input.waterRegime,
       driver: input.signal.driver,
       appliesToPlannedCropWindow: false,
       riskClass: "NO_DEFINED_IMPACT",
@@ -226,6 +251,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
     return {
       status: "LOW_CONFIDENCE",
       cropCode,
+      waterRegime: input.waterRegime,
       driver: input.signal.driver,
       appliesToPlannedCropWindow: false,
       riskClass: "NO_DEFINED_IMPACT",
@@ -246,6 +272,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
   for (const profile of homologatedProfiles) {
     for (const rule of profile.rules) {
       if (!usableHazards.has(rule.hazard)) continue;
+      if (rule.waterRegimes?.length && !rule.waterRegimes.includes(input.waterRegime)) continue;
       for (const stage of rule.stages) {
         if (!stages.has(stage)) continue;
         impacts.push({
@@ -255,6 +282,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
           severity: rule.severity,
           rationale: rule.rationale,
           profileId: profile.id,
+          waterRegime: input.waterRegime,
         });
       }
     }
@@ -263,6 +291,7 @@ export function assessCropClimateRisk(input: CropClimateAssessmentInput): CropCl
   return {
     status: "READY",
     cropCode,
+    waterRegime: input.waterRegime,
     driver: input.signal.driver,
     appliesToPlannedCropWindow: impacts.length > 0,
     riskClass: classifyRisk(impacts),
