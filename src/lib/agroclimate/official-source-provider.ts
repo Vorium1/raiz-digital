@@ -1,7 +1,7 @@
 import {
   adaptCptecForecastXml,
   buildCptecSevenDayLatLonUrl,
-} from "@/domain/official-agroclimate-ingestion";
+} from "../../domain/official-agroclimate-ingestion.ts";
 
 export const MAPA_ZARC_DATASET_ID = "6d3d141c-885e-41a4-ab7f-dc8ff323b96f";
 export const MAPA_ZARC_CKAN_PACKAGE_URL =
