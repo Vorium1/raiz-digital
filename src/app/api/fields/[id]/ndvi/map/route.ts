@@ -6,7 +6,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Serve exclusivamente o PNG arquivado junto ao snapshot histórico. Não existe fallback para uma nova
- * chamada ao Copernicus: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
+ * chamada ao provider de satélite: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
  * fechado. Isso impede que uma visualização regenerada no futuro seja apresentada como a mesma evidência.
  *
  * O artefato é imutável, mas a autorização do usuário não é. Por isso a resposta não pode ficar
