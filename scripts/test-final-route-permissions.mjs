@@ -62,11 +62,17 @@ for (const role of [null, "VIEWER", "CLIENT"]) {
 for (const role of ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]) {
   let checkedTenant = null;
   const handler = route("analyses/[id]/planned-management", { role, tenantId: "test-tenant", userId: "test-user" }, {
-    updateAnalysisPlannedManagementNotes: async input => {
+    updateAnalysisPlanningContext: async input => {
       checkedTenant = input.tenantId;
       assert.equal(input.analysisId, "test-analysis");
       assert.equal(input.plannedManagementNotes, "cultivar definida");
-      return { analysisId: input.analysisId, plannedManagementNotes: input.plannedManagementNotes, changed: true };
+      return {
+        analysisId: input.analysisId,
+        plannedManagementNotes: input.plannedManagementNotes,
+        fertilityPlanningHorizonYears: null,
+        fertilityCyclePlanNotes: "",
+        changed: true,
+      };
     },
   });
   const result = await handler.PATCH(
