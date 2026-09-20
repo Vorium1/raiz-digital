@@ -26,6 +26,7 @@ export type CropClimateMetricRule = {
     countryCode: string;
     stateCodes?: string[];
     municipalityCodes?: string[];
+    technicalRegionCodes?: string[];
   };
   stages: CropPhenologicalStage[];
   metric: AgroclimateMetric;
@@ -46,6 +47,7 @@ export type CropClimateMetricAssessmentInput = {
   countryCode: string;
   stateCode: string | null;
   municipalityCode?: string | null;
+  technicalRegionCodes?: string[];
   stage: CropPhenologicalStage;
   metrics: AgroclimateMetricSnapshot;
   rules: CropClimateMetricRule[];
@@ -72,9 +74,13 @@ function normalized(value: string) {
 
 function regionMatches(
   rule: CropClimateMetricRule,
-  input: Pick<CropClimateMetricAssessmentInput, "countryCode" | "stateCode" | "municipalityCode">,
+  input: Pick<CropClimateMetricAssessmentInput, "countryCode" | "stateCode" | "municipalityCode" | "technicalRegionCodes">,
 ) {
   if (normalized(rule.region.countryCode) !== normalized(input.countryCode)) return false;
+  if (rule.region.technicalRegionCodes?.length) {
+    const resolved = new Set((input.technicalRegionCodes ?? []).map(normalized));
+    return rule.region.technicalRegionCodes.map(normalized).some((code) => resolved.has(code));
+  }
   if (rule.region.municipalityCodes?.length) {
     if (!input.municipalityCode) return false;
     return rule.region.municipalityCodes.map(normalized).includes(normalized(input.municipalityCode));
