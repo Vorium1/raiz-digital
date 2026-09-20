@@ -84,11 +84,13 @@ export function AnalysisContextIntake({
             </label>
             <label>
               <span>Sistema de manejo do solo *</span>
-              <input
-                value={value.tillageSystem}
+              <select
+                value={normalizeManagementSystem(value.tillageSystem)}
                 onChange={(event) => update({ tillageSystem: event.target.value })}
-                placeholder="Ex.: plantio direto"
-              />
+              >
+                {MANAGEMENT_SYSTEM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <small>O estágio do plantio direto e a condição de 10–20 cm mudam a regra de calagem; por isso a RAIZ não assume esses detalhes.</small>
             </label>
             <label>
               <span>Histórico de calagem/adubação/gessagem *</span>
