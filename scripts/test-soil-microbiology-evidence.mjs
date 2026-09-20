@@ -80,5 +80,21 @@ assert.equal(
   NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.MAPA_INOCULANT_OFFICIAL_METHODS.nutrientDoseCreditAllowedByMethodAlone,
   false,
 );
+assert.equal(
+  NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.MICROBIAL_BIOMASS_C_FUMIGATION_EXTRACTION.methodFamily,
+  "MICROBIAL_BIOMASS_C",
+);
+assert.equal(
+  NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.BASAL_RESPIRATION_AND_QCO2.nutrientDoseCreditAllowedByMethodAlone,
+  false,
+);
+assert.equal(
+  NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.FDA_HYDROLYSIS.methodFamily,
+  "FDA_HYDROLYSIS",
+);
+assert.equal(
+  NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.PHOSPHATASE_ACTIVITY.nutrientDoseCreditAllowedByMethodAlone,
+  false,
+);
 
 console.log("soil-microbiology-evidence: microbiologia funcional opcional e firewall de crédito nutricional validados");
