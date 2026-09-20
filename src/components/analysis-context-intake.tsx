@@ -84,14 +84,15 @@ export function AnalysisContextIntake({
               </select>
             </label>
             <label>
-              <span>Sistema de manejo do solo *</span>
+              <span>Sistema de preparo do solo <small>(opcional)</small></span>
               <select
-                value={normalizeManagementSystem(value.tillageSystem)}
+                value={value.tillageSystem.trim() ? normalizeManagementSystem(value.tillageSystem) : ""}
                 onChange={(event) => update({ tillageSystem: event.target.value })}
               >
-                {MANAGEMENT_SYSTEM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <option value="">Ainda não definido</option>
+                {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-              <small>O estágio do plantio direto e a condição de 10–20 cm mudam a regra de calagem; por isso a RAIZ não assume esses detalhes.</small>
+              <small>Refina a calagem quando conhecido, mas não bloqueia o parecer do RAIZ.</small>
             </label>
             <label>
               <span>Histórico de calagem/adubação/gessagem *</span>
@@ -110,6 +111,17 @@ export function AnalysisContextIntake({
               />
             </label>
           )}
+
+          <label>
+            <span>Manejo planejado da próxima safra <small>(opcional)</small></span>
+            <textarea
+              value={value.plannedManagementNotes}
+              onChange={(event) => update({ plannedManagementNotes: event.target.value })}
+              placeholder="Se já estiver definido: cultivar, adubo/fonte, tratamento de sementes, fungicidas, inseticidas, bioinsumos, população, espaçamento etc. Pode deixar em branco."
+              rows={3}
+            />
+            <small>O RAIZ usa isso para refinar a recomendação. A ausência dessas decisões não impede a análise do solo.</small>
+          </label>
         </>
       )}
 
