@@ -13,6 +13,7 @@ import {
   computeSoybeanLowBufferingLiming2025,
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
+import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
 assert.equal(targetBaseSaturationForPh("5.5"), 65);
@@ -292,5 +293,81 @@ assert.equal(lowBuffer.ready, true);
 assert.equal(lowBuffer.recommendedDoseTonHaPrnt100, 2.31);
 assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
+
+
+// 20. Evidência por amostra: duas doses distintas nunca viram média uniforme.
+const spatialEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "A", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "CA", value: 6.29, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "MG", value: 2.61, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "K", value: 229.9, unit: "mg/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "AL", value: 0.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "CTC", value: 16.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+
+    { sampleCode: "B", parameterCode: "PH", value: 5.4, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "SMP", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "CA", value: 5.62, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "MG", value: 2.63, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "K", value: 151.8, unit: "mg/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "AL", value: 0.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "CTC", value: 14.4, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(spatialEvidence.status, "SPATIAL");
+assert.equal(spatialEvidence.automaticUniformDoseAllowed, false);
+assert.equal(spatialEvidence.uniformDoseTonHaPrnt100, null);
+assert.deepEqual(
+  spatialEvidence.sampleDecisions.map((item) => item.recommendedDoseTonHaPrnt100),
+  [5.4, 4.2],
+);
+assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedBaseSaturation));
+assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedAluminumSaturation));
+
+// 21. pH>=5,5 em todos os pontos resulta em decisão uniforme de não aplicar quando o restante da evidência é válido.
+const noApplyEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "C", parameterCode: "PH", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "SMP", value: 6.0, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "V", value: 72, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "M", value: 2, unit: "%", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(noApplyEvidence.status, "UNIFORM_NO_APPLY");
+assert.equal(noApplyEvidence.automaticUniformDoseAllowed, true);
+assert.equal(noApplyEvidence.uniformDoseTonHaPrnt100, 0);
+
+// 22. Duas amostras com a mesma regra/dose/manejo podem liberar dose uniforme.
+const uniformEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "SC",
+  managementSystem: "NO_TILL_ESTABLISHMENT",
+  results: [
+    { sampleCode: "D", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "D", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "E", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "E", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(uniformEvidence.status, "UNIFORM_APPLY");
+assert.equal(uniformEvidence.uniformDoseTonHaPrnt100, 5.4);
+assert.equal(uniformEvidence.applicationMode, "INCORPORATED");
+
+// 23. Manejo ausente/ambíguo bloqueia sem escolher sistema por conta própria.
+const missingManagement = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "plantio direto",
+  results: [],
+});
+assert.equal(missingManagement.status, "BLOCKED");
+assert.ok(missingManagement.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING"));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");
