@@ -15,12 +15,34 @@ export class AnalysisContextError extends Error {
   }
 }
 
-function plannedManagementNotesFromContext(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+function planningContextFromAnalysisContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      plannedManagementNotes: "",
+      fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
+      fertilityCyclePlanNotes: "",
+    };
+  }
   const draft = (value as { draft?: unknown }).draft;
-  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return "";
-  const notes = (draft as { plannedManagementNotes?: unknown }).plannedManagementNotes;
-  return typeof notes === "string" ? notes : "";
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+    return {
+      plannedManagementNotes: "",
+      fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
+      fertilityCyclePlanNotes: "",
+    };
+  }
+
+  const source = draft as {
+    plannedManagementNotes?: unknown;
+    fertilityPlanningHorizonYears?: unknown;
+    fertilityCyclePlanNotes?: unknown;
+  };
+  const horizon = Number(source.fertilityPlanningHorizonYears);
+  return {
+    plannedManagementNotes: typeof source.plannedManagementNotes === "string" ? source.plannedManagementNotes : "",
+    fertilityPlanningHorizonYears: [2, 3, 4, 5].includes(horizon) ? horizon as 2 | 3 | 4 | 5 : null,
+    fertilityCyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" ? source.fertilityCyclePlanNotes : "",
+  };
 }
 
 /** `clientId` opcional -- omitido, mantém o comportamento antigo (carteira inteira), usado por /analises,
@@ -136,7 +158,7 @@ export async function getAnalysisById(tenantId: string, analysisId: string, user
 }
 
 
-export async function getAnalysisPlannedManagementNotes(input: {
+export async function getAnalysisPlanningContext(input: {
   tenantId: string;
   userId: string;
   analysisId: string;
@@ -153,20 +175,42 @@ export async function getAnalysisPlannedManagementNotes(input: {
     if (!row) return null;
     return {
       analysisId: row.id as string,
-      plannedManagementNotes: plannedManagementNotesFromContext(row.analysisContext),
+      ...planningContextFromAnalysisContext(row.analysisContext),
     };
   });
 }
 
-export async function updateAnalysisPlannedManagementNotes(input: {
+export async function updateAnalysisPlanningContext(input: {
   tenantId: string;
   userId: string;
   analysisId: string;
-  plannedManagementNotes: string;
+  plannedManagementNotes?: string;
+  fertilityPlanningHorizonYears?: 2 | 3 | 4 | 5 | null;
+  fertilityCyclePlanNotes?: string;
 }) {
-  const notes = input.plannedManagementNotes.trim();
-  if (notes.length > 5000) {
+  if (
+    input.fertilityPlanningHorizonYears !== undefined
+    && input.fertilityPlanningHorizonYears !== null
+    && ![2, 3, 4, 5].includes(input.fertilityPlanningHorizonYears)
+  ) {
+    throw new AnalysisContextError("Horizonte de planejamento deve ser 2, 3, 4 ou 5 anos.", 400);
+  }
+
+  const nextPlannedManagement = input.plannedManagementNotes?.trim();
+  const nextCycleNotes = input.fertilityCyclePlanNotes?.trim();
+  if (nextPlannedManagement != null && nextPlannedManagement.length > 5000) {
     throw new AnalysisContextError("O manejo planejado deve ter no máximo 5.000 caracteres.", 400);
+  }
+  if (nextCycleNotes != null && nextCycleNotes.length > 5000) {
+    throw new AnalysisContextError("O planejamento do ciclo deve ter no máximo 5.000 caracteres.", 400);
+  }
+
+  if (
+    input.plannedManagementNotes === undefined
+    && input.fertilityPlanningHorizonYears === undefined
+    && input.fertilityCyclePlanNotes === undefined
+  ) {
+    throw new AnalysisContextError("Nenhum campo de planejamento foi informado.", 400);
   }
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
@@ -180,13 +224,26 @@ export async function updateAnalysisPlannedManagementNotes(input: {
     const row = result.rows[0];
     if (!row) throw new AnalysisContextError("Análise não encontrada.", 404);
 
-    const currentNotes = plannedManagementNotesFromContext(row.analysisContext);
-    if (currentNotes.trim() === notes) {
-      return {
-        analysisId: row.id as string,
-        plannedManagementNotes: currentNotes,
-        changed: false,
-      };
+    const current = planningContextFromAnalysisContext(row.analysisContext);
+    const next = {
+      plannedManagementNotes: input.plannedManagementNotes === undefined
+        ? current.plannedManagementNotes
+        : (nextPlannedManagement ?? ""),
+      fertilityPlanningHorizonYears: input.fertilityPlanningHorizonYears === undefined
+        ? current.fertilityPlanningHorizonYears
+        : input.fertilityPlanningHorizonYears,
+      fertilityCyclePlanNotes: input.fertilityCyclePlanNotes === undefined
+        ? current.fertilityCyclePlanNotes
+        : (nextCycleNotes ?? ""),
+    };
+
+    const changedFields: string[] = [];
+    if (next.plannedManagementNotes !== current.plannedManagementNotes.trim()) changedFields.push("plannedManagementNotes");
+    if (next.fertilityPlanningHorizonYears !== current.fertilityPlanningHorizonYears) changedFields.push("fertilityPlanningHorizonYears");
+    if (next.fertilityCyclePlanNotes !== current.fertilityCyclePlanNotes.trim()) changedFields.push("fertilityCyclePlanNotes");
+
+    if (changedFields.length === 0) {
+      return { analysisId: row.id as string, ...current, changed: false };
     }
 
     const root = row.analysisContext && typeof row.analysisContext === "object" && !Array.isArray(row.analysisContext)
@@ -196,7 +253,10 @@ export async function updateAnalysisPlannedManagementNotes(input: {
     const draft = currentDraft && typeof currentDraft === "object" && !Array.isArray(currentDraft)
       ? { ...currentDraft }
       : {};
-    (draft as Record<string, unknown>).plannedManagementNotes = notes;
+
+    (draft as Record<string, unknown>).plannedManagementNotes = next.plannedManagementNotes;
+    (draft as Record<string, unknown>).fertilityPlanningHorizonYears = next.fertilityPlanningHorizonYears;
+    (draft as Record<string, unknown>).fertilityCyclePlanNotes = next.fertilityCyclePlanNotes;
     (root as Record<string, unknown>).draft = draft;
 
     await client.query(
@@ -206,9 +266,9 @@ export async function updateAnalysisPlannedManagementNotes(input: {
       [input.tenantId, input.analysisId, JSON.stringify(root)],
     );
 
-    // O manejo futuro é opcional, mas integra o contexto agronômico consumido pela prescrição.
-    // Tocar updated_at da safra reaproveita o mecanismo existente de freshness e impede que uma
-    // prescrição gerada com contexto anterior continue sendo tratada como corrente.
+    // O plano de fertilidade faz parte do contexto da prescrição, embora não seja
+    // requisito para emitir o parecer. Alterá-lo invalida somente a recomendação
+    // corrente e preserva o histórico já congelado.
     await client.query(
       `UPDATE crop_seasons
        SET updated_at = now()
@@ -219,16 +279,22 @@ export async function updateAnalysisPlannedManagementNotes(input: {
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
-      action: "ANALYSIS_PLANNED_MANAGEMENT_UPDATED",
+      action: "ANALYSIS_FERTILITY_PLANNING_CONTEXT_UPDATED",
       entityType: "analysis",
       entityId: row.id,
-      metadata: { hasContent: notes.length > 0, characterCount: notes.length },
+      metadata: {
+        changedFields,
+        fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
+        hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
+        hasPlannedManagement: next.plannedManagementNotes.length > 0,
+      },
     });
 
     return {
       analysisId: row.id as string,
-      plannedManagementNotes: notes,
+      ...next,
       changed: true,
     };
   });
 }
+
