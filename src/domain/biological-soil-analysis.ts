@@ -94,11 +94,18 @@ export function evaluateBiologicalSoilEvidence(
   }
 
   const annualDomain = input.cropGroup === "ANNUAL_GRAIN_FIBER";
-  const calibratedRegion = input.regionScope === "CERRADO" || input.regionScope === "SOUTH_BRAZIL";
-  const automaticInterpretationDomainReady = annualDomain && calibratedRegion && hasCoreEnzymes;
+  // A documentação operacional oficial da BioAS segue calibrada para cultivos
+  // anuais do Cerrado. RS/SC pode importar as enzimas/índices do laboratório,
+  // mas a RAIZ não deve transportar silenciosamente os algoritmos de classe do
+  // Cerrado para o Sul sem calibração/homologação regional específica.
+  const raizCalibrationRegionReady = input.regionScope === "CERRADO";
+  const automaticInterpretationDomainReady = annualDomain && raizCalibrationRegionReady && hasCoreEnzymes;
 
   if (hasAnyBiology && !automaticInterpretationDomainReady) {
     warnings.push("BIOLOGICAL_VALUES_AVAILABLE_WITHOUT_RAIZ_AUTOMATIC_INTERPRETATION_DOMAIN");
+  }
+  if (hasCoreEnzymes && input.regionScope === "SOUTH_BRAZIL") {
+    warnings.push("BIOAS_RAIZ_REGIONAL_CALIBRATION_NOT_HOMOLOGATED_FOR_SOUTH_BRAZIL");
   }
   if (hasLabIndexes && !input.officialLabInterpretationAvailable) {
     warnings.push("LAB_BIOAS_INDEX_IMPORTED_WITHOUT_OFFICIAL_INTERPRETATION_METADATA");
@@ -123,6 +130,9 @@ export function evaluateBiologicalSoilEvidence(
       sourceVersion: input.sourceVersion ?? null,
       officialLabInterpretationAvailable: Boolean(input.officialLabInterpretationAvailable),
       automaticRaizInterpretationAllowed: automaticInterpretationDomainReady,
+      labReportedInterpretationCanBePreserved: Boolean(input.officialLabInterpretationAvailable),
+      raizAutomaticCalibrationScope: "CERRADO_ANNUAL_GRAIN_FIBER" as const,
+      crossRegionAlgorithmTransferAllowed: false as const,
       labIndexesMustBePreservedNotRecomputed: true as const,
     },
     analysisPolicy: {
