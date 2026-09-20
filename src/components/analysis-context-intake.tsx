@@ -3,6 +3,7 @@
 import type { AnalysisContextDraft } from "@/domain/analysis-context";
 import type { EvidenceStatus } from "@/domain/analysis-depth-readiness";
 import { getRequestedAnalysisLayer, type AnalysisDepthId } from "@/domain/analysis-depths";
+import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
 
 function EvidenceStatusSelect({
   value,
