@@ -478,6 +478,7 @@ assert.match(simpleReview, /cropProfileCode=\{recommendationContext\.cropProfile
 assert.match(simpleReview, /analysisId=\{analysisId\}/);
 assert.match(simpleRecommendationContext, /Manejo planejado da próxima safra/);
 assert.match(simpleRecommendationContext, /preencha depois/);
+assert.doesNotMatch(simpleRecommendationContext, /if \(!needsYield && !needsOrder && !showOptionalSoilPrep\) return null/);
 assert.match(simpleRecommendationContext, /\/api\/analyses\/\$\{analysisId\}\/planned-management/);
 assert.match(simpleRecommendationContext, /maxLength=\{5000\}/);
 assert.match(plannedManagementRoute, /FIELD_TECH/);
