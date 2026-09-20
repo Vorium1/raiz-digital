@@ -116,6 +116,7 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
 
       {recommendationContext && (
         <SimpleRecommendationContext
+          analysisId={analysisId}
           cropSeasonId={recommendationContext.cropSeasonId}
           blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
           yieldGoal={recommendationContext.yieldGoal}
