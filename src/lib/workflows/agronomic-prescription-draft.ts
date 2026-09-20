@@ -5,6 +5,7 @@ import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate
 import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 import { validatePrescriptionSulfurRecommendation } from "@/domain/prescription-sulfur-validation";
+import { validatePrescriptionLimingRecommendation } from "@/domain/prescription-liming-validation";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { AiGenerationError, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
 import { getLatestInterpretation } from "@/lib/repositories/interpretations";
@@ -148,6 +149,21 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       `A resposta do provedor divergiu da regra determinística de enxofre da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify({
         blockers: providerSulfurValidation.blockers,
         expectedKgSPerHa: providerSulfurValidation.expectedKgSPerHa,
+      })}`,
+      502,
+    );
+  }
+
+
+  const providerLimingValidation = validatePrescriptionLimingRecommendation({
+    recommendations,
+    deterministicDecision: evidence.deterministicLimingDecision,
+  });
+  if (!providerLimingValidation.allowed) {
+    throw new AiGenerationError(
+      `A resposta do provedor divergiu da regra determinística de calagem da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify({
+        blockers: providerLimingValidation.blockers,
+        expectedTonHaPrnt100: providerLimingValidation.expectedTonHaPrnt100,
       })}`,
       502,
     );
