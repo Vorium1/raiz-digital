@@ -33,9 +33,10 @@ function isTonPerHa(value: string) {
 /**
  * Firewall server-side para calagem.
  *
- * A IA só pode transportar uma necessidade uniforme PRNT100 que o motor já tenha
- * calculado. Quando a decisão é espacial, bloqueada ou "não aplicar", nenhuma dose
- * única positiva pode ser criada pelo provedor.
+ * A IA só pode transportar a necessidade operacional PRNT100 que o motor já tenha
+ * calculado. Ela pode ser uma dose realmente uniforme ou a média operacional dos
+ * pontos quando todos representam peso igual do talhão. O provedor nunca calcula
+ * essa média por conta própria.
  */
 export function validatePrescriptionLimingRecommendation(input: {
   recommendations: LimingRecommendationCandidate[];
@@ -49,11 +50,10 @@ export function validatePrescriptionLimingRecommendation(input: {
     );
 
   const decision = input.deterministicDecision;
-  const expectedTonHaPrnt100 = decision?.status === "UNIFORM_APPLY"
-    && decision.automaticUniformDoseAllowed
-    && typeof decision.uniformDoseTonHaPrnt100 === "number"
-    && decision.uniformDoseTonHaPrnt100 > 0
-      ? decision.uniformDoseTonHaPrnt100
+  const expectedTonHaPrnt100 = decision?.automaticGeneralDoseAllowed
+    && typeof decision.operationalGeneralDoseTonHaPrnt100 === "number"
+    && decision.operationalGeneralDoseTonHaPrnt100 > 0
+      ? decision.operationalGeneralDoseTonHaPrnt100
       : null;
 
   const blockers: string[] = [];
@@ -67,11 +67,9 @@ export function validatePrescriptionLimingRecommendation(input: {
   for (const { row } of limeRows) {
     if (expectedTonHaPrnt100 == null) {
       blockers.push(
-        decision?.status === "SPATIAL"
-          ? "LIME_UNIFORM_DOSE_FORBIDDEN_FOR_SPATIAL_DECISION"
-          : decision?.status === "UNIFORM_NO_APPLY"
-            ? "LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"
-            : "LIME_DETERMINISTIC_DOSE_NOT_READY",
+        decision?.status === "UNIFORM_NO_APPLY"
+          ? "LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"
+          : "LIME_DETERMINISTIC_DOSE_NOT_READY",
       );
       continue;
     }
