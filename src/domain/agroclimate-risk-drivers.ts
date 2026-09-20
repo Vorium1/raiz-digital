@@ -16,7 +16,11 @@ function hazardKind(hazard: CropClimateHazard): AgroclimateRiskDriver["kind"] {
     || hazard === "THERMAL_AMPLITUDE_STRESS"
     || hazard === "INSUFFICIENT_CHILL"
   ) return "TEMPERATURE";
-  if (hazard === "LOW_RADIATION" || hazard === "EXCESS_RADIATION") return "RADIATION";
+  if (
+    hazard === "LOW_RADIATION"
+    || hazard === "EXCESS_RADIATION"
+    || hazard === "PHOTOPERIOD_MISMATCH"
+  ) return "RADIATION";
   if (hazard === "HAIL" || hazard === "WIND") return "WIND_HAIL";
   return "OTHER";
 }
