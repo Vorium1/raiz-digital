@@ -50,6 +50,7 @@ export type SoilWaterNutrientDynamics = {
     drainageReviewAdvised: boolean;
   };
   automaticNutrientDoseIncreaseAllowed: false;
+  automaticNutrientDoseReductionAllowed: false;
   warnings: string[];
 };
 
@@ -267,6 +268,7 @@ export function evaluateSoilWaterNutrientDynamics(
       drainageReviewAdvised: hypoxia === "HIGH" || disease === "ELEVATED",
     },
     automaticNutrientDoseIncreaseAllowed: false,
+    automaticNutrientDoseReductionAllowed: false,
     warnings,
   };
 }
