@@ -195,6 +195,10 @@ async function main() {
             status: decision.status,
             automaticUniformDoseAllowed: decision.automaticUniformDoseAllowed,
             uniformDoseTonHaPrnt100: decision.uniformDoseTonHaPrnt100,
+            automaticGeneralDoseAllowed: decision.automaticGeneralDoseAllowed,
+            operationalGeneralDoseTonHaPrnt100: decision.operationalGeneralDoseTonHaPrnt100,
+            generalDoseBasis: decision.generalDoseBasis,
+            doseRangeTonHaPrnt100: decision.doseRangeTonHaPrnt100,
             applicationMode: decision.applicationMode,
             blockers: decision.blockers,
             samples: decision.sampleDecisions.map((item) => ({
