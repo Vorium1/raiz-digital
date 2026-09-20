@@ -51,6 +51,7 @@ type DiseasePayload = {
   diseaseName: string;
   stages?: CropPhenologicalStage[];
   conditions: DiseaseClimateProfile["conditions"];
+  fieldContextConditions?: DiseaseClimateProfile["fieldContextConditions"];
 };
 
 type CatalogPayloadV1 = {
@@ -299,6 +300,41 @@ function parseMetricRule(value: unknown): MetricRulePayload | null {
   };
 }
 
+function validDiseaseFieldContextConditions(
+  value: unknown,
+): value is NonNullable<DiseaseClimateProfile["fieldContextConditions"]> {
+  if (value == null) return true;
+  const obj = objectValue(value);
+  if (!obj) return false;
+
+  const allowed = new Set([
+    "canopyDensityIn",
+    "irrigationMethodIn",
+    "drainageIn",
+    "residueLevelIn",
+    "recentDiseaseHistory",
+    "cropRotationBreak",
+  ]);
+  if (Object.keys(obj).some((key) => !allowed.has(key))) return false;
+
+  const enumList = (candidate: unknown, allowedValues: Set<string>) =>
+    candidate == null
+      || (
+        Array.isArray(candidate)
+        && candidate.length > 0
+        && candidate.every((item) => typeof item === "string" && allowedValues.has(item))
+      );
+
+  if (!enumList(obj.canopyDensityIn, new Set(["OPEN", "MODERATE", "DENSE"]))) return false;
+  if (!enumList(obj.irrigationMethodIn, new Set(["NONE", "DRIP", "FURROW", "SPRINKLER", "CENTER_PIVOT", "MICROSPRINKLER", "OTHER"]))) return false;
+  if (!enumList(obj.drainageIn, new Set(["GOOD", "MODERATE", "POOR"]))) return false;
+  if (!enumList(obj.residueLevelIn, new Set(["LOW", "MEDIUM", "HIGH"]))) return false;
+  if (obj.recentDiseaseHistory != null && typeof obj.recentDiseaseHistory !== "boolean") return false;
+  if (obj.cropRotationBreak != null && typeof obj.cropRotationBreak !== "boolean") return false;
+
+  return Object.keys(obj).length > 0;
+}
+
 function parseDisease(value: unknown): DiseasePayload | null {
   const obj = objectValue(value);
   if (!obj || typeof obj.diseaseName !== "string" || !obj.diseaseName.trim()) return null;
@@ -308,11 +344,13 @@ function parseDisease(value: unknown): DiseasePayload | null {
   if (obj.stages != null && (!stages || !stages.length)) return null;
 
   if (!validDiseaseConditions(obj.conditions)) return null;
+  if (!validDiseaseFieldContextConditions(obj.fieldContextConditions)) return null;
 
   return {
     diseaseName: obj.diseaseName.trim(),
     stages,
     conditions: obj.conditions,
+    fieldContextConditions: obj.fieldContextConditions as DiseaseClimateProfile["fieldContextConditions"],
   };
 }
 
@@ -404,6 +442,7 @@ export function adaptAgroclimateCatalogRows(
         region: region(row),
         stages,
         conditions: disease.conditions,
+        fieldContextConditions: disease.fieldContextConditions,
         source: source(row),
         status: "HOMOLOGATED",
       });
