@@ -92,6 +92,37 @@ assert.ok(functionalBioWide.parameters.some((code) => code.includes("SOLUBILIZAD
 assert.ok(functionalBioWide.rows.every((row) => row.unit === "UFC/g solo"));
 assert.ok(functionalBioWide.rows.every((row) => row.method === "Contagem em meio seletivo informada pelo laboratório"));
 
+const complementaryBioCsv = `Amostra;Parametro;Valor;Unidade;Metodo
+BIO1;Carbono da biomassa microbiana;315;mg C/kg solo;Fumigação-extração
+BIO1;Respiração basal;42;mg C-CO2 kg-1 solo dia-1;Incubação estática
+BIO1;qCO2;0,13;mg C-CO2 g-1 CBM h-1;Calculado a partir de respiração e biomassa
+BIO1;Hidrólise FDA;27;ug fluoresceina g-1 h-1;Hidrólise de diacetato de fluoresceína
+BIO1;Desidrogenase;8,2;ug TPF g-1 h-1;Atividade de desidrogenase
+BIO1;Fosfatase ácida;125;ug pNP g-1 h-1;Atividade de fosfatase`;
+const complementaryBio = buildLabImportPreview(complementaryBioCsv, "biologia-complementar.csv", {
+  hasAgronomicContext: true,
+  spatialLinked: true,
+});
+assert.equal(complementaryBio.blockers, 0);
+assert.ok(complementaryBio.parameters.includes("MICROBIO_BIOMASS_C"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_BASAL_RESPIRATION"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_QCO2"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_FDA_HYDROLYSIS"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_DEHYDROGENASE"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_ACID_PHOSPHATASE"));
+
+const complementaryWideCsv = `Amostra;Carbono da biomassa microbiana (mg C/kg solo);Respiração basal (mg C-CO2 kg-1 solo dia-1)
+BIO1;315;42`;
+const complementaryWide = buildLabImportPreview(complementaryWideCsv, "biologia-complementar-wide.csv", {
+  fallbackMethod: "Método informado pelo laboratório",
+  hasAgronomicContext: true,
+  spatialLinked: true,
+});
+assert.equal(complementaryWide.blockers, 0);
+assert.ok(complementaryWide.parameters.includes("MICROBIO_BIOMASS_C"));
+assert.ok(complementaryWide.parameters.includes("MICROBIO_BASAL_RESPIRATION"));
+assert.ok(complementaryWide.rows.every((row) => row.unit !== "NÃO INFORMADA"));
+
 const functionalBioMissingUnitCsv = `Amostra;Azospirillum brasilense
 M01;420000`;
 const functionalBioMissingUnit = buildLabImportPreview(functionalBioMissingUnitCsv, "microbiologia-sem-unidade.csv", {
