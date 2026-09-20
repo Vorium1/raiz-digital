@@ -239,6 +239,7 @@ export function buildFertilityCyclePlan(input: FertilityCyclePlanInput) {
           biologyState: input.soilWaterDynamics.biologyState,
           residueDecomposition: input.soilWaterDynamics.residueDecomposition,
           automaticDoseIncreaseAllowed: false as const,
+          automaticDoseReductionAllowed: false as const,
           rationale: "Risco hídrico/perda altera parcelamento, monitoramento e manejo físico; não aumenta automaticamente a necessidade agronômica do ciclo.",
         }
       : null,
