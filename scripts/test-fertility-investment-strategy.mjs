@@ -56,6 +56,7 @@ const favorable = adviseFertilityInvestmentTiming({
     targetPeriod: "primavera 2026",
     waterRisk: "FAVORABLE",
     confidence: "MEDIUM",
+    appliesToPlannedCropWindow: true,
     zarcRiskPercent: 20,
   },
 });
@@ -74,6 +75,7 @@ const dryRisk = adviseFertilityInvestmentTiming({
     targetPeriod: "out-dez 2026",
     waterRisk: "DRY_RISK",
     confidence: "HIGH",
+    appliesToPlannedCropWindow: true,
     zarcRiskPercent: 30,
   },
 });
@@ -92,6 +94,7 @@ const excessRain = adviseFertilityInvestmentTiming({
     targetPeriod: "out-dez 2026",
     waterRisk: "EXCESS_RAIN_RISK",
     confidence: "MEDIUM",
+    appliesToPlannedCropWindow: true,
     zarcRiskPercent: 40,
   },
 });
@@ -106,11 +109,27 @@ const weakSignal = adviseFertilityInvestmentTiming({
     targetPeriod: "safra 2026/27",
     waterRisk: "DRY_RISK",
     confidence: "LOW",
+    appliesToPlannedCropWindow: true,
   },
 });
 assert.equal(weakSignal.preferredStrategy, null);
 assert.equal(weakSignal.posture, "NO_CLIMATE_PREFERENCE");
 assert.equal(weakSignal.seasonalYieldTargetPosture, "KEEP_USER_TARGET_REVIEW");
 assert.equal(weakSignal.automaticYieldTargetChangeAllowed, false);
+
+const broadEnsoOnly = adviseFertilityInvestmentTiming({
+  ...base,
+  climateSignal: {
+    source: "CPTEC_INPE",
+    publishedAt: "2026-09-20",
+    targetPeriod: "primavera-verão 2026/27",
+    waterRisk: "EXCESS_RAIN_RISK",
+    confidence: "HIGH",
+    appliesToPlannedCropWindow: false,
+  },
+});
+assert.equal(broadEnsoOnly.preferredStrategy, null);
+assert.equal(broadEnsoOnly.posture, "NO_CLIMATE_PREFERENCE");
+assert.ok(broadEnsoOnly.warnings.includes("CLIMATE_SIGNAL_NOT_CONFIRMED_FOR_CROP_WINDOW"));
 
 console.log("fertility-investment-strategy: fluxo de caixa, clima e proteção da necessidade agronômica validados");
