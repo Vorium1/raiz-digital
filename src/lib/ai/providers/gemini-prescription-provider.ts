@@ -2,7 +2,7 @@ import type { AgronomicPrescriptionProvider, AgronomicPrescriptionProviderResult
 import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "prescription-gemini-v8-fertility-horizon-gate";
+const PROMPT_VERSION = "prescription-gemini-v9-optional-biology-irrigation";
 const MAX_OUTPUT_TOKENS = 8000;
 
 const PRESCRIPTION_JSON_SCHEMA = {
@@ -73,6 +73,8 @@ function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
     "Se `deterministicLimingDecision.status=UNIFORM_NO_APPLY`, NÃO gere dose positiva de calcário. Se `status=SPATIAL` e `automaticGeneralDoseAllowed=true`, copie exatamente `operationalGeneralDoseTonHaPrnt100` como uma recomendação `CALCARIO_PRNT100`; a média já veio pronta do motor e o modelo NÃO pode recalculá-la. Preserve também as doses por ponto em `managementPractices`. Se `status=BLOCKED`, não gere calcário e leve a limitação para `missingInformation`.",
     "PRNT 100% representa necessidade equivalente. Nunca converta para massa de um corretivo comercial sem o PRNT real declarado e nunca escolha marca/produto por conta própria.",
     "`analysis.plannedManagementNotes` é contexto OPCIONAL do manejo futuro (cultivar, fertilizante, fungicida, inseticida, bioinsumo etc.). Se vazio, não marque como falta e não bloqueie o parecer. Se preenchido, use apenas para contextualizar práticas/alertas suportados pelas fontes; nunca altere P/K/S/calagem determinísticos por conta própria.",
+    "`analysis.irrigationContext` é OPCIONAL e progressivo. Se houver somente irrigado/sequeiro, não suponha lâmina, frequência, horário, vazão ou eficiência. Dados adicionais apenas refinam riscos e práticas; sua ausência nunca bloqueia o parecer.",
+    "Parâmetros biológicos em `results` (BioAS e outros ensaios microbiológicos) são evidência OPCIONAL. Ausência não é pendência. Presença não autoriza crédito automático de nutrientes, desconto/acréscimo de dose ou recálculo de IQS. Preserve índices e interpretações laboratoriais como evidência da fonte e só aplique regra quantitativa quando houver motor específico homologado.",
     "`analysis.fertilityPlanningHorizonYears` e `analysis.fertilityCyclePlanNotes` representam o CICLO ENTRE ANÁLISES, não a meta isolada da próxima cultura. Use-os apenas para contextualizar construção/correção do solo e manutenção das safras. Nunca multiplique dose anual pelo número de anos e nunca transforme a meta da próxima safra em demanda acumulada sem cálculo determinístico específico.",
     "Correção inicial não substitui manutenção. Se a manutenção futura não estiver prevista, registre risco de balanço negativo; NÃO invente uma produtividade média futura, duração garantida da correção ou número de safras sustentadas.",
     "Nunca transforme maioria simples, média ou 50% dos pontos em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
