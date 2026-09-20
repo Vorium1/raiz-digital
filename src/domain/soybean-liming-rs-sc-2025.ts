@@ -235,14 +235,13 @@ export function adjustSoybeanLimeDoseForPrnt2025(doseTonHaPrnt100: number, prntP
   return Math.round((doseTonHaPrnt100 * 100 / prntPct) * 100) / 100;
 }
 
-function classifyConventionalVAl(v: number, al: number) {
-  // O texto da seção 2.3.2 autoriza positivamente V<65 E Al>10; a nota (1)
-  // da Tabela 2.2 define um caso negativo V>=65 E Al<10. A nota negativa não
-  // é o inverso lógico da regra positiva. Quadrantes mistos e Al=10 ficam fora
-  // do domínio explicitamente autorizado pela fonte e, por segurança, bloqueiam.
-  if (v < 65 && al > 10) return "APPLY" as const;
+function classifyPhTriggeredLimingException(v: number, al: number) {
+  // Tabela 2.2 (soja RS/SC 2025): a tomada de decisão geral é pHágua < 5,5.
+  // A nota (1) cria uma exceção explícita de NÃO aplicar somente quando
+  // V >= 65% E saturação por Al < 10%. Fora dessa exceção, com pH < 5,5,
+  // a fonte mantém a indicação de calagem.
   if (v >= 65 && al < 10) return "DO_NOT_APPLY" as const;
-  return "UNSPECIFIED_SOURCE_DOMAIN" as const;
+  return "APPLY" as const;
 }
 
 export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input) {
@@ -257,16 +256,8 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
     if (!validSmp(input.smp0To20)) blockers.push("SMP_0_20_MISSING_OR_INVALID");
     if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
     if ((input.phWater0To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_AT_OR_ABOVE_5_5");
-    const criteria = classifyConventionalVAl(input.baseSaturation0To20Pct as number, input.aluminumSaturation0To20Pct as number);
+    const criteria = classifyPhTriggeredLimingException(input.baseSaturation0To20Pct as number, input.aluminumSaturation0To20Pct as number);
     if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
-    if (criteria === "UNSPECIFIED_SOURCE_DOMAIN") {
-      return buildBlocked(
-        system,
-        ["V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"],
-        "BLOCKED_SOURCE_DOMAIN",
-        ["TABLE_2_2_NOTE_IS_ONE_WAY_NON_APPLICATION_EXCEPTION"],
-      );
-    }
     return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To20 as number),
       applicationMode: "INCORPORATED",
@@ -309,16 +300,8 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
     if (!validSmp(input.smp0To10)) blockers.push("SMP_0_10_MISSING_OR_INVALID");
     if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
     if ((input.phWater0To10 as number) >= 5.5) return buildNoApply(system, "PH_WATER_0_10_AT_OR_ABOVE_5_5");
-    const criteria = classifyConventionalVAl(input.baseSaturation0To10Pct as number, input.aluminumSaturation0To10Pct as number);
+    const criteria = classifyPhTriggeredLimingException(input.baseSaturation0To10Pct as number, input.aluminumSaturation0To10Pct as number);
     if (criteria === "DO_NOT_APPLY") return buildNoApply(system, "V_AT_LEAST_65_AND_AL_BELOW_10");
-    if (criteria === "UNSPECIFIED_SOURCE_DOMAIN") {
-      return buildBlocked(
-        system,
-        ["V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"],
-        "BLOCKED_SOURCE_DOMAIN",
-        ["TABLE_2_2_NOTE_IS_ONE_WAY_NON_APPLICATION_EXCEPTION"],
-      );
-    }
     return buildApply(system, {
       smpDose: fullSmpDoseToPh6(input.smp0To10 as number),
       multiplier: 0.5,
