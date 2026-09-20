@@ -238,7 +238,10 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
       rationale: "O cenário agroclimático aumenta o risco econômico da safra, seja por água, temperatura, radiação ou pressão fitossanitária. O RAIZ pode preferir a correção gradual já homologada e abrir uma simulação de meta econômica mais conservadora para reduzir desembolso inicial. A necessidade estrutural do solo não muda e a meta produtiva só é alterada por decisão explícita do responsável.",
-      warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
+      warnings: [
+        "CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE",
+        ...(materialNonWaterRisk ? ["NON_WATER_AGROCLIMATE_RISK_MATERIAL"] : []),
+      ],
     };
   }
 
