@@ -8,6 +8,7 @@ import { PublishedNdviMap } from "@/components/published-ndvi-map";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
+import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
@@ -65,7 +66,7 @@ function recommendationTotalForArea(
     return {
       quantity: recommendation.quantity * areaHa,
       unit: "kg",
-      label: recommendation.inputType,
+      label: recommendationInputLabel(recommendation.inputType),
     };
   }
   if (normalizedUnit === "t/ha" || normalizedUnit === "ton/ha") {
@@ -275,7 +276,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
                   return (
                     <article key={`${item.inputType}-${index}`}>
                       <div>
-                        <strong>{item.inputType}</strong>
+                        <strong>{recommendationInputLabel(item.inputType)}</strong>
                         {item.rationale && <small>{item.rationale}</small>}
                         {areaTotal && (
                           <small>
