@@ -10,6 +10,7 @@ import type {
   CropClimateMetricRule,
 } from "./crop-climate-metric-engine.ts";
 import type { DiseaseClimateProfile } from "./crop-disease-climate-risk.ts";
+import type { CropPhenologyRule } from "./crop-phenology-resolver.ts";
 
 export type ActiveAgroclimateCatalogRow = {
   id: string;
@@ -47,6 +48,15 @@ type MetricRulePayload = {
   hazard: CropClimateHazard;
 };
 
+type PhenologyRulePayload = {
+  id?: string;
+  cultivarCycleGroups?: string[];
+  stage: CropPhenologicalStage;
+  cumulativeGdd?: { min?: number; max?: number };
+  daysAfterSowing?: { min?: number; max?: number };
+  photoperiodHours?: { min?: number; max?: number };
+};
+
 type DiseasePayload = {
   diseaseName: string;
   stages?: CropPhenologicalStage[];
@@ -58,6 +68,7 @@ type CatalogPayloadV1 = {
   schemaVersion: 1;
   climateRules?: ClimateRulePayload[];
   metricRules?: MetricRulePayload[];
+  phenologyRules?: PhenologyRulePayload[];
   disease?: DiseasePayload;
   zarc?: Record<string, unknown>;
 };
@@ -65,6 +76,7 @@ type CatalogPayloadV1 = {
 export type AdaptedAgroclimateCatalog = {
   climateProfiles: CropClimateProfile[];
   metricRules: CropClimateMetricRule[];
+  phenologyRules: CropPhenologyRule[];
   diseaseProfiles: DiseaseClimateProfile[];
   zarcContexts: Array<{
     profileCode: string;
@@ -336,6 +348,53 @@ function validDiseaseFieldContextConditions(
   return Object.keys(obj).length > 0;
 }
 
+function parsePhenologyRule(value: unknown): PhenologyRulePayload | null {
+  const obj = objectValue(value);
+  if (!obj || typeof obj.stage !== "string" || !STAGES.has(obj.stage as CropPhenologicalStage)) {
+    return null;
+  }
+
+  const validRange = (candidate: unknown) => {
+    if (candidate == null) return true;
+    const range = objectValue(candidate);
+    if (!range) return false;
+    const allowed = new Set(["min", "max"]);
+    if (Object.keys(range).some((key) => !allowed.has(key))) return false;
+    if (range.min != null && (typeof range.min !== "number" || !Number.isFinite(range.min))) return false;
+    if (range.max != null && (typeof range.max !== "number" || !Number.isFinite(range.max))) return false;
+    if (range.min != null && range.max != null && range.min > range.max) return false;
+    return range.min != null || range.max != null;
+  };
+
+  if (!validRange(obj.cumulativeGdd)) return null;
+  if (!validRange(obj.daysAfterSowing)) return null;
+  if (!validRange(obj.photoperiodHours)) return null;
+
+  if (
+    obj.cultivarCycleGroups != null
+    && (
+      !Array.isArray(obj.cultivarCycleGroups)
+      || !obj.cultivarCycleGroups.length
+      || obj.cultivarCycleGroups.some((item) => typeof item !== "string" || !item.trim())
+    )
+  ) return null;
+
+  if (obj.cumulativeGdd == null && obj.daysAfterSowing == null && obj.photoperiodHours == null) {
+    return null;
+  }
+
+  return {
+    id: typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : undefined,
+    cultivarCycleGroups: Array.isArray(obj.cultivarCycleGroups)
+      ? obj.cultivarCycleGroups.map((item) => String(item).trim())
+      : undefined,
+    stage: obj.stage as CropPhenologicalStage,
+    cumulativeGdd: obj.cumulativeGdd as PhenologyRulePayload["cumulativeGdd"],
+    daysAfterSowing: obj.daysAfterSowing as PhenologyRulePayload["daysAfterSowing"],
+    photoperiodHours: obj.photoperiodHours as PhenologyRulePayload["photoperiodHours"],
+  };
+}
+
 function parseDisease(value: unknown): DiseasePayload | null {
   const obj = objectValue(value);
   if (!obj || typeof obj.diseaseName !== "string" || !obj.diseaseName.trim()) return null;
@@ -367,6 +426,7 @@ export function adaptAgroclimateCatalogRows(
   const out: AdaptedAgroclimateCatalog = {
     climateProfiles: [],
     metricRules: [],
+    phenologyRules: [],
     diseaseProfiles: [],
     zarcContexts: [],
     rejected: [],
@@ -382,14 +442,20 @@ export function adaptAgroclimateCatalogRows(
     if (row.kind === "PHYSIOLOGY" || row.kind === "REGIONAL_CLIMATE") {
       const climateRulesRaw = payload.climateRules ?? [];
       const metricRulesRaw = payload.metricRules ?? [];
+      const phenologyRulesRaw = payload.phenologyRules ?? [];
       const climateRules = climateRulesRaw.map(parseClimateRule);
       const metricRules = metricRulesRaw.map(parseMetricRule);
+      const phenologyRules = phenologyRulesRaw.map(parsePhenologyRule);
 
-      if (climateRules.some((rule) => !rule) || metricRules.some((rule) => !rule)) {
-        out.rejected.push({ profileCode: row.code, reason: "INVALID_CLIMATE_OR_METRIC_RULE" });
+      if (
+        climateRules.some((rule) => !rule)
+        || metricRules.some((rule) => !rule)
+        || phenologyRules.some((rule) => !rule)
+      ) {
+        out.rejected.push({ profileCode: row.code, reason: "INVALID_CLIMATE_METRIC_OR_PHENOLOGY_RULE" });
         continue;
       }
-      if (!climateRules.length && !metricRules.length) {
+      if (!climateRules.length && !metricRules.length && !phenologyRules.length) {
         out.rejected.push({ profileCode: row.code, reason: "EMPTY_CLIMATE_PROFILE" });
         continue;
       }
@@ -414,6 +480,21 @@ export function adaptAgroclimateCatalogRows(
           metric: rule.metric,
           condition: rule.condition,
           hazard: rule.hazard,
+          source: source(row),
+          status: "HOMOLOGATED",
+        });
+      }
+
+      for (const [index, rule] of (phenologyRules as PhenologyRulePayload[]).entries()) {
+        out.phenologyRules.push({
+          id: rule.id || `${row.code}:PHENOLOGY:${index + 1}`,
+          cropCode: row.cropCode,
+          region: region(row),
+          cultivarCycleGroups: rule.cultivarCycleGroups,
+          stage: rule.stage,
+          cumulativeGdd: rule.cumulativeGdd,
+          daysAfterSowing: rule.daysAfterSowing,
+          photoperiodHours: rule.photoperiodHours,
           source: source(row),
           status: "HOMOLOGATED",
         });
