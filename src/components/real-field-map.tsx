@@ -11,7 +11,7 @@ export type { MapImageOverlay, MapLegendEntry, MapPoint, SpatialGeometry } from 
 
 /**
  * Fachada única para mapas de talhão. Em produção, a base preferencial pode ser Google Satellite;
- * NDVI, pontos e contorno continuam sendo dados RAIZ/Copernicus/PostGIS e não dependem do provedor-base.
+ * NDVI, pontos e contorno continuam sendo dados RAIZ/Sentinel-2/PostGIS e não dependem do provedor-base.
  * Google é a preferência. Mapbox fica pré-integrado como segunda opção; se ambos falharem, Leaflet + relevo preserva a análise.
  */
 export function RealFieldMap(props: FieldMapProps) {
