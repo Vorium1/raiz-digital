@@ -10,6 +10,8 @@ import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision }
 import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 import { adaptLabResultsToSoilMicrobiology } from "@/domain/soil-microbiology-lab-adapter";
 import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evidence";
+import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type BiologicalSoilRegionScope } from "@/domain/biological-soil-analysis";
+import { evaluateIrrigationContext } from "@/domain/irrigation-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -38,6 +40,8 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
+  biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
+  irrigationEvidence: ReturnType<typeof evaluateIrrigationContext>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -116,6 +120,26 @@ function analysisContextFertilityPlanning(value: unknown) {
       ? source.fertilityCyclePlanNotes.trim()
       : null,
   };
+}
+
+
+function biologicalRegionScope(state: string | null | undefined): BiologicalSoilRegionScope {
+  const uf = state?.trim().toUpperCase() ?? "";
+  return new Set(["RS", "SC", "PR"]).has(uf) ? "SOUTH_BRAZIL" : "OTHER_BRAZIL";
+}
+
+function biologicalCropGroup(cropCode: string | null | undefined): BiologicalSoilCropGroup {
+  const crop = cropCode?.trim().toUpperCase() ?? "";
+  if (new Set(["SOJA", "MILHO", "TRIGO", "ARROZ", "CANOLA", "CARINATA", "AVEIA", "CEVADA", "SORGO", "FEIJAO", "ALGODAO"]).has(crop)) {
+    return "ANNUAL_GRAIN_FIBER";
+  }
+  if (crop.includes("CAFE")) return "COFFEE";
+  if (crop.includes("CANA")) return "SUGARCANE";
+  if (crop.includes("PAST") || crop.includes("AZEVEM") || crop.includes("BRAQUIARIA")) return "PASTURE";
+  if (crop.includes("EUCALIP")) return "EUCALYPTUS";
+  if (new Set(["TOMATE", "BATATA", "CEBOLA", "ALHO", "ALFACE", "CENOURA", "PIMENTAO"]).has(crop)) return "HORTICULTURE";
+  if (new Set(["UVA", "MACA", "PESSEGO", "CITROS", "LARANJA"]).has(crop)) return "FRUIT";
+  return "OTHER";
 }
 
 function analysisContextIrrigation(value: unknown) {
@@ -279,6 +303,37 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       validatedAgronomicRuleIds: [],
     });
 
+    const bioAsRows = resultsResult.rows.filter((row) => row.parameterCode.startsWith("BIOAS_"));
+    const biologicalSoilEvidence = evaluateBiologicalSoilEvidence({
+      regionScope: biologicalRegionScope(base.state),
+      cropGroup: biologicalCropGroup(base.cropProfileCode),
+      observations: bioAsRows.map((row) => ({
+        parameterCode: row.parameterCode,
+        value: row.value,
+        unit: row.unit,
+        method: row.method,
+        depthFromCm: row.depthFromCm ?? null,
+        depthToCm: row.depthToCm ?? null,
+        sourceKind: row.parameterCode.startsWith("BIOAS_IQS_") || row.parameterCode.endsWith("_SCORE")
+          ? "LAB_DERIVED_INDEX"
+          : "LAB_MEASURED",
+      })),
+      officialLabInterpretationAvailable: bioAsRows.some((row) =>
+        row.parameterCode.startsWith("BIOAS_IQS_") || row.parameterCode.endsWith("_SCORE")
+      ),
+      sourceVersion: bioAsRows.map((row) => row.protocol ?? row.method).find((value) => value?.trim()) ?? null,
+    });
+
+    const rawIrrigation = analysisContextIrrigation(base.analysisContext);
+    const irrigationEvidence = evaluateIrrigationContext({
+      waterRegime: rawIrrigation.waterRegime ?? "",
+      irrigationSystem: rawIrrigation.system,
+      irrigationDepthMm: rawIrrigation.depthMm,
+      irrigationFrequencyDays: rawIrrigation.frequencyDays,
+      irrigationApplicationTime: rawIrrigation.applicationTime,
+      irrigationNotes: rawIrrigation.notes,
+    });
+
     return {
       tenant: { id: tenant.id, name: tenant.name },
       client: { id: base.clientId, name: base.clientName },
@@ -301,6 +356,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicSulfurDose,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
+      biologicalSoilEvidence,
+      irrigationEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
