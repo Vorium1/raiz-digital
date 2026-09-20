@@ -65,6 +65,14 @@ const result = adaptAgroclimateCatalogRows([
           sunshineHours: { max: 5 },
           cloudCoverPct: { min: 70 },
         },
+        fieldContextConditions: {
+          canopyDensityIn: ["DENSE"],
+          irrigationMethodIn: ["CENTER_PIVOT"],
+          drainageIn: ["POOR"],
+          residueLevelIn: ["HIGH"],
+          recentDiseaseHistory: true,
+          cropRotationBreak: false,
+        },
       },
     },
   },
@@ -113,6 +121,8 @@ assert.deepEqual(
   ["RS-PLANALTO-MEDIO"],
 );
 assert.equal(result.diseaseProfiles[0].diseaseCode, "DOENCA_TESTE");
+assert.deepEqual(result.diseaseProfiles[0].fieldContextConditions?.canopyDensityIn, ["DENSE"]);
+assert.deepEqual(result.diseaseProfiles[0].fieldContextConditions?.irrigationMethodIn, ["CENTER_PIVOT"]);
 assert.deepEqual(
   result.diseaseProfiles[0].region.technicalRegionCodes,
   ["RS-PLANALTO-MEDIO"],
@@ -161,10 +171,22 @@ const extendedMetric = adaptAgroclimateCatalogRows([{
         condition: { operator: "LT", value: 400 },
         hazard: "INSUFFICIENT_CHILL",
       },
+      {
+        stages: ["VEGETATIVE"],
+        metric: "PHOTOPERIOD_HOURS",
+        condition: { operator: "GT", value: 13.5 },
+        hazard: "PHOTOPERIOD_MISMATCH",
+      },
+      {
+        stages: ["DORMANCY"],
+        metric: "CHILL_PORTIONS",
+        condition: { operator: "LT", value: 45 },
+        hazard: "INSUFFICIENT_CHILL",
+      },
     ],
   },
 }]);
-assert.equal(extendedMetric.metricRules.length, 2);
+assert.equal(extendedMetric.metricRules.length, 4);
 
 const invalidDiseaseCondition = adaptAgroclimateCatalogRows([{
   ...base,
@@ -203,5 +225,25 @@ const unknownDiseaseFactor = adaptAgroclimateCatalogRows([{
 }]);
 assert.equal(unknownDiseaseFactor.diseaseProfiles.length, 0);
 assert.equal(unknownDiseaseFactor.rejected[0].reason, "INVALID_DISEASE_PROFILE");
+
+const invalidFieldContext = adaptAgroclimateCatalogRows([{
+  ...base,
+  code: "BAD-DISEASE-FIELD-CONTEXT",
+  kind: "DISEASE",
+  diseaseCode: "FUNGUS_TEST",
+  phenologicalStages: ["FLOWERING"],
+  payload: {
+    schemaVersion: 1,
+    disease: {
+      diseaseName: "Doença com microclima inválido",
+      conditions: { relativeHumidityPct: { min: 90 } },
+      fieldContextConditions: {
+        canopyDensityIn: ["SUPER_DENSE"],
+      },
+    },
+  },
+}]);
+assert.equal(invalidFieldContext.diseaseProfiles.length, 0);
+assert.equal(invalidFieldContext.rejected[0].reason, "INVALID_DISEASE_PROFILE");
 
 console.log("agroclimate-profile-adapter: catálogo ACTIVE convertido e payload inválido rejeitado");
