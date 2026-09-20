@@ -56,6 +56,27 @@ const comma = buildLabImportPreview(commaCsv, "comma.csv", { hasAgronomicContext
 assert.equal(comma.delimiter, ",");
 assert.equal(comma.rows[0]?.value, 10.5);
 
+
+const bioAsLongCsv = `Amostra;Parametro;Valor;Unidade;Metodo
+B01;β-glicosidase;152;mg p-nitrofenol kg-1 solo h-1;
+B01;Arilsulfatase;158;mg p-nitrofenol kg-1 solo h-1;
+B01;IQS FertBio;0,92;indice;
+B01;IQS Bio;0,97;indice;`;
+const bioAsLong = buildLabImportPreview(bioAsLongCsv, "bioas-long.csv", { hasAgronomicContext: true, spatialLinked: true });
+assert.equal(bioAsLong.blockers, 0, "BioAS deve ser importável sem método manual quando o parâmetro é inequívoco.");
+assert.equal(bioAsLong.rows.find((row) => row.parameterCode === "BIOAS_BETA_GLUCOSIDASE")?.method, "BioAS Embrapa — atividade enzimática");
+assert.equal(bioAsLong.rows.find((row) => row.parameterCode === "BIOAS_ARYLSULFATASE")?.method, "BioAS Embrapa — atividade enzimática");
+assert.equal(bioAsLong.rows.find((row) => row.parameterCode === "BIOAS_IQS_FERTBIO")?.method, "BioAS/MIQS — índice informado no laudo");
+
+const bioAsWideCsv = `Amostra;Beta-glicosidase;Ari;IQS FertBio
+B01;152;158;0,92`;
+const bioAsWide = buildLabImportPreview(bioAsWideCsv, "bioas-wide.csv", { hasAgronomicContext: true, spatialLinked: true });
+assert.equal(bioAsWide.format, "WIDE");
+assert.equal(bioAsWide.blockers, 0);
+assert.equal(bioAsWide.rows.length, 3);
+assert.ok(bioAsWide.parameters.includes("BIOAS_BETA_GLUCOSIDASE"));
+assert.ok(bioAsWide.parameters.includes("BIOAS_ARYLSULFATASE"));
+
 // Regressão de transporte: o navegador limita o arquivo bruto e o servidor limita o JSON transportado.
 // PDF/XLSX crescem ~4/3 em base64; os tetos precisam deixar margem para JSON e metadados sem prometer
 // arquivos que a Vercel recusaria na borda antes de a rota conseguir responder.
