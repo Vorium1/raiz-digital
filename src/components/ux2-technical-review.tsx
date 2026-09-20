@@ -144,6 +144,15 @@ function humanizeDoseBlockers(nutrient: "P2O5" | "K2O", blockers: string[] | und
   if (values.includes("P_NO_STRICT_PREDOMINANCE")) {
     return "Dose única não indicada: o fósforo varia entre os pontos. O RAIZ não força uma dose uniforme para a área.";
   }
+  if (values.includes("K_NO_STRICT_PREDOMINANCE")) {
+    return "Dose única não indicada: o potássio varia entre os pontos. O RAIZ não força uma dose uniforme para a área.";
+  }
+  if (values.includes("P_NO_CLASSIFIED_OBSERVATION")) {
+    return "Sem base classificada de fósforo para sustentar uma dose uniforme nesta área.";
+  }
+  if (values.includes("K_NO_CLASSIFIED_OBSERVATION")) {
+    return "Sem base classificada de potássio para sustentar uma dose uniforme nesta área.";
+  }
   if (values.length === 0) return "A regra determinística ainda não liberou uma dose uniforme para esta área.";
   return `A regra de ${nutrientLabel(nutrient)} registrou uma condição técnica que impede uma dose uniforme nesta versão.`;
 }
