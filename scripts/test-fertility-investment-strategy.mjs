@@ -57,6 +57,7 @@ const favorable = adviseFertilityInvestmentTiming({
     waterRisk: "FAVORABLE",
     confidence: "MEDIUM",
     appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: ["PROFILE-TEST"],
     zarcRiskPercent: 20,
   },
 });
@@ -76,6 +77,7 @@ const dryRisk = adviseFertilityInvestmentTiming({
     waterRisk: "DRY_RISK",
     confidence: "HIGH",
     appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: ["PROFILE-TEST"],
     zarcRiskPercent: 30,
   },
 });
@@ -95,6 +97,7 @@ const excessRain = adviseFertilityInvestmentTiming({
     waterRisk: "EXCESS_RAIN_RISK",
     confidence: "MEDIUM",
     appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: ["PROFILE-TEST"],
     zarcRiskPercent: 40,
   },
 });
@@ -110,6 +113,7 @@ const weakSignal = adviseFertilityInvestmentTiming({
     waterRisk: "DRY_RISK",
     confidence: "LOW",
     appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: ["PROFILE-TEST"],
   },
 });
 assert.equal(weakSignal.preferredStrategy, null);
@@ -126,10 +130,28 @@ const broadEnsoOnly = adviseFertilityInvestmentTiming({
     waterRisk: "EXCESS_RAIN_RISK",
     confidence: "HIGH",
     appliesToPlannedCropWindow: false,
+    matchedClimateProfileIds: ["PROFILE-TEST"],
   },
 });
 assert.equal(broadEnsoOnly.preferredStrategy, null);
 assert.equal(broadEnsoOnly.posture, "NO_CLIMATE_PREFERENCE");
 assert.ok(broadEnsoOnly.warnings.includes("CLIMATE_SIGNAL_NOT_CONFIRMED_FOR_CROP_WINDOW"));
+
+const noCropProfile = adviseFertilityInvestmentTiming({
+  ...base,
+  climateSignal: {
+    source: "INMET",
+    publishedAt: "2026-09-20",
+    targetPeriod: "out-dez 2026",
+    waterRisk: "FAVORABLE",
+    confidence: "HIGH",
+    appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: [],
+    zarcRiskPercent: 20,
+  },
+});
+assert.equal(noCropProfile.preferredStrategy, null);
+assert.equal(noCropProfile.posture, "NO_CLIMATE_PREFERENCE");
+assert.ok(noCropProfile.warnings.includes("CROP_REGION_CLIMATE_PROFILE_REQUIRED"));
 
 console.log("fertility-investment-strategy: fluxo de caixa, clima e proteção da necessidade agronômica validados");
