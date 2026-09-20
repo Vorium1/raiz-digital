@@ -154,4 +154,38 @@ assert.equal(noCropProfile.preferredStrategy, null);
 assert.equal(noCropProfile.posture, "NO_CLIMATE_PREFERENCE");
 assert.ok(noCropProfile.warnings.includes("CROP_REGION_CLIMATE_PROFILE_REQUIRED"));
 
+const hotNightsAndLowRadiation = adviseFertilityInvestmentTiming({
+  ...base,
+  climateSignal: {
+    source: "INMET",
+    publishedAt: "2026-09-20",
+    targetPeriod: "dez 2026-fev 2027",
+    waterRisk: "FAVORABLE",
+    confidence: "HIGH",
+    appliesToPlannedCropWindow: true,
+    matchedClimateProfileIds: ["MILHO-BR-EMBRAPA-CLIMA"],
+    zarcRiskPercent: 20,
+    riskDrivers: [
+      {
+        kind: "TEMPERATURE",
+        code: "HOT_NIGHTS",
+        severity: "HIGH",
+        description: "Noites acima do limiar homologado para o milho.",
+        profileIds: ["MILHO-BR-EMBRAPA-CLIMA"],
+      },
+      {
+        kind: "RADIATION",
+        code: "LOW_RADIATION",
+        severity: "MEDIUM",
+        description: "Radiação abaixo do esperado no período reprodutivo.",
+        profileIds: ["MILHO-BR-EMBRAPA-CLIMA"],
+      },
+    ],
+  },
+});
+assert.equal(hotNightsAndLowRadiation.preferredStrategy, "GRADUAL_TWO_CROPS");
+assert.equal(hotNightsAndLowRadiation.posture, "PRESERVE_CASH_WITHIN_VALID_PHASING");
+assert.equal(hotNightsAndLowRadiation.seasonalYieldTargetPosture, "CONSIDER_CONSERVATIVE_SCENARIO");
+assert.ok(hotNightsAndLowRadiation.warnings.includes("NON_WATER_AGROCLIMATE_RISK_MATERIAL"));
+
 console.log("fertility-investment-strategy: fluxo de caixa, clima e proteção da necessidade agronômica validados");
