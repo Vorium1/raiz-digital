@@ -145,6 +145,18 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
         </div>
       )}
 
+      {(draft?.managementPractices?.length ?? 0) > 0 && (
+        <div className="simple-review-recommendations">
+          <span>ORIENTAÇÕES DE MANEJO</span>
+          {draft!.managementPractices!.map((item, index) => (
+            <div key={`management-${index}`}>
+              <strong>{item.startsWith("Calagem") ? "Calagem" : "Manejo"}</strong>
+              <small>{item}</small>
+            </div>
+          ))}
+        </div>
+      )}
+
       {(draft?.missingInformation?.length ?? 0) > 0 && (
         <div className="simple-review-missing">
           <Icon name="shield" size={17}/>
