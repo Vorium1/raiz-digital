@@ -322,6 +322,11 @@ const spatialEvidence = evaluateSoybeanLimingFromEvidence({
 assert.equal(spatialEvidence.status, "SPATIAL");
 assert.equal(spatialEvidence.automaticUniformDoseAllowed, false);
 assert.equal(spatialEvidence.uniformDoseTonHaPrnt100, null);
+assert.equal(spatialEvidence.automaticGeneralDoseAllowed, true);
+assert.equal(spatialEvidence.operationalGeneralDoseTonHaPrnt100, 4.8);
+assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_WEIGHT_SAMPLE_MEAN");
+assert.deepEqual(spatialEvidence.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
+assert.equal(spatialEvidence.applicationMode, "INCORPORATED");
 assert.deepEqual(
   spatialEvidence.sampleDecisions.map((item) => item.recommendedDoseTonHaPrnt100),
   [5.4, 4.2],
@@ -344,6 +349,8 @@ const noApplyEvidence = evaluateSoybeanLimingFromEvidence({
 assert.equal(noApplyEvidence.status, "UNIFORM_NO_APPLY");
 assert.equal(noApplyEvidence.automaticUniformDoseAllowed, true);
 assert.equal(noApplyEvidence.uniformDoseTonHaPrnt100, 0);
+assert.equal(noApplyEvidence.automaticGeneralDoseAllowed, true);
+assert.equal(noApplyEvidence.operationalGeneralDoseTonHaPrnt100, 0);
 
 // 22. Duas amostras com a mesma regra/dose/manejo podem liberar dose uniforme.
 const uniformEvidence = evaluateSoybeanLimingFromEvidence({
@@ -359,6 +366,8 @@ const uniformEvidence = evaluateSoybeanLimingFromEvidence({
 });
 assert.equal(uniformEvidence.status, "UNIFORM_APPLY");
 assert.equal(uniformEvidence.uniformDoseTonHaPrnt100, 5.4);
+assert.equal(uniformEvidence.operationalGeneralDoseTonHaPrnt100, 5.4);
+assert.equal(uniformEvidence.generalDoseBasis, "UNIFORM");
 assert.equal(uniformEvidence.applicationMode, "INCORPORATED");
 
 // 23. Manejo ausente/ambíguo bloqueia sem escolher sistema por conta própria.
@@ -394,13 +403,20 @@ const missingExpectedLime = validatePrescriptionLimingRecommendation({
 assert.equal(missingExpectedLime.allowed, false);
 assert.ok(missingExpectedLime.blockers.includes("LIME_EXPECTED_RECOMMENDATION_MISSING"));
 
-// 25. Área espacial/heterogênea nunca pode ser comprimida em uma dose única pelo provedor.
-const forbiddenSpatialLime = validatePrescriptionLimingRecommendation({
+// 25. Área heterogênea preserva os pontos, mas pode liberar a média operacional calculada pelo motor.
+const validSpatialAverageLime = validatePrescriptionLimingRecommendation({
   recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.8, unit: "t/ha" }],
   deterministicDecision: spatialEvidence,
 });
-assert.equal(forbiddenSpatialLime.allowed, false);
-assert.ok(forbiddenSpatialLime.blockers.includes("LIME_UNIFORM_DOSE_FORBIDDEN_FOR_SPATIAL_DECISION"));
+assert.equal(validSpatialAverageLime.allowed, true);
+assert.equal(validSpatialAverageLime.expectedTonHaPrnt100, 4.8);
+
+const wrongSpatialAverageLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.7, unit: "t/ha" }],
+  deterministicDecision: spatialEvidence,
+});
+assert.equal(wrongSpatialAverageLime.allowed, false);
+assert.ok(wrongSpatialAverageLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
 
 // 26. Decisão uniforme de não aplicar aceita ausência de calcário e rejeita dose positiva.
 const noApplyWithoutLime = validatePrescriptionLimingRecommendation({
