@@ -143,7 +143,7 @@ async function main() {
         depthToCm: row.depthToCm ?? null,
       }));
 
-      const limingParameterCodes = new Set(["PH", "SMP", "V", "AL", "CA", "MG", "K"]);
+      const limingParameterCodes = new Set(["PH", "SMP", "V", "AL", "CA", "MG", "K", "CTC", "H_AL"]);
       const limingBySample = new Map();
       for (const row of labResults) {
         if (!limingParameterCodes.has(row.parameterCode)) continue;
