@@ -7,6 +7,11 @@ export type AnalysisContextDraft = {
   objective: string;
   samplingDepthLabel: string;
   waterRegime: WaterRegime;
+  irrigationSystem: string;
+  irrigationDepthMm: number | null;
+  irrigationFrequencyDays: number | null;
+  irrigationApplicationTime: string;
+  irrigationNotes: string;
   tillageSystem: string;
   managementHistoryStatus: EvidenceStatus;
   managementHistoryNotes: string;
@@ -31,6 +36,11 @@ export const EMPTY_ANALYSIS_CONTEXT_DRAFT: AnalysisContextDraft = {
   objective: "",
   samplingDepthLabel: "",
   waterRegime: "",
+  irrigationSystem: "",
+  irrigationDepthMm: null,
+  irrigationFrequencyDays: null,
+  irrigationApplicationTime: "",
+  irrigationNotes: "",
   tillageSystem: "",
   managementHistoryStatus: "MISSING",
   managementHistoryNotes: "",
