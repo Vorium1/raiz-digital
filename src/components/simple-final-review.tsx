@@ -6,6 +6,7 @@ import { Icon } from "@/components/icon";
 import { SimpleRecommendationContext } from "@/components/simple-recommendation-context";
 import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
 import { normalizeManagementSystem } from "@/domain/management-system";
+import { recommendationInputLabel } from "@/domain/recommendation-display";
 
 type Interpretation = {
   id: string;
@@ -136,7 +137,7 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
           <span>DOSES DETERMINÍSTICAS</span>
           {draft!.recommendations!.map((item, index) => (
             <div key={`${item.inputType}-${index}`}>
-              <strong>{item.inputType}</strong>
+              <strong>{recommendationInputLabel(item.inputType)}</strong>
               <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
               <small>{item.rationale}</small>
             </div>
