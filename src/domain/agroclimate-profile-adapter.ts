@@ -145,10 +145,14 @@ function validCondition(value: unknown): value is CropClimateMetricRule["conditi
   const obj = objectValue(value);
   if (!obj || typeof obj.operator !== "string") return false;
   if (obj.operator === "BETWEEN") {
-    return Number.isFinite(obj.min) && Number.isFinite(obj.max) && Number(obj.min) <= Number(obj.max);
+    return typeof obj.min === "number"
+      && Number.isFinite(obj.min)
+      && typeof obj.max === "number"
+      && Number.isFinite(obj.max)
+      && obj.min <= obj.max;
   }
   if (!["GT", "GTE", "LT", "LTE"].includes(obj.operator)) return false;
-  return Number.isFinite(obj.value);
+  return typeof obj.value === "number" && Number.isFinite(obj.value);
 }
 
 function source(row: ActiveAgroclimateCatalogRow) {
