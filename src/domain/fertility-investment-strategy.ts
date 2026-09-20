@@ -10,6 +10,14 @@ export type ClimateWaterRisk =
 
 export type ForecastConfidence = "LOW" | "MEDIUM" | "HIGH";
 
+export type AgroclimateRiskDriver = {
+  kind: "WATER" | "TEMPERATURE" | "RADIATION" | "DISEASE" | "WIND_HAIL" | "OTHER";
+  code: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  description: string;
+  profileIds: string[];
+};
+
 export type OfficialClimateSignal = {
   source: "INMET" | "CPTEC_INPE" | "ZARC" | "OTHER_OFFICIAL";
   publishedAt: string;
@@ -23,6 +31,8 @@ export type OfficialClimateSignal = {
   appliesToPlannedCropWindow: boolean;
   /** Perfis cultura × região × estádio usados para interpretar o sinal. */
   matchedClimateProfileIds: string[];
+  /** Riscos não hídricos que também alteram o retorno esperado da safra. */
+  riskDrivers?: AgroclimateRiskDriver[];
   zarcRiskPercent?: 20 | 30 | 40 | null;
 };
 
@@ -183,9 +193,15 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
 
   const lowerHistoricalRisk = climate.zarcRiskPercent == null || climate.zarcRiskPercent <= 30;
 
+  const drivers = climate.riskDrivers ?? [];
+  const highNonWaterRisk = drivers.some((driver) => driver.kind !== "WATER" && driver.severity === "HIGH");
+  const mediumNonWaterRiskCount = drivers.filter((driver) => driver.kind !== "WATER" && driver.severity === "MEDIUM").length;
+  const materialNonWaterRisk = highNonWaterRisk || mediumNonWaterRiskCount >= 2;
+
   if (
     climate.waterRisk === "FAVORABLE"
     && lowerHistoricalRisk
+    && !materialNonWaterRisk
     && total
   ) {
     return {
@@ -197,12 +213,20 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
       rationale: "O sinal climático é favorável e o risco ZARC informado não é elevado. Se caixa, preço dos insumos e potencial do talhão forem compatíveis, faz sentido comparar um cenário de maior investimento e antecipar a correção estrutural tecnicamente válida. A meta produtiva só muda se o agrônomo/produtor escolher explicitamente o cenário.",
-      warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
+      warnings: [
+        "CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE",
+        ...(materialNonWaterRisk ? ["NON_WATER_AGROCLIMATE_RISK_MATERIAL"] : []),
+      ],
     };
   }
 
   if (
-    (climate.waterRisk === "DRY_RISK" || climate.waterRisk === "EXCESS_RAIN_RISK" || climate.waterRisk === "MIXED")
+    (
+      climate.waterRisk === "DRY_RISK"
+      || climate.waterRisk === "EXCESS_RAIN_RISK"
+      || climate.waterRisk === "MIXED"
+      || materialNonWaterRisk
+    )
     && gradual
   ) {
     return {
@@ -213,7 +237,7 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       automaticYieldTargetChangeAllowed: false as const,
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
-      rationale: "O cenário climático aumenta o risco econômico da safra. O RAIZ pode preferir a correção gradual já homologada e abrir uma simulação de meta econômica mais conservadora para reduzir desembolso inicial. A necessidade estrutural do solo não muda e a meta produtiva só é alterada por decisão explícita do responsável.",
+      rationale: "O cenário agroclimático aumenta o risco econômico da safra, seja por água, temperatura, radiação ou pressão fitossanitária. O RAIZ pode preferir a correção gradual já homologada e abrir uma simulação de meta econômica mais conservadora para reduzir desembolso inicial. A necessidade estrutural do solo não muda e a meta produtiva só é alterada por decisão explícita do responsável.",
       warnings: ["CLIMATE_SIGNAL_SUPPORTS_TIMING_ONLY_NOT_DOSE"],
     };
   }
