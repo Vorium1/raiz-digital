@@ -10,6 +10,7 @@ export type AnalysisContextDraft = {
   tillageSystem: string;
   managementHistoryStatus: EvidenceStatus;
   managementHistoryNotes: string;
+  plannedManagementNotes: string;
   soilContextNotes: string;
   yieldHistoryStatus: EvidenceStatus;
   yieldHistoryNotes: string;
@@ -31,6 +32,7 @@ export const EMPTY_ANALYSIS_CONTEXT_DRAFT: AnalysisContextDraft = {
   tillageSystem: "",
   managementHistoryStatus: "MISSING",
   managementHistoryNotes: "",
+  plannedManagementNotes: "",
   soilContextNotes: "",
   yieldHistoryStatus: "MISSING",
   yieldHistoryNotes: "",
