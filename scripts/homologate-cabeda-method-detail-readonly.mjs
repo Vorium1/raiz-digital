@@ -38,7 +38,9 @@ async function main() {
          a.id::text,
          a.code,
          a.tenant_id::text AS "tenantId",
-         cs.crop_profile_id::text AS "cropProfileId"
+         cs.crop_profile_id::text AS "cropProfileId",
+         cs.management_system AS "managementSystem",
+         a.analysis_context->'draft'->>'tillageSystem' AS "analysisTillageSystem"
        FROM analyses a
        JOIN crop_seasons cs
          ON cs.tenant_id = a.tenant_id
@@ -141,6 +143,24 @@ async function main() {
         depthToCm: row.depthToCm ?? null,
       }));
 
+      const limingParameterCodes = new Set(["PH", "SMP", "V", "AL", "CA", "MG", "K"]);
+      const limingBySample = new Map();
+      for (const row of labResults) {
+        if (!limingParameterCodes.has(row.parameterCode)) continue;
+        const entry = limingBySample.get(row.sampleCode) ?? {
+          sampleCode: row.sampleCode,
+          depthFromCm: row.depthFromCm,
+          depthToCm: row.depthToCm,
+          parameters: {},
+        };
+        entry.parameters[row.parameterCode] = {
+          value: row.value,
+          unit: row.unit,
+          method: row.method,
+        };
+        limingBySample.set(row.sampleCode, entry);
+      }
+
       const cropProfile = {
         ...profileRow,
         parameters: paramsResult.rows,
@@ -195,6 +215,9 @@ async function main() {
         resultCount: labResults.length,
         engineInterpretable: engineResult.interpretable,
         confidence: engineResult.confidence.level,
+        managementSystem: analysis.managementSystem ?? null,
+        analysisTillageSystem: analysis.analysisTillageSystem ?? null,
+        limingInputs: [...limingBySample.values()],
         checks,
       });
     }
