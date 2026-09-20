@@ -253,6 +253,52 @@ function normalizeParameter(value: string) {
   return PARAMETER_ALIASES[raw] ?? raw.toUpperCase();
 }
 
+function looksLikeBiologicalParameter(value: string) {
+  const raw = normalizeHeader(value.replace(/\([^)]*\)/g, ""));
+  return [
+    "azospirillum",
+    "bradyrhizobium",
+    "rhizobium",
+    "micorriz",
+    "mycorrh",
+    "solubilizador",
+    "solubilizadora",
+    "biomassamicrobiana",
+    "carbonodabiomassamicrobiana",
+    "respiracaobasal",
+    "respiracaomicrobiana",
+    "colonizacaomicorrizica",
+    "esporosmicorrizicos",
+    "bacteriasfixadoras",
+    "fixadoresdenitrogenio",
+    "diazotro",
+    "qPCR",
+    "metabarcoding",
+    "16s",
+    "its",
+  ].some((token) => raw.includes(token.toLowerCase()));
+}
+
+function isGenericBiologicalParameterCode(parameterCode: string) {
+  const code = parameterCode.toUpperCase();
+  return [
+    "AZOSPIRILLUM",
+    "BRADYRHIZOBIUM",
+    "RHIZOBIUM",
+    "MICORRIZ",
+    "MYCORRH",
+    "SOLUBILIZ",
+    "BIOMASSAMICROBIANA",
+    "RESPIRACAO",
+    "DIAZOTRO",
+    "FIXADORESDE",
+    "COLONIZACAO",
+    "ESPOROS",
+    "QPCR",
+    "METABARCODING",
+  ].some((token) => code.includes(token));
+}
+
 function extractUnitFromHeader(header: string) {
   const match = header.match(/\(([^)]+)\)/);
   if (!match) return "";
@@ -271,6 +317,7 @@ function inferMethod(parameterCode: string, fallbackMethod?: string) {
   const fallback = fallbackMethod?.trim();
   if (!fallback) return "";
   if (["P", "K"].includes(parameterCode) && ["Mehlich-1", "Resina"].includes(fallback)) return fallback;
+  if (isGenericBiologicalParameterCode(parameterCode)) return fallback;
   return "";
 }
 
@@ -456,11 +503,20 @@ export function buildLabImportPreviewFromMatrix(
     });
   } else {
     const parameterColumns = detectedHeaders
-      .map((header, index) => ({ header, index, parameterCode: normalizeParameter(header), unit: extractUnitFromHeader(header) }))
-      .filter((entry) => entry.index !== sampleIndex && Boolean(DEFAULT_UNITS[entry.parameterCode]));
+      .map((header, index) => ({
+        header,
+        index,
+        parameterCode: normalizeParameter(header),
+        unit: extractUnitFromHeader(header),
+        biologicalCandidate: looksLikeBiologicalParameter(header),
+      }))
+      .filter((entry) =>
+        entry.index !== sampleIndex
+        && (Boolean(DEFAULT_UNITS[entry.parameterCode]) || entry.biologicalCandidate)
+      );
 
     if (!parameterColumns.length) {
-      addIssue(issues, "BLOCKER", "PARAMETERS_NOT_RECOGNIZED", "O arquivo não possui colunas laboratoriais reconhecidas. Use nomes como pH, P, K, Ca, Mg, Al, CTC, V%, MO, S, B, Zn, Cu, Mn, Fe ou parâmetros BioAS (Beta-glicosidase, Arilsulfatase, IQS Bio/FertBio).");
+      addIssue(issues, "BLOCKER", "PARAMETERS_NOT_RECOGNIZED", "O arquivo não possui colunas laboratoriais reconhecidas. Use nomes químico-físicos, parâmetros BioAS ou parâmetros microbiológicos explícitos (ex.: Azospirillum, Bradyrhizobium, solubilizadores de P/K, micorrizas, biomassa/respiração), preservando unidade e método do laboratório.");
     }
 
     matrix.slice(1).forEach((sourceRow, rowIndex) => {
