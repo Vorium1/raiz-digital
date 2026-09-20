@@ -42,6 +42,8 @@ export type AgronomicPrescriptionEvidencePackage = {
     status: string;
     createdAt: string;
     plannedManagementNotes: string | null;
+    fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
+    fertilityCyclePlanNotes: string | null;
   };
   deterministicInterpretation: {
     id: string;
@@ -85,6 +87,24 @@ function analysisContextPlannedManagementNotes(value: unknown) {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
   const notes = (draft as { plannedManagementNotes?: unknown }).plannedManagementNotes;
   return typeof notes === "string" && notes.trim() ? notes.trim() : null;
+}
+
+function analysisContextFertilityPlanning(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { horizonYears: null as 2 | 3 | 4 | 5 | null, cyclePlanNotes: null as string | null };
+  }
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+    return { horizonYears: null as 2 | 3 | 4 | 5 | null, cyclePlanNotes: null as string | null };
+  }
+  const source = draft as { fertilityPlanningHorizonYears?: unknown; fertilityCyclePlanNotes?: unknown };
+  const horizon = Number(source.fertilityPlanningHorizonYears);
+  return {
+    horizonYears: [2, 3, 4, 5].includes(horizon) ? horizon as 2 | 3 | 4 | 5 : null,
+    cyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" && source.fertilityCyclePlanNotes.trim()
+      ? source.fertilityCyclePlanNotes.trim()
+      : null,
+  };
 }
 
 export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string, userId: string, analysisId: string): Promise<AgronomicPrescriptionEvidencePackage | null> {
@@ -239,6 +259,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         status: base.status,
         createdAt: base.createdAt,
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
+        fertilityPlanningHorizonYears: analysisContextFertilityPlanning(base.analysisContext).horizonYears,
+        fertilityCyclePlanNotes: analysisContextFertilityPlanning(base.analysisContext).cyclePlanNotes,
       },
       deterministicInterpretation,
       results: resultsResult.rows,
