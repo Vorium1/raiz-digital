@@ -21,6 +21,8 @@ export type OfficialClimateSignal = {
    * planejada. Um ENSO regional isolado não é suficiente.
    */
   appliesToPlannedCropWindow: boolean;
+  /** Perfis cultura × região × estádio usados para interpretar o sinal. */
+  matchedClimateProfileIds: string[];
   zarcRiskPercent?: 20 | 30 | 40 | null;
 };
 
@@ -160,6 +162,7 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
     || climate.waterRisk === "UNKNOWN"
     || climate.confidence === "LOW"
     || !climate.appliesToPlannedCropWindow
+    || climate.matchedClimateProfileIds.length === 0
   ) {
     return {
       scenarios,
@@ -173,6 +176,7 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       warnings: [
         ...(climate?.confidence === "LOW" ? ["LOW_FORECAST_CONFIDENCE"] : []),
         ...(climate && !climate.appliesToPlannedCropWindow ? ["CLIMATE_SIGNAL_NOT_CONFIRMED_FOR_CROP_WINDOW"] : []),
+        ...(climate && climate.matchedClimateProfileIds.length === 0 ? ["CROP_REGION_CLIMATE_PROFILE_REQUIRED"] : []),
       ],
     };
   }
