@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
 import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 type Props = {
+  analysisId: string;
   cropSeasonId: string;
   blockers: string[];
   yieldGoal: number | null;
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function SimpleRecommendationContext({
+  analysisId,
   cropSeasonId,
   blockers,
   yieldGoal,
@@ -42,6 +44,32 @@ export function SimpleRecommendationContext({
   const [management, setManagement] = useState(canonicalManagement === "OTHER" ? "" : canonicalManagement);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [plannedManagement, setPlannedManagement] = useState("");
+  const [initialPlannedManagement, setInitialPlannedManagement] = useState("");
+  const [plannedLoaded, setPlannedLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setPlannedLoaded(false);
+    fetch(`/api/analyses/${analysisId}/planned-management`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar o manejo planejado.");
+        return String(payload.plannedManagement?.plannedManagementNotes ?? "");
+      })
+      .then((notes) => {
+        if (!alive) return;
+        setPlannedManagement(notes);
+        setInitialPlannedManagement(notes);
+        setPlannedLoaded(true);
+      })
+      .catch((caught) => {
+        if (!alive) return;
+        setError(caught instanceof Error ? caught.message : "Não foi possível carregar o manejo planejado.");
+        setPlannedLoaded(true);
+      });
+    return () => { alive = false; };
+  }, [analysisId]);
 
   const selectedPreset = yieldConfig?.presets.find((preset) => preset.id === goalChoice) ?? null;
   const parsedCustomGoal = Number(customGoal.replace(",", "."));
@@ -54,7 +82,10 @@ export function SimpleRecommendationContext({
   const managementChanged = Boolean(management) && management !== canonicalManagement;
   const yieldReadyToSave = needsYield && selectedYieldTonPerHa != null;
   const orderReadyToSave = needsOrder && (order === "1" || order === "2");
-  const canSave = yieldReadyToSave || orderReadyToSave || managementChanged;
+  const plannedManagementChanged = plannedLoaded
+    && plannedManagement.trim() !== initialPlannedManagement.trim();
+  const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
+  const canSave = seasonContextChanged || plannedManagementChanged;
 
   async function save() {
     if (!canSave) {
@@ -65,21 +96,36 @@ export function SimpleRecommendationContext({
     setBusy(true);
     setError("");
     try {
-      const patch: Record<string, unknown> = {};
-      if (yieldReadyToSave && selectedYieldTonPerHa != null) {
-        patch.yieldGoal = selectedYieldTonPerHa;
-        patch.yieldGoalUnit = "t/ha";
+      if (plannedManagementChanged) {
+        const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ plannedManagementNotes: plannedManagement }),
+        });
+        const plannedPayload = await plannedResponse.json().catch(() => ({}));
+        if (!plannedResponse.ok) throw new Error(plannedPayload.error ?? "Não foi possível salvar o manejo planejado.");
+        const savedNotes = String(plannedPayload.plannedManagement?.plannedManagementNotes ?? plannedManagement.trim());
+        setPlannedManagement(savedNotes);
+        setInitialPlannedManagement(savedNotes);
       }
-      if (orderReadyToSave) patch.cultivationOrderAfterSoilAnalysis = Number(order);
-      if (managementChanged) patch.managementSystem = management;
 
-      const response = await fetch(`/api/crop-seasons/${cropSeasonId}/recommendation-context`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível salvar estas informações.");
+      if (seasonContextChanged) {
+        const patch: Record<string, unknown> = {};
+        if (yieldReadyToSave && selectedYieldTonPerHa != null) {
+          patch.yieldGoal = selectedYieldTonPerHa;
+          patch.yieldGoalUnit = "t/ha";
+        }
+        if (orderReadyToSave) patch.cultivationOrderAfterSoilAnalysis = Number(order);
+        if (managementChanged) patch.managementSystem = management;
+
+        const response = await fetch(`/api/crop-seasons/${cropSeasonId}/recommendation-context`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Não foi possível salvar estas informações.");
+      }
       await onSaved();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível salvar estas informações.");
@@ -104,6 +150,19 @@ export function SimpleRecommendationContext({
       </summary>
 
       <div className="simple-context-fields">
+        <label style={{ gridColumn: "1 / -1" }}>
+          <span>Manejo planejado da próxima safra <small>(opcional)</small></span>
+          <textarea
+            value={plannedManagement}
+            onChange={(event) => setPlannedManagement(event.target.value)}
+            disabled={!plannedLoaded}
+            placeholder="Se já estiver decidido: cultivar, fertilizante/fonte, população, espaçamento, tratamento de sementes, fungicidas, inseticidas, bioinsumos etc. Se ainda não souber, deixe em branco e preencha depois."
+            rows={4}
+            maxLength={5000}
+          />
+          <small>Serve para refinar a recomendação e os alertas. Não bloqueia o parecer do solo e não autoriza a IA a alterar doses determinísticas.</small>
+        </label>
+
         {needsYield && (
           <label>
             <span>Quanto pretende colher?</span>
