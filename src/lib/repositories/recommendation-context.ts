@@ -1,4 +1,5 @@
 import { evaluatePkDoseReadiness } from "@/domain/recommendation-context";
+import { MANAGEMENT_SYSTEM_OPTIONS } from "@/domain/management-system";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 
@@ -14,6 +15,7 @@ type RecommendationContextRow = {
   yieldGoal: number | null;
   yieldGoalUnit: string | null;
   technologyLevel: string | null;
+  managementSystem: string | null;
   cultivationYears: number | null;
   cultivationOrderAfterSoilAnalysis: number | null;
   cropProfileCode: string | null;
@@ -26,6 +28,7 @@ function mapContext(row: RecommendationContextRow) {
     yieldGoal: row.yieldGoal,
     yieldGoalUnit: row.yieldGoalUnit,
     technologyLevel: row.technologyLevel,
+    managementSystem: row.managementSystem,
     cultivationYears: row.cultivationYears,
     cultivationOrderAfterSoilAnalysis: row.cultivationOrderAfterSoilAnalysis,
     cropProfileCode: row.cropProfileCode,
@@ -43,6 +46,7 @@ const SELECT_CONTEXT = `
          cs.yield_goal::float8 AS "yieldGoal",
          cs.yield_goal_unit AS "yieldGoalUnit",
          cs.technology_level AS "technologyLevel",
+         cs.management_system AS "managementSystem",
          cs.cultivation_years AS "cultivationYears",
          cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
          cp.code AS "cropProfileCode",
@@ -76,6 +80,7 @@ export async function getRecommendationContextByAnalysis(input: {
               cs.yield_goal::float8 AS "yieldGoal",
               cs.yield_goal_unit AS "yieldGoalUnit",
               cs.technology_level AS "technologyLevel",
+              cs.management_system AS "managementSystem",
               cs.cultivation_years AS "cultivationYears",
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
               cp.code AS "cropProfileCode",
@@ -100,6 +105,7 @@ export async function updateRecommendationContext(input: {
   yieldGoal?: number | null;
   yieldGoalUnit?: string | null;
   cultivationOrderAfterSoilAnalysis?: number | null;
+  managementSystem?: string | null;
 }) {
   if (input.yieldGoal !== undefined && input.yieldGoal !== null && (!Number.isFinite(input.yieldGoal) || input.yieldGoal <= 0)) {
     throw new RecommendationContextError("Meta produtiva deve ser maior que zero.", 400);
@@ -112,7 +118,19 @@ export async function updateRecommendationContext(input: {
     throw new RecommendationContextError("Ordem de cultivo após a análise deve ser um inteiro maior ou igual a 1.", 400);
   }
 
-  if (input.yieldGoal === undefined && input.yieldGoalUnit === undefined && input.cultivationOrderAfterSoilAnalysis === undefined) {
+  if (input.managementSystem !== undefined && input.managementSystem !== null) {
+    const allowed = new Set(MANAGEMENT_SYSTEM_OPTIONS.map((option) => option.value));
+    if (!allowed.has(input.managementSystem as (typeof MANAGEMENT_SYSTEM_OPTIONS)[number]["value"])) {
+      throw new RecommendationContextError("Sistema de manejo informado não é suportado.", 400);
+    }
+  }
+
+  if (
+    input.yieldGoal === undefined
+    && input.yieldGoalUnit === undefined
+    && input.cultivationOrderAfterSoilAnalysis === undefined
+    && input.managementSystem === undefined
+  ) {
     throw new RecommendationContextError("Nenhum campo de contexto de recomendação foi informado.", 400);
   }
 
@@ -129,11 +147,15 @@ export async function updateRecommendationContext(input: {
     const nextCultivationOrder = input.cultivationOrderAfterSoilAnalysis === undefined
       ? current.cultivationOrderAfterSoilAnalysis
       : input.cultivationOrderAfterSoilAnalysis;
+    const nextManagementSystem = input.managementSystem === undefined
+      ? current.managementSystem
+      : (input.managementSystem?.trim() || null);
 
     const changedFields: string[] = [];
     if (nextYieldGoal !== current.yieldGoal) changedFields.push("yieldGoal");
     if (nextYieldGoalUnit !== current.yieldGoalUnit) changedFields.push("yieldGoalUnit");
     if (nextCultivationOrder !== current.cultivationOrderAfterSoilAnalysis) changedFields.push("cultivationOrderAfterSoilAnalysis");
+    if (nextManagementSystem !== current.managementSystem) changedFields.push("managementSystem");
 
     if (changedFields.length === 0) return mapContext(current);
 
@@ -142,16 +164,18 @@ export async function updateRecommendationContext(input: {
        SET yield_goal = $3::numeric,
            yield_goal_unit = $4::text,
            cultivation_order_after_soil_analysis = $5::integer,
+           management_system = $6::text,
            updated_at = now()
        WHERE tenant_id = $1::uuid AND id = $2::uuid
        RETURNING id::text,
                  yield_goal::float8 AS "yieldGoal",
                  yield_goal_unit AS "yieldGoalUnit",
                  technology_level AS "technologyLevel",
+                 management_system AS "managementSystem",
                  cultivation_years AS "cultivationYears",
                  cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
                  updated_at::text AS "updatedAt"`,
-      [input.tenantId, input.cropSeasonId, nextYieldGoal, nextYieldGoalUnit, nextCultivationOrder],
+      [input.tenantId, input.cropSeasonId, nextYieldGoal, nextYieldGoalUnit, nextCultivationOrder, nextManagementSystem],
     );
 
     const row = updated.rows[0];
@@ -168,6 +192,7 @@ export async function updateRecommendationContext(input: {
         changedFields,
         pkDoseReady: context.pkDoseReadiness.ready,
         blockers: context.pkDoseReadiness.blockers,
+        managementSystem: context.managementSystem,
       },
     });
 
