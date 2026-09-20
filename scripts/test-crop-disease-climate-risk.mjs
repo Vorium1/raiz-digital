@@ -77,6 +77,68 @@ const noTomatoDiseaseProfile = assessDiseaseClimateFavorability({
 assert.equal(noTomatoDiseaseProfile.status, "NO_APPLICABLE_PROFILE");
 assert.ok(noTomatoDiseaseProfile.warnings.includes("CROP_DISEASE_CLIMATE_PROFILE_REQUIRED"));
 
+const extendedDisease = assessDiseaseClimateFavorability({
+  cropCode: "TOMATE",
+  countryCode: "BR",
+  stateCode: "RS",
+  technicalRegionCodes: ["RS-PLANALTO-MEDIO"],
+  stage: "FRUIT_DEVELOPMENT",
+  observation: {
+    airTemperatureC: 22,
+    nightTemperatureC: 18,
+    dewPointC: 18,
+    relativeHumidityPct: 94,
+    vpdKpa: 0.35,
+    leafWetnessHours: 10,
+    rainfallMm: 18,
+    rainfallIntensityMmH: 6,
+    consecutiveWetDays: 4,
+    soilMoisturePct: 78,
+    windKmh: 14,
+    windGustKmh: 29,
+    sunshineHours: 3,
+    cloudCoverPct: 86,
+  },
+  pathogenPresenceStatus: "REGIONAL_ALERT",
+  hostSusceptibility: "SUSCEPTIBLE",
+  profiles: [{
+    id: "TOMATE-RS-DISEASE-WEATHER-TEST",
+    cropCode: "TOMATE",
+    diseaseCode: "FUNGUS_TEST",
+    diseaseName: "Doença fúngica de teste",
+    region: {
+      countryCode: "BR",
+      stateCodes: ["RS"],
+      technicalRegionCodes: ["RS-PLANALTO-MEDIO"],
+    },
+    stages: ["FRUIT_DEVELOPMENT"],
+    conditions: {
+      temperatureC: { min: 18, max: 26 },
+      nightTemperatureC: { min: 15, max: 21 },
+      dewPointC: { min: 16 },
+      relativeHumidityPct: { min: 90 },
+      vpdKpa: { max: 0.5 },
+      leafWetnessHours: { min: 8 },
+      rainfallIntensityMmH: { min: 4 },
+      consecutiveWetDays: { min: 3 },
+      soilMoisturePct: { min: 70 },
+      sunshineHours: { max: 4 },
+      cloudCoverPct: { min: 80 },
+    },
+    source: { institution: "TEST", title: "Perfil estrutural de teste" },
+    status: "HOMOLOGATED",
+  }],
+});
+assert.equal(extendedDisease.status, "READY");
+assert.equal(extendedDisease.diseaseRisks[0].climateFavorability, "HIGH");
+assert.equal(extendedDisease.diseaseRisks[0].monitoringPriority, "HIGH");
+assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("NIGHT_TEMPERATURE"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("DEW_POINT"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("VPD"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("CONSECUTIVE_WET_DAYS"));
+assert.ok(extendedDisease.diseaseRisks[0].matchedFactors.includes("SUNSHINE"));
+assert.equal(extendedDisease.diseaseRisks[0].treatmentAutomaticallyAuthorized, false);
+
 const maize = assessCropClimateRisk({
   cropCode: "MILHO",
   countryCode: "BR",
