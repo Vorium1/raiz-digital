@@ -110,6 +110,10 @@ export async function listActiveAgroclimateProfilesForContext(input: {
               ap.technical_source_id::text AS "technicalSourceId",
               cp.code AS "cropCode",
               tr.name AS "technicalRegionName",
+              tr.country_code AS "countryCode",
+              tr.state_codes AS "stateCodes",
+              tr.municipality_codes AS "municipalityCodes",
+              tr.climate_zone_code AS "climateZoneCode",
               ts.title AS "technicalSourceTitle",
               ts.institution AS "technicalSourceInstitution"
        FROM agroclimate_profiles ap
