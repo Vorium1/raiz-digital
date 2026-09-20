@@ -18,6 +18,7 @@ const rust = assessDiseaseClimateFavorability({
     rainfallMm: 12,
   },
   pathogenPresenceStatus: "REGIONAL_ALERT",
+  hostSusceptibility: "HIGHLY_SUSCEPTIBLE",
   profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
 });
 assert.equal(rust.status, "READY");
@@ -26,6 +27,9 @@ assert.equal(rust.diseaseRisks[0].diseaseCode, "FERRUGEM_ASIATICA");
 assert.equal(rust.diseaseRisks[0].climateFavorability, "HIGH");
 assert.equal(rust.diseaseRisks[0].infectionConfirmed, false);
 assert.equal(rust.diseaseRisks[0].pathogenPresenceStatus, "REGIONAL_ALERT");
+assert.equal(rust.diseaseRisks[0].hostSusceptibility, "HIGHLY_SUSCEPTIBLE");
+assert.equal(rust.diseaseRisks[0].monitoringPriority, "HIGH");
+assert.equal(rust.diseaseRisks[0].treatmentAutomaticallyAuthorized, false);
 assert.ok(rust.warnings.includes("DO_NOT_TRIGGER_FUNGICIDE_FROM_CLIMATE_ALONE"));
 
 const rustDry = assessDiseaseClimateFavorability({
@@ -38,10 +42,12 @@ const rustDry = assessDiseaseClimateFavorability({
     leafWetnessHours: 2,
   },
   pathogenPresenceStatus: "UNKNOWN",
+  hostSusceptibility: "RESISTANT",
   profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
 });
 assert.equal(rustDry.diseaseRisks[0].climateFavorability, "MODERATE");
 assert.equal(rustDry.diseaseRisks[0].infectionConfirmed, false);
+assert.equal(rustDry.diseaseRisks[0].monitoringPriority, "LOW");
 
 const blast = assessDiseaseClimateFavorability({
   cropCode: "TRIGO",
