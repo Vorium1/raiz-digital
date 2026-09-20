@@ -94,7 +94,7 @@ const ambiguous = resolveCropPhenology({
   countryCode: "BR",
   stateCode: "RS",
   cultivarCycleGroup: "G1",
-  cumulativeGdd: 840.5,
+  cumulativeGdd: 820,
   rules: [
     ...rules,
     {
