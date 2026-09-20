@@ -54,7 +54,16 @@ const result = adaptAgroclimateCatalogRows([
         diseaseName: "Doença teste",
         conditions: {
           temperatureC: { min: 20, max: 28 },
+          nightTemperatureC: { min: 17, max: 24 },
+          dewPointC: { min: 16 },
           relativeHumidityPct: { min: 85 },
+          vpdKpa: { max: 0.7 },
+          leafWetnessHours: { min: 6 },
+          rainfallIntensityMmH: { min: 2 },
+          consecutiveWetDays: { min: 2 },
+          soilMoisturePct: { min: 60 },
+          sunshineHours: { max: 5 },
+          cloudCoverPct: { min: 70 },
         },
       },
     },
@@ -130,5 +139,69 @@ const invalidMetric = adaptAgroclimateCatalogRows([{
 
 assert.equal(invalidMetric.metricRules.length, 0);
 assert.equal(invalidMetric.rejected[0].reason, "INVALID_CLIMATE_OR_METRIC_RULE");
+
+const extendedMetric = adaptAgroclimateCatalogRows([{
+  ...base,
+  code: "EXTENDED-METRIC",
+  kind: "PHYSIOLOGY",
+  diseaseCode: null,
+  phenologicalStages: ["FRUIT_DEVELOPMENT"],
+  payload: {
+    schemaVersion: 1,
+    metricRules: [
+      {
+        stages: ["FRUIT_DEVELOPMENT"],
+        metric: "PAR_MJ_M2_DAY",
+        condition: { operator: "LT", value: 5 },
+        hazard: "LOW_RADIATION",
+      },
+      {
+        stages: ["DORMANCY"],
+        metric: "CHILL_HOURS",
+        condition: { operator: "LT", value: 400 },
+        hazard: "INSUFFICIENT_CHILL",
+      },
+    ],
+  },
+}]);
+assert.equal(extendedMetric.metricRules.length, 2);
+
+const invalidDiseaseCondition = adaptAgroclimateCatalogRows([{
+  ...base,
+  code: "BAD-DISEASE-CONDITION",
+  kind: "DISEASE",
+  diseaseCode: "FUNGUS_TEST",
+  phenologicalStages: ["FLOWERING"],
+  payload: {
+    schemaVersion: 1,
+    disease: {
+      diseaseName: "Doença inválida de teste",
+      conditions: {
+        relativeHumidityPct: { min: "90" },
+      },
+    },
+  },
+}]);
+assert.equal(invalidDiseaseCondition.diseaseProfiles.length, 0);
+assert.equal(invalidDiseaseCondition.rejected[0].reason, "INVALID_DISEASE_PROFILE");
+
+const unknownDiseaseFactor = adaptAgroclimateCatalogRows([{
+  ...base,
+  code: "UNKNOWN-DISEASE-FACTOR",
+  kind: "DISEASE",
+  diseaseCode: "FUNGUS_TEST",
+  phenologicalStages: ["FLOWERING"],
+  payload: {
+    schemaVersion: 1,
+    disease: {
+      diseaseName: "Doença com fator não suportado",
+      conditions: {
+        magicHumidityIndex: { min: 1 },
+      },
+    },
+  },
+}]);
+assert.equal(unknownDiseaseFactor.diseaseProfiles.length, 0);
+assert.equal(unknownDiseaseFactor.rejected[0].reason, "INVALID_DISEASE_PROFILE");
 
 console.log("agroclimate-profile-adapter: catálogo ACTIVE convertido e payload inválido rejeitado");
