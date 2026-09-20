@@ -23,6 +23,7 @@ assert.equal(n?.risk, "HIGH");
 assert.equal(s?.risk, "HIGH");
 assert.equal(b?.risk, "HIGH");
 assert.equal(irrigatedSandy.automaticNutrientDoseIncreaseAllowed, false);
+assert.equal(irrigatedSandy.automaticNutrientDoseReductionAllowed, false);
 assert.equal(irrigatedSandy.compactionRisk, "MODERATE");
 assert.equal(irrigatedSandy.mediumTermMonitoring.earlierSoilMonitoringAdvised, true);
 assert.ok(irrigatedSandy.warnings.includes("LOSS_RISK_DOES_NOT_AUTHORIZE_AUTOMATIC_DOSE_INCREASE"));
