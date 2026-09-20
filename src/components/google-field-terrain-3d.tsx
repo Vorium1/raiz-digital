@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { spatialGeometryPositions, type SpatialGeometry } from "@/components/spatial-map-types";
-import { loadGoogleMaps } from "@/lib/maps/google-maps-loader";
+import { loadGoogleMaps, subscribeGoogleMapsAuthFailure } from "@/lib/maps/google-maps-loader";
+import { monitorGoogle3DHealth } from "@/lib/maps/google-3d-health";
 
 function outerRings(geometry: SpatialGeometry): Array<Array<[number, number]>> {
   const raw = geometry.coordinates as any;
@@ -55,14 +56,26 @@ export function GoogleFieldTerrain3D({
   useEffect(() => {
     let cancelled = false;
     let mapElement: any = null;
+    let stopHealthCheck = () => {};
+    let failed = false;
+    const fail = (error: Error) => {
+      if (cancelled || failed) return;
+      failed = true;
+      clearTimeout(loadTimeout);
+      stopHealthCheck();
+      onFailure?.(error);
+    };
+    // Includes a hanging importLibrary(), not only a missing script.
+    const loadTimeout = setTimeout(() => fail(new Error("Tempo limite ao abrir o relevo 3D.")), 30_000);
+    const unsubscribeAuth = subscribeGoogleMapsAuthFailure(fail);
 
     void loadGoogleMaps()
       .then(async (maps) => {
-        if (cancelled || !hostRef.current) return;
+        if (cancelled || failed || !hostRef.current) return;
         if (typeof maps.importLibrary !== "function") throw new Error("Google Maps 3D indisponível nesta sessão.");
 
         const library = await maps.importLibrary("maps3d") as any;
-        if (cancelled || !hostRef.current) return;
+        if (cancelled || failed || !hostRef.current) return;
 
         const { Map3DElement, Polygon3DElement } = library;
         if (!Map3DElement || !Polygon3DElement) throw new Error("Biblioteca Google Maps 3D não foi carregada.");
@@ -73,7 +86,7 @@ export function GoogleFieldTerrain3D({
           tilt: 67.5,
           heading: 330,
           mode: "SATELLITE",
-          gestureHandling: "GREEDY",
+          gestureHandling: "COOPERATIVE",
           defaultUIHidden: false,
         });
         mapElement.style.width = "100%";
@@ -91,14 +104,19 @@ export function GoogleFieldTerrain3D({
           mapElement.append(polygon);
         }
 
+        stopHealthCheck = monitorGoogle3DHealth(mapElement, fail);
+        clearTimeout(loadTimeout);
         hostRef.current.replaceChildren(mapElement);
       })
       .catch((caught) => {
-        if (!cancelled) onFailure?.(caught instanceof Error ? caught : new Error("Não foi possível abrir o relevo 3D."));
+        fail(caught instanceof Error ? caught : new Error("Não foi possível abrir o relevo 3D."));
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(loadTimeout);
+      stopHealthCheck();
+      unsubscribeAuth();
       try { mapElement?.remove?.(); } catch { /* noop */ }
       if (hostRef.current) hostRef.current.replaceChildren();
     };

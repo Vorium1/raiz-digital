@@ -105,6 +105,7 @@ export function SimpleFieldMapLayers({
   useEffect(() => {
     if (!activated) return;
     let cancelled = false;
+    const controller = new AbortController();
 
     void (async () => {
       try {
@@ -119,7 +120,7 @@ export function SimpleFieldMapLayers({
           if (!sessionStorage.getItem(key)) {
             sessionStorage.setItem(key, "1");
             try {
-              const refresh = await fetch(`/api/analyses/${analysisId}/interpret?draft=local`, { method: "POST" });
+              const refresh = await fetch(`/api/analyses/${analysisId}/interpret?draft=local`, { method: "POST", signal: controller.signal });
               if (!refresh.ok) {
                 const payload = await refresh.json().catch(() => ({}));
                 throw new Error(payload.error ?? "Não foi possível atualizar a análise desta área.");
@@ -132,7 +133,8 @@ export function SimpleFieldMapLayers({
           }
         }
 
-        const response = await fetch(`/api/fields/${fieldId}/soil-map-context`, { cache: "no-store" });
+        if (cancelled) return;
+        const response = await fetch(`/api/fields/${fieldId}/soil-map-context`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error ?? "Não foi possível abrir a leitura do solo.");
         const nextContext = (payload.context ?? null) as SoilContext | null;
@@ -145,7 +147,7 @@ export function SimpleFieldMapLayers({
           return;
         }
 
-        const layerResponse = await fetch(`/api/collection-orders/${nextContext.collectionOrderId}/map-layer`, { cache: "no-store" });
+        const layerResponse = await fetch(`/api/collection-orders/${nextContext.collectionOrderId}/map-layer`, { cache: "no-store", signal: controller.signal });
         const layerPayload = await layerResponse.json().catch(() => ({}));
         if (!layerResponse.ok) throw new Error(layerPayload.error ?? "Não foi possível abrir os dados do solo.");
         if (cancelled) return;
@@ -167,7 +169,7 @@ export function SimpleFieldMapLayers({
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [activated, analysisId, canRefresh, fieldId, freshnessCode, router]);
 
   useEffect(() => {

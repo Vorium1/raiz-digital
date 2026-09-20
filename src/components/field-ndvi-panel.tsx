@@ -127,34 +127,37 @@ export function FieldNdviPanel({
   const effectiveCollectionOrderId = collectionOrderId ?? fallbackSoilContext?.collectionOrderId ?? null;
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setRefreshNote(null);
     void (async () => {
-      const res = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store" });
-      const payload = await res.json().catch(() => ({}));
-      if (cancelled) return;
-      if (!res.ok) {
-        setError(payload.error ?? "Não foi possível carregar os dados de satélite deste talhão.");
-        setLoading(false);
-        return;
+      try {
+        const res = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store", signal: controller.signal });
+        const payload = await res.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!res.ok) throw new Error(payload.error ?? "Não foi possível carregar os dados de satélite deste talhão.");
+        const nextLatest = (payload.latest ?? null) as Snapshot | null;
+        const nextHistory = (payload.history ?? []) as Snapshot[];
+        const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
+        setLatest(nextLatest);
+        setHistory(nextHistory);
+        setFieldBoundary(payload.fieldBoundary ?? null);
+        setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
+        setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
+        setQuality(payload.quality ?? "INDETERMINADA");
+        setTemporal(payload.temporal ?? null);
+        setRuntime(payload.runtime ?? null);
+        onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
+      } catch (caught) {
+        if (!controller.signal.aborted) {
+          setError(caught instanceof Error ? caught.message : "Não foi possível carregar os dados de satélite deste talhão.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-      const nextLatest = (payload.latest ?? null) as Snapshot | null;
-      const nextHistory = (payload.history ?? []) as Snapshot[];
-      const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
-      setLatest(nextLatest);
-      setHistory(nextHistory);
-      setFieldBoundary(payload.fieldBoundary ?? null);
-      setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
-      setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
-      setQuality(payload.quality ?? "INDETERMINADA");
-      setTemporal(payload.temporal ?? null);
-      setRuntime(payload.runtime ?? null);
-      setLoading(false);
-      onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
     })();
-    return () => { cancelled = true; };
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldId]);
 
@@ -186,8 +189,8 @@ export function FieldNdviPanel({
         if (!bounds) throw new Error("O raster NDVI foi recebido sem envelope geográfico válido.");
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("O raster NDVI retornou em formato inesperado.");
-        objectUrl = URL.createObjectURL(blob);
         if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
         setRasterOverlay({ url: objectUrl, bounds, opacity: 0.78 });
       } catch (caught) {
         if (controller.signal.aborted) return;
@@ -303,6 +306,8 @@ export function FieldNdviPanel({
         setRefreshNote("Série temporal atualizada.");
       }
       onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível buscar a leitura de satélite. Tente novamente.");
     } finally {
       setFetching(false);
     }

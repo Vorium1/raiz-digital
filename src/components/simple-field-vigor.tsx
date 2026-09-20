@@ -70,6 +70,8 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
   const [rasterDate, setRasterDate] = useState("");
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [error, setError] = useState("");
+  const [rasterError, setRasterError] = useState("");
+  const [rasterAttempt, setRasterAttempt] = useState(0);
 
   const archived = useMemo(() => history.find(hasRaster) ?? null, [history]);
   const dominant = useMemo(() => dominantZone(archived?.zoneBreakdownPct), [archived]);
@@ -142,6 +144,8 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
 
     const controller = new AbortController();
     let objectUrl: string | null = null;
+    setOverlay(null);
+    setRasterError("");
     void (async () => {
       try {
         const response = await fetch(`/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(rasterDate)}`, {
@@ -153,10 +157,11 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
         if (!bounds) throw new Error("Imagem NDVI sem envelope geográfico válido.");
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("Formato inesperado da imagem NDVI.");
+        if (controller.signal.aborted) return;
         objectUrl = URL.createObjectURL(blob);
-        if (!controller.signal.aborted) setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
+        setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
       } catch (caught) {
-        if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Não foi possível abrir o mapa de vigor.");
+        if (!controller.signal.aborted) setRasterError(caught instanceof Error ? caught.message : "Não foi possível abrir o mapa de vigor.");
       }
     })();
 
@@ -164,7 +169,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [fieldId, rasterDate, boundary]);
+  }, [fieldId, rasterDate, boundary, rasterAttempt]);
 
   return (
     <section className="simple-field-vigor">
@@ -234,7 +239,13 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
             </div>
           </div>
 
-          {overlay ? (
+          {rasterError ? (
+            <div role="alert" className="simple-field-vigor-empty">
+              <strong>Não foi possível abrir a imagem de satélite.</strong>
+              <p>{rasterError}</p>
+              <button type="button" className="button ghost small" onClick={() => setRasterAttempt((attempt) => attempt + 1)}>Tentar carregar imagem novamente</button>
+            </div>
+          ) : overlay ? (
             <RealFieldMap
               boundary={boundary}
               points={[]}
