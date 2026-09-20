@@ -3,6 +3,7 @@ import { getPool } from "../src/lib/db.ts";
 import { auxiliaryParameterCodesFor } from "../src/domain/crop-profile-auxiliary-parameters.ts";
 import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 import { normalizeAnalyticalMethod, normalizeUnit } from "../src/domain/lab-method-normalization.ts";
+import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
 
 const analysisCodes = ["AN-CABEDA-01", "AN-CABEDA-02", "AN-CABEDA-03"];
 const protocolResolvedParameters = ["B", "MN", "S", "CU", "ZN"];
@@ -40,11 +41,18 @@ async function main() {
          a.tenant_id::text AS "tenantId",
          cs.crop_profile_id::text AS "cropProfileId",
          cs.management_system AS "managementSystem",
-         a.analysis_context->'draft'->>'tillageSystem' AS "analysisTillageSystem"
+         a.analysis_context->'draft'->>'tillageSystem' AS "analysisTillageSystem",
+         p.state
        FROM analyses a
        JOIN crop_seasons cs
          ON cs.tenant_id = a.tenant_id
         AND cs.id = a.crop_season_id
+       JOIN fields f
+         ON f.tenant_id = cs.tenant_id
+        AND f.id = cs.field_id
+       JOIN properties p
+         ON p.tenant_id = f.tenant_id
+        AND p.id = f.property_id
        WHERE a.code = ANY($1::text[])
        ORDER BY a.code`,
       [analysisCodes],
@@ -169,6 +177,38 @@ async function main() {
 
       const engineResult = runAgronomicEngine({ cropProfile, labResults });
 
+      const limingSystems = [
+        "CONVENTIONAL",
+        "NO_TILL_ESTABLISHMENT",
+        "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+        "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
+      ];
+      const limingScenarios = Object.fromEntries(
+        limingSystems.map((managementSystem) => {
+          const decision = evaluateSoybeanLimingFromEvidence({
+            cropCode: profileRow.code,
+            state: analysis.state,
+            managementSystem,
+            results: labResults,
+          });
+          return [managementSystem, {
+            status: decision.status,
+            automaticUniformDoseAllowed: decision.automaticUniformDoseAllowed,
+            uniformDoseTonHaPrnt100: decision.uniformDoseTonHaPrnt100,
+            applicationMode: decision.applicationMode,
+            blockers: decision.blockers,
+            samples: decision.sampleDecisions.map((item) => ({
+              sampleCode: item.sampleCode,
+              decision: item.decision,
+              doseTonHaPrnt100: item.recommendedDoseTonHaPrnt100,
+              baseSaturationPct: item.baseSaturationPct,
+              aluminumSaturationPct: item.aluminumSaturationPct,
+              blockers: item.blockers,
+            })),
+          }];
+        }),
+      );
+
       const checks = {};
       for (const parameterCode of protocolResolvedParameters) {
         const rawRows = rawByParameter.get(parameterCode) ?? [];
@@ -218,6 +258,7 @@ async function main() {
         managementSystem: analysis.managementSystem ?? null,
         analysisTillageSystem: analysis.analysisTillageSystem ?? null,
         limingInputs: [...limingBySample.values()],
+        limingScenarios,
         checks,
       });
     }
