@@ -90,11 +90,18 @@ function conditionMatches(
   value: number,
   condition: CropClimateMetricRule["condition"],
 ) {
-  if (condition.operator === "GT") return value > condition.value;
-  if (condition.operator === "GTE") return value >= condition.value;
-  if (condition.operator === "LT") return value < condition.value;
-  if (condition.operator === "LTE") return value <= condition.value;
-  return value >= condition.min && value <= condition.max;
+  switch (condition.operator) {
+    case "GT":
+      return value > condition.value;
+    case "GTE":
+      return value >= condition.value;
+    case "LT":
+      return value < condition.value;
+    case "LTE":
+      return value <= condition.value;
+    case "BETWEEN":
+      return value >= condition.min && value <= condition.max;
+  }
 }
 
 /**
