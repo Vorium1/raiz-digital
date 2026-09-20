@@ -89,7 +89,17 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
         })
         .filter((item): item is string => Boolean(item));
       if (bySample.length) {
-        managementPractices.push(`Calagem por amostra: ${bySample.join("; ")}. Dose uniforme não indicada para toda a área.`);
+        const spatialModes = [...new Set(
+          liming.sampleDecisions
+            .map((item) => item.applicationMode)
+            .filter((mode): mode is "INCORPORATED" | "SURFACE" => mode === "INCORPORATED" || mode === "SURFACE"),
+        )];
+        const modeText = spatialModes.length === 1
+          ? spatialModes[0] === "SURFACE"
+            ? " Modo de aplicação: superficial."
+            : " Modo de aplicação: incorporada."
+          : "";
+        managementPractices.push(`Calagem por amostra: ${bySample.join("; ")}. Dose uniforme não indicada para toda a área.${modeText}`);
       }
       limitations.push("Calagem: os pontos não sustentam uma dose única para todo o talhão; a RAIZ preservou a variação em vez de calcular média simples.");
     } else if (liming.status === "BLOCKED") {
