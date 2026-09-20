@@ -490,6 +490,9 @@ assert.match(simpleResult, /Atualizando laudo…/);
 
 assert.match(simpleFieldOverview, /SimpleFieldYieldOutlook fieldId=\{field\.id\}/);
 assert.match(simpleFieldOverview, /Validado pelo motor RAIZ/);
+assert.match(simpleFieldOverview, /allActionableAlerts/);
+assert.match(simpleFieldOverview, /Ver todas as \{allActionableAlerts\.length\} ações pendentes/);
+assert.match(simpleFieldOverview, /href="\/atencao"/);
 assert.doesNotMatch(simpleFieldOverview, /Revisão concluída|Revisar agora/);
 assert.match(fieldOverviewTabs, /Validado pelo motor RAIZ/);
 assert.doesNotMatch(fieldOverviewTabs, /Aguardando revisão profissional|Validação profissional concluída/);
