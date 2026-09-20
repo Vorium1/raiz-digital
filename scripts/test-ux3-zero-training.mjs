@@ -537,6 +537,10 @@ assert.match(analysisContextIntake, /Regime hídrico <small>\(opcional\)<\/small
 assert.match(analysisContextIntake, /Lâmina aplicada/);
 assert.match(analysisContextIntake, /Horário usual/);
 assert.match(prescriptionEvidencePackage, /irrigationContext/);
+assert.match(prescriptionEvidencePackage, /irrigationEvidence/);
+assert.match(prescriptionEvidencePackage, /biologicalSoilEvidence/);
+assert.match(prescriptionEvidencePackage, /evaluateBiologicalSoilEvidence/);
+assert.match(prescriptionEvidencePackage, /evaluateIrrigationContext/);
 assert.match(simpleRecommendationContext, /Horizonte desta análise do solo/);
 assert.match(simpleRecommendationContext, /Planejamento do ciclo até a próxima análise/);
 assert.match(analysisDepthReadiness, /blocks: "CALCULATION_ONLY"/);
