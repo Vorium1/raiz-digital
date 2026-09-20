@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { adaptAgroclimateCatalogRows, type ActiveAgroclimateCatalogRow } from "@/domain/agroclimate-profile-adapter";
 
 export type AgroclimateProfileKind =
   | "PHYSIOLOGY"
@@ -238,9 +239,25 @@ export async function setAgroclimateProfileStatus(input: {
     const current = await client.query(
       `SELECT ap.id::text,
               ap.code,
+              ap.semantic_version AS "semanticVersion",
+              ap.kind::text,
+              ap.disease_code AS "diseaseCode",
+              ap.phenological_stages AS "phenologicalStages",
+              ap.payload,
+              ap.technical_region_code AS "technicalRegionCode",
               ap.technical_source_id::text AS "technicalSourceId",
+              cp.code AS "cropCode",
+              tr.name AS "technicalRegionName",
+              tr.country_code AS "countryCode",
+              tr.state_codes AS "stateCodes",
+              tr.municipality_codes AS "municipalityCodes",
+              tr.climate_zone_code AS "climateZoneCode",
+              ts.title AS "technicalSourceTitle",
+              ts.institution AS "technicalSourceInstitution",
               ts.status::text AS "technicalSourceStatus"
        FROM agroclimate_profiles ap
+       JOIN crop_profiles cp ON cp.id = ap.crop_profile_id
+       JOIN technical_regions tr ON tr.code = ap.technical_region_code
        LEFT JOIN technical_sources ts ON ts.id = ap.technical_source_id
        WHERE ap.id = $1::uuid
        FOR UPDATE OF ap`,
@@ -255,6 +272,14 @@ export async function setAgroclimateProfileStatus(input: {
       }
       if (row.technicalSourceStatus !== "ACTIVE") {
         throw new AgroclimateProfileError("A fonte técnica precisa estar ACTIVE antes da homologação do perfil.", 422);
+      }
+
+      const adapted = adaptAgroclimateCatalogRows([row as ActiveAgroclimateCatalogRow]);
+      if (adapted.rejected.length > 0) {
+        throw new AgroclimateProfileError(
+          `Payload agroclimático inválido para homologação: ${adapted.rejected[0].reason}.`,
+          422,
+        );
       }
     }
 
