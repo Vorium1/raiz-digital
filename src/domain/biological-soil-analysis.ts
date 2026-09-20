@@ -93,19 +93,20 @@ export function evaluateBiologicalSoilEvidence(
     }
   }
 
-  const annualDomain = input.cropGroup === "ANNUAL_GRAIN_FIBER";
-  // A documentação operacional oficial da BioAS segue calibrada para cultivos
-  // anuais do Cerrado. RS/SC pode importar as enzimas/índices do laboratório,
-  // mas a RAIZ não deve transportar silenciosamente os algoritmos de classe do
-  // Cerrado para o Sul sem calibração/homologação regional específica.
-  const raizCalibrationRegionReady = input.regionScope === "CERRADO";
-  const automaticInterpretationDomainReady = annualDomain && raizCalibrationRegionReady && hasCoreEnzymes;
+  // A Rede BioAS é nacional e a interpretação oficial considera condições
+  // regionais, textura e uso do solo. Portanto, um laudo oficial BioAS pode ser
+  // preservado como evidência em qualquer região coberta pela rede.
+  //
+  // O que a RAIZ NÃO pode fazer é reconstruir silenciosamente IQS/classes a
+  // partir das duas enzimas sem receber o algoritmo oficial versionado e as
+  // variáveis de contexto exigidas. Assim, valores brutos sempre entram como
+  // resultado; índices/classes oficiais entram quando vierem no laudo; e a
+  // recomputação própria permanece bloqueada.
+  const officialNationalInterpretationUsable = Boolean(input.officialLabInterpretationAvailable);
+  const automaticRaizInterpretationAllowed = false;
 
-  if (hasAnyBiology && !automaticInterpretationDomainReady) {
-    warnings.push("BIOLOGICAL_VALUES_AVAILABLE_WITHOUT_RAIZ_AUTOMATIC_INTERPRETATION_DOMAIN");
-  }
-  if (hasCoreEnzymes && input.regionScope === "SOUTH_BRAZIL") {
-    warnings.push("BIOAS_RAIZ_REGIONAL_CALIBRATION_NOT_HOMOLOGATED_FOR_SOUTH_BRAZIL");
+  if (hasCoreEnzymes && !officialNationalInterpretationUsable && !hasLabIndexes) {
+    warnings.push("BIOAS_RAW_ENZYMES_REQUIRE_OFFICIAL_OR_VERSIONED_INTERPRETATION");
   }
   if (hasLabIndexes && !input.officialLabInterpretationAvailable) {
     warnings.push("LAB_BIOAS_INDEX_IMPORTED_WITHOUT_OFFICIAL_INTERPRETATION_METADATA");
@@ -129,9 +130,11 @@ export function evaluateBiologicalSoilEvidence(
     interpretation: {
       sourceVersion: input.sourceVersion ?? null,
       officialLabInterpretationAvailable: Boolean(input.officialLabInterpretationAvailable),
-      automaticRaizInterpretationAllowed: automaticInterpretationDomainReady,
-      labReportedInterpretationCanBePreserved: Boolean(input.officialLabInterpretationAvailable),
-      raizAutomaticCalibrationScope: "CERRADO_ANNUAL_GRAIN_FIBER" as const,
+      automaticRaizInterpretationAllowed,
+      officialNationalBioAsInterpretationUsable,
+      labReportedInterpretationCanBePreserved: officialNationalInterpretationUsable,
+      nationalBioAsNetworkEvidenceAllowed: true as const,
+      raizRecomputationOfOfficialIndexesAllowed: false as const,
       crossRegionAlgorithmTransferAllowed: false as const,
       labIndexesMustBePreservedNotRecomputed: true as const,
     },
