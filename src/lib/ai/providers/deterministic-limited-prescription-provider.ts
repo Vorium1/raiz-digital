@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v1";
+const PROMPT_VERSION = "deterministic-limited-v2-liming";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -26,6 +26,7 @@ function unique(values: Array<string | null | undefined>) {
 
 function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePackage) {
   const recommendations: Array<{ inputType: string; quantity: number; unit: string; rationale: string }> = [];
+  const managementPractices: string[] = [];
   const limitations: string[] = [];
 
   for (const nutrient of ["P2O5", "K2O"] as const) {
@@ -65,14 +66,49 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     }
   }
 
-  return { recommendations, limitations };
+  const liming = evidence.deterministicLimingDecision;
+  if (evidence.season.cropProfileCode === "SOJA" && liming) {
+    if (liming.status === "UNIFORM_APPLY" && liming.automaticUniformDoseAllowed && liming.uniformDoseTonHaPrnt100 != null) {
+      const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+      recommendations.push({
+        inputType: "CALCARIO_PRNT100",
+        quantity: liming.uniformDoseTonHaPrnt100,
+        unit: "t/ha",
+        rationale: `Necessidade uniforme calculada pelo motor determinístico de calagem da soja RS/SC 2025, equivalente a PRNT 100%, com ${mode}. A RAIZ não escolhe produto comercial nem converte PRNT sem o valor declarado do corretivo.`,
+      });
+    } else if (liming.status === "UNIFORM_NO_APPLY") {
+      managementPractices.push("Calagem: não indicada pelo critério determinístico atual para os pontos avaliados.");
+    } else if (liming.status === "SPATIAL") {
+      const bySample = liming.sampleDecisions
+        .map((item) => {
+          if (item.decision === "DO_NOT_APPLY") return `${item.sampleCode}: não aplicar`;
+          if (item.decision === "APPLY" && item.recommendedDoseTonHaPrnt100 != null) {
+            return `${item.sampleCode}: ${item.recommendedDoseTonHaPrnt100.toLocaleString("pt-BR")} t/ha PRNT 100%`;
+          }
+          return null;
+        })
+        .filter((item): item is string => Boolean(item));
+      if (bySample.length) {
+        managementPractices.push(`Calagem por amostra: ${bySample.join("; ")}. Dose uniforme não indicada para toda a área.`);
+      }
+      limitations.push("Calagem: os pontos não sustentam uma dose única para todo o talhão; a RAIZ preservou a variação em vez de calcular média simples.");
+    } else if (liming.status === "BLOCKED") {
+      if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
+        limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
+      } else {
+        limitations.push(`Calagem: decisão uniforme ainda não liberada pelo motor (${liming.blockers.join(", ") || "contexto técnico insuficiente"}).`);
+      }
+    }
+  }
+
+  return { recommendations, managementPractices, limitations };
 }
 
 /**
  * Fechamento local e deliberadamente limitado para quando nenhum LLM estiver configurado.
  *
- * Não prescreve dose, produto ou prática de manejo. Apenas transporta para um rascunho revisável
- * aquilo que o motor determinístico já classificou e registra as limitações reais. Isso permite
+ * Não inventa dose, produto ou prática de manejo. Apenas transporta para um rascunho revisável
+ * aquilo que os motores determinísticos já calcularam/classificaram e registra as limitações reais. Isso permite
  * concluir um relatório técnico com as evidências disponíveis sem transformar indisponibilidade de
  * provedor externo em uma falsa "falta de dados" do usuário.
  */
@@ -127,7 +163,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         summary: "Análise técnica preparada pelo motor RAIZ a partir das medições, métodos laboratoriais e regras agronômicas versionadas. Doses uniformes só entram quando a evidência do próprio talhão sustenta essa decisão.",
         diagnosis,
         recommendations: deterministic.recommendations,
-        managementPractices: [],
+        managementPractices: deterministic.managementPractices,
         missingInformation,
         sources,
       },
