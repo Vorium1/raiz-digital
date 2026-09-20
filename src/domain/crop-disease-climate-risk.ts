@@ -26,6 +26,7 @@ export type DiseaseClimateProfile = {
     countryCode: string;
     stateCodes?: string[];
     municipalityCodes?: string[];
+    technicalRegionCodes?: string[];
   };
   stages: CropPhenologicalStage[];
   /**
@@ -62,6 +63,7 @@ export type DiseaseClimateAssessmentInput = {
   countryCode: string;
   stateCode: string | null;
   municipalityCode?: string | null;
+  technicalRegionCodes?: string[];
   stage: CropPhenologicalStage;
   observation: DiseaseClimateObservation;
   profiles: DiseaseClimateProfile[];
@@ -96,9 +98,13 @@ function normalized(value: string) {
 
 function regionMatches(
   profile: DiseaseClimateProfile,
-  input: Pick<DiseaseClimateAssessmentInput, "countryCode" | "stateCode" | "municipalityCode">,
+  input: Pick<DiseaseClimateAssessmentInput, "countryCode" | "stateCode" | "municipalityCode" | "technicalRegionCodes">,
 ) {
   if (normalized(profile.region.countryCode) !== normalized(input.countryCode)) return false;
+  if (profile.region.technicalRegionCodes?.length) {
+    const resolved = new Set((input.technicalRegionCodes ?? []).map(normalized));
+    return profile.region.technicalRegionCodes.map(normalized).some((code) => resolved.has(code));
+  }
   if (profile.region.municipalityCodes?.length) {
     if (!input.municipalityCode) return false;
     return profile.region.municipalityCodes.map(normalized).includes(normalized(input.municipalityCode));
