@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { SimpleRecommendationContext } from "@/components/simple-recommendation-context";
 import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
+import { normalizeManagementSystem } from "@/domain/management-system";
 
 type Interpretation = {
   id: string;
@@ -87,6 +88,8 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
   const evidenceCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
   const currentEngineValidation = interpretation?.status === "APPROVED" && evidenceCurrent;
   const staleReason = readiness?.interpretationEvidenceFreshness?.reason ?? null;
+  const needsManagementContext = recommendationContext?.cropProfileCode === "SOJA"
+    && normalizeManagementSystem(recommendationContext.managementSystem) === "OTHER";
 
   return (
     <section className="simple-final-review" id="revisar">
@@ -152,9 +155,19 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
       )}
 
       {canPublish ? (
-        <div className="simple-review-actions">
-          <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretation?.id}/>
-        </div>
+        needsManagementContext ? (
+          <div className="simple-review-missing">
+            <Icon name="leaf" size={17}/>
+            <div>
+              <strong>Defina o manejo antes de emitir</strong>
+              <small>Escolha o sistema de manejo acima. Para soja, esse contexto muda a regra de calagem e a RAIZ não publica presumindo um sistema.</small>
+            </div>
+          </div>
+        ) : (
+          <div className="simple-review-actions">
+            <SimplePublishResultButton analysisId={analysisId} interpretationId={interpretation?.id}/>
+          </div>
+        )
       ) : (
         <p className="simple-review-help">Seu perfil atual não possui permissão operacional para emitir o laudo.</p>
       )}
