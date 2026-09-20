@@ -112,6 +112,38 @@ export function AnalysisContextIntake({
             </label>
           )}
 
+          <div className="form-grid">
+            <label>
+              <span>Horizonte desta análise do solo <small>(opcional)</small></span>
+              <select
+                value={value.fertilityPlanningHorizonYears ?? ""}
+                onChange={(event) => update({
+                  fertilityPlanningHorizonYears: event.target.value
+                    ? Number(event.target.value) as 2 | 3 | 4 | 5
+                    : null,
+                })}
+              >
+                <option value="">Ainda não definido</option>
+                <option value="2">2 anos</option>
+                <option value="3">3 anos</option>
+                <option value="4">4 anos</option>
+                <option value="5">5 anos</option>
+              </select>
+              <small>Representa o ciclo de correção e manutenção até a próxima reavaliação, não a meta de uma única safra.</small>
+            </label>
+          </div>
+
+          <label>
+            <span>Planejamento do ciclo até a próxima análise <small>(opcional)</small></span>
+            <textarea
+              value={value.fertilityCyclePlanNotes}
+              onChange={(event) => update({ fertilityCyclePlanNotes: event.target.value })}
+              placeholder="Ex.: verão soja 70–80 sc/ha; inverno trigo 60–70; verão seguinte soja 70–80. Pode registrar só o que já souber."
+              rows={3}
+            />
+            <small>O RAIZ separa correção do solo da manutenção de cada cultivo. O que ainda não estiver definido pode ser completado depois.</small>
+          </label>
+
           <label>
             <span>Manejo planejado da próxima safra <small>(opcional)</small></span>
             <textarea
