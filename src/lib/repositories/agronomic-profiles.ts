@@ -345,20 +345,190 @@ export async function setTechnicalSourceStatus(input: { tenantId: string; userId
 
 export async function listTechnicalRegions(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
-    const result = await client.query(`SELECT id::text, code, name, description FROM technical_regions ORDER BY name`);
+    const result = await client.query(
+      `SELECT id::text, code, name, description,
+              country_code AS "countryCode",
+              state_codes AS "stateCodes",
+              municipality_codes AS "municipalityCodes",
+              parent_region_code AS "parentRegionCode",
+              climate_zone_code AS "climateZoneCode",
+              CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::jsonb END AS "boundaryGeoJson",
+              valid_from::text AS "validFrom",
+              valid_until::text AS "validUntil",
+              updated_at::text AS "updatedAt"
+       FROM technical_regions
+       ORDER BY name`,
+    );
     return result.rows;
   });
 }
 
-export async function createTechnicalRegion(input: { tenantId: string; userId: string; code: string; name: string; description?: string | null }) {
+export async function createTechnicalRegion(input: {
+  tenantId: string;
+  userId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  countryCode?: string;
+  stateCodes?: string[];
+  municipalityCodes?: string[];
+  parentRegionCode?: string | null;
+  climateZoneCode?: string | null;
+  boundaryGeoJson?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+}) {
+  const countryCode = (input.countryCode ?? "BR").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) {
+    throw new AgronomicProfileError("Código de país deve ter duas letras.", 400);
+  }
+  const stateCodes = [...new Set((input.stateCodes ?? []).map((value) => value.trim().toUpperCase()).filter(Boolean))];
+  const municipalityCodes = [...new Set((input.municipalityCodes ?? []).map((value) => value.trim()).filter(Boolean))];
+
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
-      `INSERT INTO technical_regions (code, name, description) VALUES ($1, $2, nullif($3,'')) RETURNING id::text, code, name, description`,
-      [input.code.trim().toUpperCase(), input.name.trim(), input.description ?? ""],
+      `INSERT INTO technical_regions
+       (code, name, description, country_code, state_codes, municipality_codes,
+        parent_region_code, climate_zone_code, boundary, valid_from, valid_until)
+       VALUES (
+         $1, $2, nullif($3,''), $4, $5::text[], $6::text[],
+         nullif($7,''), nullif($8,''),
+         CASE WHEN nullif($9,'') IS NULL THEN NULL
+              ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($9), 4326)) END,
+         $10::date, $11::date
+       )
+       RETURNING id::text, code, name, description,
+                 country_code AS "countryCode",
+                 state_codes AS "stateCodes",
+                 municipality_codes AS "municipalityCodes",
+                 parent_region_code AS "parentRegionCode",
+                 climate_zone_code AS "climateZoneCode",
+                 CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::jsonb END AS "boundaryGeoJson",
+                 valid_from::text AS "validFrom", valid_until::text AS "validUntil"`,
+      [
+        input.code.trim().toUpperCase(),
+        input.name.trim(),
+        input.description ?? "",
+        countryCode,
+        stateCodes,
+        municipalityCodes,
+        input.parentRegionCode?.trim().toUpperCase() ?? "",
+        input.climateZoneCode?.trim().toUpperCase() ?? "",
+        input.boundaryGeoJson ?? "",
+        input.validFrom ?? null,
+        input.validUntil ?? null,
+      ],
     );
     const created = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "TECHNICAL_REGION_CREATED", entityType: "technical_region", entityId: created.id, metadata: { code: created.code } });
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "TECHNICAL_REGION_CREATED",
+      entityType: "technical_region",
+      entityId: created.id,
+      metadata: {
+        code: created.code,
+        countryCode,
+        stateCodes,
+        municipalityCodesCount: municipalityCodes.length,
+        hasBoundary: Boolean(input.boundaryGeoJson?.trim()),
+        parentRegionCode: input.parentRegionCode ?? null,
+        climateZoneCode: input.climateZoneCode ?? null,
+      },
+    });
     return created;
+  });
+}
+
+/**
+ * Resolve regiões técnicas aplicáveis para uma localização sem "vazamento" espacial.
+ *
+ * Precedência:
+ *   boundary > município > UF > país.
+ *
+ * Se a região possui boundary, ela SÓ corresponde por interseção espacial.
+ * Isso impede que um subclima do Oeste do Paraná, por exemplo, seja aplicado
+ * ao estado inteiro só porque "PR" também foi informado no cadastro.
+ */
+export async function resolveTechnicalRegionsForLocation(input: {
+  tenantId: string;
+  userId?: string;
+  countryCode?: string;
+  stateCode?: string | null;
+  municipalityCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  atDate?: string | null;
+}) {
+  const countryCode = (input.countryCode ?? "BR").trim().toUpperCase();
+  const stateCode = input.stateCode?.trim().toUpperCase() || null;
+  const municipalityCode = input.municipalityCode?.trim() || null;
+  const hasCoordinates = Number.isFinite(input.latitude) && Number.isFinite(input.longitude);
+
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `WITH location AS (
+         SELECT CASE
+           WHEN $5::boolean
+             THEN ST_SetSRID(ST_Point($7::float8, $6::float8), 4326)
+           ELSE NULL::geometry
+         END AS point
+       )
+       SELECT tr.id::text, tr.code, tr.name, tr.description,
+              tr.country_code AS "countryCode",
+              tr.state_codes AS "stateCodes",
+              tr.municipality_codes AS "municipalityCodes",
+              tr.parent_region_code AS "parentRegionCode",
+              tr.climate_zone_code AS "climateZoneCode",
+              CASE
+                WHEN tr.boundary IS NOT NULL THEN 400
+                WHEN cardinality(tr.municipality_codes) > 0 THEN 300
+                WHEN cardinality(tr.state_codes) > 0 THEN 200
+                ELSE 100
+              END AS "specificityScore"
+       FROM technical_regions tr
+       CROSS JOIN location l
+       WHERE tr.country_code = $1
+         AND (tr.valid_from IS NULL OR tr.valid_from <= COALESCE($8::date, CURRENT_DATE))
+         AND (tr.valid_until IS NULL OR tr.valid_until >= COALESCE($8::date, CURRENT_DATE))
+         AND (
+           (
+             tr.boundary IS NOT NULL
+             AND l.point IS NOT NULL
+             AND ST_Covers(tr.boundary, l.point)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) > 0
+             AND $3::text IS NOT NULL
+             AND $3 = ANY(tr.municipality_codes)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) = 0
+             AND cardinality(tr.state_codes) > 0
+             AND $2::text IS NOT NULL
+             AND $2 = ANY(tr.state_codes)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) = 0
+             AND cardinality(tr.state_codes) = 0
+           )
+         )
+       ORDER BY "specificityScore" DESC, tr.name`,
+      [
+        countryCode,
+        stateCode,
+        municipalityCode,
+        null,
+        hasCoordinates,
+        hasCoordinates ? input.latitude : null,
+        hasCoordinates ? input.longitude : null,
+        input.atDate ?? null,
+      ],
+    );
+    return result.rows;
   });
 }
 
