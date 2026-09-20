@@ -9,6 +9,8 @@ import { publishPremiumFieldAnalysisReport } from "@/lib/repositories/premium-re
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
 import { InterpretationError } from "@/lib/repositories/interpretations";
 import { ReportError } from "@/lib/repositories/reports";
+import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
+import { normalizeManagementSystem } from "@/domain/management-system";
 
 const allowedRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
@@ -39,6 +41,24 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       analysisId,
     });
     if (!evidence.analysisExists) return Response.json({ error: "Análise não encontrada." }, { status: 404 });
+
+    const recommendationContext = await getRecommendationContextByAnalysis({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      analysisId,
+    });
+    if (
+      recommendationContext.cropProfileCode === "SOJA"
+      && normalizeManagementSystem(recommendationContext.managementSystem) === "OTHER"
+    ) {
+      return Response.json(
+        {
+          error: "Defina o sistema de manejo do solo antes de emitir o laudo. A regra de calagem da soja muda entre preparo convencional, implantação do plantio direto e plantio direto consolidado.",
+          code: "OFFICIAL_RESULT_MANAGEMENT_CONTEXT_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
 
     let interpretation = await getLatestInterpretation(session.tenantId, analysisId, session.userId);
     const interpretationCurrent = Boolean(
