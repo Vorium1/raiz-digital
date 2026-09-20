@@ -128,7 +128,7 @@ function analysisContextIrrigation(value: unknown) {
   const draft = (value as { draft?: unknown }).draft;
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return empty;
   const source = draft as Record<string, unknown>;
-  const waterRegime = source.waterRegime === "SEQUEIRO" || source.waterRegime === "IRRIGADO"
+  const waterRegime: "SEQUEIRO" | "IRRIGADO" | null = source.waterRegime === "SEQUEIRO" || source.waterRegime === "IRRIGADO"
     ? source.waterRegime
     : null;
   const finitePositiveOrNull = (candidate: unknown) =>
