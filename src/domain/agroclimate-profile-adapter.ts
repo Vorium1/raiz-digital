@@ -45,6 +45,7 @@ type ClimateRulePayload = {
 type MetricRulePayload = {
   id?: string;
   stages: CropPhenologicalStage[];
+  waterRegimes?: CropWaterRegime[];
   metric: AgroclimateMetric;
   condition: CropClimateMetricRule["condition"];
   hazard: CropClimateHazard;
@@ -307,9 +308,17 @@ function parseMetricRule(value: unknown): MetricRulePayload | null {
   const obj = objectValue(value);
   if (!obj) return null;
   const stages = stageList(obj.stages);
+  const waterRegimes = obj.waterRegimes == null
+    ? undefined
+    : Array.isArray(obj.waterRegimes)
+      && obj.waterRegimes.length > 0
+      && obj.waterRegimes.every((item) => typeof item === "string" && WATER_REGIMES.has(item as CropWaterRegime))
+        ? obj.waterRegimes as CropWaterRegime[]
+        : null;
   if (
     !stages
     || !stages.length
+    || waterRegimes === null
     || typeof obj.metric !== "string"
     || !METRICS.has(obj.metric as AgroclimateMetric)
     || typeof obj.hazard !== "string"
@@ -320,6 +329,7 @@ function parseMetricRule(value: unknown): MetricRulePayload | null {
   return {
     id: typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : undefined,
     stages,
+    waterRegimes: waterRegimes ?? undefined,
     metric: obj.metric as AgroclimateMetric,
     condition: obj.condition,
     hazard: obj.hazard as CropClimateHazard,
@@ -490,6 +500,7 @@ export function adaptAgroclimateCatalogRows(
           cropCode: row.cropCode,
           region: region(row),
           stages: rule.stages,
+          waterRegimes: rule.waterRegimes,
           metric: rule.metric,
           condition: rule.condition,
           hazard: rule.hazard,
