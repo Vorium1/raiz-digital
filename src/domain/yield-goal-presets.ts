@@ -114,3 +114,16 @@ export function manualYieldToTonPerHa(
   }
   return value;
 }
+
+
+export function displayYieldFromTonPerHa(
+  cropCode: string | null | undefined,
+  tonPerHa: number,
+): number | null {
+  if (!Number.isFinite(tonPerHa) || tonPerHa <= 0) return null;
+  const config = yieldGoalPresetConfig(cropCode);
+  if (config?.displayUnit === "sc/ha") {
+    return Number(((tonPerHa * 1000) / (config.sackKg ?? 60)).toFixed(1));
+  }
+  return tonPerHa;
+}
