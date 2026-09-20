@@ -1,3 +1,4 @@
+import type { SoilWaterNutrientDynamics } from "./soil-water-nutrient-dynamics.ts";
 import {
   MILHO_DOSE_TABLE,
   SOJA_DOSE_TABLE,
@@ -21,6 +22,7 @@ export type FertilityCyclePlanInput = {
   potassiumLevel: SoilNutrientLevel;
   correctionStrategy: FertilityCycleCorrectionStrategy;
   seasons: FertilityCycleSeasonInput[];
+  soilWaterDynamics?: SoilWaterNutrientDynamics | null;
 };
 
 export type FertilityCycleSeasonPlan = {
@@ -224,6 +226,22 @@ export function buildFertilityCyclePlan(input: FertilityCyclePlanInput) {
       reason: "A correção inicial melhora a fertilidade, mas não permite prever uma produtividade média futura sem clima, genética, sanidade e manejo. O risco operacional é quantificado pelo déficit de manutenção que deixaria de ser reposto.",
       skippedMaintenanceKgPerHa: maintenanceDemand,
     },
+    waterDynamicsAdjustment: input.soilWaterDynamics
+      ? {
+          splitApplicationPriority: input.soilWaterDynamics.nutrientLossRisks
+            .filter((item) => item.splitApplicationAdvised)
+            .map((item) => item.nutrient),
+          earlierSoilMonitoringAdvised: input.soilWaterDynamics.mediumTermMonitoring.earlierSoilMonitoringAdvised,
+          tissueMonitoringAdvised: input.soilWaterDynamics.mediumTermMonitoring.tissueMonitoringAdvised,
+          drainageReviewAdvised: input.soilWaterDynamics.mediumTermMonitoring.drainageReviewAdvised,
+          compactionRisk: input.soilWaterDynamics.compactionRisk,
+          rootHypoxiaRisk: input.soilWaterDynamics.rootHypoxiaRisk,
+          biologyState: input.soilWaterDynamics.biologyState,
+          residueDecomposition: input.soilWaterDynamics.residueDecomposition,
+          automaticDoseIncreaseAllowed: false as const,
+          rationale: "Risco hídrico/perda altera parcelamento, monitoramento e manejo físico; não aumenta automaticamente a necessidade agronômica do ciclo.",
+        }
+      : null,
     planningStatus: blockedSeasons.length === 0 ? "READY" as const : "PARTIAL" as const,
     blockers: blockedSeasons.flatMap((season) =>
       season.blockers.map((code) => ({ seasonOrder: season.order, code })),
