@@ -2,7 +2,7 @@ import type { AgronomicPrescriptionProvider, AgronomicPrescriptionProviderResult
 import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-schema";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "prescription-gemini-v6-deterministic-pk-gate";
+const PROMPT_VERSION = "prescription-gemini-v7-deterministic-liming-gate";
 const MAX_OUTPUT_TOKENS = 8000;
 
 const PRESCRIPTION_JSON_SCHEMA = {
@@ -69,6 +69,9 @@ function buildPrompt(evidence: AgronomicPrescriptionEvidencePackage): string {
     "`season.cultivationOrderAfterSoilAnalysis` é o ÚNICO campo autorizado para representar 1º/2º cultivo após a análise. `season.cultivationYears` descreve apenas o histórico de anos de cultivo da área e NUNCA pode substituí-lo.",
     "Para P/K, use os três blocos recebidos: `pkDoseReadiness` (contexto), `uniformPkReadiness` (cultura/regra + representatividade) e `deterministicPkDoses` (dose/faixa calculada pelo motor). Se qualquer gate estiver bloqueado para um nutriente, NÃO gere P2O5/K2O para ele e registre os blockers em `missingInformation`.",
     "Quando `deterministicPkDoses.P2O5` ou `.K2O` estiver `ready=true`, NÃO recalcule, estime nem ajuste por conta própria: para dose não discricionária, copie exatamente `expected.doseKgPerHa` em kg/ha. O servidor recalculará antes de promover a recomendação oficial.",
+    "`deterministicLimingDecision` é a única autoridade para calagem. Se `status=UNIFORM_APPLY`, inclua exatamente uma recomendação com `inputType=CALCARIO_PRNT100`, quantidade exatamente `uniformDoseTonHaPrnt100` e unidade `t/ha`. Não recalcule, não ajuste e não escolha produto comercial.",
+    "Se `deterministicLimingDecision.status=UNIFORM_NO_APPLY`, NÃO gere dose positiva de calcário. Se `status=SPATIAL`, NÃO faça média dos pontos: mantenha as decisões por amostra apenas em `managementPractices`. Se `status=BLOCKED`, não gere calcário e leve os blockers para `missingInformation`.",
+    "PRNT 100% representa necessidade equivalente. Nunca converta para massa de um corretivo comercial sem o PRNT real declarado e nunca escolha marca/produto por conta própria.",
     "Nunca transforme maioria simples, média ou 50% dos pontos em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
     "Se a regra exigir meta de produtividade e ela estiver ausente ou não suportada, não assuma produtividade de referência, teto, média regional ou meta implícita.",
     "`season.technologyLevel` é apenas metadado/cenário. NÃO aumente ou reduza dose por BAIXO/MEDIO/ALTO sem regra quantitativa homologada.",
