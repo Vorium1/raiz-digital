@@ -6,16 +6,35 @@ import type {
 export type AgroclimateMetric =
   | "DAY_MAX_TEMP_C"
   | "DAY_MEAN_TEMP_C"
+  | "DAY_MIN_TEMP_C"
+  | "NIGHT_MAX_TEMP_C"
   | "NIGHT_MEAN_TEMP_C"
   | "NIGHT_MIN_TEMP_C"
+  | "DIURNAL_TEMP_RANGE_C"
   | "SOIL_TEMP_C"
+  | "DEW_POINT_C"
   | "SOLAR_RADIATION_ANOMALY_PCT"
+  | "GLOBAL_SOLAR_RADIATION_MJ_M2_DAY"
+  | "PAR_MJ_M2_DAY"
+  | "SUNSHINE_HOURS"
+  | "CLOUD_COVER_PCT"
   | "RELATIVE_HUMIDITY_PCT"
+  | "NIGHT_RELATIVE_HUMIDITY_PCT"
   | "LEAF_WETNESS_HOURS"
   | "PRECIPITATION_MM"
+  | "PRECIPITATION_INTENSITY_MM_H"
+  | "CONSECUTIVE_WET_DAYS"
+  | "CONSECUTIVE_DRY_DAYS"
   | "WATER_BALANCE_MM"
+  | "SOIL_MOISTURE_PCT"
+  | "SOIL_AVAILABLE_WATER_PCT"
+  | "REFERENCE_ET_MM"
+  | "CROP_ET_MM"
   | "VPD_KPA"
-  | "WIND_KMH";
+  | "WIND_KMH"
+  | "WIND_GUST_KMH"
+  | "CHILL_HOURS"
+  | "GROWING_DEGREE_DAYS";
 
 export type AgroclimateMetricSnapshot = Partial<Record<AgroclimateMetric, number>>;
 
@@ -114,8 +133,11 @@ function conditionMatches(
  * Traduz previsão/observação meteorológica NUMÉRICA em riscos da cultura.
  *
  * O limiar pertence à regra da cultura; por isso uma noite de 24 °C não vira
- * automaticamente "HOT_NIGHTS" para todas as espécies. Sem regra homologada,
- * a métrica não é interpretada por analogia.
+ * automaticamente "HOT_NIGHTS" para todas as espécies. Da mesma forma, horas
+ * de frio, radiação/PAR, amplitude térmica, VPD, molhamento, umidade do solo,
+ * evapotranspiração e sequências de dias secos/molhados só geram risco quando
+ * uma regra homologada da cultura × região × estádio define como interpretar
+ * a métrica. Sem regra homologada, não há analogia automática.
  */
 export function deriveCropClimateHazardsFromMetrics(
   input: CropClimateMetricAssessmentInput,
