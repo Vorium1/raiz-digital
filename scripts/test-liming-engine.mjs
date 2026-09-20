@@ -184,8 +184,9 @@ assert.equal(consolidatedSurfaceCap.recommendedDoseTonHaPrnt100, 5);
 assert.equal(consolidatedSurfaceCap.surfaceCapApplied, true);
 assert.ok(consolidatedSurfaceCap.warnings.includes("SURFACE_APPLICATION_CAPPED_AT_5_T_HA_PRNT100"));
 
-// 14. No SPD sem restrições, quadrante misto também é lacuna de domínio e continua fail-closed.
-const consolidatedVAlUnspecified = evaluateSoybeanLimingRsSc2025({
+// 14. No SPD consolidado sem restrições, a exceção negativa continua sendo somente V>=65 E Al<10.
+// V alto com Al>=10 permanece no domínio de aplicação quando pH<5,5.
+const consolidatedHighVHighAl = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
   noRestrictions10To20Confirmed: true,
@@ -195,9 +196,9 @@ const consolidatedVAlUnspecified = evaluateSoybeanLimingRsSc2025({
   smp0To10: 5.6,
   yearsSinceLastLiming: 4,
 });
-assert.equal(consolidatedVAlUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
-assert.equal(consolidatedVAlUnspecified.automaticDoseAllowed, false);
-assert.ok(consolidatedVAlUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
+assert.equal(consolidatedHighVHighAl.decision, "APPLY");
+assert.equal(consolidatedHighVHighAl.automaticDoseAllowed, true);
+assert.equal(consolidatedHighVHighAl.recommendedDoseTonHaPrnt100, 2.7);
 
 // 15. Ata oficial resolve Al>=10%; entre 10 e 30% não há mais conflito de fonte, mas incorporação exige decisão agronômica.
 const consolidatedNeedsReview = evaluateSoybeanLimingRsSc2025({
