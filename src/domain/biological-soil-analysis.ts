@@ -131,7 +131,7 @@ export function evaluateBiologicalSoilEvidence(
       sourceVersion: input.sourceVersion ?? null,
       officialLabInterpretationAvailable: Boolean(input.officialLabInterpretationAvailable),
       automaticRaizInterpretationAllowed,
-      officialNationalBioAsInterpretationUsable,
+      officialNationalBioAsInterpretationUsable: officialNationalInterpretationUsable,
       labReportedInterpretationCanBePreserved: officialNationalInterpretationUsable,
       nationalBioAsNetworkEvidenceAllowed: true as const,
       raizRecomputationOfOfficialIndexesAllowed: false as const,
