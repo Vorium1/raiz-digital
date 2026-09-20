@@ -1,6 +1,7 @@
 import type {
   CropClimateHazard,
   CropPhenologicalStage,
+  CropWaterRegime,
 } from "./crop-climate-risk.ts";
 
 export type AgroclimateMetric =
@@ -53,6 +54,8 @@ export type CropClimateMetricRule = {
     technicalRegionCodes?: string[];
   };
   stages: CropPhenologicalStage[];
+  /** Ausente = regra válida para sequeiro e irrigado. */
+  waterRegimes?: CropWaterRegime[];
   metric: AgroclimateMetric;
   condition:
     | { operator: "GT" | "GTE" | "LT" | "LTE"; value: number }
@@ -73,6 +76,7 @@ export type CropClimateMetricAssessmentInput = {
   municipalityCode?: string | null;
   technicalRegionCodes?: string[];
   stage: CropPhenologicalStage;
+  waterRegime?: CropWaterRegime | null;
   metrics: AgroclimateMetricSnapshot;
   rules: CropClimateMetricRule[];
 };
@@ -80,6 +84,7 @@ export type CropClimateMetricAssessmentInput = {
 export type CropClimateMetricAssessment = {
   cropCode: string;
   stage: CropPhenologicalStage;
+  waterRegime: CropWaterRegime | null;
   hazards: Array<{
     hazard: CropClimateHazard;
     ruleId: string;
@@ -142,7 +147,10 @@ function conditionMatches(
  * de frio, radiação/PAR, amplitude térmica, VPD, molhamento, umidade do solo,
  * evapotranspiração e sequências de dias secos/molhados só geram risco quando
  * uma regra homologada da cultura × região × estádio define como interpretar
- * a métrica. Sem regra homologada, não há analogia automática.
+ * a métrica. Regras também podem ser específicas para sequeiro ou irrigado.
+ * Isso permite, por exemplo, interpretar temperatura do solo em conjunto com
+ * o regime hídrico sem assumir que irrigação zera estresse térmico ou hídrico.
+ * Sem regra homologada, não há analogia automática.
  */
 export function deriveCropClimateHazardsFromMetrics(
   input: CropClimateMetricAssessmentInput,
@@ -152,6 +160,7 @@ export function deriveCropClimateHazardsFromMetrics(
     rule.status === "HOMOLOGATED"
     && normalized(rule.cropCode) === cropCode
     && rule.stages.includes(input.stage)
+    && (!rule.waterRegimes?.length || (input.waterRegime != null && rule.waterRegimes.includes(input.waterRegime)))
     && regionMatches(rule, input)
   );
 
@@ -180,6 +189,7 @@ export function deriveCropClimateHazardsFromMetrics(
   return {
     cropCode,
     stage: input.stage,
+    waterRegime: input.waterRegime ?? null,
     hazards,
     missingMetrics: [...missingMetrics],
     matchedRuleIds,
