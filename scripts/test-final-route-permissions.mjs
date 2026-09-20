@@ -43,6 +43,44 @@ for (const role of ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]) {
   assert.equal(result.status, 404);
   assert.equal(checkedTenant, "test-tenant", "authorized calls must retain the session tenant");
 }
+for (const role of [null, "VIEWER", "CLIENT"]) {
+  const handler = route(
+    "analyses/[id]/planned-management",
+    role ? { role, tenantId: "test-tenant", userId: "test-user" } : null,
+  );
+  const result = await handler.PATCH(
+    new Request("https://test.invalid/", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ plannedManagementNotes: "cultivar definida" }),
+    }),
+    { params: Promise.resolve({ id: "test-analysis" }) },
+  );
+  assert.equal(result.status, role ? 403 : 401, `planned-management: ${role}`);
+}
+
+for (const role of ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]) {
+  let checkedTenant = null;
+  const handler = route("analyses/[id]/planned-management", { role, tenantId: "test-tenant", userId: "test-user" }, {
+    updateAnalysisPlannedManagementNotes: async input => {
+      checkedTenant = input.tenantId;
+      assert.equal(input.analysisId, "test-analysis");
+      assert.equal(input.plannedManagementNotes, "cultivar definida");
+      return { analysisId: input.analysisId, plannedManagementNotes: input.plannedManagementNotes, changed: true };
+    },
+  });
+  const result = await handler.PATCH(
+    new Request("https://test.invalid/", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ plannedManagementNotes: "cultivar definida" }),
+    }),
+    { params: Promise.resolve({ id: "test-analysis" }) },
+  );
+  assert.equal(result.status, 200);
+  assert.equal(checkedTenant, "test-tenant");
+}
+
 const preparation = route("analyses/[id]/interpret", { role: "FIELD_TECH", tenantId: "test-tenant", userId: "test-user" }, {
   runInterpretationForAnalysis: async input => {
     assert.equal(input.tenantId, "test-tenant");
@@ -51,4 +89,4 @@ const preparation = route("analyses/[id]/interpret", { role: "FIELD_TECH", tenan
 });
 const prepared = await preparation.POST(new Request("https://test.invalid/?draft=0", { method: "POST" }), { params: Promise.resolve({ id: "test-analysis" }) });
 assert.equal(prepared.status, 201);
-console.log("OK — final routes deny FIELD_TECH before repository access; authorized roles retain tenant; FIELD_TECH can prepare.");
+console.log("OK — final routes protect publication; FIELD_TECH can prepare analyses and edit optional planned management within tenant.");
