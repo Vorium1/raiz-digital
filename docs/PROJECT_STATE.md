@@ -4228,3 +4228,16 @@ Bloqueador comercial real: as 3 análises reais do Rafael Cabeda apareciam bloqu
 - Validação final: typecheck, build, `test:handoff` (25 scripts) e suíte e2e inteira (111 testes: 106
   passed, 5 skipped honestos, 0 failed -- 1 teste que antes era pulado por falta de dado passou a rodar
   como efeito colateral positivo desta correção).
+
+## 2026-09-19 — PR #88, QA pontual final
+
+Checkpoint retomado pela issue #25 e HEAD remoto c467e1d, sem refazer agronomia/GPS/NDVI Cabeda.
+Corrigidos erros de rede/raster NDVI sem saída de loading, retry da leitura do raster, cancelamento
+de requests abandonados e fallback do Google 3D em erro/timeout/autenticação. Providers de mapa
+separados em chunks dinâmicos. Testes executam efeitos e handlers reais com dependências isoladas.
+Handoff, typecheck, preflight, profundidade e build locais aprovados; CI remoto deve confirmar o
+HEAD publicado. Nenhuma escrita no banco. Homologação 039 / produção 037 confirmadas por leitura.
+Limites: Preview atual bloqueado pelo status Vercel build-rate-limit; login obrigatório; proteção
+main/develop indisponível ao conector (403); teste live RLS por raiz_app bloqueado por DNS no Work.
+Plano de integração, backup/PITR (6 horas), migrations e smoke em
+`docs/PR88_FINAL_QA_2026-09-19.md`. #24 e #84 permanecem abertas. Sem merge/deploy de produção.

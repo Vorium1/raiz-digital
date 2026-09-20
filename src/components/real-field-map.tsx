@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GoogleFieldMap } from "@/components/google-field-map";
-import { MapboxFieldMap } from "@/components/mapbox-field-map";
-import { LeafletFieldMap, MAP_NEUTRAL_COLOR } from "@/components/leaflet-field-map";
+import dynamic from "next/dynamic";
 import type { FieldMapProps } from "@/components/spatial-map-types";
 import { resolveSpatialMapProvider } from "@/lib/maps/spatial-map-provider";
+
+function MapLoading() {
+  return <div className="real-field-map real-field-map-deferred" style={{ minHeight: 360 }} role="status">Carregando mapa…</div>;
+}
+const GoogleFieldMap = dynamic(() => import("@/components/google-field-map").then((module) => module.GoogleFieldMap), { ssr: false, loading: MapLoading });
+const MapboxFieldMap = dynamic(() => import("@/components/mapbox-field-map").then((module) => module.MapboxFieldMap), { ssr: false, loading: MapLoading });
+const LeafletFieldMap = dynamic(() => import("@/components/leaflet-field-map").then((module) => module.LeafletFieldMap), { ssr: false, loading: MapLoading });
 
 export type { MapImageOverlay, MapLegendEntry, MapPoint, SpatialGeometry } from "@/components/spatial-map-types";
 
@@ -70,4 +75,4 @@ export function RealFieldMap(props: FieldMapProps) {
   return <LeafletFieldMap {...props} providerNote={providerNote} />;
 }
 
-export { MAP_NEUTRAL_COLOR };
+export { MAP_NEUTRAL_COLOR } from "@/components/spatial-map-types";

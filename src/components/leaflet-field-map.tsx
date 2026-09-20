@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
 import { Icon } from "@/components/icon";
 import {
+  MAP_NEUTRAL_COLOR as NEUTRAL,
   effectivePointCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
@@ -13,8 +14,6 @@ import {
   type MapPoint,
   type PointPositionKind,
 } from "@/components/spatial-map-types";
-
-const NEUTRAL = "#9AA79F";
 
 function positionDescription(point: MapPoint) {
   const kind = pointPositionKind(point);

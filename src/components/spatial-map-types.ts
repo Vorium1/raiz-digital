@@ -109,3 +109,4 @@ export function pointPositionKind(point: MapPoint): PointPositionKind {
   if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
   return "PLANNED";
 }
+export const MAP_NEUTRAL_COLOR = "#9AA79F";
