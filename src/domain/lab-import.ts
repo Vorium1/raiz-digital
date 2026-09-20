@@ -184,6 +184,7 @@ const PARAMETER_ALIASES: Record<string, string> = {
   beta: "BIOAS_BETA_GLUCOSIDASE",
   betaglicosidase: "BIOAS_BETA_GLUCOSIDASE",
   betaglucosidase: "BIOAS_BETA_GLUCOSIDASE",
+  glicosidase: "BIOAS_BETA_GLUCOSIDASE",
   iqsbiologico: "BIOAS_IQS_BIO",
   iqsbio: "BIOAS_IQS_BIO",
   iqsquimico: "BIOAS_IQS_QUIM",
