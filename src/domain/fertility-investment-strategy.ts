@@ -122,9 +122,10 @@ export function buildFertilityInvestmentScenarios(
     });
 
     const knownCosts = seasons.map((season) => season.estimatedCostPerHa);
-    const estimatedCycleCostPerHa = knownCosts.some((value) => value == null)
+    const numericCosts = knownCosts.filter((value): value is number => value != null);
+    const estimatedCycleCostPerHa = numericCosts.length !== knownCosts.length
       ? null
-      : round(knownCosts.reduce((sum, value) => sum + (value ?? 0), 0), 2);
+      : round(numericCosts.reduce((sum, value) => sum + value, 0), 2);
 
     return {
       strategy,
