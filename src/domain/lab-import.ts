@@ -176,6 +176,25 @@ const PARAMETER_ALIASES: Record<string, string> = {
   iron: "FE",
   argila: "CLAY",
   clay: "CLAY",
+
+  // BioAS / bioanálise do solo — nomes observados em laudos e materiais Embrapa.
+  ari: "BIOAS_ARYLSULFATASE",
+  arilsulfatase: "BIOAS_ARYLSULFATASE",
+  sulfatase: "BIOAS_ARYLSULFATASE",
+  beta: "BIOAS_BETA_GLUCOSIDASE",
+  betaglicosidase: "BIOAS_BETA_GLUCOSIDASE",
+  betaglucosidase: "BIOAS_BETA_GLUCOSIDASE",
+  iqsbiologico: "BIOAS_IQS_BIO",
+  iqsbio: "BIOAS_IQS_BIO",
+  iqsquimico: "BIOAS_IQS_QUIM",
+  iqsquim: "BIOAS_IQS_QUIM",
+  iqsfertbio: "BIOAS_IQS_FERTBIO",
+  ciclagem: "BIOAS_CYCLING_SCORE",
+  ciclagemdenutrientes: "BIOAS_CYCLING_SCORE",
+  armazenamento: "BIOAS_STORAGE_SCORE",
+  armazenamentodenutrientes: "BIOAS_STORAGE_SCORE",
+  suprimento: "BIOAS_SUPPLY_SCORE",
+  suprimentodenutrientes: "BIOAS_SUPPLY_SCORE",
 };
 
 export const DEFAULT_UNITS: Record<string, string> = {
@@ -198,6 +217,14 @@ export const DEFAULT_UNITS: Record<string, string> = {
   MN: "mg/dm³",
   FE: "mg/dm³",
   CLAY: "%",
+  BIOAS_BETA_GLUCOSIDASE: "mg p-nitrofenol kg⁻¹ solo h⁻¹",
+  BIOAS_ARYLSULFATASE: "mg p-nitrofenol kg⁻¹ solo h⁻¹",
+  BIOAS_IQS_BIO: "índice",
+  BIOAS_IQS_QUIM: "índice",
+  BIOAS_IQS_FERTBIO: "índice",
+  BIOAS_CYCLING_SCORE: "índice",
+  BIOAS_STORAGE_SCORE: "índice",
+  BIOAS_SUPPLY_SCORE: "índice",
 };
 
 const SAMPLE_HEADERS = ["amostra", "codigoamostra", "codamostra", "ponto", "sample", "sampleid", "idamostra", "identificacao"];
@@ -233,6 +260,13 @@ function extractUnitFromHeader(header: string) {
 
 
 function inferMethod(parameterCode: string, fallbackMethod?: string) {
+  if (parameterCode === "BIOAS_BETA_GLUCOSIDASE" || parameterCode === "BIOAS_ARYLSULFATASE") {
+    return "BioAS Embrapa — atividade enzimática";
+  }
+  if (parameterCode.startsWith("BIOAS_IQS_") || parameterCode.endsWith("_SCORE")) {
+    return "BioAS/MIQS — índice informado no laudo";
+  }
+
   const fallback = fallbackMethod?.trim();
   if (!fallback) return "";
   if (["P", "K"].includes(parameterCode) && ["Mehlich-1", "Resina"].includes(fallback)) return fallback;
@@ -425,7 +459,7 @@ export function buildLabImportPreviewFromMatrix(
       .filter((entry) => entry.index !== sampleIndex && Boolean(DEFAULT_UNITS[entry.parameterCode]));
 
     if (!parameterColumns.length) {
-      addIssue(issues, "BLOCKER", "PARAMETERS_NOT_RECOGNIZED", "O arquivo não possui colunas laboratoriais reconhecidas. Use nomes como pH, P, K, Ca, Mg, Al, CTC, V%, MO, S, B, Zn, Cu, Mn ou Fe.");
+      addIssue(issues, "BLOCKER", "PARAMETERS_NOT_RECOGNIZED", "O arquivo não possui colunas laboratoriais reconhecidas. Use nomes como pH, P, K, Ca, Mg, Al, CTC, V%, MO, S, B, Zn, Cu, Mn, Fe ou parâmetros BioAS (Beta-glicosidase, Arilsulfatase, IQS Bio/FertBio).");
     }
 
     matrix.slice(1).forEach((sourceRow, rowIndex) => {
