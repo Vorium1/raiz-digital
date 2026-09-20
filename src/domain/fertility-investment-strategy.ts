@@ -16,6 +16,11 @@ export type OfficialClimateSignal = {
   targetPeriod: string;
   waterRisk: ClimateWaterRisk;
   confidence: ForecastConfidence;
+  /**
+   * true somente quando o sinal foi interpretado para a cultura + janela
+   * planejada. Um ENSO regional isolado não é suficiente.
+   */
+  appliesToPlannedCropWindow: boolean;
   zarcRiskPercent?: 20 | 30 | 40 | null;
 };
 
@@ -150,7 +155,12 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
   const gradual = scenarios.find((item) => item.strategy === "GRADUAL_TWO_CROPS") ?? null;
   const climate = input.climateSignal ?? null;
 
-  if (!climate || climate.waterRisk === "UNKNOWN" || climate.confidence === "LOW") {
+  if (
+    !climate
+    || climate.waterRisk === "UNKNOWN"
+    || climate.confidence === "LOW"
+    || !climate.appliesToPlannedCropWindow
+  ) {
     return {
       scenarios,
       preferredStrategy: null as FertilityCycleCorrectionStrategy | null,
@@ -160,7 +170,10 @@ export function adviseFertilityInvestmentTiming(input: FertilityInvestmentStrate
       climateCanChangeAgronomicNeed: false as const,
       maintenanceProtected: true as const,
       rationale: "Sem sinal climático oficial com confiança suficiente, o RAIZ compara custo e fluxo de caixa, mas não usa clima para preferir uma estratégia nem altera a meta produtiva.",
-      warnings: climate?.confidence === "LOW" ? ["LOW_FORECAST_CONFIDENCE"] : [],
+      warnings: [
+        ...(climate?.confidence === "LOW" ? ["LOW_FORECAST_CONFIDENCE"] : []),
+        ...(climate && !climate.appliesToPlannedCropWindow ? ["CLIMATE_SIGNAL_NOT_CONFIRMED_FOR_CROP_WINDOW"] : []),
+      ],
     };
   }
 
