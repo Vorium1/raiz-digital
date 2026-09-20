@@ -26,6 +26,8 @@ type RecommendationContext = {
   cropSeasonId: string;
   yieldGoal: number | null;
   yieldGoalUnit: string | null;
+  managementSystem: string | null;
+  cropProfileCode: string | null;
   cultivationOrderAfterSoilAnalysis: number | null;
   pkDoseReadiness?: { ready: boolean; blockers: string[] };
   uniformPkReadiness?: { ready: boolean };
