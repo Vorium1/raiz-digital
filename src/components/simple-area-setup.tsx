@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { Icon } from "@/components/icon";
+import { MANAGEMENT_SYSTEM_OPTIONS } from "@/domain/management-system";
 
 type Client = { id: string; name: string };
 type Property = { id: string; clientId: string; name: string; municipality: string; state: string; boundary?: object | null };
@@ -64,6 +65,7 @@ export function SimpleAreaSetup({
   const [boundary, setBoundary] = useState("");
   const [seasonLabel, setSeasonLabel] = useState("");
   const [cropProfileId, setCropProfileId] = useState("");
+  const [managementSystem, setManagementSystem] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -173,15 +175,17 @@ export function SimpleAreaSetup({
         <div className="simple-inline-setup-grid">
           <label><span>Safra</span><input value={seasonLabel} onChange={(event) => setSeasonLabel(event.target.value)} placeholder="Ex.: 2026/27"/></label>
           <label><span>Cultura</span><select value={cropProfileId} onChange={(event) => setCropProfileId(event.target.value)}><option value="">Escolha</option>{activeCropProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
+          <label><span>Sistema de manejo</span><select value={managementSystem} onChange={(event) => setManagementSystem(event.target.value)}><option value="">Escolha</option>{MANAGEMENT_SYSTEM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><small>Necessário para calagem e outras regras dependentes do manejo. “Plantio direto” genérico não é assumido automaticamente.</small></label>
         </div>
         {activeCropProfiles.length === 0 && <div className="simple-inline-setup-error">Nenhuma cultura está disponível para análise neste momento. Isso precisa ser corrigido na configuração técnica da RAIZ.</div>}
         {error && <div className="simple-inline-setup-error">{error}</div>}
-        <button type="button" disabled={busy || !seasonLabel.trim() || !selectedProfile} onClick={() => void run(async () => {
+        <button type="button" disabled={busy || !seasonLabel.trim() || !selectedProfile || !managementSystem} onClick={() => void run(async () => {
           const payload = await postJson("/api/crop-seasons", {
             fieldId,
             seasonLabel: seasonLabel.trim(),
             nextCrop: selectedProfile?.name ?? "",
             cropProfileId: selectedProfile?.id ?? null,
+            managementSystem,
           });
           return { kind: "season" as const, id: payload.season.id as string };
         })}>{busy ? "Salvando…" : "Usar esta área"}<Icon name="check" size={14}/></button>
