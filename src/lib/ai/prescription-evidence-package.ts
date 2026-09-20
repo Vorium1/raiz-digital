@@ -44,6 +44,14 @@ export type AgronomicPrescriptionEvidencePackage = {
     plannedManagementNotes: string | null;
     fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
     fertilityCyclePlanNotes: string | null;
+    irrigationContext: {
+      waterRegime: "SEQUEIRO" | "IRRIGADO" | null;
+      system: string | null;
+      depthMm: number | null;
+      frequencyDays: number | null;
+      applicationTime: string | null;
+      notes: string | null;
+    };
   };
   deterministicInterpretation: {
     id: string;
@@ -104,6 +112,36 @@ function analysisContextFertilityPlanning(value: unknown) {
     cyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" && source.fertilityCyclePlanNotes.trim()
       ? source.fertilityCyclePlanNotes.trim()
       : null,
+  };
+}
+
+function analysisContextIrrigation(value: unknown) {
+  const empty = {
+    waterRegime: null as "SEQUEIRO" | "IRRIGADO" | null,
+    system: null as string | null,
+    depthMm: null as number | null,
+    frequencyDays: null as number | null,
+    applicationTime: null as string | null,
+    notes: null as string | null,
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return empty;
+  const source = draft as Record<string, unknown>;
+  const waterRegime = source.waterRegime === "SEQUEIRO" || source.waterRegime === "IRRIGADO"
+    ? source.waterRegime
+    : null;
+  const finitePositiveOrNull = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0 ? candidate : null;
+  const textOrNull = (candidate: unknown) =>
+    typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+  return {
+    waterRegime,
+    system: textOrNull(source.irrigationSystem),
+    depthMm: finitePositiveOrNull(source.irrigationDepthMm),
+    frequencyDays: finitePositiveOrNull(source.irrigationFrequencyDays),
+    applicationTime: textOrNull(source.irrigationApplicationTime),
+    notes: textOrNull(source.irrigationNotes),
   };
 }
 
@@ -261,6 +299,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
         fertilityPlanningHorizonYears: analysisContextFertilityPlanning(base.analysisContext).horizonYears,
         fertilityCyclePlanNotes: analysisContextFertilityPlanning(base.analysisContext).cyclePlanNotes,
+        irrigationContext: analysisContextIrrigation(base.analysisContext),
       },
       deterministicInterpretation,
       results: resultsResult.rows,
