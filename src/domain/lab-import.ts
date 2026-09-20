@@ -196,6 +196,22 @@ const PARAMETER_ALIASES: Record<string, string> = {
   armazenamentodenutrientes: "BIOAS_STORAGE_SCORE",
   suprimento: "BIOAS_SUPPLY_SCORE",
   suprimentodenutrientes: "BIOAS_SUPPLY_SCORE",
+
+  // Métodos biológicos complementares — não possuem unidade padrão inferida.
+  // A unidade e o protocolo do laboratório precisam acompanhar o resultado.
+  biomassamicrobiana: "MICROBIO_BIOMASS_C",
+  carbonodabiomassamicrobiana: "MICROBIO_BIOMASS_C",
+  cbm: "MICROBIO_BIOMASS_C",
+  respiracaobasal: "MICROBIO_BASAL_RESPIRATION",
+  respiracaomicrobiana: "MICROBIO_BASAL_RESPIRATION",
+  quocientemetabolico: "MICROBIO_QCO2",
+  qco2: "MICROBIO_QCO2",
+  hidrolisefda: "MICROBIO_FDA_HYDROLYSIS",
+  fda: "MICROBIO_FDA_HYDROLYSIS",
+  desidrogenase: "MICROBIO_DEHYDROGENASE",
+  atividadedesidrogenase: "MICROBIO_DEHYDROGENASE",
+  fosfataseacida: "MICROBIO_ACID_PHOSPHATASE",
+  fosfatasealcalina: "MICROBIO_ALKALINE_PHOSPHATASE",
 };
 
 export const DEFAULT_UNITS: Record<string, string> = {
@@ -267,6 +283,12 @@ function looksLikeBiologicalParameter(value: string) {
     "carbonodabiomassamicrobiana",
     "respiracaobasal",
     "respiracaomicrobiana",
+    "quocientemetabolico",
+    "qco2",
+    "hidrolisefda",
+    "fda",
+    "desidrogenase",
+    "fosfatase",
     "colonizacaomicorrizica",
     "esporosmicorrizicos",
     "bacteriasfixadoras",
@@ -296,6 +318,7 @@ function isGenericBiologicalParameterCode(parameterCode: string) {
     "ESPOROS",
     "QPCR",
     "METABARCODING",
+    "MICROBIO_",
   ].some((token) => code.includes(token));
 }
 
