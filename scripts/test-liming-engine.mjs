@@ -82,8 +82,9 @@ assert.equal(conventional.decision, "APPLY");
 assert.equal(conventional.recommendedDoseTonHaPrnt100, 5.4);
 assert.equal(conventional.applicationMode, "INCORPORATED");
 
-// 10. A nota negativa da Tabela 2.2 não autoriza o complemento lógico: quadrante misto fica fora do domínio explícito.
-const conventionalUnspecified = evaluateSoybeanLimingRsSc2025({
+// 10. A Tabela 2.2 usa pH<5,5 como gatilho e define uma única exceção negativa:
+ // não aplicar quando V>=65% E saturação por Al<10%.
+const conventionalLowAlButLowV = evaluateSoybeanLimingRsSc2025({
   region: "SC",
   system: "CONVENTIONAL",
   phWater0To20: 5.2,
@@ -91,12 +92,10 @@ const conventionalUnspecified = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 5,
   smp0To20: 5.6,
 });
-assert.equal(conventionalUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
-assert.equal(conventionalUnspecified.automaticDoseAllowed, false);
-assert.ok(conventionalUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
-assert.equal(conventionalUnspecified.evidenceConflict, null);
+assert.equal(conventionalLowAlButLowV.decision, "APPLY");
+assert.equal(conventionalLowAlButLowV.recommendedDoseTonHaPrnt100, 5.4);
 
-// 10a. Fronteiras C3: domínio positivo, exceção negativa e zonas não especificadas permanecem distintos.
+// 10a. Fronteiras: somente V>=65 E Al<10 desliga a calagem quando pH<5,5.
 const conventionalPositiveBoundary = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "CONVENTIONAL",
@@ -125,7 +124,7 @@ const conventionalMixedHighV = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 10.1,
   smp0To20: 5.6,
 });
-assert.equal(conventionalMixedHighV.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(conventionalMixedHighV.decision, "APPLY");
 
 const conventionalAlExact10 = evaluateSoybeanLimingRsSc2025({
   region: "RS",
@@ -135,7 +134,7 @@ const conventionalAlExact10 = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 10,
   smp0To20: 5.6,
 });
-assert.equal(conventionalAlExact10.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(conventionalAlExact10.decision, "APPLY");
 
 // 11. Implantação de SPD permanece direta: pH<5,5 + 1 SMP para pH 6,0 incorporado.
 const establishment = evaluateSoybeanLimingRsSc2025({
