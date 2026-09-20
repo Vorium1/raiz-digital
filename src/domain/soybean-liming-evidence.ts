@@ -40,6 +40,10 @@ export type SoybeanLimingUniformDecision = {
   status: "NOT_APPLICABLE" | "BLOCKED" | "UNIFORM_APPLY" | "UNIFORM_NO_APPLY" | "SPATIAL";
   automaticUniformDoseAllowed: boolean;
   uniformDoseTonHaPrnt100: number | null;
+  automaticGeneralDoseAllowed: boolean;
+  operationalGeneralDoseTonHaPrnt100: number | null;
+  generalDoseBasis: "UNIFORM" | "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
+  doseRangeTonHaPrnt100: { min: number; max: number } | null;
   applicationMode: "INCORPORATED" | "SURFACE" | null;
   incorporatedDepthCm: { from: number; to: number } | null;
   sampleDecisions: SoybeanLimingSampleDecision[];
@@ -368,7 +372,11 @@ function sameIncorporationDepth(
  *   na mesma amostra e profundidade, com unidades compatíveis.
  * - Dose uniforme só é liberada quando TODOS os pontos têm a mesma decisão,
  *   mesma dose e mesmo modo de aplicação.
- * - Variação entre pontos vira SPATIAL, nunca média simples.
+ * - Quando os pontos válidos diferem, a decisão permanece SPATIAL para transparência,
+ *   mas também calcula uma dose operacional geral como média simples das necessidades
+ *   por ponto (peso igual). Essa média é para aplicação uniforme do talhão quando cada
+ *   ponto representa a mesma fração da área; ela não substitui uma futura média ponderada
+ *   por zonas/polígonos quando essa geometria estiver disponível.
  */
 export function evaluateSoybeanLimingFromEvidence(input: {
   cropCode: string | null;
@@ -389,6 +397,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "NOT_APPLICABLE",
       automaticUniformDoseAllowed: false,
       uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions: [],
@@ -405,6 +417,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "BLOCKED",
       automaticUniformDoseAllowed: false,
       uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions: [],
@@ -421,6 +437,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "BLOCKED",
       automaticUniformDoseAllowed: false,
       uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions: [],
@@ -438,6 +458,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "BLOCKED",
       automaticUniformDoseAllowed: false,
       uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions: [],
@@ -467,6 +491,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "BLOCKED",
       automaticUniformDoseAllowed: false,
       uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions,
@@ -483,6 +511,10 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       status: "UNIFORM_NO_APPLY",
       automaticUniformDoseAllowed: true,
       uniformDoseTonHaPrnt100: 0,
+      automaticGeneralDoseAllowed: true,
+      operationalGeneralDoseTonHaPrnt100: 0,
+      generalDoseBasis: "UNIFORM",
+      doseRangeTonHaPrnt100: { min: 0, max: 0 },
       applicationMode: null,
       incorporatedDepthCm: null,
       sampleDecisions,
@@ -508,6 +540,13 @@ export function evaluateSoybeanLimingFromEvidence(input: {
         status: "UNIFORM_APPLY",
         automaticUniformDoseAllowed: true,
         uniformDoseTonHaPrnt100: first.recommendedDoseTonHaPrnt100,
+        automaticGeneralDoseAllowed: true,
+        operationalGeneralDoseTonHaPrnt100: first.recommendedDoseTonHaPrnt100,
+        generalDoseBasis: "UNIFORM",
+        doseRangeTonHaPrnt100: {
+          min: first.recommendedDoseTonHaPrnt100 as number,
+          max: first.recommendedDoseTonHaPrnt100 as number,
+        },
         applicationMode: first.applicationMode,
         incorporatedDepthCm: first.incorporatedDepthCm,
         sampleDecisions,
@@ -517,6 +556,30 @@ export function evaluateSoybeanLimingFromEvidence(input: {
     }
   }
 
+  const operationalDoses = sampleDecisions.map((item) =>
+    item.decision === "DO_NOT_APPLY"
+      ? 0
+      : item.decision === "APPLY" && item.recommendedDoseTonHaPrnt100 != null
+        ? item.recommendedDoseTonHaPrnt100
+        : null,
+  );
+  const allOperationalDosesAvailable = operationalDoses.every((value): value is number => value != null && Number.isFinite(value));
+  const applyModes = unique(
+    sampleDecisions
+      .filter((item) => item.decision === "APPLY")
+      .map((item) => item.applicationMode)
+      .filter((mode): mode is "INCORPORATED" | "SURFACE" => mode === "INCORPORATED" || mode === "SURFACE"),
+  );
+  const operationalApplicationMode = applyModes.length === 1 ? applyModes[0] : null;
+  const operationalGeneralDoseTonHaPrnt100 = allOperationalDosesAvailable
+    ? round(operationalDoses.reduce((sum, value) => sum + value, 0) / operationalDoses.length, 2)
+    : null;
+  const doseRangeTonHaPrnt100 = allOperationalDosesAvailable
+    ? { min: Math.min(...operationalDoses), max: Math.max(...operationalDoses) }
+    : null;
+  const automaticGeneralDoseAllowed = operationalGeneralDoseTonHaPrnt100 != null
+    && (applyModes.length <= 1);
+
   return {
     cropCode: input.cropCode,
     region,
@@ -524,10 +587,16 @@ export function evaluateSoybeanLimingFromEvidence(input: {
     status: "SPATIAL",
     automaticUniformDoseAllowed: false,
     uniformDoseTonHaPrnt100: null,
-    applicationMode: null,
+    automaticGeneralDoseAllowed,
+    operationalGeneralDoseTonHaPrnt100,
+    generalDoseBasis: automaticGeneralDoseAllowed ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
+    doseRangeTonHaPrnt100,
+    applicationMode: automaticGeneralDoseAllowed ? operationalApplicationMode : null,
     incorporatedDepthCm: null,
     sampleDecisions,
-    blockers: ["LIMING_NO_UNIFORM_DOSE_ACROSS_SAMPLES"],
-    warnings,
+    blockers: automaticGeneralDoseAllowed ? [] : ["LIMING_GENERAL_DOSE_NOT_READY"],
+    warnings: automaticGeneralDoseAllowed
+      ? unique([...warnings, "LIMING_GENERAL_DOSE_EQUAL_WEIGHT_SAMPLE_MEAN"])
+      : warnings,
   };
 }
