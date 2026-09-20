@@ -49,6 +49,14 @@ export type DiseaseClimateProfile = {
   status: "HOMOLOGATED" | "RESEARCH_REQUIRED";
 };
 
+export type HostDiseaseSusceptibility =
+  | "RESISTANT"
+  | "MODERATELY_RESISTANT"
+  | "INTERMEDIATE"
+  | "SUSCEPTIBLE"
+  | "HIGHLY_SUSCEPTIBLE"
+  | "UNKNOWN";
+
 export type DiseaseClimateAssessmentInput = {
   cropCode: string;
   countryCode: string;
@@ -58,6 +66,7 @@ export type DiseaseClimateAssessmentInput = {
   observation: DiseaseClimateObservation;
   profiles: DiseaseClimateProfile[];
   pathogenPresenceStatus?: "CONFIRMED" | "REGIONAL_ALERT" | "UNKNOWN" | "NOT_DETECTED";
+  hostSusceptibility?: HostDiseaseSusceptibility;
 };
 
 export type DiseaseClimateAssessment = {
@@ -71,6 +80,9 @@ export type DiseaseClimateAssessment = {
     climateFavorability: "LOW" | "MODERATE" | "HIGH";
     infectionConfirmed: false;
     pathogenPresenceStatus: NonNullable<DiseaseClimateAssessmentInput["pathogenPresenceStatus"]>;
+    hostSusceptibility: HostDiseaseSusceptibility;
+    monitoringPriority: "LOW" | "MEDIUM" | "HIGH";
+    treatmentAutomaticallyAuthorized: false;
     matchedFactors: DiseaseClimateFactor[];
     missingFactors: DiseaseClimateFactor[];
     rationale: string;
@@ -104,6 +116,21 @@ function within(value: number | null | undefined, range?: { min?: number; max?: 
   if (range.min != null && value < range.min) return { present: true, matches: false };
   if (range.max != null && value > range.max) return { present: true, matches: false };
   return { present: true, matches: true };
+}
+
+function monitoringPriority(input: {
+  climateFavorability: "LOW" | "MODERATE" | "HIGH";
+  pathogenPresenceStatus: "CONFIRMED" | "REGIONAL_ALERT" | "UNKNOWN" | "NOT_DETECTED";
+  hostSusceptibility: HostDiseaseSusceptibility;
+}) {
+  const susceptible = input.hostSusceptibility === "SUSCEPTIBLE" || input.hostSusceptibility === "HIGHLY_SUSCEPTIBLE";
+  const resistant = input.hostSusceptibility === "RESISTANT" || input.hostSusceptibility === "MODERATELY_RESISTANT";
+  const pathogenSupported = input.pathogenPresenceStatus === "CONFIRMED" || input.pathogenPresenceStatus === "REGIONAL_ALERT";
+
+  if (input.climateFavorability === "HIGH" && pathogenSupported && susceptible) return "HIGH" as const;
+  if (input.climateFavorability === "HIGH" && (pathogenSupported || susceptible)) return "MEDIUM" as const;
+  if (input.climateFavorability === "MODERATE" && pathogenSupported && !resistant) return "MEDIUM" as const;
+  return "LOW" as const;
 }
 
 function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAssessmentInput) {
@@ -154,13 +181,23 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
   if (usableCount > 0 && failed.length === 0 && missing.length === 0) climateFavorability = "HIGH";
   else if (usableCount > 0 && ratio >= 0.5) climateFavorability = "MODERATE";
 
+  const pathogenPresenceStatus = input.pathogenPresenceStatus ?? "UNKNOWN";
+  const hostSusceptibility = input.hostSusceptibility ?? "UNKNOWN";
+
   return {
     diseaseCode: profile.diseaseCode,
     diseaseName: profile.diseaseName,
     profileId: profile.id,
     climateFavorability,
     infectionConfirmed: false as const,
-    pathogenPresenceStatus: input.pathogenPresenceStatus ?? "UNKNOWN",
+    pathogenPresenceStatus,
+    hostSusceptibility,
+    monitoringPriority: monitoringPriority({
+      climateFavorability,
+      pathogenPresenceStatus,
+      hostSusceptibility,
+    }),
+    treatmentAutomaticallyAuthorized: false as const,
     matchedFactors: matched,
     missingFactors: missing,
     rationale: climateFavorability === "HIGH"
