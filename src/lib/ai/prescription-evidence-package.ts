@@ -36,7 +36,13 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   region: { code: string | null };
-  analysis: { id: string; code: string; status: string; createdAt: string };
+  analysis: {
+    id: string;
+    code: string;
+    status: string;
+    createdAt: string;
+    plannedManagementNotes: string | null;
+  };
   deterministicInterpretation: {
     id: string;
     revision: number;
@@ -71,6 +77,14 @@ function analysisContextTillageSystem(value: unknown) {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
   const tillageSystem = (draft as { tillageSystem?: unknown }).tillageSystem;
   return typeof tillageSystem === "string" && tillageSystem.trim() ? tillageSystem.trim() : null;
+}
+
+function analysisContextPlannedManagementNotes(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
+  const notes = (draft as { plannedManagementNotes?: unknown }).plannedManagementNotes;
+  return typeof notes === "string" && notes.trim() ? notes.trim() : null;
 }
 
 export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string, userId: string, analysisId: string): Promise<AgronomicPrescriptionEvidencePackage | null> {
@@ -219,7 +233,13 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicSulfurDose,
       deterministicLimingDecision,
       region: { code: base.regionCode },
-      analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
+      analysis: {
+        id: base.id,
+        code: base.code,
+        status: base.status,
+        createdAt: base.createdAt,
+        plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
+      },
       deterministicInterpretation,
       results: resultsResult.rows,
       yieldHistory: yieldHistoryResult.rows,
