@@ -39,6 +39,12 @@ const result = adaptAgroclimateCatalogRows([
         condition: { operator: "GT", value: 24 },
         hazard: "HOT_NIGHTS",
       }],
+      phenologyRules: [{
+        id: "MILHO-G1-FLOWERING",
+        cultivarCycleGroups: ["G1"],
+        stage: "FLOWERING",
+        cumulativeGdd: { min: 760, max: 840 },
+      }],
     },
   },
   {
@@ -106,6 +112,7 @@ const result = adaptAgroclimateCatalogRows([
 
 assert.equal(result.climateProfiles.length, 1);
 assert.equal(result.metricRules.length, 1);
+assert.equal(result.phenologyRules.length, 1);
 assert.equal(result.diseaseProfiles.length, 1);
 assert.equal(result.zarcContexts.length, 1);
 assert.equal(result.rejected.length, 1);
@@ -116,6 +123,8 @@ assert.deepEqual(
 );
 assert.equal(result.climateProfiles[0].source.institution, "Embrapa");
 assert.equal(result.metricRules[0].id, "HOT-NIGHT");
+assert.equal(result.phenologyRules[0].id, "MILHO-G1-FLOWERING");
+assert.equal(result.phenologyRules[0].stage, "FLOWERING");
 assert.deepEqual(
   result.metricRules[0].region.technicalRegionCodes,
   ["RS-PLANALTO-MEDIO"],
@@ -148,7 +157,7 @@ const invalidMetric = adaptAgroclimateCatalogRows([{
 }]);
 
 assert.equal(invalidMetric.metricRules.length, 0);
-assert.equal(invalidMetric.rejected[0].reason, "INVALID_CLIMATE_OR_METRIC_RULE");
+assert.equal(invalidMetric.rejected[0].reason, "INVALID_CLIMATE_METRIC_OR_PHENOLOGY_RULE");
 
 const extendedMetric = adaptAgroclimateCatalogRows([{
   ...base,
@@ -245,5 +254,22 @@ const invalidFieldContext = adaptAgroclimateCatalogRows([{
 }]);
 assert.equal(invalidFieldContext.diseaseProfiles.length, 0);
 assert.equal(invalidFieldContext.rejected[0].reason, "INVALID_DISEASE_PROFILE");
+
+const invalidPhenology = adaptAgroclimateCatalogRows([{
+  ...base,
+  code: "BAD-PHENOLOGY",
+  kind: "PHYSIOLOGY",
+  diseaseCode: null,
+  phenologicalStages: [],
+  payload: {
+    schemaVersion: 1,
+    phenologyRules: [{
+      stage: "FLOWERING",
+      cumulativeGdd: { min: 900, max: 700 },
+    }],
+  },
+}]);
+assert.equal(invalidPhenology.phenologyRules.length, 0);
+assert.equal(invalidPhenology.rejected[0].reason, "INVALID_CLIMATE_METRIC_OR_PHENOLOGY_RULE");
 
 console.log("agroclimate-profile-adapter: catálogo ACTIVE convertido e payload inválido rejeitado");
