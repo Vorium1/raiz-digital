@@ -42,8 +42,11 @@ const southAnnual = evaluateBiologicalSoilEvidence({
   ],
 });
 assert.equal(southAnnual.coreBioAs.complete, true);
-assert.equal(southAnnual.interpretation.automaticRaizInterpretationAllowed, true);
+assert.equal(southAnnual.interpretation.automaticRaizInterpretationAllowed, false);
+assert.equal(southAnnual.interpretation.labReportedInterpretationCanBePreserved, true);
+assert.equal(southAnnual.interpretation.crossRegionAlgorithmTransferAllowed, false);
 assert.equal(southAnnual.interpretation.labIndexesMustBePreservedNotRecomputed, true);
+assert.ok(southAnnual.warnings.includes("BIOAS_RAIZ_REGIONAL_CALIBRATION_NOT_HOMOLOGATED_FOR_SOUTH_BRAZIL"));
 assert.equal(southAnnual.analysisPolicy.automaticNutrientCreditAllowed, false);
 assert.equal(southAnnual.analysisPolicy.automaticDoseReductionAllowed, false);
 assert.equal(southAnnual.analysisPolicy.automaticDoseIncreaseAllowed, false);
@@ -83,5 +86,30 @@ const incomplete = evaluateBiologicalSoilEvidence({
 });
 assert.ok(incomplete.warnings.includes("BIOAS_CORE_ENZYME_PAIR_INCOMPLETE"));
 assert.equal(incomplete.interpretation.automaticRaizInterpretationAllowed, false);
+
+const cerradoAnnual = evaluateBiologicalSoilEvidence({
+  regionScope: "CERRADO",
+  cropGroup: "ANNUAL_GRAIN_FIBER",
+  observations: [
+    {
+      parameterCode: "BIOAS_BETA_GLUCOSIDASE",
+      value: 140,
+      unit: "mg p-nitrofenol kg⁻¹ solo h⁻¹",
+      method: "BioAS Embrapa — atividade enzimática",
+      depthFromCm: 0,
+      depthToCm: 10,
+    },
+    {
+      parameterCode: "BIOAS_ARYLSULFATASE",
+      value: 150,
+      unit: "mg p-nitrofenol kg⁻¹ solo h⁻¹",
+      method: "BioAS Embrapa — atividade enzimática",
+      depthFromCm: 0,
+      depthToCm: 10,
+    },
+  ],
+});
+assert.equal(cerradoAnnual.interpretation.automaticRaizInterpretationAllowed, true);
+assert.equal(cerradoAnnual.interpretation.raizAutomaticCalibrationScope, "CERRADO_ANNUAL_GRAIN_FIBER");
 
 console.log("biological-soil-analysis: evidência opcional, domínio BioAS e firewall de dose validados");
