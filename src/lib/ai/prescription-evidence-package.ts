@@ -7,6 +7,7 @@ import {
 } from "@/domain/uniform-pk-readiness";
 import { withTenant } from "@/lib/db";
 import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision } from "@/domain/sulfur-dose-engine";
+import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -33,6 +34,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   uniformPkReadiness: UniformPkReadiness;
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
+  deterministicLimingDecision?: SoybeanLimingUniformDecision;
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
   deterministicInterpretation: {
@@ -63,6 +65,14 @@ function interpretationItems(structuredOutput: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function analysisContextTillageSystem(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
+  const tillageSystem = (draft as { tillageSystem?: unknown }).tillageSystem;
+  return typeof tillageSystem === "string" && tillageSystem.trim() ? tillageSystem.trim() : null;
+}
+
 export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string, userId: string, analysisId: string): Promise<AgronomicPrescriptionEvidencePackage | null> {
   return withTenant({ tenantId, userId }, async (client) => {
     const tenantResult = await client.query(`SELECT id::text, trade_name AS name FROM tenants WHERE id = $1::uuid`, [tenantId]);
@@ -76,6 +86,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               c.id::text AS "clientId", c.name AS "clientName",
               p.id::text AS "propertyId", p.name AS "propertyName", p.municipality, p.state,
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
+              a.analysis_context AS "analysisContext",
               cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
               cs.next_crop AS "nextCrop", cs.next_cultivar AS "nextCultivar", cs.cultivar,
               cs.management_system AS "managementSystem", cs.soil_texture AS "soilTexture",
@@ -179,6 +190,13 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         })),
     });
 
+    const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
+      cropCode: base.cropProfileCode,
+      state: base.state,
+      managementSystem: base.managementSystem ?? analysisContextTillageSystem(base.analysisContext),
+      results: resultsResult.rows,
+    });
+
     return {
       tenant: { id: tenant.id, name: tenant.name },
       client: { id: base.clientId, name: base.clientName },
@@ -199,6 +217,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       uniformPkReadiness,
       deterministicPkDoses,
       deterministicSulfurDose,
+      deterministicLimingDecision,
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
       deterministicInterpretation,
