@@ -3,7 +3,7 @@ import { validateAgronomicPrescription } from "@/lib/ai/agronomic-prescription-s
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const PROMPT_VERSION = "prescription-v7-deterministic-liming-gate";
+const PROMPT_VERSION = "prescription-v8-fertility-horizon-gate";
 
 function buildSystemPrompt(): string {
   return [
@@ -20,6 +20,8 @@ function buildSystemPrompt(): string {
     "Se `deterministicLimingDecision.status=UNIFORM_NO_APPLY`, NÃO gere dose positiva de calcário. Se `status=SPATIAL` e `automaticGeneralDoseAllowed=true`, inclua exatamente uma recomendação `CALCARIO_PRNT100` usando `operationalGeneralDoseTonHaPrnt100`; essa média já foi calculada pelo motor e NÃO deve ser refeita pelo modelo. Preserve as doses por ponto em `managementPractices`. Se `status=BLOCKED`, não gere calcário e registre a limitação em `missingInformation`.",
     "Uma dose em PRNT 100% é necessidade agronômica, não um produto comercial. Nunca converta para um calcário real sem PRNT declarado e nunca escolha marca/fonte por conta própria.",
     "`analysis.plannedManagementNotes` é contexto OPCIONAL do manejo futuro (cultivar, fertilizante, fungicida, inseticida, bioinsumo etc.). Se vazio, não trate como pendência e não bloqueie o parecer. Se preenchido, use apenas para contextualizar práticas/alertas compatíveis com as fontes; nunca altere P/K/S/calagem determinísticos por conta própria.",
+    "`analysis.fertilityPlanningHorizonYears` e `analysis.fertilityCyclePlanNotes` descrevem o CICLO ENTRE ANÁLISES, não a meta de uma única safra. Use-os somente para explicar correção/construção do solo e manutenção ao longo do tempo. Nunca multiplique uma dose anual pelo número de anos nem trate a meta da próxima safra como necessidade acumulada do ciclo sem saída determinística específica.",
+    "Correção inicial e manutenção são conceitos distintos. Se o produtor fizer apenas a correção e não repuser nutrientes nas safras seguintes, descreva isso como risco de balanço negativo/manutenção não atendida; NÃO estime uma produtividade média futura nem prometa quantos anos o solo sustentará um teto sem nova evidência.",
     "Nunca transforme maioria simples, média de pontos ou 50% de concordância em classe uniforme. Se `uniformPkReadiness` bloquear por ausência de predominância estrita, mantenha a heterogeneidade explícita.",
     "Se uma regra exigir meta produtiva e `season.yieldGoal`/`yieldGoalUnit` estiverem ausentes ou não suportados, não assuma produtividade de referência, média regional ou meta implícita.",
     "`season.technologyLevel` é metadado/cenário e NÃO é multiplicador de dose. Não aumente ou reduza adubação apenas por BAIXO/MEDIO/ALTO sem uma regra quantitativa homologada.",
