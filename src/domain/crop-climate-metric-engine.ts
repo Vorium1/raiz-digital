@@ -16,6 +16,7 @@ export type AgroclimateMetric =
   | "SOLAR_RADIATION_ANOMALY_PCT"
   | "GLOBAL_SOLAR_RADIATION_MJ_M2_DAY"
   | "PAR_MJ_M2_DAY"
+  | "PHOTOPERIOD_HOURS"
   | "SUNSHINE_HOURS"
   | "CLOUD_COVER_PCT"
   | "RELATIVE_HUMIDITY_PCT"
@@ -34,6 +35,10 @@ export type AgroclimateMetric =
   | "WIND_KMH"
   | "WIND_GUST_KMH"
   | "CHILL_HOURS"
+  | "CHILL_PORTIONS"
+  | "FROST_DURATION_HOURS"
+  | "HEAT_STRESS_HOURS"
+  | "CANOPY_TEMPERATURE_C"
   | "GROWING_DEGREE_DAYS";
 
 export type AgroclimateMetricSnapshot = Partial<Record<AgroclimateMetric, number>>;
