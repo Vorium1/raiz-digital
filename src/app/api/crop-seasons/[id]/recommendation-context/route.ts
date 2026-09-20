@@ -40,6 +40,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       yieldGoal?: number | null;
       yieldGoalUnit?: string | null;
       cultivationOrderAfterSoilAnalysis?: number | null;
+      managementSystem?: string | null;
     } = {
       tenantId: session.tenantId,
       userId: session.userId,
@@ -56,6 +57,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       patch.cultivationOrderAfterSoilAnalysis = body.cultivationOrderAfterSoilAnalysis == null || body.cultivationOrderAfterSoilAnalysis === ""
         ? null
         : Number(body.cultivationOrderAfterSoilAnalysis);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "managementSystem")) {
+      patch.managementSystem = body.managementSystem == null || body.managementSystem === ""
+        ? null
+        : String(body.managementSystem).trim();
     }
 
     const recommendationContext = await updateRecommendationContext(patch);
