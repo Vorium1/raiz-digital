@@ -239,7 +239,7 @@ export function AnalysisContextIntake({
               <EvidenceStatusSelect value={value.yieldHistoryStatus} onChange={(yieldHistoryStatus) => update({ yieldHistoryStatus })} />
             </label>
             <label>
-              <span>Histórico hídrico relevante *</span>
+              <span>Histórico hídrico relevante <small>(opcional)</small></span>
               <EvidenceStatusSelect value={value.waterHistoryStatus} onChange={(waterHistoryStatus) => update({ waterHistoryStatus })} />
             </label>
           </div>
