@@ -96,6 +96,7 @@ assert.ok(irrigatedPlan.waterDynamicsAdjustment?.splitApplicationPriority.includ
 assert.ok(irrigatedPlan.waterDynamicsAdjustment?.splitApplicationPriority.includes("N_NO3"));
 assert.equal(irrigatedPlan.waterDynamicsAdjustment?.earlierSoilMonitoringAdvised, true);
 assert.equal(irrigatedPlan.waterDynamicsAdjustment?.automaticDoseIncreaseAllowed, false);
+assert.equal(irrigatedPlan.waterDynamicsAdjustment?.automaticDoseReductionAllowed, false);
 assert.deepEqual(irrigatedPlan.correctionTotalKgPerHa, { P2O5: 80, K2O: 60 });
 
 console.log("fertility-cycle-plan: correção multi-ano, manutenção e cenário sem reinvestimento validados");
