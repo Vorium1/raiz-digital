@@ -89,6 +89,7 @@ const REQUIREMENTS: Array<{
     code: "WATER_REGIME_MISSING",
     label: "Regime hídrico (sequeiro ou irrigado)",
     test: (evidence) => evidence.waterRegime,
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
@@ -118,8 +119,9 @@ const REQUIREMENTS: Array<{
   {
     layer: 3,
     code: "WATER_HISTORY_NOT_DECLARED",
-    label: "Histórico hídrico relevante (seca, excesso de chuva/encharcamento), ou declaração de que não está disponível",
+    label: "Histórico hídrico relevante (seca, excesso de chuva/encharcamento), quando conhecido",
     test: (evidence) => evidence.waterHistory !== "MISSING",
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 4,
@@ -160,6 +162,9 @@ function declaredLimitations(evidence: AnalysisEvidence) {
   }
   if (!evidence.tillageSystem) {
     limitations.push("Sistema de preparo do solo ainda não definido; o parecer continua disponível e a calagem pode ser refinada quando o sistema for informado.");
+  }
+  if (!evidence.waterRegime) {
+    limitations.push("Regime hídrico ainda não informado; o parecer do solo continua válido e riscos ligados à irrigação, déficit ou excesso de água ficam sem refinamento.");
   }
   if (evidence.managementHistory === "DECLARED_UNAVAILABLE") {
     limitations.push("Histórico recente de calagem/adubação/gessagem declarado como indisponível; recomendações dependentes desse histórico devem explicitar a incerteza.");
