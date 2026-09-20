@@ -136,7 +136,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
       generatedAt?: string;
     };
   };
-  const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []).slice(0, 6);
+  const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const engineValidated = Boolean(
