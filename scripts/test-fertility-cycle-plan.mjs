@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildFertilityCyclePlan } from "../src/domain/fertility-cycle-plan.ts";
+import { evaluateSoilWaterNutrientDynamics } from "../src/domain/soil-water-nutrient-dynamics.ts";
 
 const plan = buildFertilityCyclePlan({
   horizonYears: 3,
@@ -69,5 +70,32 @@ const partial = buildFertilityCyclePlan({
 assert.equal(partial.planningStatus, "PARTIAL");
 assert.ok(partial.blockers.some((item) => item.code === "CROP_MAINTENANCE_TABLE_NOT_HOMOLOGATED"));
 assert.ok(partial.blockers.some((item) => item.code === "TARGET_YIELD_MISSING_FOR_MAINTENANCE"));
+
+const irrigatedDynamics = evaluateSoilWaterNutrientDynamics({
+  irrigationRegime: "FULL",
+  soilTexture: "COARSE",
+  cecClass: "LOW",
+  waterStatus: "SURPLUS",
+  drainage: "MODERATE",
+  trafficOnWetSoil: "POSSIBLE",
+  residueLevel: "HIGH",
+});
+
+const irrigatedPlan = buildFertilityCyclePlan({
+  horizonYears: 3,
+  phosphorusLevel: "Baixo",
+  potassiumLevel: "Baixo",
+  correctionStrategy: "GRADUAL_TWO_CROPS",
+  seasons: [
+    { order: 1, cropCode: "SOJA", targetYieldTonPerHa: 4.8 },
+    { order: 2, cropCode: "TRIGO", targetYieldTonPerHa: 4.2 },
+  ],
+  soilWaterDynamics: irrigatedDynamics,
+});
+assert.ok(irrigatedPlan.waterDynamicsAdjustment?.splitApplicationPriority.includes("K"));
+assert.ok(irrigatedPlan.waterDynamicsAdjustment?.splitApplicationPriority.includes("N_NO3"));
+assert.equal(irrigatedPlan.waterDynamicsAdjustment?.earlierSoilMonitoringAdvised, true);
+assert.equal(irrigatedPlan.waterDynamicsAdjustment?.automaticDoseIncreaseAllowed, false);
+assert.deepEqual(irrigatedPlan.correctionTotalKgPerHa, { P2O5: 80, K2O: 60 });
 
 console.log("fertility-cycle-plan: correção multi-ano, manutenção e cenário sem reinvestimento validados");
