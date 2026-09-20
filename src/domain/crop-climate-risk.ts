@@ -49,6 +49,7 @@ export type CropClimateProfile = {
     countryCode: string;
     stateCodes?: string[];
     municipalityCodes?: string[];
+    technicalRegionCodes?: string[];
   };
   rules: Array<{
     hazard: CropClimateHazard;
@@ -84,6 +85,7 @@ export type CropClimateAssessmentInput = {
   countryCode: string;
   stateCode: string | null;
   municipalityCode?: string | null;
+  technicalRegionCodes?: string[];
   plannedStart: string;
   plannedEnd: string;
   stages: CropPhenologicalStage[];
@@ -131,9 +133,14 @@ function windowsOverlap(aStart: string, aEnd: string, bStart: string, bEnd: stri
 
 function regionMatches(
   profile: CropClimateProfile,
-  input: Pick<CropClimateAssessmentInput, "countryCode" | "stateCode" | "municipalityCode">,
+  input: Pick<CropClimateAssessmentInput, "countryCode" | "stateCode" | "municipalityCode" | "technicalRegionCodes">,
 ) {
   if (normalized(profile.region.countryCode) !== normalized(input.countryCode)) return false;
+
+  if (profile.region.technicalRegionCodes?.length) {
+    const resolved = new Set((input.technicalRegionCodes ?? []).map(normalized));
+    return profile.region.technicalRegionCodes.map(normalized).some((code) => resolved.has(code));
+  }
 
   if (profile.region.municipalityCodes?.length) {
     if (!input.municipalityCode) return false;
