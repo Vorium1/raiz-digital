@@ -17,6 +17,23 @@ export type DiseaseClimateFactor =
   | "CLOUD_COVER"
   | "LOW_RADIATION";
 
+export type DiseaseFieldFactor =
+  | "CANOPY_DENSITY"
+  | "IRRIGATION_METHOD"
+  | "DRAINAGE"
+  | "RESIDUE_LEVEL"
+  | "RECENT_DISEASE_HISTORY"
+  | "CROP_ROTATION_BREAK";
+
+export type DiseaseFieldContext = {
+  canopyDensity?: "OPEN" | "MODERATE" | "DENSE" | null;
+  irrigationMethod?: "NONE" | "DRIP" | "FURROW" | "SPRINKLER" | "CENTER_PIVOT" | "MICROSPRINKLER" | "OTHER" | null;
+  drainage?: "GOOD" | "MODERATE" | "POOR" | null;
+  residueLevel?: "LOW" | "MEDIUM" | "HIGH" | null;
+  recentDiseaseHistory?: boolean | null;
+  cropRotationBreak?: boolean | null;
+};
+
 export type DiseaseClimateObservation = {
   airTemperatureC?: number | null;
   nightTemperatureC?: number | null;
@@ -68,6 +85,18 @@ export type DiseaseClimateProfile = {
     cloudCoverPct?: { min?: number; max?: number };
     lowRadiationRequired?: boolean;
   };
+  /**
+   * Modificadores de microclima/manejo são doença-específicos. Só participam
+   * quando o próprio perfil técnico declara a condição.
+   */
+  fieldContextConditions?: {
+    canopyDensityIn?: Array<NonNullable<DiseaseFieldContext["canopyDensity"]>>;
+    irrigationMethodIn?: Array<NonNullable<DiseaseFieldContext["irrigationMethod"]>>;
+    drainageIn?: Array<NonNullable<DiseaseFieldContext["drainage"]>>;
+    residueLevelIn?: Array<NonNullable<DiseaseFieldContext["residueLevel"]>>;
+    recentDiseaseHistory?: boolean;
+    cropRotationBreak?: boolean;
+  };
   source: {
     institution: string;
     title: string;
@@ -96,6 +125,7 @@ export type DiseaseClimateAssessmentInput = {
   profiles: DiseaseClimateProfile[];
   pathogenPresenceStatus?: "CONFIRMED" | "REGIONAL_ALERT" | "UNKNOWN" | "NOT_DETECTED";
   hostSusceptibility?: HostDiseaseSusceptibility;
+  fieldContext?: DiseaseFieldContext;
 };
 
 export type DiseaseClimateAssessment = {
@@ -114,6 +144,9 @@ export type DiseaseClimateAssessment = {
     treatmentAutomaticallyAuthorized: false;
     matchedFactors: DiseaseClimateFactor[];
     missingFactors: DiseaseClimateFactor[];
+    fieldContextAlignment: "NOT_CONFIGURED" | "MATCHED" | "PARTIAL" | "NOT_MATCHED" | "INSUFFICIENT_DATA";
+    matchedFieldFactors: DiseaseFieldFactor[];
+    missingFieldFactors: DiseaseFieldFactor[];
     rationale: string;
   }>;
   warnings: string[];
@@ -149,6 +182,83 @@ function within(value: number | null | undefined, range?: { min?: number; max?: 
   if (range.min != null && value < range.min) return { present: true, matches: false };
   if (range.max != null && value > range.max) return { present: true, matches: false };
   return { present: true, matches: true };
+}
+
+function assessFieldContext(profile: DiseaseClimateProfile, context?: DiseaseFieldContext) {
+  const conditions = profile.fieldContextConditions;
+  if (!conditions || Object.keys(conditions).length === 0) {
+    return {
+      alignment: "NOT_CONFIGURED" as const,
+      matched: [] as DiseaseFieldFactor[],
+      missing: [] as DiseaseFieldFactor[],
+    };
+  }
+
+  const matched: DiseaseFieldFactor[] = [];
+  const missing: DiseaseFieldFactor[] = [];
+  const failed: DiseaseFieldFactor[] = [];
+  const checks: Array<{ factor: DiseaseFieldFactor; configured: boolean; present: boolean; matches: boolean }> = [];
+
+  checks.push({
+    factor: "CANOPY_DENSITY",
+    configured: Boolean(conditions.canopyDensityIn?.length),
+    present: context?.canopyDensity != null,
+    matches: context?.canopyDensity != null && Boolean(conditions.canopyDensityIn?.includes(context.canopyDensity)),
+  });
+  checks.push({
+    factor: "IRRIGATION_METHOD",
+    configured: Boolean(conditions.irrigationMethodIn?.length),
+    present: context?.irrigationMethod != null,
+    matches: context?.irrigationMethod != null && Boolean(conditions.irrigationMethodIn?.includes(context.irrigationMethod)),
+  });
+  checks.push({
+    factor: "DRAINAGE",
+    configured: Boolean(conditions.drainageIn?.length),
+    present: context?.drainage != null,
+    matches: context?.drainage != null && Boolean(conditions.drainageIn?.includes(context.drainage)),
+  });
+  checks.push({
+    factor: "RESIDUE_LEVEL",
+    configured: Boolean(conditions.residueLevelIn?.length),
+    present: context?.residueLevel != null,
+    matches: context?.residueLevel != null && Boolean(conditions.residueLevelIn?.includes(context.residueLevel)),
+  });
+  checks.push({
+    factor: "RECENT_DISEASE_HISTORY",
+    configured: conditions.recentDiseaseHistory != null,
+    present: typeof context?.recentDiseaseHistory === "boolean",
+    matches: typeof context?.recentDiseaseHistory === "boolean"
+      && context.recentDiseaseHistory === conditions.recentDiseaseHistory,
+  });
+  checks.push({
+    factor: "CROP_ROTATION_BREAK",
+    configured: conditions.cropRotationBreak != null,
+    present: typeof context?.cropRotationBreak === "boolean",
+    matches: typeof context?.cropRotationBreak === "boolean"
+      && context.cropRotationBreak === conditions.cropRotationBreak,
+  });
+
+  for (const check of checks) {
+    if (!check.configured) continue;
+    if (!check.present) missing.push(check.factor);
+    else if (check.matches) matched.push(check.factor);
+    else failed.push(check.factor);
+  }
+
+  const configuredCount = checks.filter((check) => check.configured).length;
+  if (!configuredCount) {
+    return { alignment: "NOT_CONFIGURED" as const, matched, missing };
+  }
+  if (missing.length === configuredCount) {
+    return { alignment: "INSUFFICIENT_DATA" as const, matched, missing };
+  }
+  if (failed.length === 0 && missing.length === 0) {
+    return { alignment: "MATCHED" as const, matched, missing };
+  }
+  if (matched.length > 0) {
+    return { alignment: "PARTIAL" as const, matched, missing };
+  }
+  return { alignment: "NOT_MATCHED" as const, matched, missing };
 }
 
 function monitoringPriority(input: {
@@ -243,6 +353,7 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
 
   const pathogenPresenceStatus = input.pathogenPresenceStatus ?? "UNKNOWN";
   const hostSusceptibility = input.hostSusceptibility ?? "UNKNOWN";
+  const fieldContext = assessFieldContext(profile, input.fieldContext);
 
   return {
     diseaseCode: profile.diseaseCode,
@@ -260,6 +371,9 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
     treatmentAutomaticallyAuthorized: false as const,
     matchedFactors: matched,
     missingFactors: missing,
+    fieldContextAlignment: fieldContext.alignment,
+    matchedFieldFactors: fieldContext.matched,
+    missingFieldFactors: fieldContext.missing,
     rationale: climateFavorability === "HIGH"
       ? "As condições meteorológicas observadas atendem aos fatores climáticos configurados para esta doença, cultura, região e estádio. Isso indica favorabilidade climática, não confirmação de infecção."
       : climateFavorability === "MODERATE"
@@ -276,7 +390,9 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
  * do patógeno + suscetibilidade do material + estádio + histórico + monitoramento de campo.
  * Temperatura noturna, ponto de orvalho, VPD, umidade/molhamento, chuva/intensidade,
  * dias úmidos consecutivos, solo, vento/rajadas e radiação podem participar somente
- * quando o perfil homologado da doença declarar esses fatores.
+ * quando o perfil homologado da doença declarar esses fatores. Dossel, irrigação,
+ * drenagem, resíduo, histórico e rotação seguem a mesma regra: nunca são assumidos
+ * como agravantes genéricos; só entram quando o perfil específico os declarar.
  */
 export function assessDiseaseClimateFavorability(
   input: DiseaseClimateAssessmentInput,
