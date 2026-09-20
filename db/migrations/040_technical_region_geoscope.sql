@@ -59,6 +59,7 @@ COMMENT ON COLUMN technical_regions.climate_zone_code IS
 -- (município/polígono) são cadastrados e homologados.
 INSERT INTO technical_regions (code, name, description, country_code, state_codes)
 VALUES
+  ('BR', 'Brasil', 'Região técnica-base nacional. Usada apenas quando a fonte sustenta abrangência nacional explícita.', 'BR', ARRAY[]::text[]),
   ('BR-RS', 'Rio Grande do Sul', 'Região técnica-base por UF. Regras climáticas só entram quando a fonte declarar escopo compatível.', 'BR', ARRAY['RS']::text[]),
   ('BR-SC', 'Santa Catarina', 'Região técnica-base por UF. Regras climáticas só entram quando a fonte declarar escopo compatível.', 'BR', ARRAY['SC']::text[]),
   ('BR-PR', 'Paraná', 'Região técnica-base por UF. Não implica que regras RS/SC se transfiram ao PR inteiro.', 'BR', ARRAY['PR']::text[])
