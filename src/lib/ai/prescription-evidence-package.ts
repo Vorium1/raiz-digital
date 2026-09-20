@@ -8,6 +8,8 @@ import {
 import { withTenant } from "@/lib/db";
 import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision } from "@/domain/sulfur-dose-engine";
 import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import { adaptLabResultsToSoilMicrobiology } from "@/domain/soil-microbiology-lab-adapter";
+import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evidence";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -35,6 +37,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
+  soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -269,6 +272,13 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       results: resultsResult.rows,
     });
 
+    const soilMicrobiologyEvidence = evaluateSoilMicrobiologyEvidence({
+      observations: adaptLabResultsToSoilMicrobiology(resultsResult.rows),
+      cropCode: base.cropProfileCode,
+      regionCode: base.state,
+      validatedAgronomicRuleIds: [],
+    });
+
     return {
       tenant: { id: tenant.id, name: tenant.name },
       client: { id: base.clientId, name: base.clientName },
@@ -290,6 +300,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicPkDoses,
       deterministicSulfurDose,
       deterministicLimingDecision,
+      soilMicrobiologyEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
