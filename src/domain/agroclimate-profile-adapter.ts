@@ -182,6 +182,53 @@ function validCondition(value: unknown): value is CropClimateMetricRule["conditi
   return typeof obj.value === "number" && Number.isFinite(obj.value);
 }
 
+function validOptionalRange(value: unknown) {
+  if (value == null) return true;
+  const obj = objectValue(value);
+  if (!obj) return false;
+  const allowed = new Set(["min", "max"]);
+  if (Object.keys(obj).some((key) => !allowed.has(key))) return false;
+  if (obj.min != null && (typeof obj.min !== "number" || !Number.isFinite(obj.min))) return false;
+  if (obj.max != null && (typeof obj.max !== "number" || !Number.isFinite(obj.max))) return false;
+  if (obj.min != null && obj.max != null && obj.min > obj.max) return false;
+  return obj.min != null || obj.max != null;
+}
+
+function validDiseaseConditions(value: unknown): value is DiseaseClimateProfile["conditions"] {
+  const obj = objectValue(value);
+  if (!obj) return false;
+
+  const rangeKeys = [
+    "temperatureC",
+    "nightTemperatureC",
+    "dewPointC",
+    "relativeHumidityPct",
+    "vpdKpa",
+    "leafWetnessHours",
+    "rainfallMm",
+    "rainfallIntensityMmH",
+    "consecutiveWetDays",
+    "soilMoisturePct",
+    "windKmh",
+    "windGustKmh",
+    "sunshineHours",
+    "cloudCoverPct",
+  ] as const;
+  const allowed = new Set<string>([...rangeKeys, "lowRadiationRequired"]);
+  if (Object.keys(obj).some((key) => !allowed.has(key))) return false;
+
+  for (const key of rangeKeys) {
+    if (!validOptionalRange(obj[key])) return false;
+  }
+
+  if (
+    obj.lowRadiationRequired != null
+    && typeof obj.lowRadiationRequired !== "boolean"
+  ) return false;
+
+  return Object.keys(obj).length > 0;
+}
+
 function source(row: ActiveAgroclimateCatalogRow) {
   return {
     institution: row.technicalSourceInstitution?.trim() || "Fonte técnica cadastrada",
@@ -255,13 +302,12 @@ function parseDisease(value: unknown): DiseasePayload | null {
     : (stageList(obj.stages) ?? undefined);
   if (obj.stages != null && (!stages || !stages.length)) return null;
 
-  const conditions = objectValue(obj.conditions);
-  if (!conditions) return null;
+  if (!validDiseaseConditions(obj.conditions)) return null;
 
   return {
     diseaseName: obj.diseaseName.trim(),
     stages,
-    conditions: conditions as DiseaseClimateProfile["conditions"],
+    conditions: obj.conditions,
   };
 }
 
