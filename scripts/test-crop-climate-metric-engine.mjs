@@ -134,4 +134,47 @@ const appleChillVocabulary = deriveCropClimateHazardsFromMetrics({
 });
 assert.equal(appleChillVocabulary.hazards[0]?.hazard, "INSUFFICIENT_CHILL");
 
+const soybeanPhotoperiodVocabulary = deriveCropClimateHazardsFromMetrics({
+  cropCode: "SOJA",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "VEGETATIVE",
+  metrics: {
+    PHOTOPERIOD_HOURS: 13.7,
+    CANOPY_TEMPERATURE_C: 31.5,
+  },
+  rules: [{
+    id: "SOJA-RS-PHOTOPERIOD-TEST",
+    cropCode: "SOJA",
+    region: { countryCode: "BR", stateCodes: ["RS"] },
+    stages: ["VEGETATIVE"],
+    metric: "PHOTOPERIOD_HOURS",
+    condition: { operator: "GT", value: 13.5 },
+    hazard: "PHOTOPERIOD_MISMATCH",
+    source: { institution: "TEST", title: "Vocabulário estrutural de fotoperíodo" },
+    status: "HOMOLOGATED",
+  }],
+});
+assert.equal(soybeanPhotoperiodVocabulary.hazards[0]?.hazard, "PHOTOPERIOD_MISMATCH");
+
+const appleChillPortionsVocabulary = deriveCropClimateHazardsFromMetrics({
+  cropCode: "MACA",
+  countryCode: "BR",
+  stateCode: "SC",
+  stage: "DORMANCY",
+  metrics: { CHILL_PORTIONS: 38 },
+  rules: [{
+    id: "MACA-SC-CHILL-PORTIONS-TEST",
+    cropCode: "MACA",
+    region: { countryCode: "BR", stateCodes: ["SC"] },
+    stages: ["DORMANCY"],
+    metric: "CHILL_PORTIONS",
+    condition: { operator: "LT", value: 45 },
+    hazard: "INSUFFICIENT_CHILL",
+    source: { institution: "TEST", title: "Vocabulário estrutural de porções de frio" },
+    status: "HOMOLOGATED",
+  }],
+});
+assert.equal(appleChillPortionsVocabulary.hazards[0]?.hazard, "INSUFFICIENT_CHILL");
+
 console.log("crop-climate-metric-engine: limiares numéricos por cultura/estádio validados");
