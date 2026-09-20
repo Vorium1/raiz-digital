@@ -46,6 +46,10 @@ export function SimpleRecommendationContext({
   const [error, setError] = useState("");
   const [plannedManagement, setPlannedManagement] = useState("");
   const [initialPlannedManagement, setInitialPlannedManagement] = useState("");
+  const [fertilityHorizonYears, setFertilityHorizonYears] = useState("");
+  const [initialFertilityHorizonYears, setInitialFertilityHorizonYears] = useState("");
+  const [fertilityCyclePlanNotes, setFertilityCyclePlanNotes] = useState("");
+  const [initialFertilityCyclePlanNotes, setInitialFertilityCyclePlanNotes] = useState("");
   const [plannedLoaded, setPlannedLoaded] = useState(false);
 
   useEffect(() => {
@@ -54,13 +58,20 @@ export function SimpleRecommendationContext({
     fetch(`/api/analyses/${analysisId}/planned-management`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar o manejo planejado.");
-        return String(payload.plannedManagement?.plannedManagementNotes ?? "");
+        if (!response.ok) throw new Error(payload.error ?? "Não foi possível carregar o planejamento agronômico.");
+        return payload.planningContext ?? payload.plannedManagement ?? {};
       })
-      .then((notes) => {
+      .then((planning) => {
         if (!alive) return;
+        const notes = String(planning.plannedManagementNotes ?? "");
+        const horizon = planning.fertilityPlanningHorizonYears == null ? "" : String(planning.fertilityPlanningHorizonYears);
+        const cycleNotes = String(planning.fertilityCyclePlanNotes ?? "");
         setPlannedManagement(notes);
         setInitialPlannedManagement(notes);
+        setFertilityHorizonYears(horizon);
+        setInitialFertilityHorizonYears(horizon);
+        setFertilityCyclePlanNotes(cycleNotes);
+        setInitialFertilityCyclePlanNotes(cycleNotes);
         setPlannedLoaded(true);
       })
       .catch((caught) => {
@@ -84,8 +95,13 @@ export function SimpleRecommendationContext({
   const orderReadyToSave = needsOrder && (order === "1" || order === "2");
   const plannedManagementChanged = plannedLoaded
     && plannedManagement.trim() !== initialPlannedManagement.trim();
+  const fertilityHorizonChanged = plannedLoaded
+    && fertilityHorizonYears !== initialFertilityHorizonYears;
+  const fertilityCyclePlanChanged = plannedLoaded
+    && fertilityCyclePlanNotes.trim() !== initialFertilityCyclePlanNotes.trim();
+  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged;
   const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
-  const canSave = seasonContextChanged || plannedManagementChanged;
+  const canSave = seasonContextChanged || planningContextChanged;
 
   async function save() {
     if (!canSave) {
@@ -96,17 +112,31 @@ export function SimpleRecommendationContext({
     setBusy(true);
     setError("");
     try {
-      if (plannedManagementChanged) {
+      if (planningContextChanged) {
+        const planningPatch: Record<string, unknown> = {};
+        if (plannedManagementChanged) planningPatch.plannedManagementNotes = plannedManagement;
+        if (fertilityHorizonChanged) {
+          planningPatch.fertilityPlanningHorizonYears = fertilityHorizonYears ? Number(fertilityHorizonYears) : null;
+        }
+        if (fertilityCyclePlanChanged) planningPatch.fertilityCyclePlanNotes = fertilityCyclePlanNotes;
+
         const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ plannedManagementNotes: plannedManagement }),
+          body: JSON.stringify(planningPatch),
         });
         const plannedPayload = await plannedResponse.json().catch(() => ({}));
-        if (!plannedResponse.ok) throw new Error(plannedPayload.error ?? "Não foi possível salvar o manejo planejado.");
-        const savedNotes = String(plannedPayload.plannedManagement?.plannedManagementNotes ?? plannedManagement.trim());
+        if (!plannedResponse.ok) throw new Error(plannedPayload.error ?? "Não foi possível salvar o planejamento agronômico.");
+        const saved = plannedPayload.planningContext ?? plannedPayload.plannedManagement ?? {};
+        const savedNotes = String(saved.plannedManagementNotes ?? plannedManagement.trim());
+        const savedHorizon = saved.fertilityPlanningHorizonYears == null ? "" : String(saved.fertilityPlanningHorizonYears);
+        const savedCycleNotes = String(saved.fertilityCyclePlanNotes ?? fertilityCyclePlanNotes.trim());
         setPlannedManagement(savedNotes);
         setInitialPlannedManagement(savedNotes);
+        setFertilityHorizonYears(savedHorizon);
+        setInitialFertilityHorizonYears(savedHorizon);
+        setFertilityCyclePlanNotes(savedCycleNotes);
+        setInitialFertilityCyclePlanNotes(savedCycleNotes);
       }
 
       if (seasonContextChanged) {
@@ -148,6 +178,35 @@ export function SimpleRecommendationContext({
       </summary>
 
       <div className="simple-context-fields">
+        <label>
+          <span>Horizonte desta análise do solo <small>(opcional)</small></span>
+          <select
+            value={fertilityHorizonYears}
+            onChange={(event) => setFertilityHorizonYears(event.target.value)}
+            disabled={!plannedLoaded}
+          >
+            <option value="">Ainda não definido</option>
+            <option value="2">2 anos</option>
+            <option value="3">3 anos</option>
+            <option value="4">4 anos</option>
+            <option value="5">5 anos</option>
+          </select>
+          <small>É o período para planejar correção + manutenção até a próxima análise; não é a meta de uma única safra.</small>
+        </label>
+
+        <label style={{ gridColumn: "1 / -1" }}>
+          <span>Planejamento do ciclo até a próxima análise <small>(opcional)</small></span>
+          <textarea
+            value={fertilityCyclePlanNotes}
+            onChange={(event) => setFertilityCyclePlanNotes(event.target.value)}
+            disabled={!plannedLoaded}
+            placeholder="Ex.: verão soja 70–80 sc/ha; inverno trigo 60–70; verão seguinte soja 70–80. Registre apenas o que já souber."
+            rows={3}
+            maxLength={5000}
+          />
+          <small>A RAIZ usa esse ciclo para separar construção de fertilidade da reposição de cada cultivo. O que ainda não estiver definido pode ser completado depois.</small>
+        </label>
+
         <label style={{ gridColumn: "1 / -1" }}>
           <span>Manejo planejado da próxima safra <small>(opcional)</small></span>
           <textarea
