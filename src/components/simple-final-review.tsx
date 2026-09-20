@@ -82,11 +82,6 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
 
   const draft = prescription?.responsePayload?.prescription ?? null;
   const recommendationContext = readiness?.recommendationContext ?? null;
-  const needsPkContext = Boolean(
-    recommendationContext?.uniformPkReadiness?.ready === true
-    && recommendationContext?.pkDoseReadiness?.ready === false
-    && (recommendationContext?.pkDoseReadiness?.blockers.length ?? 0) > 0,
-  );
   const evidenceCurrent = readiness?.interpretationEvidenceFreshness?.current === true;
   const currentEngineValidation = interpretation?.status === "APPROVED" && evidenceCurrent;
   const staleReason = readiness?.interpretationEvidenceFreshness?.reason ?? null;
@@ -116,13 +111,15 @@ export function SimpleFinalReview({ analysisId, canPublish }: { analysisId: stri
         </div>
       )}
 
-      {needsPkContext && recommendationContext && (
+      {recommendationContext && (
         <SimpleRecommendationContext
           cropSeasonId={recommendationContext.cropSeasonId}
           blockers={recommendationContext.pkDoseReadiness?.blockers ?? []}
           yieldGoal={recommendationContext.yieldGoal}
           yieldGoalUnit={recommendationContext.yieldGoalUnit}
           cultivationOrderAfterSoilAnalysis={recommendationContext.cultivationOrderAfterSoilAnalysis}
+          cropProfileCode={recommendationContext.cropProfileCode}
+          managementSystem={recommendationContext.managementSystem}
           onSaved={load}
         />
       )}
