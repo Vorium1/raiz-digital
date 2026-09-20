@@ -54,4 +54,17 @@ COMMENT ON COLUMN technical_regions.municipality_codes IS
 COMMENT ON COLUMN technical_regions.climate_zone_code IS
   'Identificador técnico opcional de zona/subclima; não substitui boundary nem escopo administrativo.';
 
+-- Regiões administrativas-base. Elas NÃO são subclimas e não homologam regras por si só;
+-- apenas permitem resolver a UF de forma explícita enquanto recortes mais específicos
+-- (município/polígono) são cadastrados e homologados.
+INSERT INTO technical_regions (code, name, description, country_code, state_codes)
+VALUES
+  ('BR-RS', 'Rio Grande do Sul', 'Região técnica-base por UF. Regras climáticas só entram quando a fonte declarar escopo compatível.', 'BR', ARRAY['RS']::text[]),
+  ('BR-SC', 'Santa Catarina', 'Região técnica-base por UF. Regras climáticas só entram quando a fonte declarar escopo compatível.', 'BR', ARRAY['SC']::text[]),
+  ('BR-PR', 'Paraná', 'Região técnica-base por UF. Não implica que regras RS/SC se transfiram ao PR inteiro.', 'BR', ARRAY['PR']::text[])
+ON CONFLICT (code) DO UPDATE SET
+  country_code = EXCLUDED.country_code,
+  state_codes = EXCLUDED.state_codes,
+  updated_at = now();
+
 COMMIT;
