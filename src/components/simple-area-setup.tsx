@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { Icon } from "@/components/icon";
 import { MANAGEMENT_SYSTEM_OPTIONS } from "@/domain/management-system";
+import { manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 type Client = { id: string; name: string };
 type Property = { id: string; clientId: string; name: string; municipality: string; state: string; boundary?: object | null };
@@ -66,6 +67,8 @@ export function SimpleAreaSetup({
   const [seasonLabel, setSeasonLabel] = useState("");
   const [cropProfileId, setCropProfileId] = useState("");
   const [managementSystem, setManagementSystem] = useState("");
+  const [yieldChoice, setYieldChoice] = useState("");
+  const [customYield, setCustomYield] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -166,6 +169,14 @@ export function SimpleAreaSetup({
 
   if (needsSeason) {
     const selectedProfile = activeCropProfiles.find((profile) => profile.id === cropProfileId) ?? null;
+    const yieldConfig = yieldGoalPresetConfig(selectedProfile?.code);
+    const selectedPreset = yieldConfig?.presets.find((preset) => preset.id === yieldChoice) ?? null;
+    const parsedCustomYield = Number(customYield.replace(",", "."));
+    const customYieldTonPerHa = yieldChoice === "CUSTOM"
+      ? manualYieldToTonPerHa(selectedProfile?.code, parsedCustomYield)
+      : null;
+    const targetYieldTonPerHa = selectedPreset?.targetTonPerHa ?? customYieldTonPerHa;
+    const targetDisplayUnit = yieldConfig?.displayUnit ?? "t/ha";
     return (
       <section className="simple-inline-setup">
         <div className="simple-inline-setup-head">
@@ -174,18 +185,42 @@ export function SimpleAreaSetup({
         </div>
         <div className="simple-inline-setup-grid">
           <label><span>Safra</span><input value={seasonLabel} onChange={(event) => setSeasonLabel(event.target.value)} placeholder="Ex.: 2026/27"/></label>
-          <label><span>Cultura</span><select value={cropProfileId} onChange={(event) => setCropProfileId(event.target.value)}><option value="">Escolha</option>{activeCropProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
-          <label><span>Sistema de manejo</span><select value={managementSystem} onChange={(event) => setManagementSystem(event.target.value)}><option value="">Escolha</option>{MANAGEMENT_SYSTEM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><small>Necessário para calagem e outras regras dependentes do manejo. “Plantio direto” genérico não é assumido automaticamente.</small></label>
+          <label><span>Cultura</span><select value={cropProfileId} onChange={(event) => { setCropProfileId(event.target.value); setYieldChoice(""); setCustomYield(""); }}><option value="">Escolha</option>{activeCropProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
+          <label className="wide">
+            <span>Quanto pretende colher? <small>(opcional)</small></span>
+            <select value={yieldChoice} onChange={(event) => setYieldChoice(event.target.value)} disabled={!selectedProfile}>
+              <option value="">Ainda não definido</option>
+              {yieldConfig?.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+              <option value="CUSTOM">Informar outra meta</option>
+            </select>
+            <small>{yieldConfig?.helper ?? "Informe uma meta própria quando desejar. A RAIZ guarda o valor em t/ha para o motor agronômico."}</small>
+          </label>
+          {yieldChoice === "CUSTOM" && (
+            <label>
+              <span>Meta desejada</span>
+              <div className="simple-context-input"><input inputMode="decimal" value={customYield} onChange={(event) => setCustomYield(event.target.value)} placeholder="Ex.: 75"/><b>{targetDisplayUnit}</b></div>
+            </label>
+          )}
+          <label>
+            <span>Sistema de preparo do solo <small>(opcional)</small></span>
+            <select value={managementSystem} onChange={(event) => setManagementSystem(event.target.value)}>
+              <option value="">Ainda não definido</option>
+              {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <small>Ajuda a refinar a calagem. Pode ficar em branco: o parecer do solo continua disponível.</small>
+          </label>
         </div>
         {activeCropProfiles.length === 0 && <div className="simple-inline-setup-error">Nenhuma cultura está disponível para análise neste momento. Isso precisa ser corrigido na configuração técnica da RAIZ.</div>}
         {error && <div className="simple-inline-setup-error">{error}</div>}
-        <button type="button" disabled={busy || !seasonLabel.trim() || !selectedProfile || !managementSystem} onClick={() => void run(async () => {
+        <button type="button" disabled={busy || !seasonLabel.trim() || !selectedProfile || (yieldChoice === "CUSTOM" && targetYieldTonPerHa == null)} onClick={() => void run(async () => {
           const payload = await postJson("/api/crop-seasons", {
             fieldId,
             seasonLabel: seasonLabel.trim(),
             nextCrop: selectedProfile?.name ?? "",
             cropProfileId: selectedProfile?.id ?? null,
-            managementSystem,
+            yieldGoal: targetYieldTonPerHa ?? null,
+            yieldGoalUnit: targetYieldTonPerHa != null ? "t/ha" : null,
+            managementSystem: managementSystem || null,
           });
           return { kind: "season" as const, id: payload.season.id as string };
         })}>{busy ? "Salvando…" : "Usar esta área"}<Icon name="check" size={14}/></button>
