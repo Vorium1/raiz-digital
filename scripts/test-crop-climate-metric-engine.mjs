@@ -56,6 +56,51 @@ const emergenceColdSoil = deriveCropClimateHazardsFromMetrics({
 });
 assert.ok(emergenceColdSoil.hazards.some((item) => item.hazard === "LOW_SOIL_TEMPERATURE"));
 
+const irrigatedSoilTemperature = deriveCropClimateHazardsFromMetrics({
+  cropCode: "MILHO",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "SOWING_EMERGENCE",
+  waterRegime: "IRRIGADO",
+  metrics: { SOIL_TEMP_C: 34 },
+  rules: [{
+    id: "MILHO-RS-IRRIGATED-SOIL-TEMP-TEST",
+    cropCode: "MILHO",
+    region: { countryCode: "BR", stateCodes: ["RS"] },
+    stages: ["SOWING_EMERGENCE"],
+    waterRegimes: ["IRRIGADO"],
+    metric: "SOIL_TEMP_C",
+    condition: { operator: "GT", value: 32 },
+    hazard: "HIGH_SOIL_TEMPERATURE",
+    source: { institution: "TEST", title: "Regra estrutural irrigada" },
+    status: "HOMOLOGATED",
+  }],
+});
+assert.equal(irrigatedSoilTemperature.hazards.length, 1);
+assert.equal(irrigatedSoilTemperature.waterRegime, "IRRIGADO");
+
+const sameRuleInRainfed = deriveCropClimateHazardsFromMetrics({
+  cropCode: "MILHO",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "SOWING_EMERGENCE",
+  waterRegime: "SEQUEIRO",
+  metrics: { SOIL_TEMP_C: 34 },
+  rules: [{
+    id: "MILHO-RS-IRRIGATED-SOIL-TEMP-TEST",
+    cropCode: "MILHO",
+    region: { countryCode: "BR", stateCodes: ["RS"] },
+    stages: ["SOWING_EMERGENCE"],
+    waterRegimes: ["IRRIGADO"],
+    metric: "SOIL_TEMP_C",
+    condition: { operator: "GT", value: 32 },
+    hazard: "HIGH_SOIL_TEMPERATURE",
+    source: { institution: "TEST", title: "Regra estrutural irrigada" },
+    status: "HOMOLOGATED",
+  }],
+});
+assert.equal(sameRuleInRainfed.hazards.length, 0);
+
 const noSoyAnalog = deriveCropClimateHazardsFromMetrics({
   cropCode: "SOJA",
   countryCode: "BR",
