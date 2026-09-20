@@ -564,12 +564,12 @@ export function evaluateSoybeanLimingFromEvidence(input: {
         : null,
   );
   const allOperationalDosesAvailable = operationalDoses.every((value): value is number => value != null && Number.isFinite(value));
-  const applyModes = unique(
+  const applyModes = [...new Set(
     sampleDecisions
       .filter((item) => item.decision === "APPLY")
       .map((item) => item.applicationMode)
       .filter((mode): mode is "INCORPORATED" | "SURFACE" => mode === "INCORPORATED" || mode === "SURFACE"),
-  );
+  )];
   const operationalApplicationMode = applyModes.length === 1 ? applyModes[0] : null;
   const operationalGeneralDoseTonHaPrnt100 = allOperationalDosesAvailable
     ? round(operationalDoses.reduce((sum, value) => sum + value, 0) / operationalDoses.length, 2)
