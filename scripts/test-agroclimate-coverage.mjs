@@ -21,6 +21,16 @@ const catalog = {
     source: { institution: "TEST", title: "Teste" },
     status: "HOMOLOGATED",
   }],
+  phenologyRules: [{
+    id: "MILHO-RS-PM-PHENOLOGY",
+    cropCode: "MILHO",
+    region: { countryCode: "BR", technicalRegionCodes: ["RS-PLANALTO-MEDIO"] },
+    cultivarCycleGroups: ["G1"],
+    stage: "FLOWERING",
+    cumulativeGdd: { min: 760, max: 840 },
+    source: { institution: "TEST", title: "Teste" },
+    status: "HOMOLOGATED",
+  }],
   diseaseProfiles: [{
     id: "MILHO-RS-PM-DISEASE",
     cropCode: "MILHO",
@@ -49,6 +59,7 @@ const full = auditAgroclimateCoverage({
 });
 assert.equal(full.status, "FULL");
 assert.equal(full.climateDecisionReady, true);
+assert.equal(full.phenologyDecisionReady, true);
 assert.equal(full.diseaseDecisionReady, true);
 assert.equal(full.zarcContextReady, true);
 assert.equal(full.researchRequired, false);
@@ -63,6 +74,7 @@ assert.equal(otherRegion.status, "NO_COVERAGE");
 assert.equal(otherRegion.climateDecisionReady, false);
 assert.equal(otherRegion.researchRequired, true);
 assert.ok(otherRegion.gaps.includes("CLIMATE_PROFILE_REQUIRED"));
+assert.ok(otherRegion.gaps.includes("PHENOLOGY_RULES_REQUIRED"));
 assert.ok(otherRegion.gaps.includes("DISEASE_PROFILE_REQUIRED"));
 
 const otherCrop = auditAgroclimateCoverage({
@@ -75,6 +87,7 @@ assert.equal(otherCrop.researchRequired, true);
 
 const partialCatalog = {
   ...catalog,
+  phenologyRules: [],
   diseaseProfiles: [],
   zarcContexts: [],
 };
@@ -85,8 +98,10 @@ const partial = auditAgroclimateCoverage({
 });
 assert.equal(partial.status, "PARTIAL");
 assert.equal(partial.climateDecisionReady, true);
+assert.equal(partial.phenologyDecisionReady, false);
 assert.equal(partial.diseaseDecisionReady, false);
 assert.equal(partial.zarcContextReady, false);
+assert.ok(partial.gaps.includes("PHENOLOGY_RULES_REQUIRED"));
 assert.ok(partial.gaps.includes("DISEASE_PROFILE_REQUIRED"));
 assert.ok(partial.gaps.includes("ZARC_CONTEXT_REQUIRED"));
 
