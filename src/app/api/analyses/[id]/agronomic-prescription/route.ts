@@ -97,6 +97,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         yieldGoal: recommendationContext.yieldGoal,
         yieldGoalUnit: recommendationContext.yieldGoalUnit,
         technologyLevel: recommendationContext.technologyLevel,
+        managementSystem: recommendationContext.managementSystem,
         cultivationOrderAfterSoilAnalysis: recommendationContext.cultivationOrderAfterSoilAnalysis,
         cropProfileCode: recommendationContext.cropProfileCode,
         updatedAt: recommendationContext.updatedAt,
