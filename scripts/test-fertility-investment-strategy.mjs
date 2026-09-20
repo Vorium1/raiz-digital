@@ -61,6 +61,8 @@ const favorable = adviseFertilityInvestmentTiming({
 });
 assert.equal(favorable.preferredStrategy, "TOTAL_AT_START");
 assert.equal(favorable.posture, "CONSIDER_ACCELERATING_VALID_CORRECTION");
+assert.equal(favorable.seasonalYieldTargetPosture, "CONSIDER_UPSIDE_SCENARIO");
+assert.equal(favorable.automaticYieldTargetChangeAllowed, false);
 assert.equal(favorable.climateCanChangeAgronomicNeed, false);
 assert.equal(favorable.maintenanceProtected, true);
 
@@ -77,6 +79,8 @@ const dryRisk = adviseFertilityInvestmentTiming({
 });
 assert.equal(dryRisk.preferredStrategy, "GRADUAL_TWO_CROPS");
 assert.equal(dryRisk.posture, "PRESERVE_CASH_WITHIN_VALID_PHASING");
+assert.equal(dryRisk.seasonalYieldTargetPosture, "CONSIDER_CONSERVATIVE_SCENARIO");
+assert.equal(dryRisk.automaticYieldTargetChangeAllowed, false);
 assert.equal(dryRisk.climateCanChangeAgronomicNeed, false);
 assert.equal(dryRisk.maintenanceProtected, true);
 
@@ -106,5 +110,7 @@ const weakSignal = adviseFertilityInvestmentTiming({
 });
 assert.equal(weakSignal.preferredStrategy, null);
 assert.equal(weakSignal.posture, "NO_CLIMATE_PREFERENCE");
+assert.equal(weakSignal.seasonalYieldTargetPosture, "KEEP_USER_TARGET_REVIEW");
+assert.equal(weakSignal.automaticYieldTargetChangeAllowed, false);
 
 console.log("fertility-investment-strategy: fluxo de caixa, clima e proteção da necessidade agronômica validados");
