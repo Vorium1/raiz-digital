@@ -32,6 +32,26 @@ assert.equal(management.effectiveLayer, 2);
 assert.equal(management.completeForRequestedDepth, true);
 assert.equal(management.limitations.length, 1);
 
+const optionalYieldAndPrep = evaluateAnalysisDepthReadiness("recomendacao-manejo", {
+  ...empty,
+  currentSoilAnalysis: true,
+  crop: true,
+  samplingDepth: true,
+  waterRegime: true,
+  managementHistory: "DECLARED_UNAVAILABLE",
+});
+assert.equal(optionalYieldAndPrep.effectiveLayer, 2);
+assert.equal(optionalYieldAndPrep.completeForRequestedDepth, true);
+assert.deepEqual(
+  optionalYieldAndPrep.missing
+    .filter((item) => item.blocks === "CALCULATION_ONLY")
+    .map((item) => item.code)
+    .sort(),
+  ["TILLAGE_SYSTEM_MISSING", "YIELD_GOAL_MISSING", "YIELD_UNIT_MISSING"].sort(),
+);
+assert.ok(optionalYieldAndPrep.limitations.some((item) => item.includes("Meta de produtividade ainda não definida")));
+assert.ok(optionalYieldAndPrep.limitations.some((item) => item.includes("Sistema de preparo do solo ainda não definido")));
+
 const incompleteField = evaluateAnalysisDepthReadiness("analise-completa-campo", {
   ...empty,
   currentSoilAnalysis: true,
