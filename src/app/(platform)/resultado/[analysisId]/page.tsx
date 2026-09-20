@@ -4,6 +4,7 @@ import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { PublishedNdviMap } from "@/components/published-ndvi-map";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
@@ -216,6 +217,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <div><small>Faixa observada</small><strong>{ndvi.minNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–{ndvi.maxNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
               <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
             </div>
+            {ndvi.rasterArchived && publishedBoundary && (
+              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any}/>
+            )}
           </section>
         )}
 
