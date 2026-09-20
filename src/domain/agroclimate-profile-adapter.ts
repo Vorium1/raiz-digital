@@ -4,6 +4,7 @@ import type {
   CropClimateProfile,
   CropClimateSeverity,
   CropPhenologicalStage,
+  CropWaterRegime,
 } from "./crop-climate-risk.ts";
 import type {
   AgroclimateMetric,
@@ -35,6 +36,7 @@ export type ActiveAgroclimateCatalogRow = {
 type ClimateRulePayload = {
   hazard: CropClimateHazard;
   stages: CropPhenologicalStage[];
+  waterRegimes?: CropWaterRegime[];
   impact: CropClimateImpact;
   severity: CropClimateSeverity;
   rationale: string;
@@ -110,6 +112,8 @@ const CLIMATE_HAZARDS = new Set<CropClimateHazard>([
   "HAIL",
   "WIND",
 ]);
+
+const WATER_REGIMES = new Set<CropWaterRegime>(["SEQUEIRO", "IRRIGADO"]);
 
 const STAGES = new Set<CropPhenologicalStage>([
   "PRE_SOWING",
@@ -268,11 +272,19 @@ function parseClimateRule(value: unknown): ClimateRulePayload | null {
   const obj = objectValue(value);
   if (!obj) return null;
   const stages = stageList(obj.stages);
+  const waterRegimes = obj.waterRegimes == null
+    ? undefined
+    : Array.isArray(obj.waterRegimes)
+      && obj.waterRegimes.length > 0
+      && obj.waterRegimes.every((item) => typeof item === "string" && WATER_REGIMES.has(item as CropWaterRegime))
+        ? obj.waterRegimes as CropWaterRegime[]
+        : null;
   if (
     typeof obj.hazard !== "string"
     || !CLIMATE_HAZARDS.has(obj.hazard as CropClimateHazard)
     || !stages
     || !stages.length
+    || waterRegimes === null
     || typeof obj.impact !== "string"
     || !IMPACTS.has(obj.impact as CropClimateImpact)
     || typeof obj.severity !== "string"
@@ -284,6 +296,7 @@ function parseClimateRule(value: unknown): ClimateRulePayload | null {
   return {
     hazard: obj.hazard as CropClimateHazard,
     stages,
+    waterRegimes: waterRegimes ?? undefined,
     impact: obj.impact as CropClimateImpact,
     severity: obj.severity as CropClimateSeverity,
     rationale: obj.rationale.trim(),
