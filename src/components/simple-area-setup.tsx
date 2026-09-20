@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { Icon } from "@/components/icon";
 import { MANAGEMENT_SYSTEM_OPTIONS } from "@/domain/management-system";
-import { manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
+import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 type Client = { id: string; name: string };
 type Property = { id: string; clientId: string; name: string; municipality: string; state: string; boundary?: object | null };
@@ -200,6 +200,11 @@ export function SimpleAreaSetup({
               <span>Meta desejada</span>
               <div className="simple-context-input"><input inputMode="decimal" value={customYield} onChange={(event) => setCustomYield(event.target.value)} placeholder="Ex.: 75"/><b>{targetDisplayUnit}</b></div>
             </label>
+          )}
+          {selectedPreset && (
+            <div className="simple-inline-setup-ok">
+              <Icon name="target" size={15}/> Para dimensionar a recomendação, a RAIZ usará o teto da faixa: {displayYieldFromTonPerHa(selectedProfile?.code, selectedPreset.targetTonPerHa)?.toLocaleString("pt-BR")} {targetDisplayUnit} ({selectedPreset.targetTonPerHa.toLocaleString("pt-BR")} t/ha).
+            </div>
           )}
           <label>
             <span>Sistema de preparo do solo <small>(opcional)</small></span>
