@@ -203,7 +203,7 @@ export function SimpleAreaSetup({
           )}
           {selectedPreset && (
             <div className="simple-inline-setup-ok">
-              <Icon name="target" size={15}/> Para dimensionar a recomendação, a RAIZ usará o teto da faixa: {displayYieldFromTonPerHa(selectedProfile?.code, selectedPreset.targetTonPerHa)?.toLocaleString("pt-BR")} {targetDisplayUnit} ({selectedPreset.targetTonPerHa.toLocaleString("pt-BR")} t/ha).
+              <Icon name="sparkles" size={15}/> Para dimensionar a recomendação, a RAIZ usará o teto da faixa: {displayYieldFromTonPerHa(selectedProfile?.code, selectedPreset.targetTonPerHa)?.toLocaleString("pt-BR")} {targetDisplayUnit} ({selectedPreset.targetTonPerHa.toLocaleString("pt-BR")} t/ha).
             </div>
           )}
           <label>
