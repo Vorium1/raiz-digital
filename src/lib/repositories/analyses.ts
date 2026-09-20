@@ -8,6 +8,21 @@ function analysisCode() {
   return `AN-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
+export class AnalysisContextError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+    this.name = "AnalysisContextError";
+  }
+}
+
+function plannedManagementNotesFromContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return "";
+  const notes = (draft as { plannedManagementNotes?: unknown }).plannedManagementNotes;
+  return typeof notes === "string" ? notes : "";
+}
+
 /** `clientId` opcional -- omitido, mantém o comportamento antigo (carteira inteira), usado por /analises,
  * /relatorios e /api/analyses. O dashboard passa o cliente filtrado na tela pra corrigir o mesmo bug real
  * do item A (seção "Fluxo de análises" ignorava o filtro de cliente selecionado). */
@@ -117,5 +132,103 @@ export async function getAnalysisById(tenantId: string, analysisId: string, user
       [analysisId],
     );
     return result.rows[0] ?? null;
+  });
+}
+
+
+export async function getAnalysisPlannedManagementNotes(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+}) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `SELECT id::text, analysis_context AS "analysisContext"
+       FROM analyses
+       WHERE tenant_id = $1::uuid AND id = $2::uuid
+       LIMIT 1`,
+      [input.tenantId, input.analysisId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      analysisId: row.id as string,
+      plannedManagementNotes: plannedManagementNotesFromContext(row.analysisContext),
+    };
+  });
+}
+
+export async function updateAnalysisPlannedManagementNotes(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+  plannedManagementNotes: string;
+}) {
+  const notes = input.plannedManagementNotes.trim();
+  if (notes.length > 5000) {
+    throw new AnalysisContextError("O manejo planejado deve ter no máximo 5.000 caracteres.", 400);
+  }
+
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `SELECT id::text, crop_season_id::text AS "cropSeasonId", analysis_context AS "analysisContext"
+       FROM analyses
+       WHERE tenant_id = $1::uuid AND id = $2::uuid
+       FOR UPDATE`,
+      [input.tenantId, input.analysisId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new AnalysisContextError("Análise não encontrada.", 404);
+
+    const currentNotes = plannedManagementNotesFromContext(row.analysisContext);
+    if (currentNotes.trim() === notes) {
+      return {
+        analysisId: row.id as string,
+        plannedManagementNotes: currentNotes,
+        changed: false,
+      };
+    }
+
+    const root = row.analysisContext && typeof row.analysisContext === "object" && !Array.isArray(row.analysisContext)
+      ? { ...row.analysisContext }
+      : {};
+    const currentDraft = (root as { draft?: unknown }).draft;
+    const draft = currentDraft && typeof currentDraft === "object" && !Array.isArray(currentDraft)
+      ? { ...currentDraft }
+      : {};
+    (draft as Record<string, unknown>).plannedManagementNotes = notes;
+    (root as Record<string, unknown>).draft = draft;
+
+    await client.query(
+      `UPDATE analyses
+       SET analysis_context = $3::jsonb, updated_at = now()
+       WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [input.tenantId, input.analysisId, JSON.stringify(root)],
+    );
+
+    // O manejo futuro é opcional, mas integra o contexto agronômico consumido pela prescrição.
+    // Tocar updated_at da safra reaproveita o mecanismo existente de freshness e impede que uma
+    // prescrição gerada com contexto anterior continue sendo tratada como corrente.
+    await client.query(
+      `UPDATE crop_seasons
+       SET updated_at = now()
+       WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+      [input.tenantId, row.cropSeasonId],
+    );
+
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "ANALYSIS_PLANNED_MANAGEMENT_UPDATED",
+      entityType: "analysis",
+      entityId: row.id,
+      metadata: { hasContent: notes.length > 0, characterCount: notes.length },
+    });
+
+    return {
+      analysisId: row.id as string,
+      plannedManagementNotes: notes,
+      changed: true,
+    };
   });
 }
