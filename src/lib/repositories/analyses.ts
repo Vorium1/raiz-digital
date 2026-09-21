@@ -4,6 +4,7 @@ import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
+import { parseWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 
 function analysisCode() {
   const year = new Date().getFullYear();
@@ -24,6 +25,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
+      wheatBuyerQualityContext: parseWheatBuyerQualityContext(null),
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -33,6 +35,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
+      wheatBuyerQualityContext: parseWheatBuyerQualityContext(null),
     };
   }
 
@@ -40,6 +43,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     plannedManagementNotes?: unknown;
     fertilityPlanningHorizonYears?: unknown;
     fertilityCyclePlanNotes?: unknown;
+    wheatBuyerQualityContext?: unknown;
   };
   const horizon = Number(source.fertilityPlanningHorizonYears);
   return {
@@ -47,6 +51,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     fertilityPlanningHorizonYears: [2, 3, 4, 5].includes(horizon) ? horizon as 2 | 3 | 4 | 5 : null,
     fertilityCyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" ? source.fertilityCyclePlanNotes : "",
     irrigationApplications: irrigationApplicationsFromContext(value) ?? [],
+    wheatBuyerQualityContext: parseWheatBuyerQualityContext(source.wheatBuyerQualityContext),
   };
 }
 
@@ -194,7 +199,18 @@ export async function updateAnalysisPlanningContext(input: {
   fertilityCyclePlanNotes?: string;
   irrigationApplications?: unknown;
   expectedIrrigationApplications?: unknown;
+  wheatBuyerQualityContext?: unknown;
+  expectedWheatBuyerQualityContext?: unknown;
 }) {
+  let nextBuyerQualityContext: ReturnType<typeof parseWheatBuyerQualityContext> | undefined;
+  if (input.wheatBuyerQualityContext !== undefined) {
+    try { nextBuyerQualityContext = parseWheatBuyerQualityContext(input.wheatBuyerQualityContext); }
+    catch (error) { throw new AnalysisContextError(error instanceof Error ? error.message : "Contexto de comprador inválido.", 400); }
+    if (input.expectedWheatBuyerQualityContext === undefined) {
+      throw new AnalysisContextError("Recarregue o contexto antes de editar o protocolo de comprador.", 409);
+    }
+  }
+
   let nextApplications: ReturnType<typeof parseIrrigationApplications> | undefined;
   if (input.irrigationApplications !== undefined) {
     try { nextApplications = parseIrrigationApplications(input.irrigationApplications); }
@@ -225,6 +241,7 @@ export async function updateAnalysisPlanningContext(input: {
     && input.fertilityPlanningHorizonYears === undefined
     && input.fertilityCyclePlanNotes === undefined
     && input.irrigationApplications === undefined
+    && input.wheatBuyerQualityContext === undefined
   ) {
     throw new AnalysisContextError("Nenhum campo de planejamento foi informado.", 400);
   }
@@ -244,8 +261,18 @@ export async function updateAnalysisPlanningContext(input: {
     if (nextApplications !== undefined && !isDeepStrictEqual(input.expectedIrrigationApplications, current.irrigationApplications)) {
       throw new AnalysisContextError("As aplicações de irrigação foram alteradas em outra sessão. Recarregue antes de salvar.", 409);
     }
+    if (
+      nextBuyerQualityContext !== undefined
+      && !isDeepStrictEqual(
+        parseWheatBuyerQualityContext(input.expectedWheatBuyerQualityContext),
+        current.wheatBuyerQualityContext,
+      )
+    ) {
+      throw new AnalysisContextError("O protocolo de comprador do trigo foi alterado em outra sessão. Recarregue antes de salvar.", 409);
+    }
     const next = {
       irrigationApplications: nextApplications ?? current.irrigationApplications,
+      wheatBuyerQualityContext: nextBuyerQualityContext ?? current.wheatBuyerQualityContext,
       plannedManagementNotes: input.plannedManagementNotes === undefined
         ? current.plannedManagementNotes
         : (nextPlannedManagement ?? ""),
@@ -259,6 +286,7 @@ export async function updateAnalysisPlanningContext(input: {
 
     const changedFields: string[] = [];
     if (!isDeepStrictEqual(next.irrigationApplications, current.irrigationApplications)) changedFields.push("irrigationApplications");
+    if (!isDeepStrictEqual(next.wheatBuyerQualityContext, current.wheatBuyerQualityContext)) changedFields.push("wheatBuyerQualityContext");
     if (next.plannedManagementNotes !== current.plannedManagementNotes.trim()) changedFields.push("plannedManagementNotes");
     if (next.fertilityPlanningHorizonYears !== current.fertilityPlanningHorizonYears) changedFields.push("fertilityPlanningHorizonYears");
     if (next.fertilityCyclePlanNotes !== current.fertilityCyclePlanNotes.trim()) changedFields.push("fertilityCyclePlanNotes");
@@ -279,6 +307,7 @@ export async function updateAnalysisPlanningContext(input: {
     (draft as Record<string, unknown>).fertilityPlanningHorizonYears = next.fertilityPlanningHorizonYears;
     (draft as Record<string, unknown>).fertilityCyclePlanNotes = next.fertilityCyclePlanNotes;
     if (nextApplications !== undefined) (draft as Record<string, unknown>).irrigationApplications = nextApplications;
+    if (nextBuyerQualityContext !== undefined) (draft as Record<string, unknown>).wheatBuyerQualityContext = nextBuyerQualityContext;
     (root as Record<string, unknown>).draft = draft;
 
     await client.query(
@@ -307,6 +336,7 @@ export async function updateAnalysisPlanningContext(input: {
       metadata: {
         changedFields,
         irrigationApplicationCount: Array.isArray(next.irrigationApplications) ? next.irrigationApplications.length : null,
+        wheatBuyerQualityProtocolId: next.wheatBuyerQualityContext.protocolId || null,
         fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
         hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
         hasPlannedManagement: next.plannedManagementNotes.length > 0,
