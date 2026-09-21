@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, selectPromotableLabRows, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
@@ -16,8 +16,7 @@ async function promoteRowsToLabResults(
     sampleType: LabSampleType;
   },
 ) {
-  const blockedLines = new Set(input.issues.filter((issue) => issue.severity === "BLOCKER" && issue.line != null).map((issue) => issue.line));
-  const promotable = input.rows.filter((row) => !blockedLines.has(row.sourceLine));
+  const promotable = selectPromotableLabRows(input.rows, input.issues);
   if (promotable.length === 0) return { promotedSamples: 0, promotedResults: 0 };
 
   const analysisResult = await client.query<{ collectionOrderId: string | null }>(
