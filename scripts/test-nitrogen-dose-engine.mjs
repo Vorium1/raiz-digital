@@ -47,6 +47,9 @@ const wheat = computeWheatNitrogenRecommendation({ organicMatterPct: 2, precedin
 assert.equal(wheat.status, "READY_FOR_IMPLEMENTATION");
 assert.deepEqual(wheat.dose, { kind: "EXACT", kgNPerHa: 80 });
 assert.deepEqual(wheat.sowingRangeKgNPerHa, { min: 15, max: 20 });
+assert.equal(wheat.qualityObjective?.status, "NOT_REQUESTED");
+assert.equal(wheat.qualityObjective?.requested, false);
+assert.equal(wheat.qualityObjective?.automaticAdditionalDoseAllowed, false);
 
 const wheatHighOm = computeWheatNitrogenRecommendation({ organicMatterPct: 5.5, precedingCrop: "CORN", targetYieldTonPerHa: 4 });
 assert.equal(wheatHighOm.status, "REQUIRES_AGRONOMIST_REVIEW");
