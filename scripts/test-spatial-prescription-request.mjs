@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { evaluateSpatialPrescriptionRequest } from "../src/domain/spatial-prescription-request.ts";
+import { evaluateSpatialEvidenceEnvelope, evaluateSpatialPrescriptionRequest } from "../src/domain/spatial-prescription-request.ts";
 
 const normalAnalysis = evaluateSpatialPrescriptionRequest({
   explicitRequested: false,
@@ -208,5 +208,87 @@ const collinear = evaluateSpatialPrescriptionRequest({
 });
 assert.equal(collinear.canGenerateVariableRate, false);
 assert.ok(collinear.blockers.includes("SAMPLE_DISTRIBUTION_INVALID"));
+
+const spatialEnvelopeNotRequested = evaluateSpatialEvidenceEnvelope({
+  explicitRequested: false,
+  hasFieldBoundary: true,
+  totalPointCount: 120,
+  reliablePointCount: 120,
+  reliableLabLinkedPointCount: 120,
+  distinctReliableLabCoordinateCount: 120,
+  sampleDistribution: "DISTRIBUTED",
+});
+assert.equal(spatialEnvelopeNotRequested.status, "NOT_REQUESTED");
+assert.deepEqual(spatialEnvelopeNotRequested.limitations, []);
+assert.equal(spatialEnvelopeNotRequested.automaticVariableRateAllowed, false);
+
+const spatialEnvelopeTwoPoints = evaluateSpatialEvidenceEnvelope({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  totalPointCount: 2,
+  reliablePointCount: 2,
+  reliableLabLinkedPointCount: 2,
+  distinctReliableLabCoordinateCount: 2,
+  sampleDistribution: "UNKNOWN",
+});
+assert.equal(spatialEnvelopeTwoPoints.status, "POINTS_ONLY");
+assert.ok(spatialEnvelopeTwoPoints.limitations.includes("INSUFFICIENT_POINTS_FOR_2D_SURFACE"));
+
+const spatialEnvelopeExploratory = evaluateSpatialEvidenceEnvelope({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  totalPointCount: 20,
+  reliablePointCount: 18,
+  reliableLabLinkedPointCount: 17,
+  distinctReliableLabCoordinateCount: 16,
+  sampleDistribution: "DISTRIBUTED",
+});
+assert.equal(spatialEnvelopeExploratory.status, "EXPLORATORY_ONLY");
+assert.ok(spatialEnvelopeExploratory.limitations.includes("UNRELIABLE_COORDINATES_EXCLUDED"));
+assert.ok(spatialEnvelopeExploratory.limitations.includes("POINTS_WITHOUT_LAB_EVIDENCE_EXCLUDED"));
+assert.ok(spatialEnvelopeExploratory.limitations.includes("DUPLICATE_SPATIAL_SUPPORT_EXCLUDED"));
+assert.ok(spatialEnvelopeExploratory.limitations.includes("EXPLORATORY_ONLY_WITH_FEW_POINTS"));
+
+const spatialEnvelopeCollinear = evaluateSpatialEvidenceEnvelope({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  totalPointCount: 80,
+  reliablePointCount: 80,
+  reliableLabLinkedPointCount: 80,
+  distinctReliableLabCoordinateCount: 80,
+  sampleDistribution: "COLLINEAR",
+});
+assert.equal(spatialEnvelopeCollinear.status, "POINTS_ONLY");
+assert.ok(spatialEnvelopeCollinear.limitations.includes("SAMPLE_DISTRIBUTION_COLLINEAR"));
+
+const spatialEnvelopeCandidate = evaluateSpatialEvidenceEnvelope({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  totalPointCount: 80,
+  reliablePointCount: 80,
+  reliableLabLinkedPointCount: 80,
+  distinctReliableLabCoordinateCount: 80,
+  sampleDistribution: "DISTRIBUTED",
+});
+assert.equal(spatialEnvelopeCandidate.status, "INTERPOLATION_CANDIDATE");
+assert.equal(spatialEnvelopeCandidate.automaticInterpolationAllowed, false);
+assert.equal(spatialEnvelopeCandidate.automaticVariableRateAllowed, false);
+assert.ok(spatialEnvelopeCandidate.limitations.includes("TARGET_ATTRIBUTE_AND_METHOD_SELECTION_REQUIRED"));
+assert.ok(spatialEnvelopeCandidate.limitations.includes("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"));
+
+const methodlessCountPolicy = evaluateSpatialPrescriptionRequest({
+  explicitRequested: true,
+  hasFieldBoundary: true,
+  hasReliableSampleCoordinates: true,
+  activeSpatialPolicyId: "policy-rs-sc-v1",
+  sampleCount: 70,
+  hasSampleDepth: true,
+  hasAnalyticalMethod: true,
+  attributeQualityValidated: true,
+  sampleDistribution: "DISTRIBUTED",
+  requestedSpatialMethod: null,
+});
+assert.equal(methodlessCountPolicy.policy.interpolationClass, "CANDIDATE_REVIEW");
+assert.equal(methodlessCountPolicy.canGenerateVariableRate, false);
 
 console.log("spatial-prescription-request: VRA opt-in, <50 exploratório, CV e aprovação humana final; no-extrapolation enforced");
