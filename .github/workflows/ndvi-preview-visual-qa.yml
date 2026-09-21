@@ -1,6 +1,11 @@
 name: NDVI Preview Visual QA
 
 on:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/ndvi-preview-visual-qa.yml"
   workflow_dispatch:
     inputs:
       preview_url:
@@ -28,11 +33,11 @@ jobs:
     environment: homologation
     timeout-minutes: 20
     env:
-      E2E_BASE_URL: ${{ inputs.preview_url }}
-      E2E_ADMIN_EMAIL: ${{ inputs.admin_email }}
+      E2E_BASE_URL: ${{ inputs.preview_url || 'https://raiz-digital-git-feature-u-6a3ad7-guilherme-figueiredo-lagaggio.vercel.app' }}
+      E2E_ADMIN_EMAIL: ${{ inputs.admin_email || 'admin@raiz.local' }}
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      E2E_EXPECT_GOOGLE_MAPS: ${{ inputs.expect_google_maps && '1' || '0' }}
+      E2E_EXPECT_GOOGLE_MAPS: ${{ github.event_name == 'push' && '1' || (inputs.expect_google_maps && '1' || '0') }}
 
     steps:
       - name: Checkout do SHA acionado
