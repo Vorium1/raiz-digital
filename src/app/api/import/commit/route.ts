@@ -1,6 +1,6 @@
 import { compactLabImportPreview, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { getPlatformSession } from "@/lib/auth/session";
-import { commitCsvImport } from "@/lib/repositories/imports";
+import { commitCsvImport, type LabSampleType } from "@/lib/repositories/imports";
 import { RawImportPersistenceError } from "@/lib/storage";
 
 const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.functionPayloadBytes;
@@ -25,10 +25,18 @@ export async function POST(request: Request) {
       fallbackMethod?: string;
       hasAgronomicContext?: boolean;
       spatialLinked?: boolean;
+      sampleType?: LabSampleType;
     };
 
     if (!body.analysisId || typeof body.content !== "string" || !body.content.trim()) {
       return Response.json({ error: "Análise e conteúdo do laudo são obrigatórios." }, { status: 400 });
+    }
+
+    const allowedSampleTypes = new Set<LabSampleType>([
+      "SOLO", "FOLIAR", "PECIOLO", "MASSA_SECA", "GRAO", "SEMENTE", "FERTILIZANTE", "BIOLOGICO",
+    ]);
+    if (body.sampleType != null && !allowedSampleTypes.has(body.sampleType)) {
+      return Response.json({ error: "Tipo de amostra não reconhecido." }, { status: 400 });
     }
 
     const result = await commitCsvImport({
@@ -40,6 +48,7 @@ export async function POST(request: Request) {
       fallbackMethod: body.fallbackMethod,
       hasAgronomicContext: body.hasAgronomicContext,
       spatialLinked: body.spatialLinked,
+      sampleType: body.sampleType,
     });
 
     // O commit processa/persiste todas as linhas, mas a resposta HTTP devolve somente uma amostra do
