@@ -1,4 +1,4 @@
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, evaluateLabImportUsability, isSpreadsheetFileName } from "@/domain/lab-import";
 import { compactLabImportPreview, jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { getPlatformSession } from "@/lib/auth/session";
 import { isDatabaseMode } from "@/lib/data-mode";
@@ -71,6 +71,7 @@ export async function POST(request: Request) {
 
     const responsePayload = {
       ...compactLabImportPreview(preview),
+      usability: evaluateLabImportUsability(preview),
       transportContent,
       sourceArchived: Boolean(stored),
     };
