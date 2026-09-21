@@ -35,3 +35,28 @@ export function evaluatePrescriptionContextFreshness(input: {
 
   return { current: true, reason: null };
 }
+
+
+/**
+ * Uma prescrição só permanece corrente quando aponta para a mesma execução
+ * determinística de N que era vigente no snapshot da geração.
+ *
+ * null === null é válido: análises sem execução de N não são forçadas a criar
+ * uma. O que invalida o snapshot é a execução mudar depois.
+ */
+export function evaluateNitrogenExecutionSnapshotFreshness(input: {
+  generationExecutionId: string | null | undefined;
+  currentExecutionId: string | null | undefined;
+}): PrescriptionContextFreshness {
+  const generationExecutionId = input.generationExecutionId?.trim() || null;
+  const currentExecutionId = input.currentExecutionId?.trim() || null;
+
+  if (generationExecutionId !== currentExecutionId) {
+    return {
+      current: false,
+      reason: "A execução determinística de nitrogênio mudou depois desta geração. Gere uma nova versão para refletir o cálculo corrente.",
+    };
+  }
+
+  return { current: true, reason: null };
+}
