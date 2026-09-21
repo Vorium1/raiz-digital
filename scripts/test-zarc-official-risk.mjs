@@ -141,4 +141,9 @@ assert.throws(
   /ZARC_CSV_REQUIRED_HEADERS_MISSING/,
 );
 
+assert.throws(
+  ()=>parseMapaZarcCsv([headers.join(";"),row({dec1:"25"})].join("\n"),context),
+  /risco não homologado em dec1/,
+);
+
 console.log("zarc-official-risk: códigos explícitos, CSV, decêndio e risco 20/30/40 validados");
