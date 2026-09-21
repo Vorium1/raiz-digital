@@ -113,7 +113,8 @@
     "test:soil-biology-method-registry": "node --experimental-strip-types scripts/test-national-soil-biology-method-registry.mjs",
     "test:biological-functional-evidence": "node --experimental-strip-types scripts/test-biological-functional-evidence.mjs",
     "test:agronomic-input-evidence": "node --experimental-strip-types scripts/test-agronomic-input-evidence.mjs",
-    "test:irrigation-context": "node --experimental-strip-types scripts/test-irrigation-context.mjs",\n    "test:irrigation-water-assessment": "node --experimental-strip-types scripts/test-irrigation-water-assessment.mjs",
+    "test:irrigation-context": "node --experimental-strip-types scripts/test-irrigation-context.mjs",
+    "test:irrigation-water-assessment": "node --experimental-strip-types scripts/test-irrigation-water-assessment.mjs",
     "test:soil-microbiology-lab-adapter": "node --experimental-strip-types scripts/test-soil-microbiology-lab-adapter.mjs",
     "test:irrigation-applications": "node --experimental-strip-types scripts/test-irrigation-applications.mjs"
   },
