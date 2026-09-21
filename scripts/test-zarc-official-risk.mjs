@@ -71,7 +71,7 @@ const coreRows=parseMapaZarcCsv([
   row({Nome_cultura:"Soja",municipio:"Passo Fundo",Cod_Ciclo:"20"}),
   row({Nome_cultura:"SOJA",municipio:"PASSO FUNDO",Cod_Ciclo:"21"}),
   row({Nome_cultura:"Sojá",municipio:"Passo Fundo",Cod_Ciclo:"22"}),
-]);
+].join("\n"));
 const core=resolveZarcOfficialCoreFromRows({
   rows:coreRows,seasonStartYear:2026,seasonEndYear:2027,
   cropName:"soja",municipalityName:"passo fundo",stateCode:"rs",
@@ -163,7 +163,7 @@ const envelopeRows=parseMapaZarcCsv([
   row({Cod_Ciclo:"20",Cod_Solo:"13",dec1:"20"}),
   row({Cod_Ciclo:"21",Cod_Solo:"13",dec1:"20"}),
   row({Cod_Ciclo:"22",Cod_Solo:"13",dec1:"20"}),
-]);
+].join("\n"));
 const consensusEnvelope=assessZarcRiskEnvelope(envelopeRows,{
   seasonStartYear:2026,seasonEndYear:2027,cropCode:60,
   ibgeMunicipalityCode:"4314100",stateCode:"RS",
@@ -179,7 +179,7 @@ const variableRows=parseMapaZarcCsv([
   row({Cod_Ciclo:"20",Cod_Solo:"13",dec1:"20"}),
   row({Cod_Ciclo:"21",Cod_Solo:"13",dec1:"30"}),
   row({Cod_Ciclo:"22",Cod_Solo:"13",dec1:""}),
-]);
+].join("\n"));
 const variableEnvelope=assessZarcRiskEnvelope(variableRows,{
   seasonStartYear:2026,seasonEndYear:2027,cropCode:60,
   ibgeMunicipalityCode:"4314100",stateCode:"RS",
