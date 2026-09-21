@@ -3,6 +3,7 @@ import {
   assessZarcPlantingDate,
   assessZarcRiskEnvelope,
   parseMapaZarcCsv,
+  resolveZarcOfficialCoreFromRows,
   selectExactZarcRiskRow,
   validateZarcOfficialContext,
   zarcDecadeForCivilDate,
@@ -64,6 +65,39 @@ const exact=selectExactZarcRiskRow(parsed,context);
 assert.equal(exact.status,"READY");
 assert.equal(exact.exactMatchCount,1);
 assert.equal(exact.row?.municipalityName,"Passo Fundo");
+
+const coreRows=parseMapaZarcCsv([
+  headers.join(";"),
+  row({Nome_cultura:"Soja",municipio:"Passo Fundo",Cod_Ciclo:"20"}),
+  row({Nome_cultura:"SOJA",municipio:"PASSO FUNDO",Cod_Ciclo:"21"}),
+  row({Nome_cultura:"Sojá",municipio:"Passo Fundo",Cod_Ciclo:"22"}),
+]);
+const core=resolveZarcOfficialCoreFromRows({
+  rows:coreRows,seasonStartYear:2026,seasonEndYear:2027,
+  cropName:"soja",municipalityName:"passo fundo",stateCode:"rs",
+});
+assert.equal(core.status,"READY");
+assert.equal(core.cropCode,60);
+assert.equal(core.ibgeMunicipalityCode,"4314100");
+assert.equal(core.stateCode,"RS");
+
+const coreMissing=resolveZarcOfficialCoreFromRows({
+  rows:coreRows,seasonStartYear:2026,seasonEndYear:2027,
+  cropName:"milho",municipalityName:"Passo Fundo",stateCode:"RS",
+});
+assert.equal(coreMissing.status,"NO_MATCH");
+assert.equal(coreMissing.cropCode,null);
+
+const ambiguousCore=resolveZarcOfficialCoreFromRows({
+  rows:[
+    ...coreRows,
+    {...coreRows[0],cropCode:61},
+  ],
+  seasonStartYear:2026,seasonEndYear:2027,
+  cropName:"soja",municipalityName:"Passo Fundo",stateCode:"RS",
+});
+assert.equal(ambiguousCore.status,"AMBIGUOUS_OFFICIAL_MAPPING");
+assert.equal(ambiguousCore.cropCode,null);
 
 const noExact=selectExactZarcRiskRow(parsed,{...context,soilCode:15});
 assert.equal(noExact.status,"NO_EXACT_MATCH");
