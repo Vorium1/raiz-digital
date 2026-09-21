@@ -59,6 +59,7 @@ export function SimpleRecommendationContext({
   const [irrigationReadError, setIrrigationReadError] = useState("");
   const [wheatBuyerQualityContext, setWheatBuyerQualityContext] = useState<WheatBuyerQualityContext>({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
   const [initialWheatBuyerQualityContext, setInitialWheatBuyerQualityContext] = useState<WheatBuyerQualityContext>({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
+  const [initialWheatBuyerQualityContextRaw, setInitialWheatBuyerQualityContextRaw] = useState<unknown>(null);
   const [wheatBuyerReadError, setWheatBuyerReadError] = useState("");
 
   useEffect(() => {
@@ -85,10 +86,12 @@ export function SimpleRecommendationContext({
           const buyerContext = parseWheatBuyerQualityContext(planning.wheatBuyerQualityContext);
           setWheatBuyerQualityContext(buyerContext);
           setInitialWheatBuyerQualityContext(buyerContext);
+          setInitialWheatBuyerQualityContextRaw(planning.wheatBuyerQualityContext ?? null);
         } catch {
-          setWheatBuyerReadError("Há um contexto antigo/inválido de comprador. Ele foi preservado; o restante do parecer continua disponível.");
+          setWheatBuyerReadError("Há um contexto antigo/inválido de comprador. Ele foi preservado; você pode selecionar novamente o protocolo para corrigir, sem afetar o restante do parecer.");
           setWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
           setInitialWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
+          setInitialWheatBuyerQualityContextRaw(planning.wheatBuyerQualityContext ?? null);
         }
         const notes = String(planning.plannedManagementNotes ?? "");
         const horizon = planning.fertilityPlanningHorizonYears == null ? "" : String(planning.fertilityPlanningHorizonYears);
@@ -128,7 +131,6 @@ export function SimpleRecommendationContext({
     && fertilityCyclePlanNotes.trim() !== initialFertilityCyclePlanNotes.trim();
   const irrigationChanged = plannedLoaded && !irrigationReadError && JSON.stringify(irrigationApplications) !== JSON.stringify(parseIrrigationApplications(initialIrrigationApplications));
   const wheatBuyerChanged = plannedLoaded
-    && !wheatBuyerReadError
     && JSON.stringify(wheatBuyerQualityContext) !== JSON.stringify(initialWheatBuyerQualityContext);
   const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged || wheatBuyerChanged;
   const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
@@ -156,7 +158,7 @@ export function SimpleRecommendationContext({
         }
         if (wheatBuyerChanged) {
           planningPatch.wheatBuyerQualityContext = wheatBuyerQualityContext;
-          planningPatch.expectedWheatBuyerQualityContext = initialWheatBuyerQualityContext;
+          planningPatch.expectedWheatBuyerQualityContext = initialWheatBuyerQualityContextRaw;
         }
 
         const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
@@ -175,6 +177,7 @@ export function SimpleRecommendationContext({
           const savedBuyerContext = parseWheatBuyerQualityContext(saved.wheatBuyerQualityContext);
           setWheatBuyerQualityContext(savedBuyerContext);
           setInitialWheatBuyerQualityContext(savedBuyerContext);
+          setInitialWheatBuyerQualityContextRaw(saved.wheatBuyerQualityContext ?? null);
         }
         const savedNotes = String(saved.plannedManagementNotes ?? plannedManagement.trim());
         const savedHorizon = saved.fertilityPlanningHorizonYears == null ? "" : String(saved.fertilityPlanningHorizonYears);
@@ -234,7 +237,7 @@ export function SimpleRecommendationContext({
               <span>Comprador/protocolo industrial <small>(opcional)</small></span>
               <select
                 value={wheatBuyerQualityContext.protocolId}
-                disabled={!plannedLoaded || busy || Boolean(wheatBuyerReadError)}
+                disabled={!plannedLoaded || busy}
                 onChange={(event) => setWheatBuyerQualityContext((current) => ({
                   ...current,
                   protocolId: event.target.value as WheatBuyerQualityContext["protocolId"],
