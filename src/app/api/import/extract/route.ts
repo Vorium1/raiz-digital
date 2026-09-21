@@ -1,4 +1,4 @@
-import { buildLabImportPreview } from "@/domain/lab-import";
+import { buildLabImportPreview, evaluateLabImportUsability } from "@/domain/lab-import";
 import { compactLabImportPreview, jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 import { geminiLabExtractionProvider } from "@/lib/ai/providers/gemini-lab-extraction-provider";
 import { getPlatformSession } from "@/lib/auth/session";
@@ -70,6 +70,7 @@ export async function POST(request: Request) {
 
     const responsePayload = {
       ...compactLabImportPreview(preview),
+      usability: evaluateLabImportUsability(preview),
       aiExtracted: true,
       aiProvider: extraction.provider,
       aiModel: extraction.model,
