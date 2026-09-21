@@ -131,6 +131,54 @@ export type LabImportContext = {
   fallbackMethod?: string;
 };
 
+export type LabImportUsability = {
+  promotableRowCount: number;
+  excludedRowCount: number;
+  localizedBlockerCount: number;
+  fatalBlockerCount: number;
+  canProceedWithPartialEvidence: boolean;
+  fullyUsable: boolean;
+};
+
+/**
+ * Distingue bloqueio localizado de falha estrutural do arquivo.
+ *
+ * Um blocker com linha conhecida invalida somente a linha correspondente;
+ * as demais evidências podem seguir para o motor. Um blocker sem linha é
+ * tratado como estrutural/fatal (ex.: arquivo sem coluna de amostra ou sem
+ * resultados utilizáveis) e impede promoção parcial.
+ */
+export function selectPromotableLabRows(
+  rows: LabImportRow[],
+  issues: LabImportIssue[],
+): LabImportRow[] {
+  if (issues.some((issue) => issue.severity === "BLOCKER" && issue.line == null)) return [];
+  const blockedLines = new Set(
+    issues
+      .filter((issue) => issue.severity === "BLOCKER" && issue.line != null)
+      .map((issue) => issue.line as number),
+  );
+  return rows.filter((row) => !blockedLines.has(row.sourceLine));
+}
+
+export function evaluateLabImportUsability(
+  preview: Pick<LabImportPreview, "rows" | "issues">,
+): LabImportUsability {
+  const blockerIssues = preview.issues.filter((issue) => issue.severity === "BLOCKER");
+  const fatalBlockerCount = blockerIssues.filter((issue) => issue.line == null).length;
+  const localizedBlockerCount = blockerIssues.length - fatalBlockerCount;
+  const promotableRowCount = selectPromotableLabRows(preview.rows, preview.issues).length;
+  const excludedRowCount = Math.max(0, preview.rows.length - promotableRowCount);
+  return {
+    promotableRowCount,
+    excludedRowCount,
+    localizedBlockerCount,
+    fatalBlockerCount,
+    canProceedWithPartialEvidence: fatalBlockerCount === 0 && promotableRowCount > 0,
+    fullyUsable: blockerIssues.length === 0 && promotableRowCount > 0,
+  };
+}
+
 const PARAMETER_ALIASES: Record<string, string> = {
   ph: "PH",
   phagua: "PH",
