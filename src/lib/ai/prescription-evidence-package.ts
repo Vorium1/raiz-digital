@@ -22,6 +22,7 @@ import { evaluateStoredWheatBuyerQualityContext } from "@/domain/wheat-buyer-qua
 import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/domain/spatial-prescription-request";
 import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evidence";
 import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
+import { compareAllValidatedSpatialMethods } from "@/domain/spatial-interpolation-comparison";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -62,6 +63,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   spatialEvidenceEnvelope: ReturnType<typeof evaluateSpatialEvidenceEnvelope>;
   spatialAttributeEvidence: Array<ReturnType<typeof evaluateSpatialAttributeEvidence>>;
   spatialInterpolationValidationEvidence: ReturnType<typeof evaluateStoredSpatialInterpolationValidations>;
+  spatialMethodComparisons: ReturnType<typeof compareAllValidatedSpatialMethods>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -557,6 +559,10 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       attributes: spatialAttributeEvidence,
     });
 
+    const spatialMethodComparisons = compareAllValidatedSpatialMethods(
+      spatialInterpolationValidationEvidence,
+    );
+
     const nitrogenOrganicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(
       resultsResult.rows
         .filter((row) => new Set(["OM", "MO", "ORGANIC_MATTER"]).has(String(row.parameterCode).trim().toUpperCase()))
@@ -712,6 +718,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       spatialEvidenceEnvelope,
       spatialAttributeEvidence,
       spatialInterpolationValidationEvidence,
+      spatialMethodComparisons,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
