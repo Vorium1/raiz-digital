@@ -74,6 +74,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     value: number;
     unit: string;
     method: string;
+    sampleType?: string | null;
     protocol?: string | null;
     depthFromCm?: number | null;
     depthToCm?: number | null;
@@ -212,7 +213,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
 
     const [resultsResult, interpretationResult] = await Promise.all([
       client.query(
-        `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode",
+        `SELECT ls.laboratory_code AS "sampleCode", ls.sample_type AS "sampleType",
+                lr.parameter_code AS "parameterCode",
                 lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
                 lr.original_payload->>'protocol' AS protocol,
                 sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
