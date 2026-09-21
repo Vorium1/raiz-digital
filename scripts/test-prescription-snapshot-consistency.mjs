@@ -53,6 +53,9 @@ assert.equal(evaluatePrescriptionDraftSnapshotConsistency({
 
 // Contrato da corrida com o provedor: depois da chamada externa, contexto e laudo são relidos antes de persistir.
 const workflowSource = readFileSync(new URL("../src/lib/workflows/agronomic-prescription-draft.ts", import.meta.url), "utf8");
+const planningRepositorySource = readFileSync(new URL("../src/lib/repositories/analyses.ts", import.meta.url), "utf8");
+const generationRepositorySource = readFileSync(new URL("../src/lib/repositories/prescription-generation.ts", import.meta.url), "utf8");
+const freshnessRepositorySource = readFileSync(new URL("../src/lib/repositories/prescription-freshness.ts", import.meta.url), "utf8");
 const providerIndex = workflowSource.indexOf("await provider.prescribe");
 const afterProviderIndex = workflowSource.indexOf("interpretationAfterProvider");
 const persistIndex = workflowSource.indexOf("recordAgronomicPrescriptionGenerationSafely({");
@@ -63,5 +66,22 @@ assert.match(workflowSource, /evidenceAfterProvider\.freshness\.current/);
 assert.match(workflowSource, /A resposta antiga foi descartada/);
 assert.match(workflowSource, /validatePrescriptionPkRecommendations/);
 assert.match(workflowSource, /A geração foi descartada e nada foi salvo/);
+assert.match(workflowSource, /planningFreshnessBeforeProvider/);
+assert.match(workflowSource, /planningFreshnessAfterProvider/);
+assert.match(workflowSource, /expectedAnalysisContextFingerprint:\s*evidence\.analysis\.contextFingerprint/);
+assert.match(generationRepositorySource, /analysisContextFingerprint/);
+assert.match(generationRepositorySource, /evaluateAnalysisContextFingerprintFreshness/);
+assert.match(freshnessRepositorySource, /generationAnalysisContextFingerprint/);
+assert.match(freshnessRepositorySource, /currentAnalysisContextFingerprint/);
+
+const planningUpdateIndex = planningRepositorySource.indexOf("export async function updateAnalysisPlanningContext");
+assert.ok(planningUpdateIndex >= 0);
+const planningUpdateSource = planningRepositorySource.slice(planningUpdateIndex);
+assert.doesNotMatch(
+  planningUpdateSource,
+  /UPDATE crop_seasons\s+SET updated_at = now\(\)/,
+  "refinamento opcional não pode invalidar o motor de N tocando a safra",
+);
+assert.match(planningRepositorySource, /md5\(coalesce\(analysis_context, '\{\}'::jsonb\)::text\) AS "contextFingerprint"/);
 
 console.log("prescription-snapshot-consistency: draft aceita IN_REVIEW/APPROVED; mudanças durante o provedor são descartadas antes de persistir");
