@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter } from "@/components/lab-importer";
-import type { LabImportPreview } from "@/domain/lab-import";
+import type { LabImportPreview, LabSampleType } from "@/domain/lab-import";
 
 type PreviewWithCounts = LabImportPreview & {
   normalizedRowCount?: number;
@@ -34,6 +34,7 @@ export function ExistingAnalysisImporter({
 }: Props) {
   const router = useRouter();
   const [method, setMethod] = useState("Mehlich-1");
+  const [sampleType, setSampleType] = useState<LabSampleType>("SOLO");
   const [preview, setPreview] = useState<PreviewWithCounts | null>(null);
   const [importFile, setImportFile] = useState<{ fileName: string; content: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,6 +56,7 @@ export function ExistingAnalysisImporter({
           fileName: importFile.fileName,
           fallbackMethod: method || undefined,
           hasAgronomicContext,
+          sampleType,
           // Vínculo espacial nunca é inferido pela tela de upload. Só proveniência persistida pode liberá-lo.
           spatialLinked: false,
         }),
@@ -98,6 +100,22 @@ export function ExistingAnalysisImporter({
                   <option>Resina</option>
                   <option>KCl 1 mol/L</option>
                   <option>Acetato de cálcio</option>
+                </select>
+              </span>
+            </div>
+            <div>
+              <Icon name="database" />
+              <span>
+                <strong>Tipo de amostra</strong>
+                <select value={sampleType} onChange={(event) => setSampleType(event.target.value as LabSampleType)} disabled={saving}>
+                  <option value="SOLO">Solo</option>
+                  <option value="BIOLOGICO">Biológico / microbiologia / raiz</option>
+                  <option value="FOLIAR">Foliar</option>
+                  <option value="PECIOLO">Pecíolo</option>
+                  <option value="MASSA_SECA">Massa seca</option>
+                  <option value="GRAO">Grão</option>
+                  <option value="SEMENTE">Semente</option>
+                  <option value="FERTILIZANTE">Fertilizante</option>
                 </select>
               </span>
             </div>
