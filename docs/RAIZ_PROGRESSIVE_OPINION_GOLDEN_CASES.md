@@ -125,40 +125,77 @@ Quando uma tabela SOSBAI exigir uma classe adicional (por exemplo expectativa de
 
 ---
 
-## Caso 05 — Trigo visando proteína/qualidade
+## Caso 05 — Trigo para produtividade ou para proteína/glúten vital
 
-### Fonte de controle
+### Fontes de controle
 **Guarienti et al. Estratégias de adubação nitrogenada em trigo, efeitos na qualidade tecnológica. Embrapa Trigo, 2025.**  
 https://www.infoteca.cnptia.embrapa.br/handle/doc/1178053
 
-O estudo avaliou 12 ambientes PR/RS, cultivares contrastantes e estratégias de parcelamento de N. A aplicação de parte da dose tardiamente foi pouco efetiva, em geral, para elevar os indicadores de qualidade avaliados, e houve variação entre cultivares/ambientes.
+**Embrapa Trigo — proteínas de reserva e qualidade tecnológica.**  
+Gliadinas e gluteninas são as principais proteínas formadoras do glúten; a quantidade e a composição dessas frações influenciam propriedades tecnológicas da farinha e da massa.
 
-### Regra RAIZ
-“Quero mais proteína” NÃO autoriza automaticamente dose tardia de N.
+O estudo de N avaliou 12 ambientes PR/RS, cultivares contrastantes e estratégias de parcelamento. A aplicação de parte da dose tardiamente foi pouco efetiva, em geral, para elevar os indicadores de qualidade avaliados, e houve variação entre cultivares/ambientes.
 
-Separar:
-- recomendação de N para produtividade;
-- estratégia de parcelamento;
-- objetivo de qualidade/proteína;
-- cultivar/classe tecnológica;
-- estádio real;
-- N já aplicado;
-- condição da cultura/ambiente;
-- regra local homologada para dose adicional, se existir.
+### Regra RAIZ — caminho padrão
+Se o produtor NÃO declarar objetivo industrial de proteína/glúten:
+- calcular normalmente o N para produtividade;
+- não exigir meta de proteína;
+- não exigir análises de glúten;
+- não inserir narrativa de Glúten Vital;
+- não rebaixar a recomendação-base por ausência dessas informações.
+
+### Regra RAIZ — enriquecimento opcional
+Se o produtor declarar objetivo de maior proteína/aptidão para Glúten Vital:
+- manter separada a recomendação-base de N para produtividade;
+- abrir uma camada específica de qualidade industrial;
+- NÃO autorizar automaticamente dose tardia adicional de N;
+- incorporar cultivar/genótipo, estádio, N já aplicado, enxofre, água/clima e demais evidências somente quando disponíveis.
+
+### O que o objetivo industrial realmente procura
+Glúten vital é um concentrado proteico obtido do glúten da farinha. A funcionalidade depende principalmente das frações:
+- **gliadinas** — associadas principalmente à extensibilidade/viscosidade;
+- **gluteninas** — associadas principalmente à elasticidade/força da rede de glúten.
+
+Por isso, “mais proteína total” não é sinônimo automático de “melhor matéria-prima para glúten vital”.
+
+Quando disponíveis, o RAIZ pode incorporar como evidências independentes:
+- proteína do grão;
+- glúten úmido;
+- glúten seco;
+- índice de glúten;
+- força de glúten `W`;
+- `P/L`;
+- sedimentação/SDS quando o método estiver identificado;
+- cultivar/genótipo e informação conhecida de gluteninas/gliadinas quando houver ensaio específico.
+
+Nenhuma dessas métricas deve ser inferida a partir de outra sem regra validada.
+
+### Especificação do comprador
+Metas, bônus, descontos ou faixas de recebimento de uma empresa específica — inclusive Be8 — só entram como regra quando houver especificação oficial/contratual verificável.
+
+Até lá:
+- pode existir o objetivo `VITAL_WHEAT_GLUTEN`;
+- pode existir o parecer agronômico para aumentar a probabilidade de melhor perfil proteico/glúten;
+- não pode existir “meta Be8” ou “prêmio Be8” inventado.
 
 ### Pouca informação
-Se o usuário apenas declara meta de proteína:
+Se o usuário apenas declara “quero trigo para proteína/glúten vital”:
 - registrar o objetivo;
-- executar normalmente a recomendação base sustentada;
-- informar que resposta de qualidade ao N tardio é variável e não autorizar dose adicional automática.
+- executar normalmente a recomendação-base de N;
+- explicar que resposta de qualidade depende de cultivar × ambiente × manejo;
+- não autorizar dose adicional automática.
 
 ### Mais informação
-Cultivar + estádio + N aplicado + condição/diagnóstico + regra homologada podem aumentar a resolução.
+Cultivar + estádio + N aplicado + proteína/glúten medidos + condição da cultura + regra homologada aumentam a resolução.
 
 ### Reprova
+- deixar de recomendar N para produtividade porque o objetivo de proteína não foi informado;
 - “proteína baixa -> aplicar X kg N/ha” sem regra;
 - tratar N tardio como garantia de proteína/glúten;
-- misturar dose de produtividade e dose de qualidade sem rastreabilidade.
+- assumir que proteína total alta garante glúten vital de alta funcionalidade;
+- inferir gliadina/glutenina sem ensaio ou informação genética válida;
+- misturar dose de produtividade e dose de qualidade sem rastreabilidade;
+- usar parâmetro comercial de comprador sem fonte oficial.
 
 ---
 
