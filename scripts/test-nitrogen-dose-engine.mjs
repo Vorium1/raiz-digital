@@ -62,6 +62,11 @@ assert.equal(wheatQuality.blockers.includes("LATE_QUALITY_N_REQUIRES_SPECIFIC_RE
 assert.equal(wheatQuality.qualityObjective?.status, "REQUIRES_SPECIFIC_REVIEW");
 assert.equal(wheatQuality.qualityObjective?.automaticAdditionalDoseAllowed, false);
 assert.equal(wheatQuality.qualityObjective?.additionalDoseKgNPerHa, null);
+assert.equal(wheatQuality.qualityObjective?.industrialTarget, "VITAL_WHEAT_GLUTEN");
+assert.deepEqual(wheatQuality.qualityObjective?.targetProteinFractions, ["GLIADIN", "GLUTENIN"]);
+assert.ok(wheatQuality.qualityObjective?.screeningMetrics.includes("WET_GLUTEN"));
+assert.ok(wheatQuality.qualityObjective?.screeningMetrics.includes("ALVEOGRAPH_W"));
+assert.equal(wheatQuality.qualityObjective?.buyerSpecificationRequired, true);
 assert.match(wheatQuality.qualityObjective?.evidence ?? "", /pouco efetiva/i);
 assert.match(wheatQuality.qualityObjective?.source ?? "", /2025/);
 
