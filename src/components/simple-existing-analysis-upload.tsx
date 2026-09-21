@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
-import type { LabImportPreview } from "@/domain/lab-import";
+import type { LabImportPreview, LabSampleType } from "@/domain/lab-import";
 
 type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
 
 export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }: { analysisId: string; hasAgronomicContext: boolean }) {
   const router = useRouter();
   const [method, setMethod] = useState("");
+  const [sampleType, setSampleType] = useState<LabSampleType>("SOLO");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,6 +34,7 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
           fileName: file.fileName,
           fallbackMethod: method || undefined,
           hasAgronomicContext,
+          sampleType,
           spatialLinked: false,
         }),
       });
@@ -62,7 +64,34 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Escolha o laudo</h2><p>A RAIZ lê, organiza e continua esta análise.</p></div>
           <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
           {ready && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
-          <details className="simple-send-options"><summary>Opções do arquivo</summary><div className="single"><label>Método, somente se estiver faltando no arquivo<select value={method} onChange={(event) => setMethod(event.target.value)}><option value="">Não assumir</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></label></div></details>
+          <details className="simple-send-options">
+            <summary>Opções do arquivo</summary>
+            <div className="single">
+              <label>
+                Método, somente se estiver faltando no arquivo
+                <select value={method} onChange={(event) => setMethod(event.target.value)}>
+                  <option value="">Não assumir</option>
+                  <option>Mehlich-1</option>
+                  <option>Resina</option>
+                  <option>KCl 1 mol/L</option>
+                  <option>Acetato de cálcio</option>
+                </select>
+              </label>
+              <label>
+                Tipo de amostra
+                <select value={sampleType} onChange={(event) => setSampleType(event.target.value as LabSampleType)}>
+                  <option value="SOLO">Solo</option>
+                  <option value="BIOLOGICO">Biológico / microbiologia / raiz</option>
+                  <option value="FOLIAR">Foliar</option>
+                  <option value="PECIOLO">Pecíolo</option>
+                  <option value="MASSA_SECA">Massa seca</option>
+                  <option value="GRAO">Grão</option>
+                  <option value="SEMENTE">Semente</option>
+                  <option value="FERTILIZANTE">Fertilizante</option>
+                </select>
+              </label>
+            </div>
+          </details>
         </div>
       </section>
 
