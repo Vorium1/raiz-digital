@@ -524,7 +524,13 @@ assert.match(simpleRecommendationContext, /maxLength=\{5000\}/);
 assert.match(plannedManagementRoute, /FIELD_TECH/);
 assert.match(plannedManagementRoute, /updateAnalysisPlanningContext/);
 assert.match(analysesRepository, /ANALYSIS_FERTILITY_PLANNING_CONTEXT_UPDATED/);
-assert.match(analysesRepository, /UPDATE crop_seasons[\s\S]*?SET updated_at = now\(\)/);
+assert.doesNotMatch(
+  analysesRepository.slice(analysesRepository.indexOf("export async function updateAnalysisPlanningContext")),
+  /UPDATE crop_seasons[\s\S]*?SET updated_at = now\(\)/,
+);
+assert.match(analysesRepository, /contextFingerprint/);
+assert.match(prescriptionFreshnessRepository, /generationAnalysisContextFingerprint/);
+assert.match(prescriptionGenerationRepository, /expectedAnalysisContextFingerprint/);
 assert.match(prescriptionEvidencePackage, /plannedManagementNotes/);
 assert.match(simpleReview, /managementSystem=\{recommendationContext\.managementSystem\}/);
 assert.doesNotMatch(simpleReview, /needsManagementContext/);
