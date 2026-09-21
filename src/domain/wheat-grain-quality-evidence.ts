@@ -15,6 +15,7 @@ export type WheatGrainQualityParameterCode = typeof WHEAT_GRAIN_QUALITY_PARAMETE
 export type WheatGrainQualityObservation = {
   sampleCode: string;
   parameterCode: WheatGrainQualityParameterCode;
+  label: string;
   value: number;
   unit: string;
   method: string;
@@ -100,6 +101,7 @@ export function evaluateWheatGrainQualityEvidence(input: {
       return [{
         sampleCode: row.sampleCode,
         parameterCode,
+        label: wheatGrainQualityLabel(parameterCode),
         value: row.value,
         unit: row.unit.trim(),
         method: row.method.trim(),
