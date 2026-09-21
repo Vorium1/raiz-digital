@@ -21,6 +21,7 @@ import { evaluateWheatGrainQualityEvidence } from "@/domain/wheat-grain-quality-
 import { evaluateStoredWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/domain/spatial-prescription-request";
 import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evidence";
+import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -60,6 +61,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   wheatBuyerQualityEvidence: ReturnType<typeof evaluateStoredWheatBuyerQualityContext>;
   spatialEvidenceEnvelope: ReturnType<typeof evaluateSpatialEvidenceEnvelope>;
   spatialAttributeEvidence: Array<ReturnType<typeof evaluateSpatialAttributeEvidence>>;
+  spatialInterpolationValidationEvidence: ReturnType<typeof evaluateStoredSpatialInterpolationValidations>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -550,6 +552,11 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       });
     });
 
+    const spatialInterpolationValidationEvidence = evaluateStoredSpatialInterpolationValidations({
+      stored: spatialInterpolationValidationsFromAnalysisContext(base.analysisContext),
+      attributes: spatialAttributeEvidence,
+    });
+
     const nitrogenOrganicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(
       resultsResult.rows
         .filter((row) => new Set(["OM", "MO", "ORGANIC_MATTER"]).has(String(row.parameterCode).trim().toUpperCase()))
@@ -704,6 +711,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       wheatBuyerQualityEvidence,
       spatialEvidenceEnvelope,
       spatialAttributeEvidence,
+      spatialInterpolationValidationEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
