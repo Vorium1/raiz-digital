@@ -29,6 +29,13 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
   {
     sampleCode: "A1",
+    parameterCode: "MICROBIO_BIOMASS_N",
+    value: 28,
+    unit: "mg N/kg solo",
+    method: "Fumigação-extração",
+  },
+  {
+    sampleCode: "A1",
     parameterCode: "MICROBIO_BASAL_RESPIRATION",
     value: 42,
     unit: "mg C-CO2 kg-1 solo dia-1",
@@ -71,7 +78,7 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
 ]);
 
-assert.equal(observations.length, 9);
+assert.equal(observations.length, 10);
 
 const beta = observations.find((item) => item.parameterName === "BIOAS_BETA_GLUCOSIDASE");
 assert.equal(beta?.family, "BIOAS_SOIL_HEALTH");
@@ -81,6 +88,10 @@ assert.equal(beta?.methodFamily, "ENZYME_ACTIVITY");
 const biomass = observations.find((item) => item.parameterName === "MICROBIO_BIOMASS_C");
 assert.equal(biomass?.family, "MICROBIAL_BIOMASS");
 assert.equal(biomass?.methodFamily, "MICROBIAL_BIOMASS_C");
+
+const biomassN = observations.find((item) => item.parameterName === "MICROBIO_BIOMASS_N");
+assert.equal(biomassN?.family, "MICROBIAL_BIOMASS");
+assert.equal(biomassN?.methodFamily, "MICROBIAL_BIOMASS_N");
 
 const qco2 = observations.find((item) => item.parameterName === "MICROBIO_QCO2");
 assert.equal(qco2?.family, "SOIL_RESPIRATION");
