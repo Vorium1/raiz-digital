@@ -3,6 +3,7 @@ import { resolveAgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescri
 import { deterministicLimitedPrescriptionProvider } from "@/lib/ai/providers/deterministic-limited-prescription-provider";
 import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate";
 import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
+import { evaluateAnalysisContextFingerprintFreshness } from "@/domain/prescription-context-freshness";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 import { validatePrescriptionSulfurRecommendation } from "@/domain/prescription-sulfur-validation";
 import { validatePrescriptionNitrogenRecommendation } from "@/domain/prescription-nitrogen-validation";
@@ -13,6 +14,7 @@ import { getLatestInterpretation } from "@/lib/repositories/interpretations";
 import { recordAgronomicPrescriptionGenerationSafely } from "@/lib/repositories/prescription-generation";
 import { reviewAgronomicPrescriptionSafely } from "@/lib/repositories/prescription-review";
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
+import { getAnalysisPlanningContext } from "@/lib/repositories/analyses";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 
 function interpretationItems(structuredOutput: unknown) {
@@ -43,10 +45,11 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     throw new AiGenerationError("Não há resultado de laboratório vinculado a esta análise ainda.", 409);
   }
 
-  const [interpretation, contextBeforeProvider, evidenceBeforeProvider] = await Promise.all([
+  const [interpretation, contextBeforeProvider, evidenceBeforeProvider, planningBeforeProvider] = await Promise.all([
     getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
     getRecommendationContextByAnalysis({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
     getAnalysisEvidenceState({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+    getAnalysisPlanningContext({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
   ]);
 
   const gate = checkPrescriptionDraftGate(interpretation?.status ?? null);
@@ -76,6 +79,17 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       409,
     );
   }
+  if (!planningBeforeProvider) throw new AiGenerationError("Análise não encontrada.", 404);
+  const planningFreshnessBeforeProvider = evaluateAnalysisContextFingerprintFreshness({
+    generationFingerprint: evidence.analysis.contextFingerprint,
+    currentFingerprint: planningBeforeProvider.contextFingerprint,
+  });
+  if (!planningFreshnessBeforeProvider.current) {
+    throw new AiGenerationError(
+      `${planningFreshnessBeforeProvider.reason} Atualize a análise e gere novamente a partir do contexto atual.`,
+      409,
+    );
+  }
 
   let result;
   try {
@@ -88,10 +102,11 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     result = await provider.prescribe({ evidence });
   }
 
-  const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider] = await Promise.all([
+  const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider, planningAfterProvider] = await Promise.all([
     getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
     getRecommendationContextByAnalysis({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
     getAnalysisEvidenceState({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
+    getAnalysisPlanningContext({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
   ]);
 
   const afterProvider = evaluatePrescriptionDraftSnapshotConsistency({
@@ -104,6 +119,17 @@ export async function prepareAgronomicPrescriptionDraft(input: {
   if (!afterProvider.current) {
     throw new AiGenerationError(
       `${afterProvider.reason ?? "As evidências agronômicas mudaram."} A resposta antiga foi descartada; gere novamente com as evidências atuais.`,
+      409,
+    );
+  }
+  if (!planningAfterProvider) throw new AiGenerationError("Análise não encontrada.", 404);
+  const planningFreshnessAfterProvider = evaluateAnalysisContextFingerprintFreshness({
+    generationFingerprint: evidence.analysis.contextFingerprint,
+    currentFingerprint: planningAfterProvider.contextFingerprint,
+  });
+  if (!planningFreshnessAfterProvider.current) {
+    throw new AiGenerationError(
+      `${planningFreshnessAfterProvider.reason} A resposta antiga foi descartada; gere novamente com os refinamentos atuais.`,
       409,
     );
   }
@@ -191,6 +217,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     analysisId: input.analysisId,
     interpretationId: interpretationAfterProvider.id,
     expectedSeasonUpdatedAt: contextAfterProvider.updatedAt,
+    expectedAnalysisContextFingerprint: evidence.analysis.contextFingerprint,
     expectedNitrogenExecutionId: evidence.deterministicNitrogenEvidence.executionId,
     provider: result.provider,
     model: result.model,
