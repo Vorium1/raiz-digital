@@ -161,6 +161,38 @@ const legacyWithoutFingerprint = evaluatePersistedNitrogenExecution({
 assert.equal(legacyWithoutFingerprint.status, "STALE");
 assert.ok(legacyWithoutFingerprint.limitations.includes("N_EXECUTION_OM_FINGERPRINT_MISSING"));
 
+const yieldOnlyRecommendation = {
+  ...exactRecommendation,
+  qualityObjective: {
+    kind: "WHEAT_PROTEIN_QUALITY",
+    requested: false,
+    status: "NOT_REQUESTED",
+    automaticAdditionalDoseAllowed: false,
+    additionalDoseKgNPerHa: null,
+    evidence: "Camada de qualidade disponível quando explicitamente solicitada.",
+    source: "Embrapa Trigo 2025",
+  },
+};
+const yieldOnlyEvidence = {
+  ...current,
+  recommendation: yieldOnlyRecommendation,
+};
+const yieldOnlyProvider = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    results: [],
+    technicalSources: [],
+    deterministicInterpretation: null,
+    season: { cropProfileCode: "TRIGO" },
+    deterministicPkDoses: {
+      P2O5: { ready: false, blockers: ["TEST_NO_P"] },
+      K2O: { ready: false, blockers: ["TEST_NO_K"] },
+    },
+    deterministicNitrogenEvidence: yieldOnlyEvidence,
+  },
+});
+assert.equal(yieldOnlyProvider.prescription.recommendations.some((item) => item.inputType === "N"), true);
+assert.doesNotMatch(yieldOnlyProvider.prescription.managementPractices.join(" "), /proteína|glúten vital|qualidade/i);
+
 const providerEvidence = {
   results: [],
   technicalSources: [],
