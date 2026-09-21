@@ -144,8 +144,19 @@
 .simple-field-vigor-zone-list em { color:#77847c; font-style:normal; font-variant-numeric:tabular-nums; }
 .simple-field-vigor-note { color:#78857d; font-size:9px; line-height:1.45; margin:9px 2px 0; }
 .simple-field-vigor-note strong { color:#476153; }
-.simple-field-vigor .real-field-map,
-.simple-field-vigor .leaflet-container { border-radius:16px !important; }
+.simple-field-vigor .real-field-map {
+  border-radius:16px !important;
+  margin-inline:0;
+  max-width:100%;
+  min-width:0;
+}
+.simple-field-vigor .real-field-map-canvas,
+.simple-field-vigor .leaflet-container {
+  border-radius:16px !important;
+  max-width:100%;
+  overflow:hidden;
+}
+.simple-field-shell { overflow-x:clip; }
 .simple-field-head + .simple-field-vigor { margin-top:0; }
 .simple-field-vigor + .simple-field-map-card { margin-top:18px; }
 .simple-field-vigor-map-loading,

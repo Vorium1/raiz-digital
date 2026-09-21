@@ -194,7 +194,10 @@ async function assertRasterEnvelopeContainsBoundary(page: Page, input: {
 
 async function assertNoHorizontalOverflow(page: Page) {
   try {
-    await assertNoHorizontalOverflow(page);
+    await expect.poll(
+      async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+      { timeout: 5_000 },
+    ).toBeLessThanOrEqual(1);
   } catch {
     const diagnostics = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth;
@@ -293,9 +296,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
 
     const map = vigor.locator(".real-field-map");
     await expect(map).toBeVisible({ timeout: 20_000 });
-    await expect.poll(async () => page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    )).toBeLessThanOrEqual(1);
+    await assertNoHorizontalOverflow(page);
 
     await test.info().attach("ndvi-mobile-390x844", {
       body: await page.screenshot({ fullPage: true }),

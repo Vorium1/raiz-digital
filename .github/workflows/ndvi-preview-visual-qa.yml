@@ -170,6 +170,38 @@ jobs:
             exit 1
           fi
 
+      - name: Aguardar Preview Vercel do mesmo SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          sha="${GITHUB_SHA}"
+          deadline=$((SECONDS + 300))
+          echo "Aguardando Vercel SUCCESS para ${sha}..."
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            json="$(curl -fsS               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               "https://api.github.com/repos/${repo}/commits/${sha}/status")"
+            state="$(node -e '
+              const x=JSON.parse(process.argv[1]);
+              const s=(x.statuses||[]).find(v=>v.context==="Vercel");
+              process.stdout.write(s?.state||"missing");
+            ' "${json}")"
+            echo "Vercel status: ${state}"
+            if [ "${state}" = "success" ]; then
+              # Dá tempo para o alias de branch propagar após o status Ready.
+              sleep 8
+              exit 0
+            fi
+            if [ "${state}" = "failure" ] || [ "${state}" = "error" ]; then
+              echo "::error::Deployment Vercel do SHA falhou (${state})."
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::Timeout aguardando Vercel SUCCESS para o SHA atual."
+          exit 1
+
       - name: Instalar dependências
         run: npm ci
 

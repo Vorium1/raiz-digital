@@ -150,9 +150,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
  * POST atualiza o histórico do talhão pelo provider Sentinel-2 configurado e, antes de efetivar cada
  * snapshot novo, gera o PNG espacial correspondente e o arquiva de forma content-addressed.
  *
- * Uma linha que já possui raster arquivado vira evidência imutável: refresh posterior preserva tanto
- * a estatística quanto o artefato daquele dia. Linhas legadas sem raster podem ser promovidas uma única
- * vez para o novo contrato. Assim a visualização histórica deixa de ser regenerada sob demanda.
+ * Uma linha com raster espacialmente compatível com o contorno atual permanece imutável. Se o contorno
+ * do talhão mudou depois do arquivamento, o raster antigo deixa de ser evidência espacial utilizável e
+ * pode ser substituído somente sob trava do SHA-256 antigo. Linhas legadas sem raster também podem ser
+ * promovidas uma única vez. Assim preservamos a cadeia de custódia sem exibir um raster de outro contorno.
  *
  * O lote pode concluir parcialmente: se um raster posterior falhar depois que outros já foram gravados,
  * a resposta devolve o estado persistido atual com `partialFailure` e a contagem real ainda pendente.
