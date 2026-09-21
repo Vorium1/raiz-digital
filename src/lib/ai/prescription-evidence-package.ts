@@ -20,6 +20,7 @@ import { evaluatePersistedNitrogenExecution, PRESCRIPTION_NITROGEN_RULE_IDS, typ
 import { evaluateWheatGrainQualityEvidence } from "@/domain/wheat-grain-quality-evidence";
 import { evaluateStoredWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/domain/spatial-prescription-request";
+import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evidence";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -58,6 +59,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   wheatGrainQualityEvidence: ReturnType<typeof evaluateWheatGrainQualityEvidence>;
   wheatBuyerQualityEvidence: ReturnType<typeof evaluateStoredWheatBuyerQualityContext>;
   spatialEvidenceEnvelope: ReturnType<typeof evaluateSpatialEvidenceEnvelope>;
+  spatialAttributeEvidence: Array<ReturnType<typeof evaluateSpatialAttributeEvidence>>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -456,6 +458,98 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       sampleDistribution,
     });
 
+    const spatialAttributeRows = analysisContextSpatialRequested(base.analysisContext)
+      ? (await client.query<{
+          parameterCode: string;
+          observationCount: number;
+          distinctReliableCoordinateCount: number;
+          units: string[] | null;
+          methods: string[] | null;
+          depthKnownCount: number;
+          depthBands: string[] | null;
+          hullType: string | null;
+        }>(
+          `WITH observations AS (
+             SELECT lr.parameter_code AS "parameterCode",
+                    lr.unit,
+                    lr.analytical_method AS method,
+                    COALESCE(
+                      sp.depth_from_cm::float8,
+                      NULLIF(lr.original_payload->>'depthFromCm', '')::float8
+                    ) AS depth_from_cm,
+                    COALESCE(
+                      sp.depth_to_cm::float8,
+                      NULLIF(lr.original_payload->>'depthToCm', '')::float8
+                    ) AS depth_to_cm,
+                    CASE
+                      WHEN sp.observed_position IS NOT NULL
+                        OR upper(trim(coalesce(sp.gps_source, ''))) = ANY($3::text[])
+                      THEN coalesce(sp.observed_position, sp.position)
+                      ELSE NULL
+                    END AS reliable_geom
+             FROM lab_samples ls
+             JOIN lab_results lr
+               ON lr.tenant_id = ls.tenant_id
+              AND lr.lab_sample_id = ls.id
+             LEFT JOIN sample_points sp
+               ON sp.tenant_id = ls.tenant_id
+              AND sp.id = ls.sample_point_id
+             WHERE ls.tenant_id = $1::uuid
+               AND ls.analysis_id = $2::uuid
+               AND ls.sample_type = 'SOLO'
+           ),
+           reliable AS (
+             SELECT *
+             FROM observations
+             WHERE reliable_geom IS NOT NULL
+           )
+           SELECT "parameterCode",
+                  count(*)::int AS "observationCount",
+                  count(DISTINCT encode(ST_AsEWKB(reliable_geom), 'hex'))::int AS "distinctReliableCoordinateCount",
+                  array_agg(DISTINCT unit ORDER BY unit)
+                    FILTER (WHERE unit IS NOT NULL AND trim(unit) <> '') AS units,
+                  array_agg(DISTINCT method ORDER BY method)
+                    FILTER (WHERE method IS NOT NULL AND trim(method) <> '') AS methods,
+                  count(*) FILTER (
+                    WHERE depth_from_cm IS NOT NULL AND depth_to_cm IS NOT NULL
+                  )::int AS "depthKnownCount",
+                  array_agg(
+                    DISTINCT concat(depth_from_cm::text, '–', depth_to_cm::text, ' cm')
+                    ORDER BY concat(depth_from_cm::text, '–', depth_to_cm::text, ' cm')
+                  ) FILTER (
+                    WHERE depth_from_cm IS NOT NULL AND depth_to_cm IS NOT NULL
+                  ) AS "depthBands",
+                  GeometryType(ST_ConvexHull(ST_Collect(reliable_geom))) AS "hullType"
+           FROM reliable
+           GROUP BY "parameterCode"
+           ORDER BY "parameterCode"`,
+          [
+            tenantId,
+            analysisId,
+            ["SHAPEFILE_REAL_GPS_LONLAT", "SHAPEFILE_REAL_EPSG4326"],
+          ],
+        )).rows
+      : [];
+
+    const spatialAttributeEvidence = spatialAttributeRows.map((row) => {
+      const supportCount = row.distinctReliableCoordinateCount ?? 0;
+      const distribution: SampleDistribution = supportCount < 3
+        ? "UNKNOWN"
+        : row.hullType === "POLYGON"
+          ? "DISTRIBUTED"
+          : "COLLINEAR";
+      return evaluateSpatialAttributeEvidence({
+        parameterCode: row.parameterCode,
+        observationCount: row.observationCount ?? 0,
+        distinctReliableCoordinateCount: supportCount,
+        units: row.units ?? [],
+        methods: row.methods ?? [],
+        depthKnownCount: row.depthKnownCount ?? 0,
+        depthBands: row.depthBands ?? [],
+        sampleDistribution: distribution,
+      });
+    });
+
     const nitrogenOrganicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(
       resultsResult.rows
         .filter((row) => new Set(["OM", "MO", "ORGANIC_MATTER"]).has(String(row.parameterCode).trim().toUpperCase()))
@@ -609,6 +703,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       wheatGrainQualityEvidence,
       wheatBuyerQualityEvidence,
       spatialEvidenceEnvelope,
+      spatialAttributeEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
