@@ -7,7 +7,10 @@ import {
   parseSpatialInterpolationValidations,
 } from "../src/domain/spatial-interpolation-context.ts";
 
-function candidateAttribute(count = 70) {
+const CURRENT_FP = "a".repeat(32);
+const CHANGED_FP = "b".repeat(32);
+
+function candidateAttribute(count = 70, evidenceFingerprint = CURRENT_FP) {
   return evaluateSpatialAttributeEvidence({
     parameterCode: "P",
     observationCount: count,
@@ -17,6 +20,7 @@ function candidateAttribute(count = 70) {
     depthKnownCount: count,
     depthBands: ["0–20 cm"],
     sampleDistribution: "DISTRIBUTED",
+    evidenceFingerprint,
   });
 }
 
@@ -24,6 +28,7 @@ const validStored = [{
   parameterCode: "p",
   method: "KRIGING",
   sampleCount: 70,
+  evidenceFingerprint: CURRENT_FP,
   crossValidation: {
     strategy: "LOOCV",
     validationCount: 70,
@@ -71,6 +76,16 @@ assert.equal(staleCount.entries[0].current, false);
 assert.equal(staleCount.entries[0].officialSurfaceAllowed, false);
 assert.ok(staleCount.entries[0].limitations.includes("SPATIAL_VALIDATION_SAMPLE_COUNT_STALE"));
 
+const fingerprintStale = evaluateStoredSpatialInterpolationValidations({
+  stored: validStored,
+  attributes: [candidateAttribute(70, CHANGED_FP)],
+});
+assert.equal(fingerprintStale.entries[0].current, false);
+assert.equal(fingerprintStale.entries[0].officialSurfaceAllowed, false);
+assert.ok(fingerprintStale.entries[0].limitations.includes("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_STALE"));
+assert.equal(fingerprintStale.entries[0].storedSampleCount, 70);
+assert.equal(fingerprintStale.entries[0].currentSampleCount, 70, "mesmo n não pode esconder alteração do conjunto de evidências");
+
 const exploratoryAttribute = evaluateSpatialAttributeEvidence({
   parameterCode: "P",
   observationCount: 20,
@@ -80,6 +95,7 @@ const exploratoryAttribute = evaluateSpatialAttributeEvidence({
   depthKnownCount: 20,
   depthBands: ["0–20 cm"],
   sampleDistribution: "DISTRIBUTED",
+  evidenceFingerprint: CURRENT_FP,
 });
 const exploratory = evaluateStoredSpatialInterpolationValidations({
   stored: [{ ...validStored[0], sampleCount: 20, crossValidation: { ...validStored[0].crossValidation, validationCount: 20 } }],
@@ -93,6 +109,7 @@ const incomplete = evaluateStoredSpatialInterpolationValidations({
     parameterCode: "P",
     method: "KRIGING",
     sampleCount: 70,
+    evidenceFingerprint: CURRENT_FP,
     crossValidation: null,
     variogram: validStored[0].variogram,
     professionalMethodReviewApproved: true,
@@ -102,6 +119,16 @@ const incomplete = evaluateStoredSpatialInterpolationValidations({
 });
 assert.equal(incomplete.entries[0].current, false);
 assert.ok(incomplete.entries[0].limitations.includes("CROSS_VALIDATION_REQUIRED"));
+
+const legacyMissingFingerprint = evaluateStoredSpatialInterpolationValidations({
+  stored: [{
+    ...validStored[0],
+    evidenceFingerprint: null,
+  }],
+  attributes: [candidateAttribute(70)],
+});
+assert.equal(legacyMissingFingerprint.entries[0].current, false);
+assert.ok(legacyMissingFingerprint.entries[0].limitations.includes("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_MISSING"));
 
 const invalidContext = evaluateStoredSpatialInterpolationValidations({
   stored: [{ parameterCode: "P", method: "MAGIC" }],
