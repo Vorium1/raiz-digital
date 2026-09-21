@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v7-wheat-grain-quality";
+const PROMPT_VERSION = "deterministic-limited-v8-wheat-buyer-protocol";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -248,6 +248,43 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         .map((item) => item.reason),
     );
     const deterministic = deterministicRecommendations(evidence);
+
+    const buyerQuality = evidence.wheatBuyerQualityEvidence;
+    if (buyerQuality?.status === "EVALUATED") {
+      const complianceLabel = {
+        COMPLIANT: "itens obrigatórios verificados como conformes nos dados fornecidos",
+        NON_COMPLIANT: "há pelo menos uma divergência nos itens obrigatórios verificados",
+        UNVERIFIED: "a conformidade obrigatória ainda não pode ser fechada com as informações disponíveis",
+      }[buyerQuality.evaluation.mandatoryCompliance];
+      const recommendedLabel = {
+        FOLLOWED: "item recomendado de primeira aplicação de N compatível com o documento",
+        NOT_FOLLOWED: "item recomendado de primeira aplicação de N não seguido",
+        UNVERIFIED: "item recomendado de primeira aplicação de N ainda não verificado",
+      }[buyerQuality.evaluation.checks.firstNitrogenApplicationRecommended];
+
+      deterministic.managementPractices.push(
+        `Protocolo de comprador selecionado explicitamente: Be8 Agro — Glúten Vital 2026. Checklist do documento fornecido: ${complianceLabel}; ${recommendedLabel}. Esta leitura é separada do motor agronômico de N e não garante prêmio, aceite comercial ou desempenho industrial.`,
+      );
+
+      const limitationLabels: Record<string, string> = {
+        BE8_SECOND_N_AREA_BASIS_NOT_EXPLICIT_IN_SOURCE: "Be8: a peça fornecida não explicita a base de área dos 150–200 kg de sulfato de amônio.",
+        BE8_SECOND_N_AMOUNT_BASIS_NOT_CONFIRMED: "Be8: a base operacional da quantidade informada para a segunda aplicação ainda não foi confirmada; esse item permanece não verificado.",
+        BE8_FUNGAL_APPLICATION_PRODUCT_NOT_SPECIFIED_IN_SOURCE: "Be8: o documento fornecido marca aplicação fúngica obrigatória, mas não especifica produto.",
+        BE8_FUNGAL_APPLICATION_DOSE_NOT_SPECIFIED_IN_SOURCE: "Be8: o documento fornecido marca aplicação fúngica obrigatória, mas não especifica dose.",
+      };
+      for (const limitation of buyerQuality.evaluation.limitations) {
+        deterministic.limitations.push(limitationLabels[limitation] ?? `Protocolo Be8: ${limitation}`);
+      }
+      if (buyerQuality.evaluation.mandatoryCompliance === "UNVERIFIED") {
+        deterministic.limitations.push(
+          "Protocolo Be8: informações não verificadas refinam apenas o checklist do comprador; não bloqueiam a recomendação-base de N nem o parecer do RAIZ.",
+        );
+      }
+    } else if (buyerQuality?.status === "INVALID_OPTIONAL_EVIDENCE") {
+      deterministic.limitations.push(
+        "Protocolo de comprador do trigo: o contexto opcional armazenado é inválido e foi isolado. O manejo-base e as demais conclusões permanecem válidos.",
+      );
+    }
 
     const grainQuality = evidence.wheatGrainQualityEvidence;
     if (grainQuality?.status === "AVAILABLE") {
