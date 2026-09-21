@@ -62,6 +62,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     code: string;
     status: string;
     createdAt: string;
+    contextFingerprint: string;
     plannedManagementNotes: string | null;
     fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
     fertilityCyclePlanNotes: string | null;
@@ -282,6 +283,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
     // enquanto results + interpretação + contexto são lidos nesta mesma transação.
     const baseResult = await client.query(
       `SELECT a.id::text, a.code, a.status::text, a.created_at::text AS "createdAt",
+              md5(coalesce(a.analysis_context, '{}'::jsonb)::text) AS "analysisContextFingerprint",
               c.id::text AS "clientId", c.name AS "clientName",
               p.id::text AS "propertyId", p.name AS "propertyName", p.municipality, p.state,
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
@@ -529,6 +531,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         code: base.code,
         status: base.status,
         createdAt: base.createdAt,
+        contextFingerprint: base.analysisContextFingerprint,
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
         fertilityPlanningHorizonYears: analysisContextFertilityPlanning(base.analysisContext).horizonYears,
         fertilityCyclePlanNotes: analysisContextFertilityPlanning(base.analysisContext).cyclePlanNotes,
