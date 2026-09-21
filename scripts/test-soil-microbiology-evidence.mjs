@@ -72,6 +72,34 @@ const unknownMethod = evaluateSoilMicrobiologyEvidence({
 assert.ok(unknownMethod.warnings.includes("MICROBIOLOGY_METHOD_NOT_EXPLICIT"));
 assert.equal(unknownMethod.agronomicPolicy.missingMicrobiologyBlocksAnalysis, false);
 
+const wrongMycorrhizaMatrix = evaluateSoilMicrobiologyEvidence({
+  observations: [{
+    parameterName: "Colonização micorrízica",
+    family: "MYCORRHIZA",
+    sampleMatrix: "SOIL",
+    functionalRole: "MYCORRHIZAL_P_UPTAKE",
+    value: 55,
+    unit: "%",
+    methodFamily: "MYCORRHIZAL_COLONIZATION",
+    methodText: "Coloração e microscopia de raízes",
+  }],
+});
+assert.ok(wrongMycorrhizaMatrix.warnings.includes("MYCORRHIZAL_COLONIZATION_REQUIRES_ROOT_MATRIX"));
+
+const wrongSporeMatrix = evaluateSoilMicrobiologyEvidence({
+  observations: [{
+    parameterName: "Esporos micorrízicos",
+    family: "MYCORRHIZA",
+    sampleMatrix: "ROOT",
+    functionalRole: "MYCORRHIZAL_P_UPTAKE",
+    value: 180,
+    unit: "esporos/50 g solo",
+    methodFamily: "SPORE_COUNT",
+    methodText: "Contagem de esporos",
+  }],
+});
+assert.ok(wrongSporeMatrix.warnings.includes("MYCORRHIZAL_SPORE_COUNT_REQUIRES_SOIL_MATRIX"));
+
 assert.deepEqual(
   NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES.BIOAS_EMBRAPA.standardSamplingDepthCm,
   { from: 0, to: 10 },
