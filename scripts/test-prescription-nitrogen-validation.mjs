@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { validatePrescriptionNitrogenRecommendation } from "../src/domain/prescription-nitrogen-validation.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
+import { buildNitrogenOrganicMatterFingerprint } from "../src/domain/nitrogen-context.ts";
+import { evaluatePersistedNitrogenExecution } from "../src/domain/nitrogen-prescription-evidence.ts";
+import { buildRuleTrace } from "../src/domain/agronomic-rule-catalog.ts";
 
 const exactRecommendation = {
   crop: "TRIGO",
@@ -98,6 +101,65 @@ const rangeInvented = validatePrescriptionNitrogenRecommendation({
 });
 assert.equal(rangeInvented.allowed, false);
 assert.ok(rangeInvented.blockers.includes("N_DETERMINISTIC_DOSE_NOT_EXACT_READY"));
+
+
+const omFingerprint = buildNitrogenOrganicMatterFingerprint([
+  { sampleCode: "P02", value: 2.3, unit: "%", method: "Walkley-Black" },
+  { sampleCode: "P01", value: 2.1, unit: "%", method: "Walkley-Black" },
+]);
+const sameOmDifferentOrder = buildNitrogenOrganicMatterFingerprint([
+  { sampleCode: "P01", value: 2.1, unit: "%", method: "Walkley-Black" },
+  { sampleCode: "P02", value: 2.3, unit: "%", method: "Walkley-Black" },
+]);
+assert.equal(omFingerprint, sameOmDifferentOrder, "fingerprint deve ser canônico e independente da ordem");
+
+const trace = buildRuleTrace("N-TRIGO-EMBRAPA-2026");
+const persistedExecution = {
+  id: "exec-persisted",
+  ruleId: trace.ruleId,
+  ruleVersion: trace.ruleVersion,
+  sourceSnapshotId: trace.sourceSnapshotId,
+  executionStatus: "READY_FOR_IMPLEMENTATION",
+  createdAt: "2026-09-21T00:00:00.000Z",
+  inputPayload: {
+    seasonUpdatedAt: "2026-09-20T20:00:00.000Z",
+    organicMatterFingerprint: omFingerprint,
+  },
+  outputPayload: {
+    ...exactRecommendation,
+    ruleVersion: trace.ruleVersion,
+    sourceSnapshotId: trace.sourceSnapshotId,
+  },
+};
+
+const persistedCurrent = evaluatePersistedNitrogenExecution({
+  execution: persistedExecution,
+  currentSeasonUpdatedAt: "2026-09-20T20:00:00.000Z",
+  currentOrganicMatterFingerprint: omFingerprint,
+});
+assert.equal(persistedCurrent.status, "CURRENT");
+assert.equal(persistedCurrent.recommendation?.dose.kind, "EXACT");
+
+const persistedStaleOm = evaluatePersistedNitrogenExecution({
+  execution: persistedExecution,
+  currentSeasonUpdatedAt: "2026-09-20T20:00:00.000Z",
+  currentOrganicMatterFingerprint: buildNitrogenOrganicMatterFingerprint([
+    { sampleCode: "P01", value: 2.4, unit: "%", method: "Walkley-Black" },
+  ]),
+});
+assert.equal(persistedStaleOm.status, "STALE");
+assert.ok(persistedStaleOm.limitations.includes("N_EXECUTION_OM_FINGERPRINT_STALE"));
+
+const legacyWithoutFingerprint = evaluatePersistedNitrogenExecution({
+  execution: {
+    ...persistedExecution,
+    inputPayload: { seasonUpdatedAt: "2026-09-20T20:00:00.000Z" },
+  },
+  currentSeasonUpdatedAt: "2026-09-20T20:00:00.000Z",
+  currentOrganicMatterFingerprint: omFingerprint,
+});
+assert.equal(legacyWithoutFingerprint.status, "STALE");
+assert.ok(legacyWithoutFingerprint.limitations.includes("N_EXECUTION_OM_FINGERPRINT_MISSING"));
 
 const providerEvidence = {
   results: [],
