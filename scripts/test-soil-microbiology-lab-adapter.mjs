@@ -64,6 +64,20 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
   {
     sampleCode: "A1",
+    parameterCode: "MICROBIO_MYCORRHIZAL_COLONIZATION",
+    value: 62,
+    unit: "%",
+    method: "Colonização micorrízica por coloração e microscopia",
+  },
+  {
+    sampleCode: "A1",
+    parameterCode: "MICROBIO_MYCORRHIZAL_SPORE_COUNT",
+    value: 180,
+    unit: "esporos/50 g solo",
+    method: "Contagem de esporos micorrízicos",
+  },
+  {
+    sampleCode: "A1",
     parameterCode: "AZOSPIRILLUMBRASILENSE",
     value: 420000,
     unit: "UFC/g solo",
@@ -78,7 +92,7 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
 ]);
 
-assert.equal(observations.length, 10);
+assert.equal(observations.length, 12);
 
 const beta = observations.find((item) => item.parameterName === "BIOAS_BETA_GLUCOSIDASE");
 assert.equal(beta?.family, "BIOAS_SOIL_HEALTH");
@@ -101,6 +115,16 @@ const phosphatase = observations.find((item) => item.parameterName === "MICROBIO
 assert.equal(phosphatase?.family, "SOIL_ENZYME_ACTIVITY");
 assert.equal(phosphatase?.functionalRole, "PHOSPHORUS_CYCLING");
 assert.equal(phosphatase?.methodFamily, "PHOSPHATASE_ACTIVITY");
+
+const mycorrhizalColonization = observations.find((item) => item.parameterName === "MICROBIO_MYCORRHIZAL_COLONIZATION");
+assert.equal(mycorrhizalColonization?.family, "MYCORRHIZA");
+assert.equal(mycorrhizalColonization?.sampleMatrix, "ROOT");
+assert.equal(mycorrhizalColonization?.methodFamily, "MYCORRHIZAL_COLONIZATION");
+
+const mycorrhizalSpores = observations.find((item) => item.parameterName === "MICROBIO_MYCORRHIZAL_SPORE_COUNT");
+assert.equal(mycorrhizalSpores?.family, "MYCORRHIZA");
+assert.equal(mycorrhizalSpores?.sampleMatrix, "SOIL");
+assert.equal(mycorrhizalSpores?.methodFamily, "SPORE_COUNT");
 
 const azospirillum = observations.find((item) => item.parameterName === "AZOSPIRILLUMBRASILENSE");
 assert.equal(azospirillum?.functionalRole, "BIOLOGICAL_N_FIXATION");
