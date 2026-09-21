@@ -19,6 +19,7 @@ import { buildNitrogenOrganicMatterFingerprint, isOrganicMatterPercentUnit } fro
 import { evaluatePersistedNitrogenExecution, PRESCRIPTION_NITROGEN_RULE_IDS, type PersistedNitrogenExecution } from "@/domain/nitrogen-prescription-evidence";
 import { evaluateWheatGrainQualityEvidence } from "@/domain/wheat-grain-quality-evidence";
 import { evaluateStoredWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
+import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/domain/spatial-prescription-request";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -56,6 +57,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicNitrogenEvidence: ReturnType<typeof evaluatePersistedNitrogenExecution>;
   wheatGrainQualityEvidence: ReturnType<typeof evaluateWheatGrainQualityEvidence>;
   wheatBuyerQualityEvidence: ReturnType<typeof evaluateStoredWheatBuyerQualityContext>;
+  spatialEvidenceEnvelope: ReturnType<typeof evaluateSpatialEvidenceEnvelope>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -117,6 +119,13 @@ function analysisContextWheatBuyerQuality(value: unknown) {
   const draft = (value as { draft?: unknown }).draft;
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
   return (draft as { wheatBuyerQualityContext?: unknown }).wheatBuyerQualityContext ?? null;
+}
+
+function analysisContextSpatialRequested(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return false;
+  return (draft as { spatialRequested?: unknown }).spatialRequested === true;
 }
 
 function analysisContextPlannedManagementNotes(value: unknown) {
@@ -287,6 +296,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               c.id::text AS "clientId", c.name AS "clientName",
               p.id::text AS "propertyId", p.name AS "propertyName", p.municipality, p.state,
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
+              (f.boundary IS NOT NULL AND NOT ST_IsEmpty(f.boundary)) AS "hasFieldBoundary",
+              a.collection_order_id::text AS "collectionOrderId",
               a.analysis_context AS "analysisContext",
               cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
               cs.next_crop AS "nextCrop", cs.next_cultivar AS "nextCultivar", cs.cultivar,
@@ -372,6 +383,78 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       : await client.query(
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id IS NULL AND status = 'ACTIVE' ORDER BY title`,
         );
+
+    const spatialStructure = base.collectionOrderId
+      ? (await client.query<{
+          totalPointCount: number;
+          reliablePointCount: number;
+          reliableLabLinkedPointCount: number;
+          distinctReliableLabCoordinateCount: number;
+          hullType: string | null;
+        }>(
+          `WITH point_state AS (
+             SELECT sp.id,
+                    CASE
+                      WHEN sp.observed_position IS NOT NULL
+                        OR upper(trim(coalesce(sp.gps_source, ''))) = ANY($4::text[])
+                      THEN coalesce(sp.observed_position, sp.position)
+                      ELSE NULL
+                    END AS reliable_geom,
+                    EXISTS (
+                      SELECT 1
+                      FROM lab_samples ls
+                      JOIN lab_results lr
+                        ON lr.tenant_id = ls.tenant_id
+                       AND lr.lab_sample_id = ls.id
+                      WHERE ls.tenant_id = sp.tenant_id
+                        AND ls.analysis_id = $3::uuid
+                        AND ls.sample_point_id = sp.id
+                    ) AS has_lab
+             FROM sample_points sp
+             WHERE sp.tenant_id = $1::uuid
+               AND sp.collection_order_id = $2::uuid
+           )
+           SELECT count(*)::int AS "totalPointCount",
+                  count(*) FILTER (WHERE reliable_geom IS NOT NULL)::int AS "reliablePointCount",
+                  count(*) FILTER (WHERE reliable_geom IS NOT NULL AND has_lab)::int AS "reliableLabLinkedPointCount",
+                  count(DISTINCT encode(ST_AsEWKB(reliable_geom), 'hex'))
+                    FILTER (WHERE reliable_geom IS NOT NULL AND has_lab)::int AS "distinctReliableLabCoordinateCount",
+                  GeometryType(
+                    ST_ConvexHull(
+                      ST_Collect(reliable_geom) FILTER (WHERE reliable_geom IS NOT NULL AND has_lab)
+                    )
+                  ) AS "hullType"
+           FROM point_state`,
+          [
+            tenantId,
+            base.collectionOrderId,
+            analysisId,
+            ["SHAPEFILE_REAL_GPS_LONLAT", "SHAPEFILE_REAL_EPSG4326"],
+          ],
+        )).rows[0]
+      : {
+          totalPointCount: 0,
+          reliablePointCount: 0,
+          reliableLabLinkedPointCount: 0,
+          distinctReliableLabCoordinateCount: 0,
+          hullType: null,
+        };
+
+    const spatialSupportCount = spatialStructure.distinctReliableLabCoordinateCount ?? 0;
+    const sampleDistribution: SampleDistribution = spatialSupportCount < 3
+      ? "UNKNOWN"
+      : spatialStructure.hullType === "POLYGON"
+        ? "DISTRIBUTED"
+        : "COLLINEAR";
+    const spatialEvidenceEnvelope = evaluateSpatialEvidenceEnvelope({
+      explicitRequested: analysisContextSpatialRequested(base.analysisContext),
+      hasFieldBoundary: base.hasFieldBoundary === true,
+      totalPointCount: spatialStructure.totalPointCount ?? 0,
+      reliablePointCount: spatialStructure.reliablePointCount ?? 0,
+      reliableLabLinkedPointCount: spatialStructure.reliableLabLinkedPointCount ?? 0,
+      distinctReliableLabCoordinateCount: spatialSupportCount,
+      sampleDistribution,
+    });
 
     const nitrogenOrganicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(
       resultsResult.rows
@@ -525,6 +608,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicNitrogenEvidence,
       wheatGrainQualityEvidence,
       wheatBuyerQualityEvidence,
+      spatialEvidenceEnvelope,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
