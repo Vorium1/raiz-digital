@@ -11,10 +11,215 @@ export type SpatialPrescriptionBlocker =
   | "EXPLORATORY_ONLY_WITH_FEW_POINTS"
   | "KRIGING_NOT_ALLOWED_WITH_FEW_POINTS"
   | "PROFESSIONAL_SPATIAL_REVIEW_REQUIRED"
-  | "CROSS_VALIDATION_REQUIRED";
+  | "CROSS_VALIDATION_REQUIRED"
+  | "INTERPOLATION_VALIDATION_REQUIRED"
+  | "INTERPOLATION_VALIDATION_METHOD_MISMATCH";
 
 export type SpatialMethod = "KRIGING" | "IDW" | "THIESSEN" | "NEAREST_NEIGHBOR";
 export type SampleDistribution = "DISTRIBUTED" | "COLLINEAR" | "UNKNOWN";
+
+export type SpatialCrossValidationEvidence = {
+  strategy: "LOOCV" | "KFOLD" | "HOLDOUT";
+  validationCount: number;
+  rmse: number | null;
+  mae: number | null;
+  meanError: number | null;
+};
+
+export type SpatialVariogramEvidence = {
+  model: "SPHERICAL" | "EXPONENTIAL" | "GAUSSIAN" | "MATERN" | "OTHER_VALIDATED";
+  nugget: number | null;
+  sill: number | null;
+  range: number | null;
+  experimentalLagCount?: number | null;
+};
+
+export type SpatialInterpolationValidationInput = {
+  method: SpatialMethod;
+  sampleCount: number;
+  crossValidation?: SpatialCrossValidationEvidence | null;
+  variogram?: SpatialVariogramEvidence | null;
+  professionalMethodReviewApproved?: boolean;
+};
+
+export type SpatialInterpolationValidationDecision = {
+  method: SpatialMethod;
+  status: "INVALID_EVIDENCE" | "EVIDENCE_INCOMPLETE" | "REVIEW_REQUIRED" | "VALIDATED_FOR_OFFICIAL_SURFACE";
+  officialSurfaceAllowed: boolean;
+  automaticMethodSelectionAllowed: false;
+  automaticVariableRateAllowed: false;
+  crossValidation: SpatialCrossValidationEvidence | null;
+  variogram: SpatialVariogramEvidence | null;
+  blockers: string[];
+  policy: {
+    crossValidationRequired: true;
+    krigingVariogramRequired: boolean;
+    universalRmseThresholdAvailable: false;
+    universalMaeThresholdAvailable: false;
+    universalMeanErrorThresholdAvailable: false;
+    professionalMethodReviewRequired: true;
+  };
+};
+
+function finiteNonNegative(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function finiteNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Validação do MÉTODO espacial — separada do suporte amostral e da decisão de dose.
+ *
+ * Não existe corte universal de RMSE/MAE/ME que aprove um mapa sozinho. O RAIZ
+ * exige que essas métricas existam, preserva seus valores e exige revisão
+ * profissional. Krigagem também exige evidência de variograma.
+ */
+export function evaluateSpatialInterpolationValidation(
+  input: SpatialInterpolationValidationInput,
+): SpatialInterpolationValidationDecision {
+  const blockers: string[] = [];
+  const sampleCount = Number.isInteger(input.sampleCount) && input.sampleCount >= 0
+    ? input.sampleCount
+    : -1;
+  const cv = input.crossValidation ?? null;
+  const variogram = input.variogram ?? null;
+
+  if (sampleCount < 3) blockers.push("INTERPOLATION_SAMPLE_COUNT_INVALID");
+
+  if (!cv) {
+    blockers.push("CROSS_VALIDATION_REQUIRED");
+  } else {
+    if (!Number.isInteger(cv.validationCount) || cv.validationCount <= 0 || cv.validationCount > sampleCount) {
+      blockers.push("CROSS_VALIDATION_COUNT_INVALID");
+    }
+    if (cv.strategy === "LOOCV" && cv.validationCount !== sampleCount) {
+      blockers.push("LOOCV_MUST_VALIDATE_ALL_SAMPLES");
+    }
+    if (!finiteNonNegative(cv.rmse)) blockers.push("RMSE_REQUIRED");
+    if (!finiteNonNegative(cv.mae)) blockers.push("MAE_REQUIRED");
+    if (!finiteNumber(cv.meanError)) blockers.push("MEAN_ERROR_REQUIRED");
+    if (finiteNonNegative(cv.rmse) && finiteNonNegative(cv.mae) && (cv.mae as number) > (cv.rmse as number) + 1e-12) {
+      blockers.push("CROSS_VALIDATION_METRICS_INCONSISTENT");
+    }
+  }
+
+  if (input.method === "KRIGING") {
+    if (!variogram) {
+      blockers.push("KRIGING_VARIOGRAM_REQUIRED");
+    } else {
+      if (!finiteNonNegative(variogram.nugget)) blockers.push("VARIOGRAM_NUGGET_INVALID");
+      if (!(typeof variogram.sill === "number" && Number.isFinite(variogram.sill) && variogram.sill > 0)) {
+        blockers.push("VARIOGRAM_SILL_INVALID");
+      }
+      if (!(typeof variogram.range === "number" && Number.isFinite(variogram.range) && variogram.range > 0)) {
+        blockers.push("VARIOGRAM_RANGE_INVALID");
+      }
+      if (
+        variogram.experimentalLagCount != null
+        && (!Number.isInteger(variogram.experimentalLagCount) || variogram.experimentalLagCount <= 0)
+      ) {
+        blockers.push("VARIOGRAM_LAG_COUNT_INVALID");
+      }
+    }
+  }
+
+  const invalidCodes = new Set([
+    "INTERPOLATION_SAMPLE_COUNT_INVALID",
+    "CROSS_VALIDATION_COUNT_INVALID",
+    "LOOCV_MUST_VALIDATE_ALL_SAMPLES",
+    "CROSS_VALIDATION_METRICS_INCONSISTENT",
+    "VARIOGRAM_NUGGET_INVALID",
+    "VARIOGRAM_SILL_INVALID",
+    "VARIOGRAM_RANGE_INVALID",
+    "VARIOGRAM_LAG_COUNT_INVALID",
+  ]);
+  const hasInvalid = blockers.some((item) => invalidCodes.has(item));
+  const hasIncomplete = blockers.length > 0 && !hasInvalid;
+
+  if (hasInvalid) {
+    return {
+      method: input.method,
+      status: "INVALID_EVIDENCE",
+      officialSurfaceAllowed: false,
+      automaticMethodSelectionAllowed: false,
+      automaticVariableRateAllowed: false,
+      crossValidation: cv,
+      variogram,
+      blockers: [...new Set(blockers)],
+      policy: {
+        crossValidationRequired: true,
+        krigingVariogramRequired: input.method === "KRIGING",
+        universalRmseThresholdAvailable: false,
+        universalMaeThresholdAvailable: false,
+        universalMeanErrorThresholdAvailable: false,
+        professionalMethodReviewRequired: true,
+      },
+    };
+  }
+
+  if (hasIncomplete) {
+    return {
+      method: input.method,
+      status: "EVIDENCE_INCOMPLETE",
+      officialSurfaceAllowed: false,
+      automaticMethodSelectionAllowed: false,
+      automaticVariableRateAllowed: false,
+      crossValidation: cv,
+      variogram,
+      blockers: [...new Set(blockers)],
+      policy: {
+        crossValidationRequired: true,
+        krigingVariogramRequired: input.method === "KRIGING",
+        universalRmseThresholdAvailable: false,
+        universalMaeThresholdAvailable: false,
+        universalMeanErrorThresholdAvailable: false,
+        professionalMethodReviewRequired: true,
+      },
+    };
+  }
+
+  if (input.professionalMethodReviewApproved !== true) {
+    return {
+      method: input.method,
+      status: "REVIEW_REQUIRED",
+      officialSurfaceAllowed: false,
+      automaticMethodSelectionAllowed: false,
+      automaticVariableRateAllowed: false,
+      crossValidation: cv,
+      variogram,
+      blockers: ["PROFESSIONAL_METHOD_VALIDATION_REQUIRED"],
+      policy: {
+        crossValidationRequired: true,
+        krigingVariogramRequired: input.method === "KRIGING",
+        universalRmseThresholdAvailable: false,
+        universalMaeThresholdAvailable: false,
+        universalMeanErrorThresholdAvailable: false,
+        professionalMethodReviewRequired: true,
+      },
+    };
+  }
+
+  return {
+    method: input.method,
+    status: "VALIDATED_FOR_OFFICIAL_SURFACE",
+    officialSurfaceAllowed: true,
+    automaticMethodSelectionAllowed: false,
+    automaticVariableRateAllowed: false,
+    crossValidation: cv,
+    variogram,
+    blockers: [],
+    policy: {
+      crossValidationRequired: true,
+      krigingVariogramRequired: input.method === "KRIGING",
+      universalRmseThresholdAvailable: false,
+      universalMaeThresholdAvailable: false,
+      universalMeanErrorThresholdAvailable: false,
+      professionalMethodReviewRequired: true,
+    },
+  };
+}
 
 export type SpatialPrescriptionRequestInput = {
   explicitRequested: boolean;
@@ -28,7 +233,9 @@ export type SpatialPrescriptionRequestInput = {
   sampleDistribution?: SampleDistribution;
   requestedSpatialMethod?: SpatialMethod | null;
   professionalSpatialReviewApproved?: boolean;
+  /** @deprecated Booleano legado; não é suficiente para liberar mapa oficial. */
   crossValidationPassed?: boolean | null;
+  interpolationValidation?: SpatialInterpolationValidationDecision | null;
 };
 
 export type SpatialPrescriptionRequestDecision = {
@@ -123,12 +330,24 @@ export function evaluateSpatialPrescriptionRequest(
   if (n != null && n > 0 && n < 3) blockers.push("INSUFFICIENT_POINTS_FOR_2D_SURFACE");
   if (n != null && n >= 3 && n < 50) blockers.push("EXPLORATORY_ONLY_WITH_FEW_POINTS");
 
-  if (n != null && n > 0 && method === "KRIGING") {
-    if (n < 50) blockers.push("KRIGING_NOT_ALLOWED_WITH_FEW_POINTS");
-    if (n >= 100 && input.crossValidationPassed !== true) blockers.push("CROSS_VALIDATION_REQUIRED");
+  if (n != null && n > 0 && method === "KRIGING" && n < 50) {
+    blockers.push("KRIGING_NOT_ALLOWED_WITH_FEW_POINTS");
   }
 
-  // Toda prescrição oficial continua humana, inclusive quando n>=100 e a validação cruzada passou.
+  // Qualquer superfície oficial candidata (>=50 pontos pela política RAIZ)
+  // precisa de validação explícita do método. Um booleano legado de CV nunca é
+  // suficiente porque não preserva RMSE/MAE/ME, estratégia ou variograma.
+  if (method && n != null && n >= 50) {
+    const validation = input.interpolationValidation ?? null;
+    if (!validation || validation.status !== "VALIDATED_FOR_OFFICIAL_SURFACE" || !validation.officialSurfaceAllowed) {
+      blockers.push("INTERPOLATION_VALIDATION_REQUIRED");
+      if (!validation?.crossValidation) blockers.push("CROSS_VALIDATION_REQUIRED");
+    } else if (validation.method !== method) {
+      blockers.push("INTERPOLATION_VALIDATION_METHOD_MISMATCH");
+    }
+  }
+
+  // Toda prescrição oficial continua humana, mesmo depois de o método ter sido validado.
   if (method && input.professionalSpatialReviewApproved !== true) {
     blockers.push("PROFESSIONAL_SPATIAL_REVIEW_REQUIRED");
   }
