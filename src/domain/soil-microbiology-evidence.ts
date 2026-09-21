@@ -32,6 +32,7 @@ export type SoilMicrobiologyMethodFamily =
   | "METABARCODING_ITS"
   | "PLFA"
   | "MICROBIAL_BIOMASS_C"
+  | "MICROBIAL_BIOMASS_N"
   | "BASAL_RESPIRATION"
   | "METABOLIC_QUOTIENT_QCO2"
   | "FDA_HYDROLYSIS"
@@ -177,6 +178,15 @@ export const NATIONAL_SOIL_BIOLOGY_METHOD_REFERENCES = {
     description:
       "Carbono da biomassa microbiana por fumigação-extração: quantifica o compartimento microbiano de C; protocolo e fator de conversão devem ser preservados do laboratório.",
     sourceTitle: "Embrapa Agrobiologia — determinação do carbono da biomassa microbiana do solo por fumigação-extração",
+    nutrientDoseCreditAllowedByMethodAlone: false as const,
+  },
+  MICROBIAL_BIOMASS_N_FUMIGATION_EXTRACTION: {
+    scope: "MICROBIAL_BIOMASS" as const,
+    methodFamily: "MICROBIAL_BIOMASS_N" as const,
+    status: "CLASSICAL_REFERENCE_METHOD" as const,
+    description:
+      "Nitrogênio da biomassa microbiana por fumigação-extração: descreve o compartimento microbiano de N; método, unidade e fator de conversão precisam acompanhar o resultado.",
+    sourceTitle: "Embrapa Agrobiologia — determinação do nitrogênio da biomassa microbiana do solo (BMS-N)",
     nutrientDoseCreditAllowedByMethodAlone: false as const,
   },
   BASAL_RESPIRATION_AND_QCO2: {
