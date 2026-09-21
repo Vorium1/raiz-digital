@@ -14,6 +14,8 @@ import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type Biol
 import { evaluateIrrigationContext } from "@/domain/irrigation-context";
 import { evaluateIrrigationApplications, irrigationApplicationsFromContext } from "@/domain/irrigation-applications";
 import { evaluateIrrigationWaterEvidence } from "@/domain/irrigation-water-assessment";
+import { evaluateRiceContinuousNitrogenEnvelope, RESEARCH_READY_PROFILES } from "@/domain/research-ready-rules";
+import { isOrganicMatterPercentUnit } from "@/domain/nitrogen-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -46,6 +48,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   irrigationEvidence: ReturnType<typeof evaluateIrrigationContext>;
   irrigationApplicationEvidence: ReturnType<typeof evaluateIrrigationApplications>;
   irrigationWaterEvidence: ReturnType<typeof evaluateIrrigationWaterEvidence>;
+  riceNitrogenEvidence: ReturnType<typeof buildRiceNitrogenEvidence>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -174,6 +177,84 @@ function analysisContextIrrigation(value: unknown) {
     frequencyDays: finitePositiveOrNull(source.irrigationFrequencyDays),
     applicationTime: textOrNull(source.irrigationApplicationTime),
     notes: textOrNull(source.irrigationNotes),
+  };
+}
+
+function buildRiceNitrogenEvidence(
+  cropProfileCode: string | null | undefined,
+  rows: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string }>,
+) {
+  if ((cropProfileCode?.trim().toUpperCase() ?? "") !== "ARROZ") return null;
+
+  const organicMatterRows = rows.filter((row) => row.parameterCode === "MO");
+  if (organicMatterRows.length === 0) {
+    return {
+      status: "NOT_EVALUATED" as const,
+      automaticDoseAllowed: false as const,
+      uniformOrganicMatterBand: null,
+      envelopes: [],
+      limitations: ["RICE_N_REQUIRES_ORGANIC_MATTER_PERCENT"],
+    };
+  }
+
+  const limitations: string[] = [];
+  const envelopes: Array<{
+    sampleCode: string;
+    organicMatterPct: number;
+    organicMatterBand: string;
+    alternatives: ReturnType<typeof evaluateRiceContinuousNitrogenEnvelope>["alternatives"];
+  }> = [];
+
+  for (const row of organicMatterRows) {
+    if (!isOrganicMatterPercentUnit(row.unit)) {
+      limitations.push(`RICE_N_OM_UNIT_UNSUPPORTED:${row.sampleCode}:${row.unit}`);
+      continue;
+    }
+    if (!Number.isFinite(row.value) || row.value < 0) {
+      limitations.push(`RICE_N_OM_INVALID:${row.sampleCode}`);
+      continue;
+    }
+    try {
+      const envelope = evaluateRiceContinuousNitrogenEnvelope({
+        profileId: RESEARCH_READY_PROFILES.rice,
+        organicMatterPct: row.value,
+      });
+      envelopes.push({
+        sampleCode: row.sampleCode,
+        organicMatterPct: row.value,
+        organicMatterBand: envelope.organicMatterBand,
+        alternatives: envelope.alternatives,
+      });
+    } catch (error) {
+      limitations.push(
+        `RICE_N_OM_NOT_CLASSIFIABLE:${row.sampleCode}:${error instanceof Error ? error.message : "erro"}`,
+      );
+    }
+  }
+
+  if (envelopes.length === 0) {
+    return {
+      status: "NOT_EVALUATED" as const,
+      automaticDoseAllowed: false as const,
+      uniformOrganicMatterBand: null,
+      envelopes: [],
+      limitations,
+    };
+  }
+
+  const bands = [...new Set(envelopes.map((item) => item.organicMatterBand))];
+  if (bands.length > 1) limitations.push("RICE_N_OM_BANDS_CONFLICT_NO_UNIFORM_DOSE");
+
+  return {
+    status: bands.length === 1 ? "OFFICIAL_ENVELOPE" as const : "MULTI_BAND_OFFICIAL_ENVELOPE" as const,
+    ruleId: "N-ARROZ-CONTINUO-SOSBAI-2025" as const,
+    source: "SOSBAI 2025, Tabela 4.5, p.46" as const,
+    automaticDoseAllowed: false as const,
+    responseClassResolved: false as const,
+    blocker: "RICE_RESPONSE_CLASS_NOT_RESOLVED" as const,
+    uniformOrganicMatterBand: bands.length === 1 ? bands[0] : null,
+    envelopes,
+    limitations,
   };
 }
 
@@ -373,6 +454,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       irrigationWaterEvidence: evaluateIrrigationWaterEvidence({
         waterRegime: rawIrrigation.waterRegime ?? "",
       }),
+      riceNitrogenEvidence: buildRiceNitrogenEvidence(base.cropProfileCode, resultsResult.rows),
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
