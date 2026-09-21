@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildLabImportPreview } from "../src/domain/lab-import.ts";
+import { buildLabImportPreview, evaluateLabImportUsability } from "../src/domain/lab-import.ts";
 import {
   base64TransportBytes,
   compactLabImportPreview,
@@ -49,6 +49,19 @@ assert.equal(wide.format, "WIDE");
 assert.ok(wide.blockers >= 1, "Métodos não devem ser inventados para todos os parâmetros de tabela ampla.");
 assert.equal(wide.rows.find((row) => row.parameterCode === "P")?.method, "Mehlich-1");
 assert.equal(wide.rows.find((row) => row.parameterCode === "CA")?.method, "NÃO INFORMADO");
+const localizedUsability = evaluateLabImportUsability(wide);
+assert.equal(localizedUsability.fatalBlockerCount, 0);
+assert.ok(localizedUsability.promotableRowCount > 0, "linhas com método válido devem continuar utilizáveis");
+assert.ok(localizedUsability.excludedRowCount > 0, "linhas sem método não podem ser promovidas");
+assert.equal(localizedUsability.canProceedWithPartialEvidence, true, "blocker localizado não deve derrubar o restante do laudo");
+
+const structurallyInvalidCsv = `Parametro;Valor;Unidade;Metodo
+P;10;mg/dm3;Mehlich-1`;
+const structurallyInvalid = buildLabImportPreview(structurallyInvalidCsv, "sem-amostra.csv", { hasAgronomicContext: true, spatialLinked: true });
+const fatalUsability = evaluateLabImportUsability(structurallyInvalid);
+assert.ok(fatalUsability.fatalBlockerCount > 0);
+assert.equal(fatalUsability.promotableRowCount, 0);
+assert.equal(fatalUsability.canProceedWithPartialEvidence, false, "falha estrutural continua fail-closed");
 
 const commaCsv = `Amostra,Parametro,Valor,Unidade,Metodo
 A1,P,10.5,mg/dm3,Mehlich-1`;
