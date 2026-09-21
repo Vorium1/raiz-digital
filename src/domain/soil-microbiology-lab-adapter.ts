@@ -124,7 +124,7 @@ function classifyCode(parameterCode: string): {
   if ((code.includes("MICORRIZ") || code.includes("MYCORRH")) && code.includes("COLONIZ")) {
     return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "ROOT" };
   }
-  if ((code.includes("MICORRIZ") || code.includes("MYCORRH")) && code.includes("ESPOR")) {
+  if ((code.includes("MICORRIZ") || code.includes("MYCORRH")) && (code.includes("ESPOR") || code.includes("SPORE"))) {
     return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code.includes("MICORRIZ") || code.includes("MYCORRH")) {
