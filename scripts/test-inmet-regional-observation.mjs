@@ -15,23 +15,27 @@ const nearestFetcher=async()=>({
   sourceUrl:"https://apitempo.inmet.gov.br/estacoes/T",
 });
 
-const observations=Array.from({length:24},(_,hour)=>({
+const observations=Array.from({length:72},(_,index)=>({
   stationCode:"A839",
-  observedAtUtc:`2026-09-20T${String(hour).padStart(2,"0")}:00:00Z`,
-  temperatureC:10+hour,
-  precipitationMm:hour===12?3:0,
+  observedAtUtc:new Date(Date.UTC(2026,8,18,0,0,0)+index*3_600_000).toISOString(),
+  temperatureC:10+(index%24),
+  precipitationMm:index<50?0.4:index===60?3:0,
   windGustMps:4,
   globalRadiationKjM2:1000,
 }));
 
-const observationFetcher=async()=>({
-  provider:"INMET",
-  sourceUrl:"https://apitempo.inmet.gov.br/estacao/2026-09-20/2026-09-20/A839",
-  retrievedAt:"2026-09-21T00:15:00.000Z",
-  stationCode:"A839",
-  observations,
-  warnings:["INMET_AUTOMATIC_STATION_DATA_RAW_NOT_QUALITY_CONTROLLED_BY_RAIZ"],
-});
+let observationFetchInput=null;
+const observationFetcher=async(input)=>{
+  observationFetchInput=input;
+  return {
+    provider:"INMET",
+    sourceUrl:"https://apitempo.inmet.gov.br/estacao/2026-09-18/2026-09-20/A839",
+    retrievedAt:"2026-09-21T00:15:00.000Z",
+    stationCode:"A839",
+    observations,
+    warnings:["INMET_AUTOMATIC_STATION_DATA_RAW_NOT_QUALITY_CONTROLLED_BY_RAIZ"],
+  };
+};
 
 const ready=await collectInmetRegionalObservation({
   fieldLatitude:-28.26,
@@ -51,10 +55,15 @@ const ready=await collectInmetRegionalObservation({
 assert.equal(ready.status,"READY");
 assert.equal(ready.role,"REGIONAL_OBSERVED_STATION");
 assert.equal(ready.observedDateUtc,"2026-09-20");
+assert.equal(ready.observationWindowFromUtc,"2026-09-18");
+assert.equal(ready.observationWindowToUtc,"2026-09-20");
+assert.equal(observationFetchInput?.dateFrom,"2026-09-18");
+assert.equal(observationFetchInput?.dateTo,"2026-09-20");
 assert.equal(ready.station?.code,"A839");
 assert.equal(ready.applicability?.applicable,true);
 assert.deepEqual(ready.applicability?.sharedTechnicalRegionCodes,["RS-PLANALTO-MEDIO"]);
-assert.ok(ready.metricEvidence.some(item=>item.metric==="PRECIPITATION_MM" && item.value===3));
+assert.ok(ready.metricEvidence.some(item=>item.metric==="PRECIPITATION_MM" && Math.abs(item.value-3.8)<1e-9));
+assert.ok(ready.metricEvidence.some(item=>item.metric==="CONTINUOUS_RAIN_HOURS" && item.value===50));
 assert.ok(ready.warnings.includes("INMET_AUTOMATIC_STATION_DATA_RAW_NOT_QUALITY_CONTROLLED_BY_RAIZ"));
 
 const broadMismatch=await collectInmetRegionalObservation({
@@ -120,15 +129,16 @@ const incomplete=await collectInmetRegionalObservation({
   fieldRegions:[{code:"BR-RS",specificityScore:200}],
   resolveStationRegions:async()=>[{code:"BR-RS",specificityScore:200}],
   nearestFetcher,
-  observationFetcher:async()=>({
-    ...(await observationFetcher()),
-    observations:observations.slice(0,23),
+  observationFetcher:async(input)=>({
+    ...(await observationFetcher(input)),
+    observations:observations.filter((_,index)=>index!==71),
   }),
   now:()=>new Date("2026-09-21T00:15:00Z"),
 });
 assert.equal(incomplete.status,"PARTIAL");
 assert.equal(incomplete.metricEvidence.length,0);
 assert.ok(incomplete.warnings.includes("INMET_INCOMPLETE_UTC_DAY_NOT_AGGREGATED"));
+assert.ok(incomplete.warnings.includes("INMET_RAIN_DURATION_WINDOW_INCOMPLETE"));
 
 await assert.rejects(
   collectInmetRegionalObservation({
