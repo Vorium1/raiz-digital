@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { evaluateSpatialAttributeEvidence } from "../src/domain/spatial-attribute-evidence.ts";
+import { evaluateSpatialEvidenceEnvelope } from "../src/domain/spatial-prescription-request.ts";
+import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 import {
   evaluateStoredSpatialInterpolationValidations,
   parseSpatialInterpolationValidations,
@@ -115,5 +117,53 @@ const absent = evaluateStoredSpatialInterpolationValidations({
 });
 assert.equal(absent.status, "NOT_PROVIDED");
 assert.deepEqual(absent.entries, []);
+
+const providerBaseEvidence = {
+  results: [],
+  technicalSources: [],
+  deterministicInterpretation: null,
+  season: { cropProfileCode: "SOJA" },
+  deterministicPkDoses: {
+    P2O5: { ready: false, blockers: ["TEST_NO_P"] },
+    K2O: { ready: false, blockers: ["TEST_NO_K"] },
+  },
+  spatialEvidenceEnvelope: evaluateSpatialEvidenceEnvelope({
+    explicitRequested: true,
+    hasFieldBoundary: true,
+    totalPointCount: 70,
+    reliablePointCount: 70,
+    reliableLabLinkedPointCount: 70,
+    distinctReliableLabCoordinateCount: 70,
+    sampleDistribution: "DISTRIBUTED",
+  }),
+};
+
+const providerCurrentValidation = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialInterpolationValidationEvidence: current,
+  },
+});
+assert.equal(providerCurrentValidation.prescription.recommendations.length, 0);
+assert.match(providerCurrentValidation.prescription.managementPractices.join(" "), /Espacial P: KRIGING possui validação técnica corrente/);
+assert.match(providerCurrentValidation.prescription.managementPractices.join(" "), /RMSE 1,2/);
+assert.match(providerCurrentValidation.prescription.managementPractices.join(" "), /superfície oficial candidata/);
+assert.match(providerCurrentValidation.prescription.managementPractices.join(" "), /não autoriza dose espacial nem taxa variável automática/);
+
+const providerStaleValidation = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialInterpolationValidationEvidence: staleCount,
+  },
+});
+assert.match(providerStaleValidation.prescription.missingInformation.join(" "), /validação antiga não foi reutilizada/);
+
+const providerInvalidContext = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialInterpolationValidationEvidence: invalidContext,
+  },
+});
+assert.match(providerInvalidContext.prescription.missingInformation.join(" "), /registro opcional de validação de interpolação inválido/);
 
 console.log("spatial-interpolation-context: persisted validation is optional, freshness-bound and never auto-authorizes VRA");
