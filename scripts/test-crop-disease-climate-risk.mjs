@@ -66,7 +66,7 @@ assert.equal(blast.diseaseRisks[0].diseaseCode, "BRUSONE");
 assert.equal(blast.diseaseRisks[0].climateFavorability, "HIGH");
 assert.equal(blast.diseaseRisks[0].infectionConfirmed, false);
 
-const noTomatoDiseaseProfile = assessDiseaseClimateFavorability({
+const tomatoOutsideProfile = assessDiseaseClimateFavorability({
   cropCode: "TOMATE",
   countryCode: "BR",
   stateCode: "RS",
@@ -74,8 +74,77 @@ const noTomatoDiseaseProfile = assessDiseaseClimateFavorability({
   observation: { airTemperatureC: 25, relativeHumidityPct: 95 },
   profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
 });
-assert.equal(noTomatoDiseaseProfile.status, "NO_APPLICABLE_PROFILE");
-assert.ok(noTomatoDiseaseProfile.warnings.includes("CROP_DISEASE_CLIMATE_PROFILE_REQUIRED"));
+assert.equal(tomatoOutsideProfile.status, "READY");
+assert.equal(tomatoOutsideProfile.diseaseRisks.find((item) => item.diseaseCode === "REQUEIMA")?.climateFavorability, "LOW");
+
+const fusariumHeadBlight = assessDiseaseClimateFavorability({
+  cropCode: "TRIGO",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "FLOWERING",
+  observation: { airTemperatureC: 22, continuousRainHours: 52 },
+  profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
+});
+const giberelaRisk = fusariumHeadBlight.diseaseRisks.find((item) => item.diseaseCode === "GIBERELA");
+assert.equal(giberelaRisk?.climateFavorability, "HIGH");
+assert.ok(giberelaRisk?.matchedFactors.includes("CONTINUOUS_RAIN_HOURS"));
+assert.equal(giberelaRisk?.treatmentAutomaticallyAuthorized, false);
+
+const maizeDisease = assessDiseaseClimateFavorability({
+  cropCode: "MILHO",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "REPRODUCTIVE",
+  observation: {
+    airTemperatureC: 27,
+    nightTemperatureC: 18,
+    relativeHumidityPct: 95,
+  },
+  fieldContext: { residueLevel: "HIGH", cropRotationBreak: false },
+  profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
+});
+assert.equal(maizeDisease.status, "READY");
+assert.equal(maizeDisease.diseaseRisks.find((item) => item.diseaseCode === "CERCOSPORIOSE")?.climateFavorability, "HIGH");
+assert.equal(maizeDisease.diseaseRisks.find((item) => item.diseaseCode === "CERCOSPORIOSE")?.fieldContextAlignment, "MATCHED");
+assert.equal(maizeDisease.diseaseRisks.find((item) => item.diseaseCode === "MANCHA_BRANCA")?.climateFavorability, "HIGH");
+
+const riceBlast = assessDiseaseClimateFavorability({
+  cropCode: "ARROZ",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "REPRODUCTIVE",
+  observation: {
+    airTemperatureC: 27,
+    relativeHumidityPct: 95,
+    lowRadiationSignal: true,
+  },
+  profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
+});
+assert.equal(riceBlast.status, "READY");
+assert.equal(riceBlast.diseaseRisks.find((item) => item.diseaseCode === "BRUSONE")?.climateFavorability, "HIGH");
+assert.ok(riceBlast.diseaseRisks.find((item) => item.diseaseCode === "BRUSONE")?.matchedFactors.includes("LOW_RADIATION"));
+
+const tomatoLateBlight = assessDiseaseClimateFavorability({
+  cropCode: "TOMATE",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "FRUIT_DEVELOPMENT",
+  observation: { airTemperatureC: 18, leafWetnessHours: 12 },
+  fieldContext: { irrigationMethod: "SPRINKLER" },
+  profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
+});
+assert.equal(tomatoLateBlight.diseaseRisks.find((item) => item.diseaseCode === "REQUEIMA")?.climateFavorability, "HIGH");
+assert.equal(tomatoLateBlight.diseaseRisks.find((item) => item.diseaseCode === "REQUEIMA")?.fieldContextAlignment, "MATCHED");
+
+const potatoLateBlight = assessDiseaseClimateFavorability({
+  cropCode: "BATATA",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "TUBER_INITIATION",
+  observation: { airTemperatureC: 16, relativeHumidityPct: 95 },
+  profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
+});
+assert.equal(potatoLateBlight.diseaseRisks.find((item) => item.diseaseCode === "REQUEIMA")?.climateFavorability, "HIGH");
 
 const extendedDisease = assessDiseaseClimateFavorability({
   cropCode: "TOMATE",
