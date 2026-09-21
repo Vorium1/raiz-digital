@@ -1,0 +1,80 @@
+name: NDVI Preview Visual QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "URL completa do Preview Vercel a validar"
+        required: true
+        type: string
+      admin_email:
+        description: "Conta de homologação do RAIZ"
+        required: false
+        default: "admin@raiz.local"
+        type: string
+      expect_google_maps:
+        description: "Exigir Google Maps/Satellite neste Preview"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  visual-qa:
+    name: issue-84-preview
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 20
+    env:
+      E2E_BASE_URL: ${{ inputs.preview_url }}
+      E2E_ADMIN_EMAIL: ${{ inputs.admin_email }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      E2E_EXPECT_GOOGLE_MAPS: ${{ inputs.expect_google_maps && '1' || '0' }}
+
+    steps:
+      - name: Checkout do SHA acionado
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validar contexto protegido
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${E2E_ADMIN_PASSWORD:-}" ]; then
+            echo "::error::Secret E2E_ADMIN_PASSWORD não está configurado no Environment homologation."
+            exit 1
+          fi
+          if [[ "${E2E_BASE_URL}" != https://* ]]; then
+            echo "::error::preview_url precisa ser HTTPS."
+            exit 1
+          fi
+          if [[ "${E2E_BASE_URL}" == *".vercel.app"* ]] && [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            echo "::warning::VERCEL_AUTOMATION_BYPASS_SECRET está vazio. O teste só passará se este Preview não exigir Deployment Protection."
+          fi
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Instalar Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar gate visual NDVI da issue 84
+        run: npm run test:e2e:ndvi-preview
+
+      - name: Publicar screenshots/traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndvi-preview-visual-qa-${{ github.sha }}
+          path: |
+            test-results
+          if-no-files-found: warn
+          retention-days: 14
