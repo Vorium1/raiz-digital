@@ -11,10 +11,10 @@ export const OFFICIAL_AGROCLIMATE_SOURCE_CONTRACTS = {
   },
   INMET_AUTOMATIC_STATIONS: {
     institution: "INMET",
-    status: "OFFICIAL_OBSERVED_DATA_ENDPOINT_NOT_HOMOLOGATED",
+    status: "OFFICIAL_PUBLIC_API",
     role: "OBSERVATION",
-    locator: "https://portal.inmet.gov.br/servicos/estações-automáticas",
-    notes: "Observações oficiais normalizadas podem ser usadas; a camada HTTP fica desacoplada até contrato oficial de API ser homologado. Dados automáticos são brutos.",
+    locator: "https://apitempo.inmet.gov.br/",
+    notes: "Catálogo e observações automáticas oficiais são ingeridos com hora UTC, estação/proveniência explícitas e tratamento fail-closed de série incompleta. Dados automáticos imediatos permanecem brutos, não equivalem a sensor do talhão e exigem gate de região técnica antes de uso.",
   },
   MAPA_ZARC_RISK_TABLE: {
     institution: "MAPA",
