@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   visual-qa:
@@ -51,7 +52,18 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Obter token OIDC confiável do GitHub Actions
+        id: vercel_oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
       - name: Validar contexto protegido
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -63,8 +75,11 @@ jobs:
             echo "::error::preview_url precisa ser HTTPS."
             exit 1
           fi
-          if [[ "${E2E_BASE_URL}" == *".vercel.app"* ]] && [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-            echo "::warning::VERCEL_AUTOMATION_BYPASS_SECRET está vazio. O teste só passará se este Preview não exigir Deployment Protection."
+          if [[ "${E2E_BASE_URL}" == *".vercel.app"* ]] \
+             && [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ] \
+             && [ -z "${VERCEL_TRUSTED_OIDC_TOKEN:-}" ]; then
+            echo "::error::Preview protegido sem bypass secret nem token OIDC confiável."
+            exit 1
           fi
 
       - name: Instalar dependências
@@ -131,6 +146,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Rodar gate visual NDVI da issue 84
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         run: npm run test:e2e:ndvi-preview
 
       - name: Revogar sessão temporária
