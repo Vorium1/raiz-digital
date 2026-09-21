@@ -259,4 +259,30 @@ assert.ok(maize.impacts.some((item) => item.hazard === "LOW_RADIATION"));
 // Excesso de chuva não ganha interpretação só por estar no sinal: precisa regra do milho.
 assert.equal(maize.impacts.some((item) => item.hazard === "EXCESS_RAIN"), false);
 
+const soybeanDrought = assessCropClimateRisk({
+  cropCode: "SOJA",
+  countryCode: "BR",
+  stateCode: "RS",
+  plannedStart: "2026-11-15",
+  plannedEnd: "2027-03-31",
+  waterRegime: "SEQUEIRO",
+  stages: ["FLOWERING", "GRAIN_FILL"],
+  signal: {
+    source: "INMET",
+    publishedAt: "2026-09-20",
+    targetStart: "2027-01-10",
+    targetEnd: "2027-03-10",
+    driver: "OTHER",
+    confidence: "HIGH",
+    hazards: [{ hazard: "WATER_DEFICIT", confidence: "HIGH" }],
+  },
+  profiles: HOMOLOGATED_CROP_CLIMATE_PROFILES,
+});
+assert.equal(soybeanDrought.status, "READY");
+assert.equal(soybeanDrought.riskClass, "ADVERSE");
+assert.ok(soybeanDrought.impacts.some((item) =>
+  item.hazard === "WATER_DEFICIT" && item.stage === "GRAIN_FILL"
+));
+assert.ok(soybeanDrought.matchedProfileIds.includes("SOJA-BR-EMBRAPA-CLIMA"));
+
 console.log("crop-climate-catalog: fisiologia, doença e não-inferência de tratamento validadas");
