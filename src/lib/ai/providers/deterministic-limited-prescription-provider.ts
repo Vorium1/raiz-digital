@@ -437,6 +437,33 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
           }
         }
       }
+
+      const methodComparisons = evidence.spatialMethodComparisons ?? [];
+      for (const comparison of methodComparisons) {
+        if (comparison.status === "NOT_COMPARABLE_VALIDATION_DESIGN") {
+          deterministic.limitations.push(
+            `Espacial ${comparison.parameterCode}: existem métodos tecnicamente validados, mas os desenhos de validação cruzada não são equivalentes. O RAIZ não comparou RMSE/MAE/erro médio entre estratégias ou tamanhos de validação diferentes.`,
+          );
+          continue;
+        }
+        if (comparison.status !== "PARETO_COMPARISON_AVAILABLE") continue;
+
+        const nonDominated = comparison.entries.filter((item) => item.paretoStatus === "NON_DOMINATED");
+        const dominated = comparison.entries.filter((item) => item.paretoStatus === "DOMINATED");
+        const metricText = comparison.entries.map((item) =>
+          `${item.method}: RMSE ${item.rmse.toLocaleString("pt-BR")}, MAE ${item.mae.toLocaleString("pt-BR")}, |erro médio| ${item.absoluteMeanError.toLocaleString("pt-BR")}`
+        ).join("; ");
+
+        if (nonDominated.length > 1) {
+          deterministic.managementPractices.push(
+            `Comparação espacial ${comparison.parameterCode}: ${comparison.entries.length} métodos foram avaliados no mesmo desenho (${comparison.comparisonBasis.strategy}, n=${comparison.comparisonBasis.validationCount}). Há trade-off entre os métodos não dominados (${nonDominated.map((item) => item.method).join(", ")}): nenhum é melhor simultaneamente em RMSE, MAE e |erro médio|. Métricas: ${metricText}. A seleção final permanece profissional.`,
+          );
+        } else if (nonDominated.length === 1 && dominated.length > 0) {
+          deterministic.managementPractices.push(
+            `Comparação espacial ${comparison.parameterCode}: ${nonDominated[0].method} não foi dominado nas três métricas, enquanto ${dominated.map((item) => `${item.method} (dominado por ${item.dominatedBy.join("/")})`).join(", ")} apresentou desempenho simultaneamente não superior. Métricas: ${metricText}. Dominância de Pareto não autoriza seleção automática; a decisão do método permanece profissional.`,
+          );
+        }
+      }
     }
 
     const missingInformation = unique([...deterministicLimitations, ...deterministic.limitations]);
