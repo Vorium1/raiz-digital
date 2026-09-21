@@ -190,6 +190,113 @@ export function assessZarcPlantingDate(
   };
 }
 
+
+export type ZarcPartialContext = {
+  seasonStartYear: number;
+  seasonEndYear: number;
+  cropCode: number;
+  ibgeMunicipalityCode: string;
+  stateCode: string;
+  cycleCode?: keyof typeof ZARC_CYCLE_CODES | null;
+  soilCode?: keyof typeof ZARC_SOIL_CODES | null;
+  managementCode?: keyof typeof ZARC_MANAGEMENT_CODES | null;
+  climateCode?: keyof typeof ZARC_CLIMATE_CODES | null;
+};
+
+export type ZarcRiskEnvelope = {
+  status:
+    | "CONSENSUS_RISK"
+    | "CONSENSUS_NOT_INDICATED"
+    | "VARIABLE_BY_OPTIONAL_CONTEXT"
+    | "NO_COMPATIBLE_ROWS";
+  decade: number;
+  candidateCount: number;
+  riskLevelsPct: number[];
+  includesNotIndicated: boolean;
+  unresolvedDimensions: Array<"CYCLE" | "SOIL" | "MANAGEMENT" | "CLIMATE">;
+  sourcePortarias: string[];
+  warning: "ZARC_RISK_IS_NOT_YIELD_FORECAST";
+};
+
+function validatePartialContext(input: ZarcPartialContext): ZarcPartialContext {
+  if (!Number.isInteger(input.seasonStartYear) || !Number.isInteger(input.seasonEndYear)
+      || input.seasonEndYear !== input.seasonStartYear + 1) {
+    throw new Error("ZARC_SEASON_INVALID");
+  }
+  if (!Number.isInteger(input.cropCode) || input.cropCode <= 0) throw new Error("ZARC_CROP_CODE_INVALID");
+  if (!/^\d{7}$/.test(input.ibgeMunicipalityCode.trim())) throw new Error("ZARC_IBGE_MUNICIPALITY_CODE_INVALID");
+  const stateCode = input.stateCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(stateCode)) throw new Error("ZARC_STATE_CODE_INVALID");
+  if (input.cycleCode != null && !(input.cycleCode in ZARC_CYCLE_CODES)) throw new Error("ZARC_CYCLE_CODE_INVALID");
+  if (input.soilCode != null && !(input.soilCode in ZARC_SOIL_CODES)) throw new Error("ZARC_SOIL_CODE_INVALID");
+  if (input.managementCode != null && !(input.managementCode in ZARC_MANAGEMENT_CODES)) throw new Error("ZARC_MANAGEMENT_CODE_INVALID");
+  if (input.climateCode != null && !(input.climateCode in ZARC_CLIMATE_CODES)) throw new Error("ZARC_CLIMATE_CODE_INVALID");
+  return {
+    ...input,
+    stateCode,
+    ibgeMunicipalityCode: input.ibgeMunicipalityCode.trim(),
+  };
+}
+
+/**
+ * Leitura progressiva do ZARC.
+ *
+ * Safra + cultura oficial + município são o núcleo mínimo. As dimensões
+ * ciclo/solo/manejo/clima podem permanecer abertas. Nesse caso a RAIZ não
+ * escolhe uma linha: calcula o conjunto de riscos oficiais compatíveis para o
+ * decêndio e só devolve consenso quando TODAS as linhas concordam.
+ */
+export function assessZarcRiskEnvelope(
+  rows: ZarcPlantingRiskEvidence[],
+  rawContext: ZarcPartialContext,
+  plantingDate: string,
+): ZarcRiskEnvelope {
+  const context = validatePartialContext(rawContext);
+  const decade = zarcDecadeForCivilDate(plantingDate);
+  const unresolvedDimensions: ZarcRiskEnvelope["unresolvedDimensions"] = [
+    ...(context.cycleCode == null ? ["CYCLE" as const] : []),
+    ...(context.soilCode == null ? ["SOIL" as const] : []),
+    ...(context.managementCode == null ? ["MANAGEMENT" as const] : []),
+    ...(context.climateCode == null ? ["CLIMATE" as const] : []),
+  ];
+
+  const candidates = rows.filter((row) =>
+    row.seasonStartYear === context.seasonStartYear
+    && row.seasonEndYear === context.seasonEndYear
+    && row.cropCode === context.cropCode
+    && row.ibgeMunicipalityCode === context.ibgeMunicipalityCode
+    && row.stateCode.toUpperCase() === context.stateCode
+    && (context.cycleCode == null || row.cycleCode === context.cycleCode)
+    && (context.soilCode == null || row.soilCode === context.soilCode)
+    && (context.managementCode == null || row.managementCode === context.managementCode)
+    && (context.climateCode == null || row.climateCode === context.climateCode)
+  );
+
+  const risks = candidates.map((row) =>
+    row.decades.find((item) => item.decade === decade)?.riskPct ?? null
+  );
+  const riskLevelsPct = [...new Set(risks.filter((risk): risk is number => risk != null))].sort((a, b) => a - b);
+  const includesNotIndicated = risks.some((risk) => risk == null);
+  const sourcePortarias = [...new Set(candidates.map((row) => row.ordinance).filter(Boolean))].sort();
+
+  let status: ZarcRiskEnvelope["status"];
+  if (!candidates.length) status = "NO_COMPATIBLE_ROWS";
+  else if (riskLevelsPct.length === 0 && includesNotIndicated) status = "CONSENSUS_NOT_INDICATED";
+  else if (riskLevelsPct.length === 1 && !includesNotIndicated) status = "CONSENSUS_RISK";
+  else status = "VARIABLE_BY_OPTIONAL_CONTEXT";
+
+  return {
+    status,
+    decade,
+    candidateCount: candidates.length,
+    riskLevelsPct,
+    includesNotIndicated,
+    unresolvedDimensions,
+    sourcePortarias,
+    warning: "ZARC_RISK_IS_NOT_YIELD_FORECAST",
+  };
+}
+
 function detectDelimiter(headerLine: string) {
   const candidates = [";", ",", "\t"] as const;
   const score = (delimiter: string) => {
