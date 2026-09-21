@@ -179,8 +179,11 @@ function intField(row:ZarcRiskTableRow,key:string) {
   const n=Number(field(row,key)); if (!Number.isInteger(n)) throw new Error(`ZARC: ${key} precisa ser inteiro.`); return n;
 }
 function risk(raw:string|null,decade:number) {
-  if (!raw) return null; const n=Number(raw.replace("%","").replace(",",".").trim());
-  if (!Number.isFinite(n)||n<0||n>100) throw new Error(`ZARC: valor inválido em dec${decade}: ${raw}`);
+  if (!raw) return null;
+  const n=Number(raw.replace("%","").replace(",",".").trim());
+  if (n !== 20 && n !== 30 && n !== 40) {
+    throw new Error(`ZARC: risco não homologado em dec${decade}: ${raw}`);
+  }
   return n;
 }
 /** ZARC fica em camada própria; nunca é convertido em clima observado/previsto. */
