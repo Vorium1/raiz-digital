@@ -6,6 +6,7 @@ export type NitrogenContextFields = {
   residueClass?: "LEGUME" | "GRASS" | "UNKNOWN" | null;
   residueBiomassTonPerHa?: number | null;
   wheatPrecedingCrop?: "SOY" | "CORN" | null;
+  /** Nome legado de armazenamento: true significa objetivo opcional de proteína/Glúten Vital; nunca é pré-requisito da dose-base de N. */
   lateQualityNitrogenRequested?: boolean | null;
   pastureType?: "ANNUAL_GRASS" | "PERENNIAL_GRASS" | "LEGUME" | null;
   targetDryMatterTonPerHa?: number | null;
