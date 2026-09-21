@@ -103,6 +103,41 @@ export function computeRiceContinuousNitrogen(input: {
   };
 }
 
+/**
+ * Leitura progressiva da mesma Tabela 4.5 quando a expectativa de resposta
+ * ainda não foi explicitamente validada.
+ *
+ * Não escolhe Média/Alta/Muito Alta por meta produtiva, investimento, cultivar
+ * ou clima. Em vez disso, preserva todas as alternativas oficiais compatíveis
+ * com a classe de matéria orgânica. O envelope é informativo e NÃO autoriza
+ * dose única automática.
+ */
+export function evaluateRiceContinuousNitrogenEnvelope(input: {
+  profileId: string;
+  organicMatterPct: number;
+}) {
+  assertRiceProfile(input.profileId);
+  const trace = requireReady("N-ARROZ-CONTINUO-SOSBAI-2025");
+  const band = riceOmBand(input.organicMatterPct);
+  const alternatives = (["MEDIA", "ALTA", "MUITO_ALTA"] as const).map((responseClass) => ({
+    responseClass,
+    dose: RICE_N_TABLE[band][responseClass],
+  }));
+  return {
+    ruleId: trace.ruleId,
+    ruleVersion: trace.ruleVersion,
+    sourceSnapshotId: trace.sourceSnapshotId,
+    source: "SOSBAI 2025, Tabela 4.5, p.46",
+    profileId: RICE_PROFILE,
+    organicMatterBand: band,
+    alternatives,
+    automaticDoseAllowed: false as const,
+    responseClassResolved: false as const,
+    blocker: "RICE_RESPONSE_CLASS_NOT_RESOLVED" as const,
+    parcelingAutomated: false as const,
+  };
+}
+
 const RICE_P_TABLE: Record<RicePkClass, Record<RiceResponseClass, BoundedDose>> = {
   MUITO_BAIXO: {
     MEDIA: { kind: "EXACT", kgPerHa: 70 },
