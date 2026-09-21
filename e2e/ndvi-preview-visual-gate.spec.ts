@@ -75,16 +75,45 @@ function flattenCoordinates(value: unknown, out: Array<[number, number]> = []): 
 }
 
 async function fieldWithArchivedNdvi(page: Page) {
-  const context = await page.evaluate(async () => (await fetch("/api/context", { cache: "no-store" })).json());
-  const fields: Array<{ id: string; name?: string }> = context.fields ?? [];
+  const contextResult = await page.evaluate(async () => {
+    const response = await fetch("/api/context", { cache: "no-store" });
+    let body: any = null;
+    try { body = await response.json(); } catch {}
+    return { status: response.status, ok: response.ok, body };
+  });
 
+  expect(
+    contextResult.ok,
+    `/api/context deveria responder 2xx no Preview autenticado; status=${contextResult.status}; body=${JSON.stringify(contextResult.body)}`,
+  ).toBe(true);
+
+  const fields: Array<{ id: string; name?: string }> = contextResult.body?.fields ?? [];
+  expect(fields.length, "A homologação da #84 deve expor pelo menos um talhão à sessão E2E.").toBeGreaterThan(0);
+
+  const diagnostics: Array<Record<string, unknown>> = [];
   for (const field of fields) {
-    const payload = await page.evaluate(async (fieldId) => {
+    const result = await page.evaluate(async (fieldId) => {
       const response = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store" });
-      if (!response.ok) return null;
-      return await response.json();
-    }, field.id) as NdviPayload | null;
-    if (!payload?.fieldBoundary) continue;
+      let body: any = null;
+      try { body = await response.json(); } catch {}
+      return { status: response.status, ok: response.ok, body };
+    }, field.id);
+
+    const payload = result.body as NdviPayload | null;
+    diagnostics.push({
+      fieldId: field.id,
+      fieldName: field.name ?? field.id,
+      status: result.status,
+      ok: result.ok,
+      hasBoundary: Boolean(payload?.fieldBoundary),
+      historyCount: Array.isArray(payload?.history) ? payload!.history!.length : 0,
+      archivedCount: Array.isArray(payload?.history)
+        ? payload!.history!.filter((snapshot) => Boolean(snapshot.rasterObjectKey)).length
+        : 0,
+      error: (result.body as any)?.error ?? null,
+    });
+
+    if (!result.ok || !payload?.fieldBoundary) continue;
     const archived = (payload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
     if (archived?.capturedAt) {
       return {
@@ -95,7 +124,8 @@ async function fieldWithArchivedNdvi(page: Page) {
       };
     }
   }
-  return null;
+
+  throw new Error(`Nenhum raster NDVI arquivado ficou acessível pela API do Preview. Diagnóstico: ${JSON.stringify(diagnostics)}`);
 }
 
 async function assertRasterEnvelopeContainsBoundary(page: Page, input: {
@@ -144,8 +174,6 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await login(page);
 
     const target = await fieldWithArchivedNdvi(page);
-    test.skip(!target, "Nenhum talhão acessível possui raster NDVI arquivado neste ambiente.");
-    if (!target) return;
 
     await assertRasterEnvelopeContainsBoundary(page, target);
 
@@ -192,8 +220,6 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await login(page);
 
     const target = await fieldWithArchivedNdvi(page);
-    test.skip(!target, "Nenhum talhão acessível possui raster NDVI arquivado neste ambiente.");
-    if (!target) return;
 
     await page.goto(`/talhoes/${target.fieldId}`, { waitUntil: "networkidle" });
     const vigor = page.locator(".simple-field-vigor");
@@ -225,10 +251,18 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await login(page);
 
-    const context = await page.evaluate(async () => (await fetch("/api/context", { cache: "no-store" })).json());
-    const fieldId = context.fields?.[0]?.id as string | undefined;
-    test.skip(!fieldId, "Nenhum talhão acessível para validar a aba Relevo.");
-    if (!fieldId) return;
+    const contextResult = await page.evaluate(async () => {
+      const response = await fetch("/api/context", { cache: "no-store" });
+      let body: any = null;
+      try { body = await response.json(); } catch {}
+      return { status: response.status, ok: response.ok, body };
+    });
+    expect(
+      contextResult.ok,
+      `/api/context deveria responder 2xx no Preview autenticado; status=${contextResult.status}; body=${JSON.stringify(contextResult.body)}`,
+    ).toBe(true);
+    const fieldId = contextResult.body?.fields?.[0]?.id as string | undefined;
+    expect(fieldId, "A homologação da #84 deve expor pelo menos um talhão para validar Relevo.").toBeTruthy();
 
     await page.goto(`/talhoes/${fieldId}`, { waitUntil: "networkidle" });
     const layers = page.locator(".simple-field-map-layers");
