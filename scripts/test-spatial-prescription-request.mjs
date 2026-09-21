@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { evaluateSpatialEvidenceEnvelope, evaluateSpatialPrescriptionRequest } from "../src/domain/spatial-prescription-request.ts";
+import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 
 const normalAnalysis = evaluateSpatialPrescriptionRequest({
   explicitRequested: false,
@@ -290,5 +291,46 @@ const methodlessCountPolicy = evaluateSpatialPrescriptionRequest({
 });
 assert.equal(methodlessCountPolicy.policy.interpolationClass, "CANDIDATE_REVIEW");
 assert.equal(methodlessCountPolicy.canGenerateVariableRate, false);
+
+const providerBaseEvidence = {
+  results: [],
+  technicalSources: [],
+  deterministicInterpretation: null,
+  season: { cropProfileCode: "SOJA" },
+  deterministicPkDoses: {
+    P2O5: { ready: false, blockers: ["TEST_NO_P"] },
+    K2O: { ready: false, blockers: ["TEST_NO_K"] },
+  },
+};
+
+const providerNoSpatial = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialEvidenceEnvelope: spatialEnvelopeNotRequested,
+  },
+});
+assert.doesNotMatch(providerNoSpatial.prescription.managementPractices.join(" "), /Análise espacial|taxa variável/i);
+
+const providerSpatialCandidate = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialEvidenceEnvelope: spatialEnvelopeCandidate,
+  },
+});
+assert.equal(providerSpatialCandidate.prescription.recommendations.length, 0);
+assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /80 posições distintas/);
+assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /não escolheu atributo, IDW\/krigagem\/Thiessen/i);
+assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /validação cruzada quando aplicável/i);
+
+const providerSpatialExploratory = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialEvidenceEnvelope: spatialEnvelopeExploratory,
+  },
+});
+assert.match(providerSpatialExploratory.prescription.managementPractices.join(" "), /somente exploração visual\/zonas auxiliares/i);
+assert.match(providerSpatialExploratory.prescription.missingInformation.join(" "), /sem coordenada observada ou fonte GPS auditada/i);
+assert.match(providerSpatialExploratory.prescription.missingInformation.join(" "), /sem evidência laboratorial vinculada/i);
+assert.match(providerSpatialExploratory.prescription.missingInformation.join(" "), /coordenadas duplicadas/i);
 
 console.log("spatial-prescription-request: VRA opt-in, <50 exploratório, CV e aprovação humana final; no-extrapolation enforced");
