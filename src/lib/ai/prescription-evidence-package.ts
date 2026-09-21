@@ -472,9 +472,12 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           depthKnownCount: number;
           depthBands: string[] | null;
           hullType: string | null;
+          evidenceFingerprint: string | null;
         }>(
           `WITH observations AS (
-             SELECT lr.parameter_code AS "parameterCode",
+             SELECT ls.laboratory_code AS sample_code,
+                    lr.parameter_code AS "parameterCode",
+                    lr.numeric_value::float8 AS numeric_value,
                     lr.unit,
                     lr.analytical_method AS method,
                     COALESCE(
@@ -523,7 +526,27 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
                   ) FILTER (
                     WHERE depth_from_cm IS NOT NULL AND depth_to_cm IS NOT NULL
                   ) AS "depthBands",
-                  GeometryType(ST_ConvexHull(ST_Collect(reliable_geom))) AS "hullType"
+                  GeometryType(ST_ConvexHull(ST_Collect(reliable_geom))) AS "hullType",
+                  md5(string_agg(
+                    concat_ws('|',
+                      coalesce(sample_code, ''),
+                      "parameterCode",
+                      numeric_value::text,
+                      coalesce(unit, ''),
+                      coalesce(method, ''),
+                      coalesce(depth_from_cm::text, ''),
+                      coalesce(depth_to_cm::text, ''),
+                      encode(ST_AsEWKB(reliable_geom), 'hex')
+                    ),
+                    '||' ORDER BY
+                      coalesce(sample_code, ''),
+                      encode(ST_AsEWKB(reliable_geom), 'hex'),
+                      numeric_value::text,
+                      coalesce(unit, ''),
+                      coalesce(method, ''),
+                      coalesce(depth_from_cm::text, ''),
+                      coalesce(depth_to_cm::text, '')
+                  )) AS "evidenceFingerprint"
            FROM reliable
            GROUP BY "parameterCode"
            ORDER BY "parameterCode"`,
@@ -551,6 +574,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         depthKnownCount: row.depthKnownCount ?? 0,
         depthBands: row.depthBands ?? [],
         sampleDistribution: distribution,
+        evidenceFingerprint: row.evidenceFingerprint,
       });
     });
 
