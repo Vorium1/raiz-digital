@@ -17,6 +17,7 @@ import { evaluateIrrigationWaterEvidence } from "@/domain/irrigation-water-asses
 import { evaluateRiceContinuousNitrogenEnvelope, RESEARCH_READY_PROFILES } from "@/domain/research-ready-rules";
 import { buildNitrogenOrganicMatterFingerprint, isOrganicMatterPercentUnit } from "@/domain/nitrogen-context";
 import { evaluatePersistedNitrogenExecution, PRESCRIPTION_NITROGEN_RULE_IDS, type PersistedNitrogenExecution } from "@/domain/nitrogen-prescription-evidence";
+import { evaluateWheatGrainQualityEvidence } from "@/domain/wheat-grain-quality-evidence";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -37,6 +38,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     isFirstYearArea: boolean | null; cultivationYears: number | null;
     cultivationOrderAfterSoilAnalysis: number | null;
     cropProfileCode: string | null;
+    wheatQualityObjectiveRequested: boolean;
     updatedAt: string;
   };
   pkDoseReadiness: PkDoseReadiness;
@@ -51,6 +53,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   irrigationWaterEvidence: ReturnType<typeof evaluateIrrigationWaterEvidence>;
   riceNitrogenEvidence: ReturnType<typeof buildRiceNitrogenEvidence>;
   deterministicNitrogenEvidence: ReturnType<typeof evaluatePersistedNitrogenExecution>;
+  wheatGrainQualityEvidence: ReturnType<typeof evaluateWheatGrainQualityEvidence>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -284,13 +287,16 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               cs.cultivation_order_after_soil_analysis AS "cultivationOrderAfterSoilAnalysis",
               cs.updated_at::text AS "seasonUpdatedAt",
               cs.technical_region_code AS "regionCode", cs.crop_profile_id::text AS "cropProfileId",
-              cp.code AS "cropProfileCode"
+              cp.code AS "cropProfileCode",
+              coalesce(nc.late_quality_n_requested, false) AS "wheatQualityObjectiveRequested"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+       LEFT JOIN nitrogen_recommendation_contexts nc
+         ON nc.tenant_id = cs.tenant_id AND nc.crop_season_id = cs.id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
        FOR SHARE OF a, cs`,
       [tenantId, analysisId],
@@ -370,6 +376,14 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       execution: nitrogenExecutionResult.rows[0] ?? null,
       currentSeasonUpdatedAt: base.seasonUpdatedAt,
       currentOrganicMatterFingerprint: nitrogenOrganicMatterFingerprint,
+    });
+    const wheatGrainQualityEvidence = evaluateWheatGrainQualityEvidence({
+      cropProfileCode: base.cropProfileCode,
+      currentCrop: base.currentCrop,
+      nextCrop: base.nextCrop,
+      currentCultivar: base.cultivar,
+      nextCultivar: base.nextCultivar,
+      rows: resultsResult.rows,
     });
 
     const deterministicInterpretation = interpretationResult.rows[0] ?? null;
@@ -471,6 +485,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         isFirstYearArea: base.isFirstYearArea, cultivationYears: base.cultivationYears,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
         cropProfileCode: base.cropProfileCode ?? null,
+        wheatQualityObjectiveRequested: base.wheatQualityObjectiveRequested === true,
         updatedAt: base.seasonUpdatedAt,
       },
       pkDoseReadiness,
@@ -491,6 +506,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       }),
       riceNitrogenEvidence: buildRiceNitrogenEvidence(base.cropProfileCode, resultsResult.rows),
       deterministicNitrogenEvidence,
+      wheatGrainQualityEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
