@@ -170,7 +170,7 @@ export function LeafletFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map">
+    <div className="real-field-map" data-map-provider="leaflet" data-has-image-overlay={imageOverlay ? "true" : "false"}>
       {providerNote && <p className="ndvi-panel-limitation"><Icon name="warning" size={13}/>{providerNote}</p>}
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">
