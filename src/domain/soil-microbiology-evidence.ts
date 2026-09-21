@@ -23,6 +23,8 @@ export type SoilMicrobiologyFunctionalRole =
   | "PATHOGEN"
   | "OTHER";
 
+export type SoilMicrobiologySampleMatrix = "SOIL" | "ROOT" | "INOCULANT_PRODUCT" | "UNKNOWN";
+
 export type SoilMicrobiologyMethodFamily =
   | "ENZYME_ACTIVITY"
   | "CULTURE_COUNT_CFU"
@@ -47,6 +49,7 @@ export type SoilMicrobiologyMethodFamily =
 export type SoilMicrobiologyObservation = {
   parameterName: string;
   family: SoilMicrobiologyEvidenceFamily;
+  sampleMatrix?: SoilMicrobiologySampleMatrix;
   functionalRole?: SoilMicrobiologyFunctionalRole | null;
   organismOrTaxon?: string | null;
   value: number | null;
@@ -122,6 +125,15 @@ export function evaluateSoilMicrobiologyEvidence(input: SoilMicrobiologyEvidence
     if (item.family === "MOLECULAR_COMMUNITY_PROFILE" && item.methodFamily !== "QPCR"
       && item.methodFamily !== "METABARCODING_16S" && item.methodFamily !== "METABARCODING_ITS") {
       warnings.push("MOLECULAR_PROFILE_METHOD_FAMILY_MISMATCH");
+    }
+    if (item.methodFamily === "MYCORRHIZAL_COLONIZATION" && item.sampleMatrix !== "ROOT") {
+      warnings.push("MYCORRHIZAL_COLONIZATION_REQUIRES_ROOT_MATRIX");
+    }
+    if (item.methodFamily === "SPORE_COUNT" && item.family === "MYCORRHIZA" && item.sampleMatrix !== "SOIL") {
+      warnings.push("MYCORRHIZAL_SPORE_COUNT_REQUIRES_SOIL_MATRIX");
+    }
+    if (item.sampleMatrix === "INOCULANT_PRODUCT" && item.family !== "INOCULANT_ORGANISM") {
+      warnings.push("INOCULANT_PRODUCT_MATRIX_FAMILY_MISMATCH");
     }
   }
 
