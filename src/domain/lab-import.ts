@@ -78,6 +78,9 @@ export type LabImportIssue = {
   code: string;
   message: string;
   line?: number;
+  /** Identidade opcional do resultado afetado; evita contaminar outras colunas de um arquivo WIDE. */
+  sampleCode?: string;
+  parameterCode?: string;
 };
 
 export type LabImportRow = {
@@ -153,12 +156,23 @@ export function selectPromotableLabRows(
   issues: LabImportIssue[],
 ): LabImportRow[] {
   if (issues.some((issue) => issue.severity === "BLOCKER" && issue.line == null)) return [];
-  const blockedLines = new Set(
-    issues
-      .filter((issue) => issue.severity === "BLOCKER" && issue.line != null)
+
+  const blockers = issues.filter((issue) => issue.severity === "BLOCKER");
+  const blockedResults = new Set(
+    blockers
+      .filter((issue) => issue.sampleCode && issue.parameterCode)
+      .map((issue) => `${issue.sampleCode}|${issue.parameterCode}`),
+  );
+  const blockedLinesWithoutResultIdentity = new Set(
+    blockers
+      .filter((issue) => issue.line != null && !(issue.sampleCode && issue.parameterCode))
       .map((issue) => issue.line as number),
   );
-  return rows.filter((row) => !blockedLines.has(row.sourceLine));
+
+  return rows.filter((row) =>
+    !blockedResults.has(`${row.sampleCode}|${row.parameterCode}`)
+    && !blockedLinesWithoutResultIdentity.has(row.sourceLine)
+  );
 }
 
 export function evaluateLabImportUsability(
@@ -542,8 +556,22 @@ function makeConfidence(rows: LabImportRow[], issues: LabImportIssue[], context:
   return { score, level, dimensions };
 }
 
-function addIssue(issues: LabImportIssue[], severity: LabImportSeverity, code: string, message: string, line?: number) {
-  issues.push({ severity, code, message, line });
+function addIssue(
+  issues: LabImportIssue[],
+  severity: LabImportSeverity,
+  code: string,
+  message: string,
+  line?: number,
+  resultIdentity?: { sampleCode?: string; parameterCode?: string },
+) {
+  issues.push({
+    severity,
+    code,
+    message,
+    line,
+    sampleCode: resultIdentity?.sampleCode || undefined,
+    parameterCode: resultIdentity?.parameterCode || undefined,
+  });
 }
 
 function dedupeRows(rows: LabImportRow[], issues: LabImportIssue[]) {
@@ -551,7 +579,7 @@ function dedupeRows(rows: LabImportRow[], issues: LabImportIssue[]) {
   return rows.filter((row) => {
     const key = `${row.sampleCode}|${row.parameterCode}|${row.method}`;
     if (seen.has(key)) {
-      addIssue(issues, "BLOCKER", "DUPLICATE_RESULT", `Resultado duplicado para ${row.sampleCode} / ${row.parameterCode}.`, row.sourceLine);
+      addIssue(issues, "BLOCKER", "DUPLICATE_RESULT", `Resultado duplicado para ${row.sampleCode} / ${row.parameterCode}.`, row.sourceLine, { sampleCode: row.sampleCode, parameterCode: row.parameterCode });
       return false;
     }
     seen.add(key);
@@ -615,9 +643,9 @@ export function buildLabImportPreviewFromMatrix(
 
       if (!sampleCode) addIssue(issues, "BLOCKER", "SAMPLE_CODE_MISSING", "Linha sem código de amostra.", sourceLine);
       if (!parameterRaw.trim()) addIssue(issues, "BLOCKER", "PARAMETER_MISSING", "Linha sem parâmetro laboratorial.", sourceLine);
-      if (!Number.isFinite(value)) addIssue(issues, "BLOCKER", "INVALID_VALUE", `Valor inválido: “${valueRaw || "vazio"}”.`, sourceLine);
-      if (unit === "NÃO INFORMADA") addIssue(issues, "BLOCKER", "UNIT_UNKNOWN", `Unidade não reconhecida para ${parameterRaw || "parâmetro"}.`, sourceLine);
-      if (method === "NÃO INFORMADO") addIssue(issues, "BLOCKER", "METHOD_UNKNOWN", `Método analítico ausente para ${parameterRaw || "parâmetro"}.`, sourceLine);
+      if (!Number.isFinite(value)) addIssue(issues, "BLOCKER", "INVALID_VALUE", `Valor inválido: “${valueRaw || "vazio"}”.`, sourceLine, { sampleCode, parameterCode });
+      if (unit === "NÃO INFORMADA") addIssue(issues, "BLOCKER", "UNIT_UNKNOWN", `Unidade não reconhecida para ${parameterRaw || "parâmetro"}.`, sourceLine, { sampleCode, parameterCode });
+      if (method === "NÃO INFORMADO") addIssue(issues, "BLOCKER", "METHOD_UNKNOWN", `Método analítico ausente para ${parameterRaw || "parâmetro"}.`, sourceLine, { sampleCode, parameterCode });
       if (inferredUnit) addIssue(issues, "WARNING", "UNIT_INFERRED", `Unidade de ${parameterCode} foi inferida e precisa de conferência humana.`, sourceLine);
       if (inferredMethod) addIssue(issues, "WARNING", "METHOD_INFERRED", `Método de ${parameterCode} foi preenchido pelo método principal selecionado.`, sourceLine);
 
@@ -671,11 +699,11 @@ export function buildLabImportPreviewFromMatrix(
         const methodDerivedFromProtocol = Boolean(protocolMethod);
 
         if (!Number.isFinite(value)) {
-          addIssue(issues, "BLOCKER", "INVALID_VALUE", `Valor inválido em ${column.header}: “${raw}”.`, sourceLine);
+          addIssue(issues, "BLOCKER", "INVALID_VALUE", `Valor inválido em ${column.header}: “${raw}”.`, sourceLine, { sampleCode, parameterCode: column.parameterCode });
           return;
         }
-        if (unit === "NÃO INFORMADA") addIssue(issues, "BLOCKER", "UNIT_UNKNOWN", `Unidade não reconhecida em ${column.header}.`, sourceLine);
-        if (method === "NÃO INFORMADO") addIssue(issues, "BLOCKER", "METHOD_UNKNOWN", `Informe o método principal antes de processar ${column.header}.`, sourceLine);
+        if (unit === "NÃO INFORMADA") addIssue(issues, "BLOCKER", "UNIT_UNKNOWN", `Unidade não reconhecida em ${column.header}.`, sourceLine, { sampleCode, parameterCode: column.parameterCode });
+        if (method === "NÃO INFORMADO") addIssue(issues, "BLOCKER", "METHOD_UNKNOWN", `Informe o método principal antes de processar ${column.header}.`, sourceLine, { sampleCode, parameterCode: column.parameterCode });
         if (inferredUnit) addIssue(issues, "WARNING", "UNIT_INFERRED", `Unidade de ${column.parameterCode} foi inferida e precisa de conferência humana.`, sourceLine);
         if (inferredMethod) addIssue(issues, "WARNING", "METHOD_INFERRED", `Método de ${column.parameterCode} foi preenchido pelo método principal selecionado.`, sourceLine);
 
