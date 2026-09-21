@@ -123,7 +123,7 @@ export function GoogleFieldTerrain3D({
   }, [boundary, camera, height, onFailure]);
 
   return (
-    <div className="google-field-terrain-3d">
+    <div className="google-field-terrain-3d" data-map-provider="google-3d">
       <div ref={hostRef} className="google-field-terrain-3d-canvas" style={{ height }} />
       <div className="google-field-terrain-3d-note">Satélite 3D · arraste para girar e incline para enxergar o relevo</div>
     </div>
