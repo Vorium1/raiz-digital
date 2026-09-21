@@ -6,6 +6,8 @@ on:
       - "feature/ux-2.0-intelligent-flow"
     paths:
       - ".github/workflows/ndvi-preview-visual-qa.yml"
+      - "e2e/ndvi-preview-visual-gate.spec.ts"
+      - "playwright.config.ts"
   workflow_dispatch:
     inputs:
       preview_url:
