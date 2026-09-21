@@ -3,6 +3,7 @@ import type {
   SoilMicrobiologyFunctionalRole,
   SoilMicrobiologyMethodFamily,
   SoilMicrobiologyObservation,
+  SoilMicrobiologySampleMatrix,
 } from "./soil-microbiology-evidence.ts";
 
 export type BiologicalLabResultRow = {
@@ -14,6 +15,7 @@ export type BiologicalLabResultRow = {
   protocol?: string | null;
   depthFromCm?: number | null;
   depthToCm?: number | null;
+  sampleMatrix?: SoilMicrobiologySampleMatrix | null;
 };
 
 function normalized(value: string) {
@@ -60,6 +62,7 @@ function classifyCode(parameterCode: string): {
   family: SoilMicrobiologyEvidenceFamily;
   role: SoilMicrobiologyFunctionalRole | null;
   organismOrTaxon: string | null;
+  sampleMatrix: SoilMicrobiologySampleMatrix;
 } | null {
   const code = normalized(parameterCode);
 
@@ -68,6 +71,7 @@ function classifyCode(parameterCode: string): {
       family: "BIOAS_SOIL_HEALTH",
       role: "ORGANIC_MATTER_CYCLING",
       organismOrTaxon: null,
+      sampleMatrix: "SOIL",
     };
   }
   if (code === "BIOAS_ARYLSULFATASE") {
@@ -75,6 +79,7 @@ function classifyCode(parameterCode: string): {
       family: "BIOAS_SOIL_HEALTH",
       role: "SULFUR_CYCLING",
       organismOrTaxon: null,
+      sampleMatrix: "SOIL",
     };
   }
   if (code.startsWith("BIOAS_IQS_") || code.startsWith("BIOAS_")) {
@@ -82,41 +87,48 @@ function classifyCode(parameterCode: string): {
       family: "BIOAS_SOIL_HEALTH",
       role: null,
       organismOrTaxon: null,
+      sampleMatrix: "SOIL",
     };
   }
   if (code === "MICROBIO_BIOMASS_C" || code === "MICROBIO_BIOMASS_N") {
-    return { family: "MICROBIAL_BIOMASS", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null };
+    return { family: "MICROBIAL_BIOMASS", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code === "MICROBIO_BASAL_RESPIRATION" || code === "MICROBIO_QCO2") {
-    return { family: "SOIL_RESPIRATION", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null };
+    return { family: "SOIL_RESPIRATION", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code === "MICROBIO_FDA_HYDROLYSIS" || code === "MICROBIO_DEHYDROGENASE") {
-    return { family: "SOIL_ENZYME_ACTIVITY", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null };
+    return { family: "SOIL_ENZYME_ACTIVITY", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code === "MICROBIO_ACID_PHOSPHATASE" || code === "MICROBIO_ALKALINE_PHOSPHATASE") {
-    return { family: "SOIL_ENZYME_ACTIVITY", role: "PHOSPHORUS_CYCLING", organismOrTaxon: null };
+    return { family: "SOIL_ENZYME_ACTIVITY", role: "PHOSPHORUS_CYCLING", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
 
   if (code.includes("AZOSPIRILLUM")) {
-    return { family: "FUNCTIONAL_MICROORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Azospirillum spp." };
+    return { family: "FUNCTIONAL_MICROORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Azospirillum spp.", sampleMatrix: "SOIL" };
   }
   if (code.includes("BRADYRHIZOBIUM")) {
-    return { family: "INOCULANT_ORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Bradyrhizobium spp." };
+    return { family: "INOCULANT_ORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Bradyrhizobium spp.", sampleMatrix: "SOIL" };
   }
   if (code.includes("RHIZOBIUM")) {
-    return { family: "INOCULANT_ORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Rhizobium spp." };
+    return { family: "INOCULANT_ORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: "Rhizobium spp.", sampleMatrix: "SOIL" };
   }
   if (code.includes("DIAZOTRO") || code.includes("FIXADORESDE") || code.includes("BACTERIASFIXADORAS")) {
-    return { family: "FUNCTIONAL_MICROORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: null };
+    return { family: "FUNCTIONAL_MICROORGANISM", role: "BIOLOGICAL_N_FIXATION", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code.includes("SOLUBILIZ") && (code.includes("FOSFORO") || code.includes("FOSF") || code.endsWith("P"))) {
-    return { family: "FUNCTIONAL_MICROORGANISM", role: "PHOSPHORUS_SOLUBILIZATION", organismOrTaxon: null };
+    return { family: "FUNCTIONAL_MICROORGANISM", role: "PHOSPHORUS_SOLUBILIZATION", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code.includes("SOLUBILIZ") && (code.includes("POTASSIO") || code.includes("POTASS") || code.endsWith("K"))) {
-    return { family: "FUNCTIONAL_MICROORGANISM", role: "POTASSIUM_SOLUBILIZATION", organismOrTaxon: null };
+    return { family: "FUNCTIONAL_MICROORGANISM", role: "POTASSIUM_SOLUBILIZATION", organismOrTaxon: null, sampleMatrix: "SOIL" };
+  }
+  if ((code.includes("MICORRIZ") || code.includes("MYCORRH")) && code.includes("COLONIZ")) {
+    return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "ROOT" };
+  }
+  if ((code.includes("MICORRIZ") || code.includes("MYCORRH")) && code.includes("ESPOR")) {
+    return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "SOIL" };
   }
   if (code.includes("MICORRIZ") || code.includes("MYCORRH")) {
-    return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null };
+    return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "UNKNOWN" };
   }
 
   return null;
@@ -142,6 +154,7 @@ export function adaptLabResultsToSoilMicrobiology(
     observations.push({
       parameterName: row.parameterCode,
       family: classification.family,
+      sampleMatrix: row.sampleMatrix ?? classification.sampleMatrix,
       functionalRole: classification.role,
       organismOrTaxon: classification.organismOrTaxon,
       value: row.value,
