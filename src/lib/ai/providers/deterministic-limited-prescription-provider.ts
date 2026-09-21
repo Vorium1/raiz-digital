@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v8-wheat-buyer-protocol";
+const PROMPT_VERSION = "deterministic-limited-v9-spatial-evidence-envelope";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -353,6 +353,49 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
       );
     } else if (water?.resolution === "INVALID_OPTIONAL_EVIDENCE") {
       deterministic.managementPractices.push("A camada opcional de balanço hídrico contém evidência inválida e foi isolada. O parecer de solo e as demais conclusões sustentadas permanecem válidos.");
+    }
+
+    const spatial = evidence.spatialEvidenceEnvelope;
+    if (spatial?.requested) {
+      const n = spatial.evidence.distinctReliableLabCoordinateCount;
+      if (spatial.status === "NO_SPATIAL_EVIDENCE") {
+        deterministic.managementPractices.push(
+          "Análise espacial/taxa variável foi solicitada, mas o conjunto atual ainda não possui suporte espacial laboratorial confiável suficiente. O RAIZ preserva normalmente o parecer por ponto/talhão e não fabrica uma superfície.",
+        );
+      } else if (spatial.status === "POINTS_ONLY") {
+        deterministic.managementPractices.push(
+          `Análise espacial solicitada: ${n} posição(ões) distinta(s), confiável(is) e vinculada(s) ao laudo podem ser mostradas individualmente. A geometria atual não sustenta uma superfície 2-D defensável; os pontos permanecem pontos, sem interpolação automática.`,
+        );
+      } else if (spatial.status === "EXPLORATORY_ONLY") {
+        deterministic.managementPractices.push(
+          `Análise espacial solicitada: ${n} posições distintas, confiáveis e vinculadas ao laudo formam suporte 2-D. Pela política conservadora RAIZ, este tamanho de amostragem permite somente exploração visual/zonas auxiliares; não autoriza mapa de prescrição nem taxa variável automática.`,
+        );
+      } else if (spatial.status === "INTERPOLATION_CANDIDATE") {
+        deterministic.managementPractices.push(
+          `Análise espacial solicitada: ${n} posições distintas, confiáveis e vinculadas ao laudo possuem suporte 2-D suficiente para avaliar uma técnica de interpolação. O RAIZ não escolheu atributo, IDW/krigagem/Thiessen nem gerou dose espacial automaticamente; a etapa seguinte exige validação por atributo, método, distribuição e revisão profissional, com validação cruzada quando aplicável.`,
+        );
+      }
+
+      if (spatial.evidence.reliablePointCount < spatial.evidence.totalPointCount) {
+        deterministic.limitations.push(
+          `Espacial: ${spatial.evidence.totalPointCount - spatial.evidence.reliablePointCount} ponto(s) sem coordenada observada ou fonte GPS auditada ficaram fora do suporte espacial, sem serem descartados do restante do parecer.`,
+        );
+      }
+      if (spatial.evidence.reliableLabLinkedPointCount < spatial.evidence.reliablePointCount) {
+        deterministic.limitations.push(
+          "Espacial: existem pontos com coordenada confiável ainda sem evidência laboratorial vinculada; eles não foram usados para sustentar uma superfície.",
+        );
+      }
+      if (spatial.evidence.distinctReliableLabCoordinateCount < spatial.evidence.reliableLabLinkedPointCount) {
+        deterministic.limitations.push(
+          "Espacial: coordenadas duplicadas não foram contadas como suporte espacial independente.",
+        );
+      }
+      if (spatial.evidence.sampleDistribution === "COLLINEAR") {
+        deterministic.limitations.push(
+          "Espacial: os pontos com evidência formam suporte colinear, insuficiente para uma superfície bidimensional.",
+        );
+      }
     }
 
     const missingInformation = unique([...deterministicLimitations, ...deterministic.limitations]);
