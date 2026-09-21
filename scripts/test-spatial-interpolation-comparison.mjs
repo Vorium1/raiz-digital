@@ -8,6 +8,8 @@ import {
   compareValidatedSpatialMethods,
 } from "../src/domain/spatial-interpolation-comparison.ts";
 
+const EVIDENCE_FP = "c".repeat(32);
+
 const attribute = evaluateSpatialAttributeEvidence({
   parameterCode: "P",
   observationCount: 70,
@@ -17,6 +19,7 @@ const attribute = evaluateSpatialAttributeEvidence({
   depthKnownCount: 70,
   depthBands: ["0–20 cm"],
   sampleDistribution: "DISTRIBUTED",
+  evidenceFingerprint: EVIDENCE_FP,
 });
 
 const storedDominance = [
@@ -24,6 +27,7 @@ const storedDominance = [
     parameterCode: "P",
     method: "KRIGING",
     sampleCount: 70,
+    evidenceFingerprint: EVIDENCE_FP,
     crossValidation: { strategy: "LOOCV", validationCount: 70, rmse: 1.0, mae: 0.7, meanError: 0.02 },
     variogram: { model: "SPHERICAL", nugget: 0.2, sill: 1.4, range: 180 },
     professionalMethodReviewApproved: true,
@@ -33,6 +37,7 @@ const storedDominance = [
     parameterCode: "P",
     method: "IDW",
     sampleCount: 70,
+    evidenceFingerprint: EVIDENCE_FP,
     crossValidation: { strategy: "LOOCV", validationCount: 70, rmse: 1.3, mae: 0.9, meanError: -0.08 },
     variogram: null,
     professionalMethodReviewApproved: true,
