@@ -28,7 +28,6 @@ function planningContextFromAnalysisContext(value: unknown) {
       irrigationApplications: [],
       wheatBuyerQualityContext: null as unknown,
       spatialInterpolationValidations: [] as unknown,
-      spatialInterpolationValidations: [] as unknown,
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -39,6 +38,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
       wheatBuyerQualityContext: null as unknown,
+      spatialInterpolationValidations: [] as unknown,
     };
   }
 
