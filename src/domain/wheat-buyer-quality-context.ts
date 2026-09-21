@@ -165,3 +165,42 @@ export function evaluateSelectedWheatBuyerQualityContext(
   // Exaustividade defensiva se novos IDs forem adicionados sem evaluator.
   throw new Error("Protocolo de comprador selecionado ainda não possui avaliador homologado.");
 }
+
+
+export type StoredWheatBuyerQualityContextEvaluation =
+  | WheatBuyerQualityContextEvaluation
+  | {
+      status: "INVALID_OPTIONAL_EVIDENCE";
+      protocolId: null;
+      evaluation: null;
+      limitations: string[];
+      policy: {
+        blocksBaseNitrogenRecommendation: false;
+        blocksSoilOpinion: false;
+        buyerProtocolAutoSelected: false;
+      };
+    };
+
+/**
+ * Leitura tolerante para JSONB persistido.
+ * Contexto opcional inválido é isolado e nunca bloqueia N-base/laudo.
+ */
+export function evaluateStoredWheatBuyerQualityContext(
+  value: unknown,
+): StoredWheatBuyerQualityContextEvaluation {
+  try {
+    return evaluateSelectedWheatBuyerQualityContext(parseWheatBuyerQualityContext(value));
+  } catch (error) {
+    return {
+      status: "INVALID_OPTIONAL_EVIDENCE",
+      protocolId: null,
+      evaluation: null,
+      limitations: [error instanceof Error ? error.message : "Contexto opcional de comprador inválido."],
+      policy: {
+        blocksBaseNitrogenRecommendation: false,
+        blocksSoilOpinion: false,
+        buyerProtocolAutoSelected: false,
+      },
+    };
+  }
+}
