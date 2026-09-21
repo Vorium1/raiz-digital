@@ -211,7 +211,7 @@ assert.equal(nRows.length, 1);
 assert.equal(nRows[0].quantity, 80);
 assert.equal(nRows[0].unit, "kg/ha");
 assert.match(nRows[0].rationale, /execução rastreável exec-n-1/);
-assert.match(providerResult.prescription.managementPractices.join(" "), /objetivo de proteína\/qualidade/i);
+assert.match(providerResult.prescription.managementPractices.join(" "), /objetivo industrial de proteína\/glúten vital/i);
 assert.equal(
   providerResult.prescription.recommendations.filter((item) => item.inputType === "N").length,
   1,
