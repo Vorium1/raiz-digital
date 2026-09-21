@@ -53,6 +53,7 @@ export const BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026 = {
   },
   policy: {
     buyerProtocolIsAgronomicUniversalRule: false as const,
+    requiresExplicitBuyerProtocolSelection: true as const,
     complianceGuaranteesPremium: false as const,
     missingOptionalDataBlocksBaseNitrogenRecommendation: false as const,
     recommendedItemAffectsMandatoryCompliance: false as const,
