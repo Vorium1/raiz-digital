@@ -3,6 +3,7 @@ import {
   adaptCptecForecastXml,
   aggregateInmetAutomaticStationDay,
   buildCptecSevenDayLatLonUrl,
+  deriveInmetContinuousRainHours,
   listZarcDecadesAtOrBelowRisk,
   normalizeMapaZarcRiskRow,
 } from "../src/domain/official-agroclimate-ingestion.ts";
@@ -77,5 +78,38 @@ const invalidRain=aggregateInmetAutomaticStationDay({
 });
 assert.equal(invalidRain.evidence.some(i=>i.metric==="PRECIPITATION_MM"),false);
 assert.ok(invalidRain.warnings.includes("INMET_PRECIPITATION_SERIES_INCOMPLETE_OR_INVALID"));
+
+const rainWindow=Array.from({length:72},(_,index)=>({
+  stationCode:"A839",
+  observedAtUtc:new Date(Date.UTC(2026,8,18,0,0,0)+index*3_600_000).toISOString(),
+  precipitationMm:index<50?0.4:0,
+}));
+const rainDuration=deriveInmetContinuousRainHours({
+  observations:rainWindow,
+  technicalRegionCodes:["BR-RS","RS-PLANALTO-MEDIO"],
+  retrievedAt:"2026-09-21T01:00:00Z",
+  latitude:-28.22,longitude:-52.4,
+});
+assert.equal(rainDuration.evidence?.metric,"CONTINUOUS_RAIN_HOURS");
+assert.equal(rainDuration.evidence?.value,50);
+assert.equal(rainDuration.evidence?.evidenceKind,"DERIVED");
+assert.equal(rainDuration.evidence?.derivationRuleId,"INMET_CONSECUTIVE_HOURLY_PRECIPITATION_GT_ZERO_V1");
+assert.ok(rainDuration.warnings.includes("INMET_CONTINUOUS_RAIN_HOURS_MEANS_CONSECUTIVE_HOURLY_BINS_WITH_PRECIPITATION_GT_ZERO"));
+
+const rainGap=deriveInmetContinuousRainHours({
+  observations:rainWindow.filter((_,index)=>index!==24),
+  technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
+  latitude:-28.22,longitude:-52.4,
+});
+assert.equal(rainGap.evidence,null);
+assert.ok(rainGap.warnings.includes("INMET_RAIN_DURATION_WINDOW_HAS_GAPS"));
+
+const rainMissing=deriveInmetContinuousRainHours({
+  observations:rainWindow.map((row,index)=>index===12?{...row,precipitationMm:null}:row),
+  technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
+  latitude:-28.22,longitude:-52.4,
+});
+assert.equal(rainMissing.evidence,null);
+assert.ok(rainMissing.warnings.includes("INMET_RAIN_DURATION_PRECIPITATION_INCOMPLETE_OR_INVALID"));
 
 console.log("official-agroclimate-ingestion: CPTEC, INMET e ZARC preservam unidade, proveniência e semântica");
