@@ -1,6 +1,5 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
-import { wheatGrainQualityLabel } from "@/domain/wheat-grain-quality-evidence";
 
 const PROMPT_VERSION = "deterministic-limited-v7-wheat-grain-quality";
 
@@ -253,7 +252,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
     const grainQuality = evidence.wheatGrainQualityEvidence;
     if (grainQuality?.status === "AVAILABLE") {
       const observations = grainQuality.observations.map((row) =>
-        `${row.sampleCode} — ${wheatGrainQualityLabel(row.parameterCode)}: ${row.value.toLocaleString("pt-BR")} ${row.unit} (método: ${row.method}${row.protocol ? `; protocolo: ${row.protocol}` : ""})`,
+        `${row.sampleCode} — ${row.label}: ${row.value.toLocaleString("pt-BR")} ${row.unit} (método: ${row.method}${row.protocol ? `; protocolo: ${row.protocol}` : ""})`,
       );
       const cultivarText = grainQuality.targetCultivar
         ? ` Cultivar associada ao contexto da safra: ${grainQuality.targetCultivar}.`
