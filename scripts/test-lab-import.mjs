@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildLabImportPreview, evaluateLabImportUsability } from "../src/domain/lab-import.ts";
+import { buildLabImportPreview, evaluateLabImportUsability, selectPromotableLabRows } from "../src/domain/lab-import.ts";
 import {
   base64TransportBytes,
   compactLabImportPreview,
@@ -72,6 +72,11 @@ assert.equal(localizedUsability.fatalBlockerCount, 0);
 assert.ok(localizedUsability.promotableRowCount > 0, "linhas com método válido devem continuar utilizáveis");
 assert.ok(localizedUsability.excludedRowCount > 0, "linhas sem método não podem ser promovidas");
 assert.equal(localizedUsability.canProceedWithPartialEvidence, true, "blocker localizado não deve derrubar o restante do laudo");
+const widePromotableCodes = selectPromotableLabRows(wide.rows, wide.issues).map((row) => row.parameterCode);
+assert.ok(widePromotableCodes.includes("P"), "P válido da mesma linha WIDE deve sobreviver ao blocker de outro parâmetro");
+assert.ok(widePromotableCodes.includes("K"), "K válido da mesma linha WIDE deve sobreviver ao blocker de outro parâmetro");
+assert.ok(!widePromotableCodes.includes("CA"), "Ca sem método deve ficar isolado da promoção");
+assert.ok(!widePromotableCodes.includes("PH"), "pH não deve herdar Mehlich-1 nem passar sem método próprio");
 
 const structurallyInvalidCsv = `Parametro;Valor;Unidade;Metodo
 P;10;mg/dm3;Mehlich-1`;
