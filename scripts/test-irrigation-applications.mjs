@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import * as util from "node:util";
 import ts from "typescript";
 import * as irrigation from "../src/domain/irrigation-applications.ts";
+import * as wheatBuyerContext from "../src/domain/wheat-buyer-quality-context.ts";
 import { evaluateIrrigationWaterEvidence } from "../src/domain/irrigation-water-assessment.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 
@@ -69,6 +70,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/repositor
   // VM-created arrays have another prototype; production JSON uses one realm.
   if (name === "node:util") return { isDeepStrictEqual: (a, b) => util.isDeepStrictEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b))) };
   if (name.includes("irrigation-applications")) return irrigation;
+  if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
   if (name === "@/lib/db") return { withTenant: async (scope, run) => {
     assert.equal(scope.tenantId, "tenant-a"); assert.equal(scope.userId, "user-a"); return run(client);
   } };
@@ -83,7 +85,7 @@ assert.equal(root.draft.laboratoryMethod, "do-not-change");
 assert.equal(root.draft.irrigationDepthMm, 7, "individual event never replaces usual pattern");
 assert.equal(root.draft.plannedManagementNotes, "Plano anterior");
 assert.equal(evaluate(irrigation.irrigationApplicationsFromContext(root)).applications[0].depthFromVolumeMm, 12);
-assert.equal(writes, 1); assert.equal(seasonTouches, 1, "freshness invalidated without rewriting reports");
+assert.equal(writes, 1); assert.equal(seasonTouches, 0, "optional planning must stale the prescription via analysis-context fingerprint without invalidating deterministic N inputs");
 assert.ok(audits[0].metadata.changedFields.includes("irrigationApplications"));
 // JSONB may reorder object keys. This must remain a no-op, not a false conflict.
 const reordered = saved.irrigationApplications.map(item => Object.fromEntries(Object.entries(item).reverse()));
@@ -151,6 +153,7 @@ async function loadedContext(fetchImpl) {
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
     if (name.includes("irrigation-applications-editor")) return { IrrigationApplicationsEditor: "IRRIGATION_EDITOR" };
     if (name.includes("irrigation-applications")) return irrigation;
+    if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
     if (name.includes("management-system")) return { normalizeManagementSystem: () => "OTHER", MANAGEMENT_SYSTEM_OPTIONS: [] };
     if (name.includes("yield-goal-presets")) return { yieldGoalPresetConfig: () => null };
     if (name.includes("icon")) return { Icon: "ICON" };
