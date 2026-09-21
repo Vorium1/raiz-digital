@@ -75,7 +75,7 @@ const invalidRain=aggregateInmetAutomaticStationDay({
   observations:observations.map((row,index)=>({...row,precipitationMm:index===0?-1:1})),
   targetDateUtc:"2026-09-20",technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
   latitude:-28.22,longitude:-52.4,
-  expectedHourlySlots:72,
+  expectedHourlySlots:24,
 });
 assert.equal(invalidRain.evidence.some(i=>i.metric==="PRECIPITATION_MM"),false);
 assert.ok(invalidRain.warnings.includes("INMET_PRECIPITATION_SERIES_INCOMPLETE_OR_INVALID"));
