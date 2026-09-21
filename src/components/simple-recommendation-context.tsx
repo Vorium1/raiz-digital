@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { IrrigationApplicationsEditor } from "@/components/irrigation-applications-editor";
 import { parseIrrigationApplications, type IrrigationApplication } from "@/domain/irrigation-applications";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
+import { EMPTY_WHEAT_BUYER_QUALITY_CONTEXT, parseWheatBuyerQualityContext, type WheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 type Props = {
@@ -56,11 +57,15 @@ export function SimpleRecommendationContext({
   const [irrigationApplications, setIrrigationApplications] = useState<IrrigationApplication[]>([]);
   const [initialIrrigationApplications, setInitialIrrigationApplications] = useState<unknown>([]);
   const [irrigationReadError, setIrrigationReadError] = useState("");
+  const [wheatBuyerQualityContext, setWheatBuyerQualityContext] = useState<WheatBuyerQualityContext>({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
+  const [initialWheatBuyerQualityContext, setInitialWheatBuyerQualityContext] = useState<WheatBuyerQualityContext>({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
+  const [wheatBuyerReadError, setWheatBuyerReadError] = useState("");
 
   useEffect(() => {
     let alive = true;
     setPlannedLoaded(false);
     setIrrigationReadError("");
+    setWheatBuyerReadError("");
     fetch(`/api/analyses/${analysisId}/planned-management`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
@@ -75,6 +80,15 @@ export function SimpleRecommendationContext({
         } catch {
           setIrrigationReadError("Há um registro de irrigação inválido. Ele foi preservado; os demais refinamentos continuam disponíveis.");
           setIrrigationApplications([]);
+        }
+        try {
+          const buyerContext = parseWheatBuyerQualityContext(planning.wheatBuyerQualityContext);
+          setWheatBuyerQualityContext(buyerContext);
+          setInitialWheatBuyerQualityContext(buyerContext);
+        } catch {
+          setWheatBuyerReadError("Há um contexto antigo/inválido de comprador. Ele foi preservado; o restante do parecer continua disponível.");
+          setWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
+          setInitialWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
         }
         const notes = String(planning.plannedManagementNotes ?? "");
         const horizon = planning.fertilityPlanningHorizonYears == null ? "" : String(planning.fertilityPlanningHorizonYears);
@@ -113,7 +127,10 @@ export function SimpleRecommendationContext({
   const fertilityCyclePlanChanged = plannedLoaded
     && fertilityCyclePlanNotes.trim() !== initialFertilityCyclePlanNotes.trim();
   const irrigationChanged = plannedLoaded && !irrigationReadError && JSON.stringify(irrigationApplications) !== JSON.stringify(parseIrrigationApplications(initialIrrigationApplications));
-  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged;
+  const wheatBuyerChanged = plannedLoaded
+    && !wheatBuyerReadError
+    && JSON.stringify(wheatBuyerQualityContext) !== JSON.stringify(initialWheatBuyerQualityContext);
+  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged || wheatBuyerChanged;
   const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
   const canSave = seasonContextChanged || planningContextChanged;
 
@@ -137,6 +154,10 @@ export function SimpleRecommendationContext({
           planningPatch.irrigationApplications = parseIrrigationApplications(irrigationApplications);
           planningPatch.expectedIrrigationApplications = initialIrrigationApplications;
         }
+        if (wheatBuyerChanged) {
+          planningPatch.wheatBuyerQualityContext = wheatBuyerQualityContext;
+          planningPatch.expectedWheatBuyerQualityContext = initialWheatBuyerQualityContext;
+        }
 
         const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
           method: "PATCH",
@@ -149,6 +170,11 @@ export function SimpleRecommendationContext({
         if (irrigationChanged) {
           setIrrigationApplications(parseIrrigationApplications(saved.irrigationApplications));
           setInitialIrrigationApplications(saved.irrigationApplications ?? []);
+        }
+        if (wheatBuyerChanged) {
+          const savedBuyerContext = parseWheatBuyerQualityContext(saved.wheatBuyerQualityContext);
+          setWheatBuyerQualityContext(savedBuyerContext);
+          setInitialWheatBuyerQualityContext(savedBuyerContext);
         }
         const savedNotes = String(saved.plannedManagementNotes ?? plannedManagement.trim());
         const savedHorizon = saved.fertilityPlanningHorizonYears == null ? "" : String(saved.fertilityPlanningHorizonYears);
@@ -202,6 +228,109 @@ export function SimpleRecommendationContext({
       <div className="simple-context-fields">
         <IrrigationApplicationsEditor value={irrigationApplications} onChange={setIrrigationApplications} disabled={!plannedLoaded || busy || Boolean(irrigationReadError)}/>
         {irrigationReadError && <p role="status">{irrigationReadError}</p>}
+        {cropProfileCode === "TRIGO" && (
+          <>
+            <label>
+              <span>Comprador/protocolo industrial <small>(opcional)</small></span>
+              <select
+                value={wheatBuyerQualityContext.protocolId}
+                disabled={!plannedLoaded || busy || Boolean(wheatBuyerReadError)}
+                onChange={(event) => setWheatBuyerQualityContext((current) => ({
+                  ...current,
+                  protocolId: event.target.value as WheatBuyerQualityContext["protocolId"],
+                }))}
+              >
+                <option value="">Nenhum comprador específico</option>
+                <option value="BE8_WHEAT_VITAL_GLUTEN_2026">Be8 Agro — Glúten Vital 2026</option>
+              </select>
+              <small>Selecionar um protocolo adiciona um checklist comercial separado. Não substitui o motor agronômico nem altera automaticamente a dose-base de N.</small>
+            </label>
+            {wheatBuyerQualityContext.protocolId === "BE8_WHEAT_VITAL_GLUTEN_2026" && (
+              <div className="narrative-block muted" style={{ gridColumn: "1 / -1" }}>
+                <h4>Checklist Be8 — somente o que você já souber</h4>
+                <p className="report-empty-note">Campos em branco permanecem “não verificados”. O laudo e a recomendação-base de N continuam normalmente.</p>
+                <div className="form-grid">
+                  <label>
+                    <span>N na base/semeadura <small>(opcional)</small></span>
+                    <div className="simple-context-input">
+                      <input inputMode="decimal" value={wheatBuyerQualityContext.sowingBaseNitrogenKgN ?? ""} onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        setWheatBuyerQualityContext((current) => ({ ...current, sowingBaseNitrogenKgN: raw === "" ? null : Number(raw) }));
+                      }} />
+                      <b>kg N</b>
+                    </div>
+                  </label>
+                  <label>
+                    <span>Taxa de sementes <small>(opcional)</small></span>
+                    <div className="simple-context-input">
+                      <input inputMode="decimal" value={wheatBuyerQualityContext.seedRateKgPerHa ?? ""} onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        setWheatBuyerQualityContext((current) => ({ ...current, seedRateKgPerHa: raw === "" ? null : Number(raw) }));
+                      }} />
+                      <b>kg/ha</b>
+                    </div>
+                  </label>
+                  <label>
+                    <span>1ª aplicação de N <small>(opcional)</small></span>
+                    <div className="simple-context-input">
+                      <input inputMode="decimal" value={wheatBuyerQualityContext.firstNitrogenApplicationKgN ?? ""} onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        setWheatBuyerQualityContext((current) => ({ ...current, firstNitrogenApplicationKgN: raw === "" ? null : Number(raw) }));
+                      }} />
+                      <b>kg N</b>
+                    </div>
+                  </label>
+                  <label>
+                    <span>Até qual estádio foi parcelada? <small>(opcional)</small></span>
+                    <input inputMode="numeric" value={wheatBuyerQualityContext.firstNitrogenLatestStage ?? ""} onChange={(event) => {
+                      const raw = event.target.value;
+                      setWheatBuyerQualityContext((current) => ({ ...current, firstNitrogenLatestStage: raw === "" ? null : Number(raw) }));
+                    }} placeholder="Ex.: 7" />
+                  </label>
+                  <label>
+                    <span>Produto da 2ª aplicação <small>(opcional)</small></span>
+                    <input value={wheatBuyerQualityContext.secondNitrogenProduct} onChange={(event) => setWheatBuyerQualityContext((current) => ({ ...current, secondNitrogenProduct: event.target.value }))} placeholder="Ex.: sulfato de amônio" />
+                  </label>
+                  <label>
+                    <span>Quantidade da 2ª aplicação <small>(opcional)</small></span>
+                    <div className="simple-context-input">
+                      <input inputMode="decimal" value={wheatBuyerQualityContext.secondNitrogenDisplayedAmountKg ?? ""} onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        setWheatBuyerQualityContext((current) => ({ ...current, secondNitrogenDisplayedAmountKg: raw === "" ? null : Number(raw) }));
+                      }} />
+                      <b>kg</b>
+                    </div>
+                    <small>A peça fornecida mostra 150–200 kg, mas não explicita a base de área. O RAIZ não presume kg/ha.</small>
+                  </label>
+                  <label>
+                    <span>Base da quantidade confirmada?</span>
+                    <select value={wheatBuyerQualityContext.secondNitrogenSourceAmountBasisConfirmed == null ? "" : String(wheatBuyerQualityContext.secondNitrogenSourceAmountBasisConfirmed)} onChange={(event) => setWheatBuyerQualityContext((current) => ({
+                      ...current,
+                      secondNitrogenSourceAmountBasisConfirmed: event.target.value === "" ? null : event.target.value === "true",
+                    }))}>
+                      <option value="">Ainda não / não sei</option>
+                      <option value="true">Sim, mesma base operacional do documento</option>
+                      <option value="false">Não</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Aplicação fúngica do documento</span>
+                    <select value={wheatBuyerQualityContext.fungalApplicationDeclared == null ? "" : String(wheatBuyerQualityContext.fungalApplicationDeclared)} onChange={(event) => setWheatBuyerQualityContext((current) => ({
+                      ...current,
+                      fungalApplicationDeclared: event.target.value === "" ? null : event.target.value === "true",
+                    }))}>
+                      <option value="">Ainda não informado</option>
+                      <option value="true">Realizada / planejada</option>
+                      <option value="false">Não realizada / não planejada</option>
+                    </select>
+                    <small>O documento fornecido não especifica produto nem dose; o RAIZ não inventa esses dados.</small>
+                  </label>
+                </div>
+              </div>
+            )}
+            {wheatBuyerReadError && <p role="status">{wheatBuyerReadError}</p>}
+          </>
+        )}
         <label>
           <span>Horizonte desta análise do solo <small>(opcional)</small></span>
           <select
