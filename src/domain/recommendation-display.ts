@@ -1,4 +1,5 @@
 const RECOMMENDATION_INPUT_LABELS: Record<string, string> = {
+  N: "Nitrogênio (N)",
   P2O5: "Fósforo (P₂O₅)",
   K2O: "Potássio (K₂O)",
   S: "Enxofre (S)",
