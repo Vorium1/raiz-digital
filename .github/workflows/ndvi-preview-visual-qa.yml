@@ -68,6 +68,8 @@ jobs:
             core.setOutput("token", token);
 
       - name: Criar bypass Vercel efêmero quando houver token autorizado
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -82,22 +84,58 @@ jobs:
           if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT2:-}"; fi
           if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT3:-}"; fi
 
+          if [ -z "${VERCEL_API_TOKEN}" ] && [ -n "${VERCEL_TRUSTED_OIDC_TOKEN:-}" ]; then
+            exchange_json="$(
+              curl -sS -X POST https://api.vercel.com/login/oauth/token \
+                --data "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+                --data "client_id=cl_kyUx2zVvA4MGptBohkmtYHJly2XltXzD" \
+                --data "subject_token_type=urn:ietf:params:oauth:token-type:id_token" \
+                --data "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+                --data-urlencode "team_id_or_slug=${VERCEL_TEAM_ID}" \
+                --data-urlencode "subject_token=${VERCEL_TRUSTED_OIDC_TOKEN}" || true
+            )"
+            exchanged="$(node -e 'try { const x=JSON.parse(process.argv[1]); process.stdout.write(x.access_token || "") } catch {}' "${exchange_json}")"
+            if [ -n "${exchanged}" ]; then
+              VERCEL_API_TOKEN="${exchanged}"
+              echo "::add-mask::${VERCEL_API_TOKEN}"
+              echo "Token Vercel efêmero obtido via exchange OIDC."
+            else
+              echo "Exchange OIDC não produziu access token Vercel; mantendo OIDC direto como fallback."
+            fi
+          fi
+
           if [ -z "${VERCEL_API_TOKEN}" ]; then
-            echo "Nenhum token Vercel disponível nos secrets conhecidos; mantendo OIDC como fallback."
+            echo "Nenhum token Vercel disponível; mantendo OIDC como fallback."
             exit 0
           fi
 
           echo "::add-mask::${VERCEL_API_TOKEN}"
+
+          read_code="$(
+            curl -sS -o /tmp/vercel-project-probe.json -w '%{http_code}' \
+              "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_TEAM_ID}" \
+              -H "Authorization: Bearer ${VERCEL_API_TOKEN}" || true
+          )"
+          if [ "${read_code}" != "200" ]; then
+            echo "::warning::Token Vercel existe, mas não tem leitura do projeto (HTTP ${read_code}); nenhum bypass será criado."
+            exit 0
+          fi
+
           EPHEMERAL_SECRET="$(openssl rand -hex 16)"
           echo "::add-mask::${EPHEMERAL_SECRET}"
 
           payload="$(node -e 'console.log(JSON.stringify({generate:{secret:process.argv[1],note:"RAIZ #84 temporary visual QA"}}))' "${EPHEMERAL_SECRET}")"
           http_code="$(
-            curl -sS -o /tmp/vercel-bypass-generate.json -w '%{http_code}'               -X PATCH               "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}"               -H "Authorization: Bearer ${VERCEL_API_TOKEN}"               -H "Content-Type: application/json"               --data "${payload}" || true
+            curl -sS -o /tmp/vercel-bypass-generate.json -w '%{http_code}' \
+              -X PATCH \
+              "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}" \
+              -H "Authorization: Bearer ${VERCEL_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "${payload}" || true
           )"
 
           if [ "${http_code}" != "200" ]; then
-            echo "::warning::Token Vercel encontrado, mas não conseguiu criar bypass efêmero (HTTP ${http_code}). OIDC continuará como fallback."
+            echo "::warning::Token Vercel tem leitura, mas não conseguiu criar bypass efêmero (HTTP ${http_code})."
             exit 0
           fi
 
