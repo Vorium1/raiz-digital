@@ -386,7 +386,7 @@ const providerSpatialCandidate = await deterministicLimitedPrescriptionProvider.
 assert.equal(providerSpatialCandidate.prescription.recommendations.length, 0);
 assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /80 posições distintas/);
 assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /não escolheu atributo, IDW\/krigagem\/Thiessen/i);
-assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /validação cruzada quando aplicável/i);
+assert.match(providerSpatialCandidate.prescription.managementPractices.join(" "), /validação cruzada e métricas preservadas antes de qualquer superfície oficial/i);
 
 const providerSpatialExploratory = await deterministicLimitedPrescriptionProvider.prescribe({
   evidence: {
