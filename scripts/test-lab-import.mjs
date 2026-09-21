@@ -20,6 +20,24 @@ assert.equal(valid.rows.length, 4);
 assert.equal(valid.blockers, 0);
 assert.ok(valid.confidence.score >= 90);
 
+const optionalContextDoesNotLowerLabConfidence = buildLabImportPreview(longCsv, "valid-sem-contexto.csv", {
+  hasAgronomicContext: false,
+  spatialLinked: false,
+});
+assert.equal(
+  optionalContextDoesNotLowerLabConfidence.confidence.score,
+  valid.confidence.score,
+  "dados opcionais ausentes não podem reduzir a confiabilidade da evidência laboratorial",
+);
+assert.equal(
+  optionalContextDoesNotLowerLabConfidence.confidence.dimensions.find((item) => item.key === "context")?.weight,
+  0,
+);
+assert.equal(
+  optionalContextDoesNotLowerLabConfidence.confidence.dimensions.find((item) => item.key === "spatialQuality")?.weight,
+  0,
+);
+
 
 const tedescoProtocol = "Tedesco, M. J. et al. Boletim técnico n° 5 - Análises de Solo, Plantas e Outros Materiais. 2 ed. Porto Alegre, 1995";
 const protocolCsv = `Amostra;Parametro;Valor;Unidade;Metodo;Protocolo
