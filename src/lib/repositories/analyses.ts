@@ -117,13 +117,6 @@ export async function createAnalysis(input: {
       ],
     );
     const created = result.rows[0];
-    let wheatBuyerProtocolIdForAudit: string | null = null;
-    try {
-      wheatBuyerProtocolIdForAudit = parseWheatBuyerQualityContext(next.wheatBuyerQualityContext).protocolId || null;
-    } catch {
-      // Contexto legado inválido é preservado, mas nunca quebra outra edição opcional.
-    }
-
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
@@ -330,6 +323,13 @@ export async function updateAnalysisPlanningContext(input: {
        WHERE tenant_id = $1::uuid AND id = $2::uuid`,
       [input.tenantId, row.cropSeasonId],
     );
+
+    let wheatBuyerProtocolIdForAudit: string | null = null;
+    try {
+      wheatBuyerProtocolIdForAudit = parseWheatBuyerQualityContext(next.wheatBuyerQualityContext).protocolId || null;
+    } catch {
+      // Contexto legado inválido é preservado, mas nunca quebra outra edição opcional.
+    }
 
     await writeAudit(client, {
       tenantId: input.tenantId,
