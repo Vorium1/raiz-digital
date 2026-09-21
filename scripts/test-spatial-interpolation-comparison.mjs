@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { evaluateSpatialAttributeEvidence } from "../src/domain/spatial-attribute-evidence.ts";
+import { evaluateSpatialEvidenceEnvelope } from "../src/domain/spatial-prescription-request.ts";
+import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 import { evaluateStoredSpatialInterpolationValidations } from "../src/domain/spatial-interpolation-context.ts";
 import {
   compareAllValidatedSpatialMethods,
@@ -111,5 +113,45 @@ assert.equal(single.selectedMethod, null);
 const all = compareAllValidatedSpatialMethods(validatedDominance);
 assert.equal(all.length, 1);
 assert.equal(all[0].parameterCode, "P");
+
+const providerBase = {
+  results: [],
+  technicalSources: [],
+  deterministicInterpretation: null,
+  season: { cropProfileCode: "SOJA" },
+  deterministicPkDoses: {
+    P2O5: { ready: false, blockers: ["TEST_NO_P"] },
+    K2O: { ready: false, blockers: ["TEST_NO_K"] },
+  },
+  spatialEvidenceEnvelope: evaluateSpatialEvidenceEnvelope({
+    explicitRequested: true,
+    hasFieldBoundary: true,
+    totalPointCount: 70,
+    reliablePointCount: 70,
+    reliableLabLinkedPointCount: 70,
+    distinctReliableLabCoordinateCount: 70,
+    sampleDistribution: "DISTRIBUTED",
+  }),
+};
+
+const providerDominance = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: { ...providerBase, spatialMethodComparisons: [dominance] },
+});
+assert.equal(providerDominance.prescription.recommendations.length, 0);
+assert.match(providerDominance.prescription.managementPractices.join(" "), /KRIGING não foi dominado/);
+assert.match(providerDominance.prescription.managementPractices.join(" "), /IDW \(dominado por KRIGING\)/);
+assert.match(providerDominance.prescription.managementPractices.join(" "), /Dominância de Pareto não autoriza seleção automática/);
+
+const providerTradeoff = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: { ...providerBase, spatialMethodComparisons: [tradeoff] },
+});
+assert.match(providerTradeoff.prescription.managementPractices.join(" "), /Há trade-off/);
+assert.match(providerTradeoff.prescription.managementPractices.join(" "), /nenhum é melhor simultaneamente em RMSE, MAE e \|erro médio\|/);
+assert.match(providerTradeoff.prescription.managementPractices.join(" "), /seleção final permanece profissional/);
+
+const providerDifferentDesign = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: { ...providerBase, spatialMethodComparisons: [differentDesign] },
+});
+assert.match(providerDifferentDesign.prescription.missingInformation.join(" "), /desenhos de validação cruzada não são equivalentes/);
 
 console.log("spatial-interpolation-comparison: same-design Pareto metrics compare methods without auto-selection or automatic VRA");
