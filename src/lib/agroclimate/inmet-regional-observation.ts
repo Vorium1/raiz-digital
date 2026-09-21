@@ -139,6 +139,8 @@ export async function collectInmetRegionalObservation(input: {
       status: "UNAVAILABLE",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc: null,
+      observationWindowFromUtc: null,
+      observationWindowToUtc: null,
       station,
       applicability: null,
       metricEvidence: [],
@@ -158,6 +160,8 @@ export async function collectInmetRegionalObservation(input: {
       status: "NOT_APPLICABLE",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc: null,
+      observationWindowFromUtc: null,
+      observationWindowToUtc: null,
       station,
       applicability,
       metricEvidence: [],
@@ -199,7 +203,7 @@ export async function collectInmetRegionalObservation(input: {
       ...(rainDuration.evidence ? [rainDuration.evidence] : []),
     ];
     return {
-      status: aggregate.evidence.length ? "READY" : metricEvidence.length ? "PARTIAL" : "PARTIAL",
+      status: aggregate.evidence.length ? "READY" : "PARTIAL",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc,
       observationWindowFromUtc,
