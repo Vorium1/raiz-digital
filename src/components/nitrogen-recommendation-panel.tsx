@@ -265,7 +265,7 @@ export function NitrogenRecommendationPanel({ analysisId, canRun }: { analysisId
 
       {canRun && crop && (
         <details open={!workspace.readiness.ready}>
-          <summary>Preencher/atualizar somente os dados exigidos para N</summary>
+          <summary>Contexto do N e objetivos opcionais</summary>
           <div className="narrative-review-form" style={{ marginTop: 10 }}>
             <div className="review-grid">
               {crop !== "PASTAGEM_INVERNO" && <label className="review-summary"><span>Meta produtiva</span><input type="number" min="0.1" step="0.1" inputMode="decimal" value={yieldGoal} onChange={(event) => setYieldGoal(event.target.value)} placeholder="Ex.: 6.0"/><small>t/ha</small></label>}
@@ -279,7 +279,14 @@ export function NitrogenRecommendationPanel({ analysisId, canRun }: { analysisId
 
               {crop === "TRIGO" && <>
                 <label className="review-summary"><span>Cultura anterior</span><select value={wheatPrecedingCrop} onChange={(event) => setWheatPrecedingCrop(event.target.value)}><option value="">Selecione</option><option value="SOY">Soja</option><option value="CORN">Milho</option></select></label>
-                <label className="review-summary"><span>N tardio para proteína</span><select value={String(lateQualityN)} onChange={(event) => setLateQualityN(event.target.value === "true")}><option value="false">Não</option><option value="true">Sim — exigir revisão específica</option></select></label>
+                <label className="review-summary">
+                  <span>Objetivo adicional de qualidade <small>(opcional)</small></span>
+                  <select value={String(lateQualityN)} onChange={(event) => setLateQualityN(event.target.value === "true")}>
+                    <option value="false">Não — focar produtividade</option>
+                    <option value="true">Sim — proteína / Glúten Vital</option>
+                  </select>
+                  <small>Não é requisito para a recomendação-base de N. Quando ativado, acrescenta a análise de qualidade do trigo sem autorizar automaticamente N tardio extra.</small>
+                </label>
               </>}
 
               {crop === "PASTAGEM_INVERNO" && <>
