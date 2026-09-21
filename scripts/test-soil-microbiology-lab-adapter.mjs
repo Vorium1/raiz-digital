@@ -26,6 +26,7 @@ const observations = adaptLabResultsToSoilMicrobiology([
     value: 315,
     unit: "mg C/kg solo",
     method: "Fumigação-extração",
+    sampleType: "SOLO",
   },
   {
     sampleCode: "A1",
@@ -68,6 +69,7 @@ const observations = adaptLabResultsToSoilMicrobiology([
     value: 62,
     unit: "%",
     method: "Colonização micorrízica por coloração e microscopia",
+    sampleType: "BIOLOGICO",
   },
   {
     sampleCode: "A1",
@@ -102,6 +104,7 @@ assert.equal(beta?.methodFamily, "ENZYME_ACTIVITY");
 const biomass = observations.find((item) => item.parameterName === "MICROBIO_BIOMASS_C");
 assert.equal(biomass?.family, "MICROBIAL_BIOMASS");
 assert.equal(biomass?.methodFamily, "MICROBIAL_BIOMASS_C");
+assert.equal(biomass?.sampleMatrix, "SOIL");
 
 const biomassN = observations.find((item) => item.parameterName === "MICROBIO_BIOMASS_N");
 assert.equal(biomassN?.family, "MICROBIAL_BIOMASS");
@@ -119,6 +122,7 @@ assert.equal(phosphatase?.methodFamily, "PHOSPHATASE_ACTIVITY");
 const mycorrhizalColonization = observations.find((item) => item.parameterName === "MICROBIO_MYCORRHIZAL_COLONIZATION");
 assert.equal(mycorrhizalColonization?.family, "MYCORRHIZA");
 assert.equal(mycorrhizalColonization?.sampleMatrix, "ROOT");
+assert.equal(mycorrhizalColonization?.sampleMatrix, "ROOT", "BIOLOGICO é categoria ampla e não pode sobrescrever a matriz radicular inferida do método.");
 assert.equal(mycorrhizalColonization?.methodFamily, "MYCORRHIZAL_COLONIZATION");
 
 const mycorrhizalSpores = observations.find((item) => item.parameterName === "MICROBIO_MYCORRHIZAL_SPORE_COUNT");
