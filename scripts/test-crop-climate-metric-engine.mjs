@@ -101,6 +101,39 @@ const sameRuleInRainfed = deriveCropClimateHazardsFromMetrics({
 });
 assert.equal(sameRuleInRainfed.hazards.length, 0);
 
+const soybeanColdSoil = deriveCropClimateHazardsFromMetrics({
+  cropCode: "SOJA",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "SOWING_EMERGENCE",
+  metrics: { SOIL_TEMP_C: 18.5 },
+  rules: HOMOLOGATED_CROP_CLIMATE_METRIC_RULES,
+});
+assert.ok(soybeanColdSoil.matchedRuleIds.includes("SOJA-BR-SOIL-COLD-20C"));
+assert.ok(soybeanColdSoil.hazards.some((item) => item.hazard === "LOW_SOIL_TEMPERATURE"));
+
+const soybeanFloweringHeat = deriveCropClimateHazardsFromMetrics({
+  cropCode: "SOJA",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "FLOWERING",
+  metrics: { DAY_MAX_TEMP_C: 39.2 },
+  rules: HOMOLOGATED_CROP_CLIMATE_METRIC_RULES,
+});
+assert.ok(soybeanFloweringHeat.matchedRuleIds.includes("SOJA-BR-FLOWERING-HEAT-38C"));
+assert.equal(soybeanFloweringHeat.hazards[0]?.hazard, "HEAT");
+
+const soybeanNoUniversalPhotoperiod = deriveCropClimateHazardsFromMetrics({
+  cropCode: "SOJA",
+  countryCode: "BR",
+  stateCode: "RS",
+  stage: "VEGETATIVE",
+  metrics: { PHOTOPERIOD_HOURS: 13.9 },
+  rules: HOMOLOGATED_CROP_CLIMATE_METRIC_RULES,
+});
+assert.equal(soybeanNoUniversalPhotoperiod.hazards.length, 0);
+assert.ok(soybeanNoUniversalPhotoperiod.warnings.includes("CROP_REGION_STAGE_METRIC_RULE_REQUIRED"));
+
 const noSoyAnalog = deriveCropClimateHazardsFromMetrics({
   cropCode: "SOJA",
   countryCode: "BR",
