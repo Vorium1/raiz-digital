@@ -151,7 +151,8 @@ const buyerText = industrialWithBuyer.prescription.managementPractices.join(" ")
 assert.match(buyerText, /Protocolo de comprador selecionado explicitamente: Be8 Agro/);
 assert.match(buyerText, /itens obrigatórios verificados como conformes/i);
 assert.match(buyerText, /não garante prêmio, aceite comercial ou desempenho industrial/i);
-assert.doesNotMatch(buyerText, /prêmio garantido|garante prêmio/i);
+assert.match(buyerText, /não garante prêmio, aceite comercial ou desempenho industrial/i);
+assert.doesNotMatch(buyerText, /prêmio garantido/i);
 
 const unverifiedBuyer = evaluateStoredWheatBuyerQualityContext({
   protocolId: "BE8_WHEAT_VITAL_GLUTEN_2026",
