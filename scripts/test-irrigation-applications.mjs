@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import * as util from "node:util";
 import ts from "typescript";
 import * as irrigation from "../src/domain/irrigation-applications.ts";
+import { evaluateIrrigationWaterEvidence } from "../src/domain/irrigation-water-assessment.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 
 const { parseIrrigationApplications: parse, evaluateIrrigationApplications: evaluate } = irrigation;
@@ -116,6 +117,22 @@ const invalidResult = await deterministicLimitedPrescriptionProvider.prescribe({
 } });
 assert.deepEqual(invalidResult.prescription.recommendations, baseResult.prescription.recommendations);
 assert.match(invalidResult.prescription.managementPractices.join(" "), /preservadas/);
+const progressiveWaterResult = await deterministicLimitedPrescriptionProvider.prescribe({ evidence: {
+  ...baseEvidence,
+  irrigationWaterEvidence: evaluateIrrigationWaterEvidence({ waterRegime: "IRRIGADO" }),
+} });
+assert.deepEqual(progressiveWaterResult.prescription.recommendations, baseResult.prescription.recommendations);
+assert.deepEqual(progressiveWaterResult.prescription.missingInformation, baseResult.prescription.missingInformation);
+assert.match(progressiveWaterResult.prescription.managementPractices.join(" "), /declarada irrigada/);
+assert.match(progressiveWaterResult.prescription.managementPractices.join(" "), /não comprova quanto da demanda/);
+
+const rainfedWaterResult = await deterministicLimitedPrescriptionProvider.prescribe({ evidence: {
+  ...baseEvidence,
+  irrigationWaterEvidence: evaluateIrrigationWaterEvidence({ waterRegime: "SEQUEIRO" }),
+} });
+assert.deepEqual(rainfedWaterResult.prescription.recommendations, baseResult.prescription.recommendations);
+assert.match(rainfedWaterResult.prescription.managementPractices.join(" "), /declarada de sequeiro/);
+
 
 // Real React component state/effects, isolated from network and browser rendering.
 async function loadedContext(fetchImpl) {
