@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
-import type { LabImportPreview } from "@/domain/lab-import";
+import type { LabImportPreview, LabImportUsability } from "@/domain/lab-import";
 import { jsonTransportBytes, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
 
 export type LabImporterReadyFile = {
@@ -26,6 +26,7 @@ type PreviewWithSource = LabImportPreview & {
   sourceArchived?: boolean;
   normalizedRowCount?: number;
   issueCount?: number;
+  usability?: LabImportUsability;
 };
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
@@ -163,7 +164,11 @@ export function LabImporter({ method, onPreviewChange, onFileReady, simple = fal
 
       {simple && preview?.aiExtracted && <div className="import-message review simple-import-note"><Icon name="sparkles" size={18}/><div><strong>Leitura automática concluída</strong><small>A RAIZ leu este PDF ou imagem. O arquivo original continua disponível para conferência antes da entrega oficial.</small></div></div>}
 
-      {simple && preview && preview.blockers > 0 && <div className="import-message danger simple-import-note"><Icon name="warning" size={18}/><div><strong>Precisamos conferir este arquivo</strong><small>{simpleBlockers.length ? simpleBlockers.map((issue) => issue.message).join(" · ") : "Há informação obrigatória que não pôde ser confirmada automaticamente."}</small></div></div>}
+      {simple && preview && preview.blockers > 0 && (
+        preview.usability?.canProceedWithPartialEvidence
+          ? <div className="import-message review simple-import-note"><Icon name="shield" size={18}/><div><strong>Parte do arquivo seguirá normalmente</strong><small>{preview.usability.promotableRowCount} resultado(s) têm evidência suficiente. {preview.usability.excludedRowCount} linha(s) com informação não confirmada ficarão fora da interpretação, sem bloquear as demais conclusões.</small></div></div>
+          : <div className="import-message danger simple-import-note"><Icon name="warning" size={18}/><div><strong>Precisamos conferir este arquivo</strong><small>{simpleBlockers.length ? simpleBlockers.map((issue) => issue.message).join(" · ") : "Ainda não há resultado laboratorial utilizável com segurança."}</small></div></div>
+      )}
 
       {!simple && preview?.aiExtracted && <div className="import-message review"><Icon name="sparkles" size={18}/><div><strong>Transcrito por IA a partir do arquivo enviado</strong><small>O original já foi arquivado antes da leitura automática. Revise o preview e, após criar a análise, abra o arquivo original no painel de proveniência para fazer a conferência humana antes da entrega oficial.</small></div></div>}
 
