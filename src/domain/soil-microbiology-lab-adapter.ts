@@ -16,6 +16,7 @@ export type BiologicalLabResultRow = {
   depthFromCm?: number | null;
   depthToCm?: number | null;
   sampleMatrix?: SoilMicrobiologySampleMatrix | null;
+  sampleType?: string | null;
 };
 
 function normalized(value: string) {
@@ -24,6 +25,15 @@ function normalized(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toUpperCase();
+}
+
+function matrixFromRaizSampleType(sampleType: string | null | undefined): SoilMicrobiologySampleMatrix | null {
+  const value = normalized(sampleType ?? "");
+  if (value === "SOLO") return "SOIL";
+  // BIOLOGICO é uma categoria ampla de persistência, não uma matriz física.
+  // A matriz específica continua sendo resolvida pelo parâmetro/método.
+  if (value === "BIOLOGICO") return null;
+  return null;
 }
 
 function inferMethodFamily(parameterCode: string, method: string): SoilMicrobiologyMethodFamily {
@@ -154,7 +164,7 @@ export function adaptLabResultsToSoilMicrobiology(
     observations.push({
       parameterName: row.parameterCode,
       family: classification.family,
-      sampleMatrix: row.sampleMatrix ?? classification.sampleMatrix,
+      sampleMatrix: row.sampleMatrix ?? matrixFromRaizSampleType(row.sampleType) ?? classification.sampleMatrix,
       functionalRole: classification.role,
       organismOrTaxon: classification.organismOrTaxon,
       value: row.value,
