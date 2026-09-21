@@ -19,6 +19,7 @@ const full = evaluateBe8WheatVitalGlutenProtocol({
   secondNitrogenApplication: {
     product: "Sulfato de amônio",
     displayedAmountKg: 175,
+    sourceAmountBasisConfirmed: true,
   },
   fungalApplicationDeclared: true,
 });
@@ -37,6 +38,7 @@ const optionalFirstNNotFollowed = evaluateBe8WheatVitalGlutenProtocol({
   secondNitrogenApplication: {
     product: "(NH4)2SO4",
     displayedAmountKg: 180,
+    sourceAmountBasisConfirmed: true,
   },
   fungalApplicationDeclared: true,
 });
@@ -47,12 +49,26 @@ assert.equal(
   "item recomendado não pode virar cadeado comercial",
 );
 
+const ambiguousAreaBasis = evaluateBe8WheatVitalGlutenProtocol({
+  sowingBaseNitrogenKgN: 25,
+  seedRateKgPerHa: 160,
+  secondNitrogenApplication: {
+    product: "Sulfato de amônio",
+    displayedAmountKg: 175,
+  },
+  fungalApplicationDeclared: true,
+});
+assert.equal(ambiguousAreaBasis.checks.secondNitrogenApplication, "UNVERIFIED");
+assert.equal(ambiguousAreaBasis.mandatoryCompliance, "UNVERIFIED");
+assert.ok(ambiguousAreaBasis.limitations.includes("BE8_SECOND_N_AMOUNT_BASIS_NOT_CONFIRMED"));
+
 const wrongSeedRate = evaluateBe8WheatVitalGlutenProtocol({
   sowingBaseNitrogenKgN: 25,
   seedRateKgPerHa: 150,
   secondNitrogenApplication: {
     product: "AMMONIUM SULFATE",
     displayedAmountKg: 180,
+    sourceAmountBasisConfirmed: true,
   },
   fungalApplicationDeclared: true,
 });
@@ -65,6 +81,7 @@ const wrongSecondProduct = evaluateBe8WheatVitalGlutenProtocol({
   secondNitrogenApplication: {
     product: "Ureia",
     displayedAmountKg: 180,
+    sourceAmountBasisConfirmed: true,
   },
   fungalApplicationDeclared: true,
 });
@@ -85,6 +102,7 @@ const baseTooLow = evaluateBe8WheatVitalGlutenProtocol({
   secondNitrogenApplication: {
     product: "Sulfato de amônio",
     displayedAmountKg: 175,
+    sourceAmountBasisConfirmed: true,
   },
   fungalApplicationDeclared: true,
 });
