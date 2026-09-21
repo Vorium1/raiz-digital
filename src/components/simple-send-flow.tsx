@@ -34,6 +34,10 @@ type ContextData = {
 };
 
 type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
+const BASE_SOIL_PARAMETER_CODES = new Set([
+  "PH", "SMP", "P", "K", "CA", "MG", "AL", "H_AL", "CTC", "V", "MO", "C_ORG",
+  "S", "B", "ZN", "CU", "MN", "FE", "CLAY",
+]);
 const emptyContext: ContextData = { clients: [], properties: [], fields: [], seasons: [], laboratories: [], cropProfiles: [] };
 
 
@@ -135,14 +139,18 @@ export function SimpleSendFlow() {
     soilContextNotes: [selectedSeason?.soilType, selectedSeason?.soilTexture].filter(Boolean).join(" · "),
   }), [selectedSeason]);
 
+  const hasBaseSoilParameters = Boolean(
+    preview?.parameters.some((parameter) => BASE_SOIL_PARAMETER_CODES.has(parameter)),
+  );
+
   const evidence = useMemo(() => buildAnalysisEvidence(analysisContextDraft, {
-    currentSoilAnalysis: importReady && sampleType === "SOLO",
+    currentSoilAnalysis: importReady && sampleType === "SOLO" && hasBaseSoilParameters,
     crop: Boolean(selectedSeason?.nextCrop || selectedSeason?.currentCrop),
     yieldGoal: selectedSeason?.yieldGoal != null,
     yieldUnit: Boolean(selectedSeason?.yieldGoalUnit),
     fieldBoundaryGeoreferenced: Boolean(selectedField?.boundary),
     registeredSoilContext: Boolean(selectedSeason?.soilType || selectedSeason?.soilTexture),
-  }), [analysisContextDraft, importReady, sampleType, selectedField, selectedSeason]);
+  }), [analysisContextDraft, hasBaseSoilParameters, importReady, sampleType, selectedField, selectedSeason]);
 
   const readiness = useMemo(() => evaluateAnalysisDepthReadiness(ANALYSIS_DEPTH, evidence), [evidence]);
 
