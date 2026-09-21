@@ -1,6 +1,7 @@
 "use client";
 
 import { evaluateIrrigationApplications, MAX_IRRIGATION_APPLICATIONS, type IrrigationApplication } from "@/domain/irrigation-applications";
+import styles from "./irrigation-applications-editor.module.css";
 
 const numericFields = [
   ["depthMm", "Lâmina declarada (mm)"], ["volumeM3", "Volume aplicado (m³)"],
@@ -23,8 +24,8 @@ export function IrrigationApplicationsEditor({ value, onChange, disabled = false
   const evidence = evaluateIrrigationApplications(value);
   const update = (id: string, patch: Partial<IrrigationApplication>) => onChange(value.map((item) => item.id === id ? { ...item, ...patch } : item));
   return (
-    <details style={{ gridColumn: "1 / -1", minWidth: 0 }}>
-      <summary>Aplicações de irrigação <small>(opcional{value.length ? ` · ${value.length} registros` : ""})</small></summary>
+    <details className={styles.container}>
+      <summary>Aplicações de irrigação <small>(opcional{value.length ? ` · ${value.length} ${value.length === 1 ? "registro" : "registros"}` : ""})</small></summary>
       <p>Registre somente aplicações realizadas. Datas e quantidades desconhecidas podem ficar em branco. O laudo de solo continua disponível.</p>
       <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         {value.map((item, index) => {

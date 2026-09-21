@@ -4258,3 +4258,11 @@ e build locais passaram. Detalhes/limites em `docs/PR88_IRRIGATION_APPLICATIONS_
 Sem escrita em banco, migration, merge ou deploy de produção nesta rodada.
 Correção de estado histórico acima: main/develop já estão protegidas (API confirmada
 novamente) e #24 está fechada. #84 segue aberta; teste instrumentado não substitui Preview.
+
+Continuação da mesma rodada: incorporado o avanço concorrente até `d16147e`, CI verde,
+sem reimplementar importação parcial/gate hídrico adicionados pela outra sessão.
+Inspeção autenticada do editor na Área 01: adicionar/remover formulário local funciona,
+sem salvar dados; desktop 1348 px sem overflow. Corrigidos contraste/tamanho dos rótulos
+via CSS Module, inputs 16 px e alvos 44 px. O estado de publicação mostrado no Preview
+diverge do checkpoint de homologação e requer reconciliação antes do smoke com escrita;
+não houve geração de laudo ou gravação de aplicações nesta inspeção.

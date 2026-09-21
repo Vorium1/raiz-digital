@@ -81,3 +81,25 @@ Proteger produção: nenhum merge, deploy ou migration realizado. PR #83 continu
 em `baa6533805d471ff73d520a192c85a06e7d92fe1`; PR #88 mantém a mesma base.
 Leitura atual da API confirma main/develop protegidas e issue #24 fechada; o texto antigo
 de alguns documentos/PRs sobre ausência de proteção é histórico, não estado corrente.
+
+## Continuação — inspeção autenticada
+
+Outra sessão avançou o PR até `d16147e` (CI `35556953451` SUCCESS), incluindo importação
+parcial e `irrigation-water-assessment.ts`. Essas alterações foram preservadas via
+fast-forward. A limitação de balanço acima descreve o registro de aplicações entregue
+nesta rodada; o gate hídrico adicional da outra sessão é uma camada separada.
+
+Preview autenticado: navegação Resultados → Área 01 → Refinar recomendação → Aplicações
+de irrigação funcionou. Um formulário vazio foi adicionado e removido somente no estado
+local; nenhum refinamento foi salvo, nem laudo gerado. Após remoção, Salvar refinamentos
+voltou a ficar desabilitado. Desktop observado: largura 1348 px, scrollWidth 1348 px.
+K2O 75 kg/ha e P_NO_STRICT_PREDOMINANCE continuavam visíveis no resultado existente.
+
+A captura revelou rótulos herdados do formulário técnico com contraste baixo e tamanho
+pequeno. Correção isolada em CSS Module: rótulos 13 px, inputs 16 px, controles mínimos
+44 px, cores do tema da tela, foco visível e plural corrigido. Sem mudança agronômica.
+
+O Preview lista as três áreas como prontas para emissão, diferente do checkpoint de
+laudos oficiais já publicados em homologação. A causa dessa divergência de estado
+não foi determinada nesta inspeção; não se presume qual banco o Preview usa e nenhuma
+emissão foi acionada para mascarar a diferença. #84 e smoke persistente continuam abertos.
