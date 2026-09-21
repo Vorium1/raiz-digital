@@ -1,5 +1,5 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
-import { evaluateNitrogenExecutionSnapshotFreshness, evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
+import { evaluateAnalysisContextFingerprintFreshness, evaluateNitrogenExecutionSnapshotFreshness, evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
 import { PRESCRIPTION_NITROGEN_RULE_IDS } from "@/domain/nitrogen-prescription-evidence";
 import { withTenant } from "@/lib/db";
 
@@ -38,6 +38,8 @@ export async function getAgronomicPrescriptionFreshness(input: {
       latestRuleUpdatedAt: string | null;
       generationNitrogenExecutionId: string | null;
       latestNitrogenExecutionId: string | null;
+      generationAnalysisContextFingerprint: string | null;
+      currentAnalysisContextFingerprint: string | null;
     }>(
       `SELECT g.created_at::text AS "generationCreatedAt",
               g.interpretation_id::text AS "generationInterpretationId",
@@ -50,7 +52,9 @@ export async function getAgronomicPrescriptionFreshness(input: {
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               g.request_payload #>> '{evidence,deterministicNitrogenEvidence,executionId}' AS "generationNitrogenExecutionId",
-              latest_n.id::text AS "latestNitrogenExecutionId"
+              latest_n.id::text AS "latestNitrogenExecutionId",
+              g.request_payload #>> '{evidence,analysis,contextFingerprint}' AS "generationAnalysisContextFingerprint",
+              md5(coalesce(a.analysis_context, '{}'::jsonb)::text) AS "currentAnalysisContextFingerprint"
        FROM ai_generations g
        JOIN analyses a ON a.tenant_id = g.tenant_id AND a.id = g.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -96,6 +100,12 @@ export async function getAgronomicPrescriptionFreshness(input: {
       cropSeasonUpdatedAt: row.cropSeasonUpdatedAt,
     });
     if (!contextFreshness.current) return contextFreshness;
+
+    const analysisContextFreshness = evaluateAnalysisContextFingerprintFreshness({
+      generationFingerprint: row.generationAnalysisContextFingerprint,
+      currentFingerprint: row.currentAnalysisContextFingerprint,
+    });
+    if (!analysisContextFreshness.current) return analysisContextFreshness;
 
     if (
       !row.generationInterpretationId
