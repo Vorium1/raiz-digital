@@ -7,9 +7,36 @@ function requiredEnv(name: string): string {
 }
 
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@raiz.local";
-const ADMIN_PASSWORD = requiredEnv("E2E_ADMIN_PASSWORD");
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD?.trim() ?? "";
+const SESSION_TOKEN = process.env.E2E_SESSION_TOKEN?.trim() ?? "";
+
+if (!ADMIN_PASSWORD && !SESSION_TOKEN) {
+  throw new Error("E2E_ADMIN_PASSWORD ou E2E_SESSION_TOKEN precisa estar definido para rodar o QA visual.");
+}
 
 async function login(page: Page) {
+  if (SESSION_TOKEN) {
+    const baseUrl = new URL(requiredEnv("E2E_BASE_URL"));
+    await page.context().addCookies([{
+      name: "raiz_session",
+      value: SESSION_TOKEN,
+      domain: baseUrl.hostname,
+      path: "/",
+      httpOnly: true,
+      secure: baseUrl.protocol === "https:",
+      sameSite: "Lax",
+    }]);
+    await page.goto("/inicio");
+    const currentUrl = new URL(page.url());
+    if (
+      currentUrl.hostname !== baseUrl.hostname
+      || /\/login(?:\/|$|\?)/.test(currentUrl.pathname + currentUrl.search)
+    ) {
+      throw new Error("E2E_SESSION_TOKEN não foi aceito pelo Preview.");
+    }
+    return;
+  }
+
   await page.goto("/login");
   await page.fill('input[name="email"]', ADMIN_EMAIL);
   await page.fill('input[name="password"]', ADMIN_PASSWORD);
