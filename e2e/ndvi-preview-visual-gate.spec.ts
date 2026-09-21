@@ -135,7 +135,8 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
 
     const map = vigor.locator(".real-field-map");
     await expect(map).toBeVisible({ timeout: 20_000 });
-    await expect(map.locator(".real-field-map-canvas")).toBeVisible();\n    await expect(map).toHaveAttribute("data-has-image-overlay", "true");
+    await expect(map.locator(".real-field-map-canvas")).toBeVisible();
+    await expect(map).toHaveAttribute("data-has-image-overlay", "true");
 
     const legendText = await map.locator(".real-field-map-legend").textContent();
     expect(legendText ?? "").toMatch(/Vigor baixo/i);
@@ -149,7 +150,8 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
         async () => page.locator('script[src*="maps.googleapis.com/maps/api/js"]').count(),
         { timeout: 20_000, message: "Google Maps JavaScript API deveria estar carregado no Preview" },
       ).toBeGreaterThan(0);
-      await expect(map).toHaveAttribute("data-map-provider", "google");\n      await expect(map.locator(".ndvi-panel-limitation")).toHaveCount(0);
+      await expect(map).toHaveAttribute("data-map-provider", "google");
+      await expect(map.locator(".ndvi-panel-limitation")).toHaveCount(0);
     }
 
     await test.info().attach("ndvi-desktop", {
