@@ -5,6 +5,7 @@ import { checkPrescriptionDraftGate } from "@/domain/agronomic-prescription-gate
 import { evaluatePrescriptionDraftSnapshotConsistency } from "@/domain/prescription-snapshot-consistency";
 import { validatePrescriptionPkRecommendations, type PrescriptionRecommendationCandidate } from "@/domain/prescription-pk-validation";
 import { validatePrescriptionSulfurRecommendation } from "@/domain/prescription-sulfur-validation";
+import { validatePrescriptionNitrogenRecommendation } from "@/domain/prescription-nitrogen-validation";
 import { validatePrescriptionLimingRecommendation } from "@/domain/prescription-liming-validation";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { AiGenerationError, getLatestAgronomicPrescription } from "@/lib/repositories/ai-generations";
@@ -149,6 +150,20 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       `A resposta do provedor divergiu da regra determinística de enxofre da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify({
         blockers: providerSulfurValidation.blockers,
         expectedKgSPerHa: providerSulfurValidation.expectedKgSPerHa,
+      })}`,
+      502,
+    );
+  }
+
+  const providerNitrogenValidation = validatePrescriptionNitrogenRecommendation({
+    recommendations,
+    deterministicEvidence: evidence.deterministicNitrogenEvidence,
+  });
+  if (!providerNitrogenValidation.allowed) {
+    throw new AiGenerationError(
+      `A resposta do provedor divergiu da execução determinística corrente de nitrogênio da RAIZ. A geração foi descartada e nada foi salvo. ${JSON.stringify({
+        blockers: providerNitrogenValidation.blockers,
+        expectedKgNPerHa: providerNitrogenValidation.expectedKgNPerHa,
       })}`,
       502,
     );
