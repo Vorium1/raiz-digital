@@ -1,11 +1,9 @@
 import type { PoolClient } from "pg";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
 import { saveRequiredRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
-
-export type LabSampleType = "SOLO" | "FOLIAR" | "PECIOLO" | "MASSA_SECA" | "GRAO" | "SEMENTE" | "FERTILIZANTE" | "BIOLOGICO";
 
 async function promoteRowsToLabResults(
   client: PoolClient,
