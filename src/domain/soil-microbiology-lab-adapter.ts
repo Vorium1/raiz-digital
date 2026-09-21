@@ -141,6 +141,26 @@ function classifyCode(parameterCode: string): {
     return { family: "MYCORRHIZA", role: "MYCORRHIZAL_P_UPTAKE", organismOrTaxon: null, sampleMatrix: "UNKNOWN" };
   }
 
+  if (
+    code.includes("QPCR")
+    || code.includes("16S")
+    || code.includes("ITS")
+    || code.includes("METABARCOD")
+    || code.includes("MICROBIOMA")
+    || code.includes("MICROBIOME")
+    || code.includes("SHANNON")
+    || code.includes("SIMPSON")
+    || code.includes("RICHNESS")
+    || code.includes("RIQUEZA")
+  ) {
+    return {
+      family: "MOLECULAR_COMMUNITY_PROFILE",
+      role: null,
+      organismOrTaxon: null,
+      sampleMatrix: "SOIL",
+    };
+  }
+
   return null;
 }
 
