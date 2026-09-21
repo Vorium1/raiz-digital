@@ -5,6 +5,7 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
 import { parseWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
+import { parseSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 
 function analysisCode() {
   const year = new Date().getFullYear();
@@ -26,6 +27,8 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
       wheatBuyerQualityContext: null as unknown,
+      spatialInterpolationValidations: [] as unknown,
+      spatialInterpolationValidations: [] as unknown,
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -44,6 +47,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     fertilityPlanningHorizonYears?: unknown;
     fertilityCyclePlanNotes?: unknown;
     wheatBuyerQualityContext?: unknown;
+    spatialInterpolationValidations?: unknown;
   };
   const horizon = Number(source.fertilityPlanningHorizonYears);
   return {
@@ -52,6 +56,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     fertilityCyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" ? source.fertilityCyclePlanNotes : "",
     irrigationApplications: irrigationApplicationsFromContext(value) ?? [],
     wheatBuyerQualityContext: source.wheatBuyerQualityContext ?? null,
+    spatialInterpolationValidations: source.spatialInterpolationValidations ?? spatialInterpolationValidationsFromAnalysisContext(value),
   };
 }
 
@@ -203,6 +208,8 @@ export async function updateAnalysisPlanningContext(input: {
   expectedIrrigationApplications?: unknown;
   wheatBuyerQualityContext?: unknown;
   expectedWheatBuyerQualityContext?: unknown;
+  spatialInterpolationValidations?: unknown;
+  expectedSpatialInterpolationValidations?: unknown;
 }) {
   let nextBuyerQualityContext: ReturnType<typeof parseWheatBuyerQualityContext> | undefined;
   if (input.wheatBuyerQualityContext !== undefined) {
@@ -210,6 +217,15 @@ export async function updateAnalysisPlanningContext(input: {
     catch (error) { throw new AnalysisContextError(error instanceof Error ? error.message : "Contexto de comprador inválido.", 400); }
     if (input.expectedWheatBuyerQualityContext === undefined) {
       throw new AnalysisContextError("Recarregue o contexto antes de editar o protocolo de comprador.", 409);
+    }
+  }
+
+  let nextSpatialInterpolationValidations: ReturnType<typeof parseSpatialInterpolationValidations> | undefined;
+  if (input.spatialInterpolationValidations !== undefined) {
+    try { nextSpatialInterpolationValidations = parseSpatialInterpolationValidations(input.spatialInterpolationValidations); }
+    catch (error) { throw new AnalysisContextError(error instanceof Error ? error.message : "Validação espacial inválida.", 400); }
+    if (input.expectedSpatialInterpolationValidations === undefined) {
+      throw new AnalysisContextError("Recarregue o contexto antes de editar as validações espaciais.", 409);
     }
   }
 
@@ -244,6 +260,7 @@ export async function updateAnalysisPlanningContext(input: {
     && input.fertilityCyclePlanNotes === undefined
     && input.irrigationApplications === undefined
     && input.wheatBuyerQualityContext === undefined
+    && input.spatialInterpolationValidations === undefined
   ) {
     throw new AnalysisContextError("Nenhum campo de planejamento foi informado.", 400);
   }
@@ -269,9 +286,16 @@ export async function updateAnalysisPlanningContext(input: {
     ) {
       throw new AnalysisContextError("O protocolo de comprador do trigo foi alterado em outra sessão. Recarregue antes de salvar.", 409);
     }
+    if (
+      nextSpatialInterpolationValidations !== undefined
+      && !isDeepStrictEqual(input.expectedSpatialInterpolationValidations, current.spatialInterpolationValidations)
+    ) {
+      throw new AnalysisContextError("As validações espaciais foram alteradas em outra sessão. Recarregue antes de salvar.", 409);
+    }
     const next = {
       irrigationApplications: nextApplications ?? current.irrigationApplications,
       wheatBuyerQualityContext: nextBuyerQualityContext ?? current.wheatBuyerQualityContext,
+      spatialInterpolationValidations: nextSpatialInterpolationValidations ?? current.spatialInterpolationValidations,
       plannedManagementNotes: input.plannedManagementNotes === undefined
         ? current.plannedManagementNotes
         : (nextPlannedManagement ?? ""),
@@ -286,6 +310,7 @@ export async function updateAnalysisPlanningContext(input: {
     const changedFields: string[] = [];
     if (!isDeepStrictEqual(next.irrigationApplications, current.irrigationApplications)) changedFields.push("irrigationApplications");
     if (!isDeepStrictEqual(next.wheatBuyerQualityContext, current.wheatBuyerQualityContext)) changedFields.push("wheatBuyerQualityContext");
+    if (!isDeepStrictEqual(next.spatialInterpolationValidations, current.spatialInterpolationValidations)) changedFields.push("spatialInterpolationValidations");
     if (next.plannedManagementNotes !== current.plannedManagementNotes.trim()) changedFields.push("plannedManagementNotes");
     if (next.fertilityPlanningHorizonYears !== current.fertilityPlanningHorizonYears) changedFields.push("fertilityPlanningHorizonYears");
     if (next.fertilityCyclePlanNotes !== current.fertilityCyclePlanNotes.trim()) changedFields.push("fertilityCyclePlanNotes");
@@ -307,6 +332,7 @@ export async function updateAnalysisPlanningContext(input: {
     (draft as Record<string, unknown>).fertilityCyclePlanNotes = next.fertilityCyclePlanNotes;
     if (nextApplications !== undefined) (draft as Record<string, unknown>).irrigationApplications = nextApplications;
     if (nextBuyerQualityContext !== undefined) (draft as Record<string, unknown>).wheatBuyerQualityContext = nextBuyerQualityContext;
+    if (nextSpatialInterpolationValidations !== undefined) (draft as Record<string, unknown>).spatialInterpolationValidations = nextSpatialInterpolationValidations;
     (root as Record<string, unknown>).draft = draft;
 
     await client.query(
@@ -337,6 +363,9 @@ export async function updateAnalysisPlanningContext(input: {
         changedFields,
         irrigationApplicationCount: Array.isArray(next.irrigationApplications) ? next.irrigationApplications.length : null,
         wheatBuyerQualityProtocolId: wheatBuyerProtocolIdForAudit,
+        spatialInterpolationValidationCount: Array.isArray(next.spatialInterpolationValidations)
+          ? next.spatialInterpolationValidations.length
+          : null,
         fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
         hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
         hasPlannedManagement: next.plannedManagementNotes.length > 0,
