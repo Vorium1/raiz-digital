@@ -1,6 +1,6 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { checkPrescriptionDraftGate, PRESCRIPTION_DRAFT_STATUS } from "@/domain/agronomic-prescription-gate";
-import { evaluateNitrogenExecutionSnapshotFreshness } from "@/domain/prescription-context-freshness";
+import { evaluateAnalysisContextFingerprintFreshness, evaluateNitrogenExecutionSnapshotFreshness } from "@/domain/prescription-context-freshness";
 import { PRESCRIPTION_NITROGEN_RULE_IDS } from "@/domain/nitrogen-prescription-evidence";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
@@ -21,6 +21,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
   analysisId: string;
   interpretationId: string;
   expectedSeasonUpdatedAt: string;
+  expectedAnalysisContextFingerprint: string;
   expectedNitrogenExecutionId?: string | null;
   provider: string;
   model: string;
@@ -34,6 +35,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const stateResult = await client.query<{
       seasonUpdatedAt: string;
+      analysisContextFingerprint: string;
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
@@ -44,6 +46,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
       latestNitrogenExecutionId: string | null;
     }>(
       `SELECT cs.updated_at::text AS "seasonUpdatedAt",
+              md5(coalesce(a.analysis_context, '{}'::jsonb)::text) AS "analysisContextFingerprint",
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
@@ -108,6 +111,17 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     if (!Number.isFinite(expectedSeasonAt) || !Number.isFinite(currentSeasonAt) || expectedSeasonAt !== currentSeasonAt) {
       throw new AiGenerationError(
         "O contexto agronômico da safra mudou antes de salvar a prescrição. A resposta foi descartada; gere novamente.",
+        409,
+      );
+    }
+
+    const analysisContextFreshness = evaluateAnalysisContextFingerprintFreshness({
+      generationFingerprint: input.expectedAnalysisContextFingerprint,
+      currentFingerprint: state.analysisContextFingerprint,
+    });
+    if (!analysisContextFreshness.current) {
+      throw new AiGenerationError(
+        `${analysisContextFreshness.reason} A resposta foi descartada antes de persistir o rascunho.`,
         409,
       );
     }
