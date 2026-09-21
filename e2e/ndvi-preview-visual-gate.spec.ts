@@ -99,6 +99,13 @@ async function fieldWithArchivedNdvi(page: Page) {
   expect(fields.length, "A homologação da #84 deve expor pelo menos um talhão à sessão E2E.").toBeGreaterThan(0);
 
   const diagnostics: Array<Record<string, unknown>> = [];
+  const validTargets: Array<{
+    fieldId: string;
+    fieldName: string;
+    rasterDate: string;
+    boundary: NonNullable<NdviPayload["fieldBoundary"]>;
+  }> = [];
+
   for (const field of fields) {
     const result = await page.evaluate(async (fieldId) => {
       const response = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store" });
@@ -135,6 +142,7 @@ async function fieldWithArchivedNdvi(page: Page) {
 
       diagnostics.push({
         fieldId: field.id,
+        fieldName: field.name ?? field.id,
         refreshStatus: refresh.status,
         refreshOk: refresh.ok,
         refreshError: refresh.body?.error ?? refresh.body?.partialFailure?.error ?? null,
@@ -149,17 +157,28 @@ async function fieldWithArchivedNdvi(page: Page) {
       }
     }
 
-    if (archived?.capturedAt) {
-      return {
-        fieldId: field.id,
-        fieldName: field.name ?? field.id,
-        rasterDate: archived.capturedAt.slice(0, 10),
-        boundary: effectivePayload.fieldBoundary ?? payload.fieldBoundary,
-      };
-    }
+    if (!archived?.capturedAt || !effectivePayload.fieldBoundary) continue;
+
+    const target = {
+      fieldId: field.id,
+      fieldName: field.name ?? field.id,
+      rasterDate: archived.capturedAt.slice(0, 10),
+      boundary: effectivePayload.fieldBoundary,
+    };
+    await assertRasterEnvelopeContainsBoundary(page, target);
+    validTargets.push(target);
   }
 
-  throw new Error(`Nenhum raster NDVI arquivado ficou acessível pela API do Preview após refresh seguro. Diagnóstico: ${JSON.stringify(diagnostics)}`);
+  expect(
+    validTargets.length,
+    `Todos os talhões acessíveis da homologação devem ter pelo menos um raster NDVI atual compatível com o próprio contorno. Diagnóstico: ${JSON.stringify(diagnostics)}`,
+  ).toBe(fields.length);
+
+  const first = validTargets[0];
+  if (!first) {
+    throw new Error(`Nenhum raster NDVI arquivado ficou acessível pela API do Preview após refresh seguro. Diagnóstico: ${JSON.stringify(diagnostics)}`);
+  }
+  return first;
 }
 
 async function assertRasterEnvelopeContainsBoundary(page: Page, input: {
