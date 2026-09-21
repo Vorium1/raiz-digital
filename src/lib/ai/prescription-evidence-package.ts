@@ -217,7 +217,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
                 lr.parameter_code AS "parameterCode",
                 lr.numeric_value::float8 AS value, lr.unit, lr.analytical_method AS method,
                 lr.original_payload->>'protocol' AS protocol,
-                sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
+                COALESCE(sp.depth_from_cm::float8, NULLIF(lr.original_payload->>'depthFromCm', '')::float8) AS "depthFromCm",
+                COALESCE(sp.depth_to_cm::float8, NULLIF(lr.original_payload->>'depthToCm', '')::float8) AS "depthToCm"
          FROM lab_samples ls
          JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
          LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
