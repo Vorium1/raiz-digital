@@ -93,6 +93,42 @@ assert.equal(comma.delimiter, ",");
 assert.equal(comma.rows[0]?.value, 10.5);
 
 
+const grainQualityCsv = `Amostra;Parametro;Valor;Unidade;Metodo
+G1;Proteína do grão;13,4;%;NIR
+G1;Glúten úmido;29,8;%;Glutomatic
+G1;Glúten seco;10,2;%;Glutomatic
+G1;Índice de glúten;91;índice;Glutomatic
+G1;Força de glúten - W;285;10^-4 J;Alveografia
+G1;P/L;0,92;razão;Alveografia
+G1;Sedimentação SDS;54;mL;Microssedimentação SDS
+G1;Gliadinas;4,1;%;Eletroforese
+G1;Gluteninas;5,3;%;Eletroforese`;
+const grainQuality = buildLabImportPreview(grainQualityCsv, "qualidade-grao-trigo.csv", {
+  hasAgronomicContext: true,
+  spatialLinked: false,
+});
+assert.equal(grainQuality.blockers, 0);
+const grainCodes = new Map(grainQuality.rows.map((row) => [row.parameterCode, row]));
+for (const code of [
+  "PROTEIN_TOTAL",
+  "GLUTEN_WET",
+  "GLUTEN_DRY",
+  "GLUTEN_INDEX",
+  "ALVEOGRAPH_W",
+  "P_L",
+  "SDS_SEDIMENTATION",
+  "GLIADIN",
+  "GLUTENIN",
+]) {
+  assert.ok(grainCodes.has(code), `parâmetro de qualidade ${code} deve ser preservado`);
+}
+assert.equal(grainCodes.get("PROTEIN_TOTAL")?.unit, "%");
+assert.equal(grainCodes.get("PROTEIN_TOTAL")?.method, "NIR");
+assert.equal(grainCodes.get("ALVEOGRAPH_W")?.unit, "10^-4 J");
+assert.equal(grainCodes.get("ALVEOGRAPH_W")?.method, "Alveografia");
+assert.equal(grainCodes.get("GLIADIN")?.method, "Eletroforese");
+assert.equal(grainCodes.get("GLUTENIN")?.method, "Eletroforese");
+
 const bioAsLongCsv = `Amostra;Parametro;Valor;Unidade;Metodo
 B01;β-glicosidase;152;mg p-nitrofenol kg-1 solo h-1;
 B01;Arilsulfatase;158;mg p-nitrofenol kg-1 solo h-1;
