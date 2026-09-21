@@ -25,7 +25,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
-      wheatBuyerQualityContext: parseWheatBuyerQualityContext(null),
+      wheatBuyerQualityContext: null as unknown,
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -35,7 +35,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
       irrigationApplications: [],
-      wheatBuyerQualityContext: parseWheatBuyerQualityContext(null),
+      wheatBuyerQualityContext: null as unknown,
     };
   }
 
@@ -51,7 +51,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     fertilityPlanningHorizonYears: [2, 3, 4, 5].includes(horizon) ? horizon as 2 | 3 | 4 | 5 : null,
     fertilityCyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" ? source.fertilityCyclePlanNotes : "",
     irrigationApplications: irrigationApplicationsFromContext(value) ?? [],
-    wheatBuyerQualityContext: parseWheatBuyerQualityContext(source.wheatBuyerQualityContext),
+    wheatBuyerQualityContext: source.wheatBuyerQualityContext ?? null,
   };
 }
 
@@ -117,6 +117,13 @@ export async function createAnalysis(input: {
       ],
     );
     const created = result.rows[0];
+    let wheatBuyerProtocolIdForAudit: string | null = null;
+    try {
+      wheatBuyerProtocolIdForAudit = parseWheatBuyerQualityContext(next.wheatBuyerQualityContext).protocolId || null;
+    } catch {
+      // Contexto legado inválido é preservado, mas nunca quebra outra edição opcional.
+    }
+
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
@@ -263,10 +270,7 @@ export async function updateAnalysisPlanningContext(input: {
     }
     if (
       nextBuyerQualityContext !== undefined
-      && !isDeepStrictEqual(
-        parseWheatBuyerQualityContext(input.expectedWheatBuyerQualityContext),
-        current.wheatBuyerQualityContext,
-      )
+      && !isDeepStrictEqual(input.expectedWheatBuyerQualityContext, current.wheatBuyerQualityContext)
     ) {
       throw new AnalysisContextError("O protocolo de comprador do trigo foi alterado em outra sessão. Recarregue antes de salvar.", 409);
     }
@@ -336,7 +340,7 @@ export async function updateAnalysisPlanningContext(input: {
       metadata: {
         changedFields,
         irrigationApplicationCount: Array.isArray(next.irrigationApplications) ? next.irrigationApplications.length : null,
-        wheatBuyerQualityProtocolId: next.wheatBuyerQualityContext.protocolId || null,
+        wheatBuyerQualityProtocolId: wheatBuyerProtocolIdForAudit,
         fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
         hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
         hasPlannedManagement: next.plannedManagementNotes.length > 0,
