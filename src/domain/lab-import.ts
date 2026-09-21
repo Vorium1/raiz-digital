@@ -525,12 +525,16 @@ function makeConfidence(rows: LabImportRow[], issues: LabImportIssue[], context:
   const recognized = rows.filter((row) => Boolean(DEFAULT_UNITS[row.parameterCode])).length / total;
   const blockerPenalty = Math.min(60, issues.filter((issue) => issue.severity === "BLOCKER").length * 12);
 
+  // Confiança do ARQUIVO mede a evidência laboratorial, não quantos campos opcionais
+  // do RAIZ foram preenchidos. Contexto agronômico e vínculo espacial aumentam a
+  // resolução das análises que dependem deles, mas não tornam um laudo químico válido
+  // menos confiável. Mantemos essas dimensões como cobertura informativa, com peso zero.
   const dimensions: LabImportConfidence["dimensions"] = [
-    { key: "completeness", label: "Completude", score: Math.max(0, Math.round(((unitKnown + methodKnown) / 2) * 100) - blockerPenalty), weight: 25 },
-    { key: "laboratory", label: "Coerência laboratorial", score: Math.max(0, 100 - blockerPenalty), weight: 25 },
-    { key: "ruleCompatibility", label: "Compatibilidade de regra", score: Math.round(recognized * 100), weight: 20 },
-    { key: "context", label: "Contexto agronômico", score: context.hasAgronomicContext === false ? 35 : 100, weight: 15 },
-    { key: "spatialQuality", label: "Qualidade espacial", score: context.spatialLinked === false ? 45 : 90, weight: 15 },
+    { key: "completeness", label: "Integridade laboratorial", score: Math.max(0, Math.round(((unitKnown + methodKnown) / 2) * 100) - blockerPenalty), weight: 35 },
+    { key: "laboratory", label: "Coerência laboratorial", score: Math.max(0, 100 - blockerPenalty), weight: 35 },
+    { key: "ruleCompatibility", label: "Compatibilidade de regra", score: Math.round(recognized * 100), weight: 30 },
+    { key: "context", label: "Contexto agronômico adicional", score: context.hasAgronomicContext === false ? 0 : 100, weight: 0 },
+    { key: "spatialQuality", label: "Vínculo espacial adicional", score: context.spatialLinked === false ? 0 : 100, weight: 0 },
   ];
 
   const score = Math.round(dimensions.reduce((sum, item) => sum + item.score * item.weight, 0) / 100);
