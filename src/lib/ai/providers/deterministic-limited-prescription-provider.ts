@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v4-progressive-water-evidence";
+const PROMPT_VERSION = "deterministic-limited-v5-rice-n-progressive-envelope";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -126,6 +126,46 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
       } else {
         limitations.push("Calagem: a evidência atual não sustenta uma dose oficial uniforme para este sistema de manejo. A RAIZ manteve a decisão sem dose em vez de estimar um valor sem base técnica.");
       }
+    }
+  }
+
+
+  const riceNitrogen = evidence.riceNitrogenEvidence;
+  if (evidence.season.cropProfileCode === "ARROZ" && riceNitrogen) {
+    const formatDose = (dose: { kind: "EXACT"; kgPerHa: number } | { kind: "UPPER_BOUND"; maxKgPerHa: number }) =>
+      dose.kind === "EXACT" ? `${dose.kgPerHa} kg N/ha` : `até ${dose.maxKgPerHa} kg N/ha`;
+    const responseLabel = { MEDIA: "Média", ALTA: "Alta", MUITO_ALTA: "Muito alta" } as const;
+
+    if (riceNitrogen.status === "OFFICIAL_ENVELOPE" && riceNitrogen.envelopes.length > 0) {
+      const envelope = riceNitrogen.envelopes[0];
+      const alternatives = envelope.alternatives
+        .map((item) => `${responseLabel[item.responseClass]}: ${formatDose(item.dose)}`)
+        .join("; ");
+      managementPractices.push(
+        `Nitrogênio do arroz — envelope oficial SOSBAI 2025 para a classe de matéria orgânica do talhão: ${alternatives}. A RAIZ preservou as três alternativas oficiais e não escolheu uma expectativa de resposta sem evidência explícita.`,
+      );
+      limitations.push(
+        "Nitrogênio do arroz: a expectativa de resposta à adubação ainda não foi explicitamente resolvida; o envelope oficial foi mantido em vez de fabricar uma dose única.",
+      );
+    } else if (riceNitrogen.status === "MULTI_BAND_OFFICIAL_ENVELOPE") {
+      const byBand = new Map<string, typeof riceNitrogen.envelopes[number]>();
+      for (const envelope of riceNitrogen.envelopes) if (!byBand.has(envelope.organicMatterBand)) byBand.set(envelope.organicMatterBand, envelope);
+      const bandTexts = [...byBand.values()].map((envelope) => {
+        const alternatives = envelope.alternatives
+          .map((item) => `${responseLabel[item.responseClass]} ${formatDose(item.dose)}`)
+          .join(", ");
+        return `${envelope.organicMatterBand}: ${alternatives}`;
+      });
+      managementPractices.push(
+        `Nitrogênio do arroz — os pontos cruzam classes de matéria orgânica da Tabela 4.5 da SOSBAI 2025. Envelopes preservados por classe: ${bandTexts.join(" | ")}.`,
+      );
+      limitations.push(
+        "Nitrogênio do arroz: a variabilidade de matéria orgânica e a expectativa de resposta não sustentam uma dose uniforme automática para todo o talhão.",
+      );
+    } else if (riceNitrogen.status === "NOT_EVALUATED") {
+      limitations.push(
+        "Nitrogênio do arroz: a Tabela 4.5 da SOSBAI 2025 só é aplicada quando há matéria orgânica utilizável em porcentagem; essa decisão específica ficou sem dose, sem bloquear o restante do parecer.",
+      );
     }
   }
 
