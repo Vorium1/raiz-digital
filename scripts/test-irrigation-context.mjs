@@ -38,8 +38,13 @@ assert.equal(quantified.analysisPolicy.automaticWaterBalanceInferenceAllowed, fa
 const inconsistent = evaluateIrrigationContext({
   waterRegime: "SEQUEIRO",
   irrigationDepthMm: 10,
+  irrigationFrequencyDays: 4,
 });
 assert.ok(inconsistent.warnings.includes("IRRIGATION_DETAILS_PRESENT_WITHOUT_IRRIGATED_REGIME"));
+assert.equal(inconsistent.quantifiedApplicationPatternAvailable, false);
+assert.equal(inconsistent.approximateAverageAppliedMmPerDay, null);
+assert.equal(evaluateIrrigationContext({ waterRegime: "", irrigationDepthMm: 10,
+  irrigationFrequencyDays: 4 }).quantifiedApplicationPatternAvailable, false);
 
 assert.throws(
   () => evaluateIrrigationContext({ waterRegime: "IRRIGADO", irrigationDepthMm: 0 }),

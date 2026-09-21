@@ -80,7 +80,7 @@ export function evaluateIrrigationContext(input: IrrigationContextInput) {
     waterRegime: input.waterRegime,
     detailLevel,
     irrigationDeclared: input.waterRegime === "IRRIGADO",
-    quantifiedApplicationPatternAvailable: depthMm != null && frequencyDays != null,
+    quantifiedApplicationPatternAvailable: input.waterRegime === "IRRIGADO" && depthMm != null && frequencyDays != null,
     irrigationSystem: system || null,
     irrigationDepthMm: depthMm,
     irrigationFrequencyDays: frequencyDays,
