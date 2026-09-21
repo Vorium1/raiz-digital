@@ -75,6 +75,7 @@ const invalidRain=aggregateInmetAutomaticStationDay({
   observations:observations.map((row,index)=>({...row,precipitationMm:index===0?-1:1})),
   targetDateUtc:"2026-09-20",technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
   latitude:-28.22,longitude:-52.4,
+  expectedHourlySlots:72,
 });
 assert.equal(invalidRain.evidence.some(i=>i.metric==="PRECIPITATION_MM"),false);
 assert.ok(invalidRain.warnings.includes("INMET_PRECIPITATION_SERIES_INCOMPLETE_OR_INVALID"));
@@ -89,6 +90,7 @@ const rainDuration=deriveInmetContinuousRainHours({
   technicalRegionCodes:["BR-RS","RS-PLANALTO-MEDIO"],
   retrievedAt:"2026-09-21T01:00:00Z",
   latitude:-28.22,longitude:-52.4,
+  expectedHourlySlots:72,
 });
 assert.equal(rainDuration.evidence?.metric,"CONTINUOUS_RAIN_HOURS");
 assert.equal(rainDuration.evidence?.value,50);
@@ -96,10 +98,20 @@ assert.equal(rainDuration.evidence?.evidenceKind,"DERIVED");
 assert.equal(rainDuration.evidence?.derivationRuleId,"INMET_CONSECUTIVE_HOURLY_PRECIPITATION_GT_ZERO_V1");
 assert.ok(rainDuration.warnings.includes("INMET_CONTINUOUS_RAIN_HOURS_MEANS_CONSECUTIVE_HOURLY_BINS_WITH_PRECIPITATION_GT_ZERO"));
 
+const rainTruncated=deriveInmetContinuousRainHours({
+  observations:rainWindow.slice(0,48),
+  technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
+  latitude:-28.22,longitude:-52.4,
+  expectedHourlySlots:72,
+});
+assert.equal(rainTruncated.evidence,null);
+assert.ok(rainTruncated.warnings.includes("INMET_RAIN_DURATION_WINDOW_INCOMPLETE"));
+
 const rainGap=deriveInmetContinuousRainHours({
   observations:rainWindow.filter((_,index)=>index!==24),
   technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
   latitude:-28.22,longitude:-52.4,
+  expectedHourlySlots:72,
 });
 assert.equal(rainGap.evidence,null);
 assert.ok(rainGap.warnings.includes("INMET_RAIN_DURATION_WINDOW_HAS_GAPS"));
@@ -108,6 +120,7 @@ const rainMissing=deriveInmetContinuousRainHours({
   observations:rainWindow.map((row,index)=>index===12?{...row,precipitationMm:null}:row),
   technicalRegionCodes:["BR-RS"],retrievedAt:"2026-09-21T01:00:00Z",
   latitude:-28.22,longitude:-52.4,
+  expectedHourlySlots:72,
 });
 assert.equal(rainMissing.evidence,null);
 assert.ok(rainMissing.warnings.includes("INMET_RAIN_DURATION_PRECIPITATION_INCOMPLETE_OR_INVALID"));
