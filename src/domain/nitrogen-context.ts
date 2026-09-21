@@ -83,6 +83,40 @@ export function isOrganicMatterPercentUnit(unit: string): boolean {
   return new Set(["%", "percent", "pct", "porcentagem"]).has(normalized);
 }
 
+export type NitrogenOrganicMatterObservation = {
+  sampleCode: string;
+  value: number;
+  unit: string;
+  method: string;
+};
+
+/**
+ * Fingerprint determinístico do conjunto de MO que sustenta o cálculo de N.
+ *
+ * Não converte unidade, não arredonda valor e não ignora método. A finalidade
+ * é provar que a execução persistida foi calculada sobre o mesmo conjunto
+ * laboratorial que o laudo oficial está usando agora.
+ */
+export function buildNitrogenOrganicMatterFingerprint(
+  observations: NitrogenOrganicMatterObservation[],
+): string {
+  const normalized = observations.map((row) => {
+    if (!Number.isFinite(row.value)) throw new Error("Valor de matéria orgânica inválido para fingerprint.");
+    return {
+      sampleCode: row.sampleCode.trim(),
+      value: row.value,
+      unit: row.unit.trim(),
+      method: row.method.trim(),
+    };
+  }).sort((a, b) =>
+    a.sampleCode.localeCompare(b.sampleCode)
+    || a.value - b.value
+    || a.unit.localeCompare(b.unit)
+    || a.method.localeCompare(b.method)
+  );
+  return JSON.stringify(normalized);
+}
+
 function grainOmBand(value: number) {
   if (value <= 2.5) return "OM_LE_2_5";
   if (value <= 5) return "OM_2_5_TO_5";
