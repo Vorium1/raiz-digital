@@ -39,8 +39,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const hasHorizon = Object.prototype.hasOwnProperty.call(body, "fertilityPlanningHorizonYears");
     const hasCycleNotes = Object.prototype.hasOwnProperty.call(body, "fertilityCyclePlanNotes");
     const hasIrrigation = Object.prototype.hasOwnProperty.call(body, "irrigationApplications");
+    const hasWheatBuyerQuality = Object.prototype.hasOwnProperty.call(body, "wheatBuyerQualityContext");
 
-    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes && !hasIrrigation) {
+    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes && !hasIrrigation && !hasWheatBuyerQuality) {
       throw new AnalysisContextError("Informe ao menos um campo de planejamento.", 400);
     }
 
@@ -54,6 +55,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       analysisId: id,
       irrigationApplications: hasIrrigation ? body.irrigationApplications : undefined,
       expectedIrrigationApplications: hasIrrigation ? body.expectedIrrigationApplications : undefined,
+      wheatBuyerQualityContext: hasWheatBuyerQuality ? body.wheatBuyerQualityContext : undefined,
+      expectedWheatBuyerQualityContext: hasWheatBuyerQuality ? body.expectedWheatBuyerQualityContext : undefined,
       plannedManagementNotes: hasPlannedManagement
         ? (body.plannedManagementNotes == null ? "" : String(body.plannedManagementNotes))
         : undefined,
