@@ -95,6 +95,8 @@ export type LabImportRow = {
   unitInferred: boolean;
   methodInferred: boolean;
   methodDerivedFromProtocol: boolean;
+  depthFromCm?: number | null;
+  depthToCm?: number | null;
 };
 
 export type LabImportConfidence = {
@@ -263,6 +265,8 @@ const VALUE_HEADERS = ["valor", "resultado", "result", "value"];
 const UNIT_HEADERS = ["unidade", "unit", "uom"];
 const METHOD_HEADERS = ["metodo", "method", "extrator", "extractor"];
 const PROTOCOL_HEADERS = ["protocolo", "protocol", "metodologia", "referenciametodo", "methodprotocol"];
+const DEPTH_FROM_HEADERS = ["profundidadedecm", "profundidadeinicialcm", "depthfromcm", "depthfrom"];
+const DEPTH_TO_HEADERS = ["profundidadeatecm", "profundidadefinalcm", "depthtocm", "depthto"];
 
 function stripDiacritics(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -367,6 +371,38 @@ function parseNumber(raw: string) {
       ? value.replace(/\./g, "").replace(",", ".")
       : value.replace(/,/g, "");
   return Number(normalized);
+}
+
+function parseOptionalDepth(raw: string) {
+  if (!raw.trim()) return null;
+  const value = parseNumber(raw.replace(/cm/gi, ""));
+  return Number.isFinite(value) && value >= 0 ? value : Number.NaN;
+}
+
+function readDepthContext(input: {
+  sourceRow: string[];
+  depthFromIndex: number;
+  depthToIndex: number;
+  sourceLine: number;
+  issues: LabImportIssue[];
+}) {
+  const fromRaw = input.depthFromIndex >= 0 ? (input.sourceRow[input.depthFromIndex] ?? "").trim() : "";
+  const toRaw = input.depthToIndex >= 0 ? (input.sourceRow[input.depthToIndex] ?? "").trim() : "";
+  const from = parseOptionalDepth(fromRaw);
+  const to = parseOptionalDepth(toRaw);
+
+  if ((fromRaw && !Number.isFinite(from)) || (toRaw && !Number.isFinite(to))) {
+    addIssue(input.issues, "WARNING", "DEPTH_INVALID", "Profundidade informada no arquivo não pôde ser validada e não será usada automaticamente.", input.sourceLine);
+    return { depthFromCm: null, depthToCm: null };
+  }
+  if ((from == null) !== (to == null)) {
+    addIssue(input.issues, "WARNING", "DEPTH_PARTIAL", "A camada foi informada parcialmente; a RAIZ preserva o valor disponível, mas não assume o limite ausente.", input.sourceLine);
+  }
+  if (from != null && to != null && from >= to) {
+    addIssue(input.issues, "WARNING", "DEPTH_RANGE_INVALID", "A profundidade inicial precisa ser menor que a final; a camada não será usada automaticamente.", input.sourceLine);
+    return { depthFromCm: null, depthToCm: null };
+  }
+  return { depthFromCm: from, depthToCm: to };
 }
 
 function countOutsideQuotes(line: string, char: string) {
@@ -487,6 +523,8 @@ export function buildLabImportPreviewFromMatrix(
   const unitIndex = findHeaderIndex(detectedHeaders, UNIT_HEADERS);
   const methodIndex = findHeaderIndex(detectedHeaders, METHOD_HEADERS);
   const protocolIndex = findHeaderIndex(detectedHeaders, PROTOCOL_HEADERS);
+  const depthFromIndex = findHeaderIndex(detectedHeaders, DEPTH_FROM_HEADERS);
+  const depthToIndex = findHeaderIndex(detectedHeaders, DEPTH_TO_HEADERS);
   const format: "LONG" | "WIDE" = parameterIndex >= 0 && valueIndex >= 0 ? "LONG" : "WIDE";
   const issues: LabImportIssue[] = [];
   let rows: LabImportRow[] = [];
@@ -509,6 +547,7 @@ export function buildLabImportPreviewFromMatrix(
       // `ANALYTICAL_METHOD_ALIASES` acima. Sem correspondência conhecida, devolve o texto original.
       const methodRawFromFile = methodIndex >= 0 ? (sourceRow[methodIndex] ?? "").trim() : "";
       const protocol = protocolIndex >= 0 ? (sourceRow[protocolIndex] ?? "").trim() : "";
+      const depth = readDepthContext({ sourceRow, depthFromIndex, depthToIndex, sourceLine, issues });
       const protocolMethod = protocolMethodFor(parameterCode, protocol);
       const normalizedExplicitMethod = methodRawFromFile
         ? normalizeAnalyticalMethod(parameterCode, methodRawFromFile, protocol)
@@ -534,7 +573,7 @@ export function buildLabImportPreviewFromMatrix(
         rows.push({
           sampleCode, parameterCode, value, unit, method, protocol, rawMethod: methodRawFromFile,
           sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod,
-          methodDerivedFromProtocol,
+          methodDerivedFromProtocol, depthFromCm: depth.depthFromCm, depthToCm: depth.depthToCm,
         });
       }
     });
@@ -559,6 +598,7 @@ export function buildLabImportPreviewFromMatrix(
     matrix.slice(1).forEach((sourceRow, rowIndex) => {
       const sourceLine = rowIndex + 2;
       const sampleCode = sampleIndex >= 0 ? (sourceRow[sampleIndex] ?? "").trim() : "";
+      const depth = readDepthContext({ sourceRow, depthFromIndex, depthToIndex, sourceLine, issues });
       if (!sampleCode) {
         addIssue(issues, "BLOCKER", "SAMPLE_CODE_MISSING", "Linha sem código de amostra.", sourceLine);
         return;
@@ -590,7 +630,7 @@ export function buildLabImportPreviewFromMatrix(
         rows.push({
           sampleCode, parameterCode: column.parameterCode, value, unit, method, protocol, rawMethod: "",
           sourceLine, source: "MEASURED", unitInferred: inferredUnit, methodInferred: inferredMethod,
-          methodDerivedFromProtocol,
+          methodDerivedFromProtocol, depthFromCm: depth.depthFromCm, depthToCm: depth.depthToCm,
         });
       });
     });
