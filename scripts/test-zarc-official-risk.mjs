@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assessZarcPlantingDate,
+  assessZarcRiskEnvelope,
   parseMapaZarcCsv,
   selectExactZarcRiskRow,
   validateZarcOfficialContext,
@@ -122,6 +123,45 @@ const notIndicated=assessZarcPlantingDate(parsed[0],"2026-02-01");
 assert.equal(notIndicated.decade,4);
 assert.equal(notIndicated.status,"NOT_INDICATED_BY_ZARC");
 assert.equal(notIndicated.riskPct,null);
+
+const envelopeRows=parseMapaZarcCsv([
+  headers.join(";"),
+  row({Cod_Ciclo:"20",Cod_Solo:"13",dec1:"20"}),
+  row({Cod_Ciclo:"21",Cod_Solo:"13",dec1:"20"}),
+  row({Cod_Ciclo:"22",Cod_Solo:"13",dec1:"20"}),
+]);
+const consensusEnvelope=assessZarcRiskEnvelope(envelopeRows,{
+  seasonStartYear:2026,seasonEndYear:2027,cropCode:60,
+  ibgeMunicipalityCode:"4314100",stateCode:"RS",
+  soilCode:13,managementCode:1,climateCode:0,
+},"2026-01-05");
+assert.equal(consensusEnvelope.status,"CONSENSUS_RISK");
+assert.deepEqual(consensusEnvelope.riskLevelsPct,[20]);
+assert.deepEqual(consensusEnvelope.unresolvedDimensions,["CYCLE"]);
+assert.equal(consensusEnvelope.candidateCount,3);
+
+const variableRows=parseMapaZarcCsv([
+  headers.join(";"),
+  row({Cod_Ciclo:"20",Cod_Solo:"13",dec1:"20"}),
+  row({Cod_Ciclo:"21",Cod_Solo:"13",dec1:"30"}),
+  row({Cod_Ciclo:"22",Cod_Solo:"13",dec1:""}),
+]);
+const variableEnvelope=assessZarcRiskEnvelope(variableRows,{
+  seasonStartYear:2026,seasonEndYear:2027,cropCode:60,
+  ibgeMunicipalityCode:"4314100",stateCode:"RS",
+  soilCode:13,managementCode:1,climateCode:0,
+},"2026-01-05");
+assert.equal(variableEnvelope.status,"VARIABLE_BY_OPTIONAL_CONTEXT");
+assert.deepEqual(variableEnvelope.riskLevelsPct,[20,30]);
+assert.equal(variableEnvelope.includesNotIndicated,true);
+assert.deepEqual(variableEnvelope.unresolvedDimensions,["CYCLE"]);
+
+const noRowsEnvelope=assessZarcRiskEnvelope(variableRows,{
+  seasonStartYear:2026,seasonEndYear:2027,cropCode:61,
+  ibgeMunicipalityCode:"4314100",stateCode:"RS",
+},"2026-01-05");
+assert.equal(noRowsEnvelope.status,"NO_COMPATIBLE_ROWS");
+assert.equal(noRowsEnvelope.candidateCount,0);
 
 const commaCsv=[
   headers.join(","),
