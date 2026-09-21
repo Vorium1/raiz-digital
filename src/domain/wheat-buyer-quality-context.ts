@@ -170,6 +170,16 @@ export function evaluateSelectedWheatBuyerQualityContext(
 export type StoredWheatBuyerQualityContextEvaluation =
   | WheatBuyerQualityContextEvaluation
   | {
+      status: "NOT_APPLICABLE";
+      protocolId: null;
+      evaluation: null;
+      policy: {
+        blocksBaseNitrogenRecommendation: false;
+        blocksSoilOpinion: false;
+        buyerProtocolAutoSelected: false;
+      };
+    }
+  | {
       status: "INVALID_OPTIONAL_EVIDENCE";
       protocolId: null;
       evaluation: null;
@@ -187,7 +197,22 @@ export type StoredWheatBuyerQualityContextEvaluation =
  */
 export function evaluateStoredWheatBuyerQualityContext(
   value: unknown,
+  cropProfileCode?: string | null,
 ): StoredWheatBuyerQualityContextEvaluation {
+  const crop = cropProfileCode?.trim().toUpperCase() ?? "TRIGO";
+  if (crop && crop !== "TRIGO") {
+    return {
+      status: "NOT_APPLICABLE",
+      protocolId: null,
+      evaluation: null,
+      policy: {
+        blocksBaseNitrogenRecommendation: false,
+        blocksSoilOpinion: false,
+        buyerProtocolAutoSelected: false,
+      },
+    };
+  }
+
   try {
     return evaluateSelectedWheatBuyerQualityContext(parseWheatBuyerQualityContext(value));
   } catch (error) {
