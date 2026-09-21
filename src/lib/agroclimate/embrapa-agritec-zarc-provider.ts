@@ -126,6 +126,7 @@ export async function fetchAgritecZarcWindows(input: {
   ibgeMunicipalityCode: string;
   fetchImpl?: OfficialSourceFetch;
   timeoutMs?: number;
+  now?: () => Date;
 }): Promise<{
   windows: AgritecZarcWindow[];
   provider: "EMBRAPA_AGRITEC_V2";
@@ -170,6 +171,6 @@ export async function fetchAgritecZarcWindows(input: {
     windows: adaptAgritecZarcPayload(await response.json()),
     provider: "EMBRAPA_AGRITEC_V2",
     sourceUrl,
-    retrievedAt: new Date().toISOString(),
+    retrievedAt: (input.now ?? (() => new Date()))().toISOString(),
   };
 }
