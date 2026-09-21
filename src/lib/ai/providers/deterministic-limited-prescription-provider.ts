@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v5-rice-n-progressive-envelope";
+const PROMPT_VERSION = "deterministic-limited-v6-traced-nitrogen";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -47,6 +47,41 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     });
   }
 
+
+  const nitrogen = evidence.deterministicNitrogenEvidence;
+  if (nitrogen?.status === "CURRENT") {
+    const recommendation = nitrogen.recommendation;
+    if (
+      nitrogen.executionStatus === "READY_FOR_IMPLEMENTATION"
+      && recommendation.dose.kind === "EXACT"
+      && recommendation.dose.kgNPerHa > 0
+    ) {
+      recommendations.push({
+        inputType: "N",
+        quantity: recommendation.dose.kgNPerHa,
+        unit: "kg/ha",
+        rationale: `Dose exata do motor determinístico ${recommendation.ruleId}, execução rastreável ${nitrogen.executionId}. A RAIZ apenas transporta o valor calculado; não recalcula N na camada de narrativa.`,
+      });
+    } else if (recommendation.dose.kind === "RANGE") {
+      limitations.push(
+        `Nitrogênio: a regra determinística retornou faixa de ${recommendation.dose.minKgNPerHa}–${recommendation.dose.maxKgNPerHa} kg N/ha. A RAIZ preservou a faixa e não escolheu um ponto automaticamente.`,
+      );
+    } else if (recommendation.dose.kind === "BLOCKED") {
+      limitations.push(`Nitrogênio: ${recommendation.dose.reason}`);
+    } else if (nitrogen.executionStatus !== "READY_FOR_IMPLEMENTATION") {
+      limitations.push("Nitrogênio: a execução determinística corrente exige revisão específica; nenhuma dose foi promovida automaticamente.");
+    }
+
+    if (recommendation.qualityObjective?.requested) {
+      managementPractices.push(
+        `Trigo — objetivo de proteína/qualidade registrado separadamente da dose-base de produtividade. Nenhum N tardio adicional foi automatizado. ${recommendation.qualityObjective.evidence}`,
+      );
+    }
+  } else if (nitrogen?.status === "STALE") {
+    limitations.push("Nitrogênio: existe cálculo histórico, mas ele não representa mais exatamente a safra/regra/matéria orgânica correntes; nenhuma dose antiga foi reutilizada.");
+  } else if (nitrogen?.status === "INVALID") {
+    limitations.push("Nitrogênio: a execução persistida não passou nas verificações de rastreabilidade e foi isolada sem afetar as demais conclusões.");
+  }
 
   const sulfur = evidence.deterministicSulfurDose;
   if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
