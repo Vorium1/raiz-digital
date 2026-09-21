@@ -198,7 +198,7 @@ export function GoogleFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map">
+    <div className="real-field-map" data-map-provider="google" data-has-image-overlay={imageOverlay ? "true" : "false"}>
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">
         {activeLegend.map((entry) => <span key={entry.label}><i style={{ background: entry.color }}/>{entry.label}</span>)}
