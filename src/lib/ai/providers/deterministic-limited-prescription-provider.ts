@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v3-irrigation-evidence";
+const PROMPT_VERSION = "deterministic-limited-v4-progressive-water-evidence";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -190,6 +190,31 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
     } else if (irrigation?.status === "INVALID_OPTIONAL_EVIDENCE") {
       deterministic.managementPractices.push("O registro complementar de irrigação contém dados inválidos e não foi usado. As conclusões sustentadas pela análise de solo foram preservadas.");
     }
+
+    const water = evidence.irrigationWaterEvidence;
+    if (water?.resolution === "CONTEXT_ONLY") {
+      if (water.waterRegime === "IRRIGADO") {
+        deterministic.managementPractices.push("Condição hídrica: a área foi declarada irrigada. Essa informação enriquece o contexto, mas sozinha não comprova quanto da demanda da cultura foi atendida e não autoriza inferir balanço hídrico ou lâmina recomendada.");
+      } else if (water.waterRegime === "SEQUEIRO") {
+        deterministic.managementPractices.push("Condição hídrica: a área foi declarada de sequeiro, portanto não há irrigação suplementar declarada. O RAIZ não transforma isso em estimativa de déficit sem demanda da cultura, chuva efetiva e armazenamento do solo alinhados.");
+      }
+    } else if (water?.resolution === "DEMAND_AVAILABLE" && water.demand) {
+      deterministic.managementPractices.push(`Demanda hídrica: ETc de ${water.demand.cropEtMm.toLocaleString("pt-BR")} mm disponível como evidência explícita/derivada a montante. Ainda não há balanço completo suficiente para afirmar reposição, déficit ou recomendar lâmina.`);
+    } else if (water?.resolution === "UNALIGNED_EVIDENCE") {
+      deterministic.managementPractices.push("Condição hídrica: existem componentes para aprofundar o balanço, mas eles não estão temporal e espacialmente alinhados; o RAIZ preservou os dados sem combiná-los artificialmente.");
+    } else if (water?.resolution === "BALANCE_AVAILABLE" && water.balance) {
+      const stateLabel = {
+        WATER_SUPPLY_ADEQUATE: "suprimento hídrico adequado no balanço avaliado",
+        IRRIGATION_THRESHOLD_REACHED: "limiar hídrico de manejo atingido no balanço avaliado",
+        WATER_STRESS_ESTIMATED: "estresse hídrico estimado no balanço avaliado",
+      }[water.balance.state];
+      deterministic.managementPractices.push(
+        `Balanço hídrico determinístico: ${stateLabel}; depleção estimada da zona radicular ${water.balance.nextRootZoneDepletionMm.toLocaleString("pt-BR")} mm. O estado não autoriza, por si só, uma lâmina recomendada automática.`,
+      );
+    } else if (water?.resolution === "INVALID_OPTIONAL_EVIDENCE") {
+      deterministic.managementPractices.push("A camada opcional de balanço hídrico contém evidência inválida e foi isolada. O parecer de solo e as demais conclusões sustentadas permanecem válidos.");
+    }
+
     const missingInformation = unique([...deterministicLimitations, ...deterministic.limitations]);
 
     const sources = Array.from(
