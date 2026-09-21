@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter, type LabImporterReadyFile } from "@/components/lab-importer";
-import type { LabImportPreview, LabSampleType } from "@/domain/lab-import";
+import type { LabImportPreview, LabImportUsability, LabSampleType } from "@/domain/lab-import";
 
-type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
+type ImportPreview = LabImportPreview & { normalizedRowCount?: number; usability?: LabImportUsability };
 
 export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }: { analysisId: string; hasAgronomicContext: boolean }) {
   const router = useRouter();
@@ -17,7 +17,7 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const ready = Boolean(preview && preview.blockers === 0 && file);
+  const ready = Boolean(preview && file && (preview.usability?.canProceedWithPartialEvidence ?? preview.blockers === 0));
   const rowCount = preview?.normalizedRowCount ?? preview?.rows.length ?? 0;
 
   async function submit() {
@@ -63,7 +63,7 @@ export function SimpleExistingAnalysisUpload({ analysisId, hasAgronomicContext }
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Escolha o laudo</h2><p>A RAIZ lê, organiza e continua esta análise.</p></div>
           <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
-          {ready && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
+          {ready && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>{preview?.blockers ? "Arquivo recebido com evidências utilizáveis" : "Arquivo recebido"}</strong><small>{file?.fileName} · {preview?.usability ? `${preview.usability.promotableRowCount} resultado(s) utilizável(is)${preview.usability.excludedRowCount ? ` · ${preview.usability.excludedRowCount} linha(s) ficará(ão) fora da interpretação` : ""}` : `${rowCount} resultado(s) reconhecido(s)`}</small></div></div>}
           <details className="simple-send-options">
             <summary>Opções do arquivo</summary>
             <div className="single">
