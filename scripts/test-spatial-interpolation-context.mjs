@@ -185,6 +185,15 @@ const providerStaleValidation = await deterministicLimitedPrescriptionProvider.p
 });
 assert.match(providerStaleValidation.prescription.missingInformation.join(" "), /validação antiga não foi reutilizada/);
 
+const providerFingerprintStale = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...providerBaseEvidence,
+    spatialInterpolationValidationEvidence: fingerprintStale,
+  },
+});
+assert.match(providerFingerprintStale.prescription.missingInformation.join(" "), /número de pontos pode permanecer igual/);
+assert.match(providerFingerprintStale.prescription.missingInformation.join(" "), /validação antiga foi marcada como desatualizada/);
+
 const providerInvalidContext = await deterministicLimitedPrescriptionProvider.prescribe({
   evidence: {
     ...providerBaseEvidence,
