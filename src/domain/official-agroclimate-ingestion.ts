@@ -168,12 +168,19 @@ export function deriveInmetContinuousRainHours(input:{
   retrievedAt:string;
   latitude:number;
   longitude:number;
+  expectedHourlySlots:number;
 }):{evidence:AgroclimateMetricEvidence|null;warnings:string[]} {
   assertIso(input.retrievedAt,"retrievedAt");
+  if (!Number.isInteger(input.expectedHourlySlots)||input.expectedHourlySlots<=0||input.expectedHourlySlots>24*14) {
+    throw new Error("expectedHourlySlots inválido para duração de chuva INMET.");
+  }
   coordinates(input.latitude,input.longitude);
   const technicalRegionCodes=regions(input.technicalRegionCodes);
   const rows=input.observations.slice().sort((a,b)=>Date.parse(a.observedAtUtc)-Date.parse(b.observedAtUtc));
   if (!rows.length) return {evidence:null,warnings:["INMET_RAIN_DURATION_NO_OBSERVATIONS"]};
+  if (rows.length!==input.expectedHourlySlots) {
+    return {evidence:null,warnings:["INMET_RAIN_DURATION_WINDOW_INCOMPLETE"]};
+  }
 
   for (const row of rows) {
     assertIso(row.observedAtUtc,"observedAtUtc INMET");
