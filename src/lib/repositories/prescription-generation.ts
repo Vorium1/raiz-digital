@@ -1,5 +1,7 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { checkPrescriptionDraftGate, PRESCRIPTION_DRAFT_STATUS } from "@/domain/agronomic-prescription-gate";
+import { evaluateNitrogenExecutionSnapshotFreshness } from "@/domain/prescription-context-freshness";
+import { PRESCRIPTION_NITROGEN_RULE_IDS } from "@/domain/nitrogen-prescription-evidence";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
@@ -19,6 +21,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
   analysisId: string;
   interpretationId: string;
   expectedSeasonUpdatedAt: string;
+  expectedNitrogenExecutionId?: string | null;
   provider: string;
   model: string;
   promptVersion: string;
@@ -38,6 +41,7 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
       currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
       latestRuleUpdatedAt: string | null;
+      latestNitrogenExecutionId: string | null;
     }>(
       `SELECT cs.updated_at::text AS "seasonUpdatedAt",
               li.id::text AS "latestInterpretationId",
@@ -46,7 +50,8 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
               li.crop_profile_id::text AS "latestInterpretationCropProfileId",
               cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
-              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
+              latest_n.id::text AS "latestNitrogenExecutionId"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
@@ -67,10 +72,19 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
          FROM crop_profile_parameters cpp
          WHERE cpp.crop_profile_id = cp.id
        ) rule_state ON cp.id IS NOT NULL
+       LEFT JOIN LATERAL (
+         SELECT execution.id
+         FROM agronomic_rule_executions execution
+         WHERE execution.tenant_id = a.tenant_id
+           AND execution.analysis_id = a.id
+           AND execution.rule_id = ANY($3::text[])
+         ORDER BY execution.created_at DESC, execution.id DESC
+         LIMIT 1
+       ) latest_n ON true
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
        LIMIT 1
        FOR SHARE OF a, cs`,
-      [input.tenantId, input.analysisId],
+      [input.tenantId, input.analysisId, [...PRESCRIPTION_NITROGEN_RULE_IDS]],
     );
     const state = stateResult.rows[0];
     if (!state) throw new AiGenerationError("Análise não encontrada.", 404);
@@ -108,6 +122,17 @@ export async function recordAgronomicPrescriptionGenerationSafely(input: {
     if (!evidenceFreshness.current) {
       throw new AiGenerationError(
         evidenceFreshness.reason ?? "O laudo laboratorial mudou depois da interpretação. Recalcule antes de gerar uma prescrição.",
+        409,
+      );
+    }
+
+    const nitrogenFreshness = evaluateNitrogenExecutionSnapshotFreshness({
+      generationExecutionId: input.expectedNitrogenExecutionId ?? null,
+      currentExecutionId: state.latestNitrogenExecutionId,
+    });
+    if (!nitrogenFreshness.current) {
+      throw new AiGenerationError(
+        `${nitrogenFreshness.reason} A resposta foi descartada antes de persistir o rascunho.`,
         409,
       );
     }
