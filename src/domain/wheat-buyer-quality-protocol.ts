@@ -71,6 +71,12 @@ export type Be8WheatProtocolInput = {
   secondNitrogenApplication?: {
     product?: string | null;
     displayedAmountKg?: number | null;
+    /**
+     * Confirma que o valor informado usa exatamente a mesma base operacional
+     * do documento comercial. Como a peça não explicita essa base, ausência
+     * desta confirmação mantém o item UNVERIFIED.
+     */
+    sourceAmountBasisConfirmed?: boolean | null;
   } | null;
   fungalApplicationDeclared?: boolean | null;
 };
@@ -158,12 +164,14 @@ export function evaluateBe8WheatVitalGlutenProtocol(
   let secondNitrogenApplication: Be8ProtocolCheckStatus = "UNVERIFIED";
   if (input.secondNitrogenApplication != null) {
     const amount = input.secondNitrogenApplication.displayedAmountKg;
-    if (
-      !isAmmoniumSulfate(input.secondNitrogenApplication.product)
-      || amount == null
-      || !finiteNonNegative(amount)
-    ) {
+    if (!isAmmoniumSulfate(input.secondNitrogenApplication.product)) {
       secondNitrogenApplication = "NON_COMPLIANT";
+    } else if (
+      amount == null
+      || !finiteNonNegative(amount)
+      || input.secondNitrogenApplication.sourceAmountBasisConfirmed !== true
+    ) {
+      secondNitrogenApplication = "UNVERIFIED";
     } else {
       secondNitrogenApplication = inRange(
         amount,
@@ -175,6 +183,12 @@ export function evaluateBe8WheatVitalGlutenProtocol(
 
   if (p.mandatory.secondNitrogenApplication.sourceAreaBasis === "NOT_EXPLICIT_IN_GRAPHIC") {
     limitations.push("BE8_SECOND_N_AREA_BASIS_NOT_EXPLICIT_IN_SOURCE");
+    if (
+      input.secondNitrogenApplication != null
+      && input.secondNitrogenApplication.sourceAmountBasisConfirmed !== true
+    ) {
+      limitations.push("BE8_SECOND_N_AMOUNT_BASIS_NOT_CONFIRMED");
+    }
   }
 
   const fungalApplication: Be8ProtocolCheckStatus =
