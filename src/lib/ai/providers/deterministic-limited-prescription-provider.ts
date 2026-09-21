@@ -422,6 +422,14 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
             deterministic.limitations.push(
               `Espacial ${item.parameterCode}: a validação ${item.method} foi calculada com ${item.storedSampleCount} ponto(s), enquanto o suporte comparável atual é ${item.currentSampleCount ?? "indisponível"}. A validação antiga não foi reutilizada.`,
             );
+          } else if (item.limitations.includes("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_STALE")) {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: o número de pontos pode permanecer igual, mas o conjunto atual de valores/métodos/profundidades/coordenadas difere daquele usado para validar ${item.method}. A validação antiga foi marcada como desatualizada e não foi reutilizada.`,
+            );
+          } else if (item.limitations.includes("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_MISSING") || item.limitations.includes("SPATIAL_CURRENT_EVIDENCE_FINGERPRINT_UNAVAILABLE")) {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: não há fingerprint suficiente para provar que a validação ${item.method} corresponde exatamente à evidência espacial corrente. Nenhuma superfície oficial foi promovida.`,
+            );
           } else if (item.currentAttributeStatus && item.currentAttributeStatus !== "INTERPOLATION_CANDIDATE") {
             deterministic.limitations.push(
               `Espacial ${item.parameterCode}: existe validação ${item.method} registrada, mas o atributo atualmente está em estado ${item.currentAttributeStatus}; nenhuma superfície oficial foi liberada.`,
