@@ -31,6 +31,7 @@ function inferMethodFamily(parameterCode: string, method: string): SoilMicrobiol
   if (code === "BIOAS_BETA_GLUCOSIDASE" || code === "BIOAS_ARYLSULFATASE") return "ENZYME_ACTIVITY";
   if (code.startsWith("BIOAS_IQS_") || code.endsWith("_SCORE")) return "LAB_DERIVED_INDEX";
   if (code === "MICROBIO_BIOMASS_C") return "MICROBIAL_BIOMASS_C";
+  if (code === "MICROBIO_BIOMASS_N") return "MICROBIAL_BIOMASS_N";
   if (code === "MICROBIO_BASAL_RESPIRATION") return "BASAL_RESPIRATION";
   if (code === "MICROBIO_QCO2") return "METABOLIC_QUOTIENT_QCO2";
   if (code === "MICROBIO_FDA_HYDROLYSIS") return "FDA_HYDROLYSIS";
@@ -83,7 +84,7 @@ function classifyCode(parameterCode: string): {
       organismOrTaxon: null,
     };
   }
-  if (code === "MICROBIO_BIOMASS_C") {
+  if (code === "MICROBIO_BIOMASS_C" || code === "MICROBIO_BIOMASS_N") {
     return { family: "MICROBIAL_BIOMASS", role: "ORGANIC_MATTER_CYCLING", organismOrTaxon: null };
   }
   if (code === "MICROBIO_BASAL_RESPIRATION" || code === "MICROBIO_QCO2") {
