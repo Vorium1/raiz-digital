@@ -1,7 +1,8 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
+import { wheatGrainQualityLabel } from "@/domain/wheat-grain-quality-evidence";
 
-const PROMPT_VERSION = "deterministic-limited-v6-traced-nitrogen";
+const PROMPT_VERSION = "deterministic-limited-v7-wheat-grain-quality";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -248,6 +249,34 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         .map((item) => item.reason),
     );
     const deterministic = deterministicRecommendations(evidence);
+
+    const grainQuality = evidence.wheatGrainQualityEvidence;
+    if (grainQuality?.status === "AVAILABLE") {
+      const observations = grainQuality.observations.map((row) =>
+        `${row.sampleCode} — ${wheatGrainQualityLabel(row.parameterCode)}: ${row.value.toLocaleString("pt-BR")} ${row.unit} (método: ${row.method}${row.protocol ? `; protocolo: ${row.protocol}` : ""})`,
+      );
+      const cultivarText = grainQuality.targetCultivar
+        ? ` Cultivar associada ao contexto da safra: ${grainQuality.targetCultivar}.`
+        : "";
+
+      deterministic.managementPractices.push(
+        `Qualidade do grão de trigo — medições laboratoriais preservadas: ${observations.join("; ")}.${cultivarText}`,
+      );
+
+      if (evidence.season.wheatQualityObjectiveRequested) {
+        deterministic.managementPractices.push(
+          "Objetivo proteína/Glúten Vital: as medições acima aumentam a resolução do parecer industrial, mas permanecem evidências independentes. Proteína total, glúten úmido/seco, índice de glúten, W, P/L, SDS, gliadina e glutenina não são convertidos uns nos outros e não autorizam N adicional automaticamente.",
+        );
+        deterministic.limitations.push(
+          "Qualidade industrial do trigo: sem especificação oficial/contratual do comprador vinculada à análise, o RAIZ não declara atendimento a padrão, prêmio ou classe comercial específica.",
+        );
+      } else {
+        deterministic.managementPractices.push(
+          "As medições de qualidade do grão foram incorporadas ao histórico técnico, sem transformar a análise em um manejo específico para Glúten Vital e sem alterar a recomendação-base de N para produtividade.",
+        );
+      }
+    }
+
     const irrigation = evidence.irrigationApplicationEvidence;
     if (irrigation?.status === "AVAILABLE") {
       for (const application of irrigation.applications) {
