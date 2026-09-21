@@ -16,11 +16,53 @@ import { reviewAgronomicPrescriptionSafely } from "@/lib/repositories/prescripti
 import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommendation-context";
 import { getAnalysisPlanningContext } from "@/lib/repositories/analyses";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
+import { calculateNitrogenRecommendation, getNitrogenRecommendationWorkspace, NitrogenRecommendationError } from "@/lib/repositories/nitrogen-recommendation";
 
 function interpretationItems(structuredOutput: unknown) {
   if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
   const value = (structuredOutput as { interpretation?: unknown }).interpretation;
   return Array.isArray(value) ? value : [];
+}
+
+async function enrichEvidenceWithAutomaticNitrogen(input: {
+  tenantId: string;
+  userId: string;
+  analysisId: string;
+}, initialEvidence: NonNullable<Awaited<ReturnType<typeof buildAgronomicPrescriptionEvidencePackage>>>) {
+  if (initialEvidence.deterministicNitrogenEvidence.status === "CURRENT") return initialEvidence;
+
+  let workspace;
+  try {
+    workspace = await getNitrogenRecommendationWorkspace(input);
+  } catch (error) {
+    if (error instanceof NitrogenRecommendationError && error.status === 404) throw error;
+    // Falha de leitura não vira licença para inventar N. O parecer segue com o
+    // snapshot já obtido e a camada de N permanece sem dose automática.
+    return initialEvidence;
+  }
+
+  if (!workspace.readiness.ready || !workspace.recommendationPreview) {
+    return initialEvidence;
+  }
+
+  try {
+    await calculateNitrogenRecommendation(input);
+  } catch (error) {
+    if (error instanceof NitrogenRecommendationError && error.status === 422) {
+      // O contexto pode ter mudado entre a leitura e a execução. Falha fechada
+      // somente para N; o restante do parecer continua disponível.
+      return initialEvidence;
+    }
+    throw error;
+  }
+
+  const refreshed = await buildAgronomicPrescriptionEvidencePackage(
+    input.tenantId,
+    input.userId,
+    input.analysisId,
+  );
+  if (!refreshed) throw new AiGenerationError("Análise não encontrada após atualizar o cálculo de N.", 404);
+  return refreshed;
 }
 
 export async function prepareAgronomicPrescriptionDraft(input: {
@@ -39,8 +81,9 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     }
   }
 
-  const evidence = await buildAgronomicPrescriptionEvidencePackage(input.tenantId, input.userId, input.analysisId);
-  if (!evidence) throw new AiGenerationError("Análise não encontrada.", 404);
+  const initialEvidence = await buildAgronomicPrescriptionEvidencePackage(input.tenantId, input.userId, input.analysisId);
+  if (!initialEvidence) throw new AiGenerationError("Análise não encontrada.", 404);
+  const evidence = await enrichEvidenceWithAutomaticNitrogen(input, initialEvidence);
   if (evidence.results.length === 0) {
     throw new AiGenerationError("Não há resultado de laboratório vinculado a esta análise ainda.", 409);
   }
