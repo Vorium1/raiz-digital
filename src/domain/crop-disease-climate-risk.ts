@@ -9,6 +9,7 @@ export type DiseaseClimateFactor =
   | "LEAF_WETNESS"
   | "RAINFALL"
   | "RAINFALL_INTENSITY"
+  | "CONTINUOUS_RAIN_HOURS"
   | "CONSECUTIVE_WET_DAYS"
   | "SOIL_MOISTURE"
   | "WIND"
@@ -43,6 +44,7 @@ export type DiseaseClimateObservation = {
   leafWetnessHours?: number | null;
   rainfallMm?: number | null;
   rainfallIntensityMmH?: number | null;
+  continuousRainHours?: number | null;
   consecutiveWetDays?: number | null;
   soilMoisturePct?: number | null;
   windKmh?: number | null;
@@ -77,6 +79,7 @@ export type DiseaseClimateProfile = {
     leafWetnessHours?: { min?: number; max?: number };
     rainfallMm?: { min?: number; max?: number };
     rainfallIntensityMmH?: { min?: number; max?: number };
+    continuousRainHours?: { min?: number; max?: number };
     consecutiveWetDays?: { min?: number; max?: number };
     soilMoisturePct?: { min?: number; max?: number };
     windKmh?: { min?: number; max?: number };
@@ -312,6 +315,9 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
   const rainIntensity = within(input.observation.rainfallIntensityMmH, profile.conditions.rainfallIntensityMmH);
   checks.push({ factor: "RAINFALL_INTENSITY", configured: Boolean(profile.conditions.rainfallIntensityMmH), ...rainIntensity });
 
+  const continuousRain = within(input.observation.continuousRainHours, profile.conditions.continuousRainHours);
+  checks.push({ factor: "CONTINUOUS_RAIN_HOURS", configured: Boolean(profile.conditions.continuousRainHours), ...continuousRain });
+
   const wetDays = within(input.observation.consecutiveWetDays, profile.conditions.consecutiveWetDays);
   checks.push({ factor: "CONSECUTIVE_WET_DAYS", configured: Boolean(profile.conditions.consecutiveWetDays), ...wetDays });
 
@@ -388,7 +394,7 @@ function assessProfile(profile: DiseaseClimateProfile, input: DiseaseClimateAsse
  * A função nunca diagnostica infecção e nunca recomenda fungicida por clima isolado.
  * Uma decisão fitossanitária posterior deve combinar: favorabilidade + presença/alerta
  * do patógeno + suscetibilidade do material + estádio + histórico + monitoramento de campo.
- * Temperatura noturna, ponto de orvalho, VPD, umidade/molhamento, chuva/intensidade,
+ * Temperatura noturna, ponto de orvalho, VPD, umidade/molhamento, chuva/intensidade/duração,
  * dias úmidos consecutivos, solo, vento/rajadas e radiação podem participar somente
  * quando o perfil homologado da doença declarar esses fatores. Dossel, irrigação,
  * drenagem, resíduo, histórico e rotação seguem a mesma regra: nunca são assumidos
