@@ -60,3 +60,35 @@ export function evaluateNitrogenExecutionSnapshotFreshness(input: {
 
   return { current: true, reason: null };
 }
+
+
+/**
+ * Freshness do contexto opcional da análise (irrigação, planejamento, comprador etc.).
+ *
+ * É propositalmente separado de crop_seasons.updated_at: editar um refinamento do
+ * parecer deve exigir nova narrativa, mas não deve invalidar uma execução de N cujos
+ * próprios insumos continuam iguais.
+ */
+export function evaluateAnalysisContextFingerprintFreshness(input: {
+  generationFingerprint: string | null | undefined;
+  currentFingerprint: string | null | undefined;
+}): PrescriptionContextFreshness {
+  const generationFingerprint = input.generationFingerprint?.trim() || null;
+  const currentFingerprint = input.currentFingerprint?.trim() || null;
+
+  if (!generationFingerprint || !currentFingerprint) {
+    return {
+      current: false,
+      reason: "Não foi possível comprovar a versão do contexto opcional da análise. Gere uma nova versão.",
+    };
+  }
+
+  if (generationFingerprint !== currentFingerprint) {
+    return {
+      current: false,
+      reason: "O contexto opcional da análise mudou depois desta geração. Gere uma nova versão para incorporar os refinamentos atuais.",
+    };
+  }
+
+  return { current: true, reason: null };
+}
