@@ -6,6 +6,7 @@ import {
 } from "../src/domain/wheat-buyer-quality-protocol.ts";
 
 assert.equal(BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026.policy.buyerProtocolIsAgronomicUniversalRule, false);
+assert.equal(BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026.policy.requiresExplicitBuyerProtocolSelection, true);
 assert.equal(BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026.policy.complianceGuaranteesPremium, false);
 assert.equal(BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026.policy.recommendedItemAffectsMandatoryCompliance, false);
 assert.equal(BE8_WHEAT_VITAL_GLUTEN_PROTOCOL_2026.policy.missingOptionalDataBlocksBaseNitrogenRecommendation, false);
