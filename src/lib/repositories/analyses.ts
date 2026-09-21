@@ -175,7 +175,8 @@ export async function getAnalysisPlanningContext(input: {
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
-      `SELECT id::text, analysis_context AS "analysisContext"
+      `SELECT id::text, analysis_context AS "analysisContext",
+              md5(coalesce(analysis_context, '{}'::jsonb)::text) AS "contextFingerprint"
        FROM analyses
        WHERE tenant_id = $1::uuid AND id = $2::uuid
        LIMIT 1`,
@@ -185,6 +186,7 @@ export async function getAnalysisPlanningContext(input: {
     if (!row) return null;
     return {
       analysisId: row.id as string,
+      contextFingerprint: row.contextFingerprint as string,
       ...planningContextFromAnalysisContext(row.analysisContext),
     };
   });
@@ -314,15 +316,9 @@ export async function updateAnalysisPlanningContext(input: {
       [input.tenantId, input.analysisId, JSON.stringify(root)],
     );
 
-    // O plano de fertilidade faz parte do contexto da prescrição, embora não seja
-    // requisito para emitir o parecer. Alterá-lo invalida somente a recomendação
-    // corrente e preserva o histórico já congelado.
-    await client.query(
-      `UPDATE crop_seasons
-       SET updated_at = now()
-       WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [input.tenantId, row.cropSeasonId],
-    );
+    // O JSONB de analysis_context possui fingerprint próprio na freshness da prescrição.
+    // Não tocamos crop_seasons.updated_at aqui: refinamentos opcionais devem atualizar
+    // o parecer sem invalidar motores determinísticos (ex.: N) cujos insumos não mudaram.
 
     let wheatBuyerProtocolIdForAudit: string | null = null;
     try {
