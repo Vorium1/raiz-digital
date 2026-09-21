@@ -225,6 +225,19 @@ assert.match(nitrogenPanel, /Não é requisito para a recomendação-base de N/)
 assert.match(nitrogenPanel, /sem autorizar automaticamente N tardio extra/);
 assert.doesNotMatch(nitrogenPanel, /<span>N tardio para proteína<\/span>/);
 
+// Trigo: protocolo de comprador é opcional, explícito, auditável e não altera N-base.
+assert.match(simpleRecommendationContext, /Comprador\/protocolo industrial/);
+assert.match(simpleRecommendationContext, /Nenhum comprador específico/);
+assert.match(simpleRecommendationContext, /Be8 Agro — Glúten Vital 2026/);
+assert.match(simpleRecommendationContext, /Não substitui o motor agronômico nem altera automaticamente a dose-base de N/);
+assert.match(simpleRecommendationContext, /Campos em branco permanecem “não verificados”/);
+assert.match(simpleRecommendationContext, /não explicita a base de área/);
+assert.match(simpleRecommendationContext, /expectedWheatBuyerQualityContext/);
+assert.match(analysesRepository, /O protocolo de comprador do trigo foi alterado em outra sessão/);
+assert.match(analysesRepository, /wheatBuyerQualityProtocolId/);
+assert.match(prescriptionEvidencePackage, /wheatBuyerQualityEvidence/);
+assert.match(deterministicPrescriptionProvider, /não garante prêmio, aceite comercial ou desempenho industrial/);
+
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.ok(reviewInbox.includes('redirect("/resultados")'));
 assert.doesNotMatch(reviewInbox, /Pronto para revisar|listAnalyses|getAnalysisEvidenceState/);
