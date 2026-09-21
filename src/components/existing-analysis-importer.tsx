@@ -104,7 +104,7 @@ export function ExistingAnalysisImporter({
               </span>
             </div>
             <div>
-              <Icon name="database" />
+              <Icon name="layers" />
               <span>
                 <strong>Tipo de amostra</strong>
                 <select value={sampleType} onChange={(event) => setSampleType(event.target.value as LabSampleType)} disabled={saving}>
