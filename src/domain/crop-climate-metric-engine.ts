@@ -274,7 +274,7 @@ export const HOMOLOGATED_CROP_CLIMATE_METRIC_RULES: CropClimateMetricRule[] = [
       locator: "temperatura do solo superior a 40 °C prejudica germinação",
     },
     status: "HOMOLOGATED",
-  },,
+  },
   {
     id: "SOJA-BR-SOIL-COLD-20C",
     cropCode: "SOJA",
