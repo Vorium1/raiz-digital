@@ -19,6 +19,10 @@ export type NitrogenRecommendation = {
   qualityObjective?: {
     kind: "WHEAT_PROTEIN_QUALITY";
     requested: boolean;
+    industrialTarget: "VITAL_WHEAT_GLUTEN" | null;
+    targetProteinFractions: Array<"GLIADIN" | "GLUTENIN">;
+    screeningMetrics: Array<"GRAIN_PROTEIN" | "WET_GLUTEN" | "DRY_GLUTEN" | "GLUTEN_INDEX" | "ALVEOGRAPH_W" | "P_L" | "SDS_SEDIMENTATION">;
+    buyerSpecificationRequired: true;
     status: "NOT_REQUESTED" | "REQUIRES_SPECIFIC_REVIEW";
     automaticAdditionalDoseAllowed: false;
     additionalDoseKgNPerHa: null;
@@ -152,11 +156,15 @@ export function computeWheatNitrogenRecommendation(input: {
     qualityObjective: {
       kind: "WHEAT_PROTEIN_QUALITY",
       requested: input.lateQualityNitrogenRequested === true,
+      industrialTarget: input.lateQualityNitrogenRequested ? "VITAL_WHEAT_GLUTEN" : null,
+      targetProteinFractions: ["GLIADIN", "GLUTENIN"],
+      screeningMetrics: ["GRAIN_PROTEIN", "WET_GLUTEN", "DRY_GLUTEN", "GLUTEN_INDEX", "ALVEOGRAPH_W", "P_L", "SDS_SEDIMENTATION"],
+      buyerSpecificationRequired: true,
       status: input.lateQualityNitrogenRequested ? "REQUIRES_SPECIFIC_REVIEW" : "NOT_REQUESTED",
       automaticAdditionalDoseAllowed: false,
       additionalDoseKgNPerHa: null,
-      evidence: "Aplicação tardia de parte do N foi pouco efetiva, em geral, para elevar proteína, glúten úmido e força de glúten nos ambientes avaliados; houve variação entre cultivares e ambientes.",
-      source: "Embrapa Trigo, Boletim de Pesquisa e Desenvolvimento 120, 2025 — Estratégias de adubação nitrogenada em trigo, efeitos na qualidade tecnológica.",
+      evidence: "Aplicação tardia de parte do N foi pouco efetiva, em geral, para elevar proteína, glúten úmido e força de glúten nos ambientes avaliados; houve variação entre cultivares e ambientes. Mais proteína total não prova, isoladamente, maior funcionalidade do glúten.",
+      source: "Embrapa Trigo, Boletim de Pesquisa e Desenvolvimento 120, 2025 — Estratégias de adubação nitrogenada em trigo, efeitos na qualidade tecnológica; Embrapa Trigo — proteínas de reserva e qualidade tecnológica.",
     },
   };
 }
