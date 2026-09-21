@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { evaluateNitrogenExecutionSnapshotFreshness, evaluatePrescriptionContextFreshness } from "../src/domain/prescription-context-freshness.ts";
+import { evaluateAnalysisContextFingerprintFreshness, evaluateNitrogenExecutionSnapshotFreshness, evaluatePrescriptionContextFreshness } from "../src/domain/prescription-context-freshness.ts";
 
 assert.deepEqual(
   evaluatePrescriptionContextFreshness({
@@ -26,6 +26,25 @@ assert.match(stale.reason ?? "", /mudou depois/i);
 
 assert.equal(evaluatePrescriptionContextFreshness({ generationCreatedAt: null, cropSeasonUpdatedAt: null }).current, false);
 assert.equal(evaluatePrescriptionContextFreshness({ generationCreatedAt: "data-invalida", cropSeasonUpdatedAt: "2026-09-14T01:10:01.000Z" }).current, false);
+
+const analysisContextSame = evaluateAnalysisContextFingerprintFreshness({
+  generationFingerprint: "abc123",
+  currentFingerprint: "abc123",
+});
+assert.equal(analysisContextSame.current, true);
+
+const analysisContextChanged = evaluateAnalysisContextFingerprintFreshness({
+  generationFingerprint: "abc123",
+  currentFingerprint: "def456",
+});
+assert.equal(analysisContextChanged.current, false);
+assert.match(analysisContextChanged.reason ?? "", /contexto opcional da análise mudou/i);
+
+const legacyWithoutAnalysisContextFingerprint = evaluateAnalysisContextFingerprintFreshness({
+  generationFingerprint: null,
+  currentFingerprint: "def456",
+});
+assert.equal(legacyWithoutAnalysisContextFingerprint.current, false);
 
 const nExecSame = evaluateNitrogenExecutionSnapshotFreshness({
   generationExecutionId: "exec-n-1",
