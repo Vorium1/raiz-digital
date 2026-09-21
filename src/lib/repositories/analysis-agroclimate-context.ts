@@ -70,16 +70,20 @@ export async function getAnalysisAgroclimateLocationContext(input: {
          ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        LEFT JOIN LATERAL (
          SELECT
-           ST_Centroid(ST_Collect(sp.observed_position))
-             FILTER (WHERE sp.observed_position IS NOT NULL) AS observed_point,
-           ST_Centroid(ST_Collect(sp.position))
-             FILTER (
-               WHERE sp.observed_position IS NULL
-                 AND upper(trim(coalesce(sp.gps_source, ''))) IN (
-                   'SHAPEFILE_REAL_GPS_LONLAT',
-                   'SHAPEFILE_REAL_EPSG4326'
-                 )
-             ) AS verified_imported_point
+           ST_Centroid(
+             ST_Collect(sp.observed_position)
+               FILTER (WHERE sp.observed_position IS NOT NULL)
+           ) AS observed_point,
+           ST_Centroid(
+             ST_Collect(sp.position)
+               FILTER (
+                 WHERE sp.observed_position IS NULL
+                   AND upper(trim(coalesce(sp.gps_source, ''))) IN (
+                     'SHAPEFILE_REAL_GPS_LONLAT',
+                     'SHAPEFILE_REAL_EPSG4326'
+                   )
+               )
+           ) AS verified_imported_point
          FROM collection_orders co
          JOIN sample_points sp
            ON sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
