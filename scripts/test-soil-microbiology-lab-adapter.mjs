@@ -80,6 +80,15 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
   {
     sampleCode: "A1",
+    parameterCode: "DIVERSIDADE_SHANNON_16S",
+    value: 4.2,
+    unit: "índice",
+    method: "Sequenciamento metabarcoding 16S",
+    protocol: "Região/primers/pipeline informados pelo laboratório",
+    sampleType: "BIOLOGICO",
+  },
+  {
+    sampleCode: "A1",
     parameterCode: "AZOSPIRILLUMBRASILENSE",
     value: 420000,
     unit: "UFC/g solo",
@@ -94,7 +103,7 @@ const observations = adaptLabResultsToSoilMicrobiology([
   },
 ]);
 
-assert.equal(observations.length, 12);
+assert.equal(observations.length, 13);
 
 const beta = observations.find((item) => item.parameterName === "BIOAS_BETA_GLUCOSIDASE");
 assert.equal(beta?.family, "BIOAS_SOIL_HEALTH");
@@ -129,6 +138,12 @@ const mycorrhizalSpores = observations.find((item) => item.parameterName === "MI
 assert.equal(mycorrhizalSpores?.family, "MYCORRHIZA");
 assert.equal(mycorrhizalSpores?.sampleMatrix, "SOIL");
 assert.equal(mycorrhizalSpores?.methodFamily, "SPORE_COUNT");
+
+const microbiome = observations.find((item) => item.parameterName === "DIVERSIDADE_SHANNON_16S");
+assert.equal(microbiome?.family, "MOLECULAR_COMMUNITY_PROFILE");
+assert.equal(microbiome?.sampleMatrix, "SOIL");
+assert.equal(microbiome?.methodFamily, "METABARCODING_16S");
+assert.equal(microbiome?.functionalRole, null);
 
 const azospirillum = observations.find((item) => item.parameterName === "AZOSPIRILLUMBRASILENSE");
 assert.equal(azospirillum?.functionalRole, "BIOLOGICAL_N_FIXATION");
