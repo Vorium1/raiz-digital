@@ -6,6 +6,7 @@ import * as util from "node:util";
 import ts from "typescript";
 import * as irrigation from "../src/domain/irrigation-applications.ts";
 import * as wheatBuyerContext from "../src/domain/wheat-buyer-quality-context.ts";
+import * as spatialInterpolationContext from "../src/domain/spatial-interpolation-context.ts";
 import { evaluateIrrigationWaterEvidence } from "../src/domain/irrigation-water-assessment.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 
@@ -71,6 +72,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/repositor
   if (name === "node:util") return { isDeepStrictEqual: (a, b) => util.isDeepStrictEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b))) };
   if (name.includes("irrigation-applications")) return irrigation;
   if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
+  if (name.includes("spatial-interpolation-context")) return spatialInterpolationContext;
   if (name === "@/lib/db") return { withTenant: async (scope, run) => {
     assert.equal(scope.tenantId, "tenant-a"); assert.equal(scope.userId, "user-a"); return run(client);
   } };
