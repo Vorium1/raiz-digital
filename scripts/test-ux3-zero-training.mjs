@@ -55,6 +55,7 @@ const simpleFieldOverview = read("src/components/simple-field-overview.tsx");
 const fieldOverviewTabs = read("src/components/field-overview-tabs.tsx");
 const yieldOutlook = read("src/components/simple-field-yield-outlook.tsx");
 const simpleRecommendationContext = read("src/components/simple-recommendation-context.tsx");
+const nitrogenPanel = read("src/components/nitrogen-recommendation-panel.tsx");
 const recommendationDisplay = read("src/domain/recommendation-display.ts");
 const yieldGoalPresets = read("src/domain/yield-goal-presets.ts");
 const analysisContextIntake = read("src/components/analysis-context-intake.tsx");
@@ -214,6 +215,15 @@ assert.match(dashboardRepository, /AS "ndviMean"/);
 assert.match(dashboardRepository, /AS "ndviZoneBreakdown"/);
 assert.match(fieldsPage, /NDVI \{field\.ndviMean/);
 assert.match(fieldsPage, /VIGOR_ZONE_LABELS/);
+
+// Trigo: proteína/Glúten Vital é enriquecimento opcional, nunca requisito para o N-base.
+assert.match(nitrogenPanel, /Objetivo adicional de qualidade/);
+assert.match(nitrogenPanel, /opcional/);
+assert.match(nitrogenPanel, /Não — focar produtividade/);
+assert.match(nitrogenPanel, /Sim — proteína \/ Glúten Vital/);
+assert.match(nitrogenPanel, /Não é requisito para a recomendação-base de N/);
+assert.match(nitrogenPanel, /sem autorizar automaticamente N tardio extra/);
+assert.doesNotMatch(nitrogenPanel, /<span>N tardio para proteína<\/span>/);
 
 // Entradas simples nunca devolvem o usuário ao cockpit técnico sem ele pedir detalhes.
 assert.ok(reviewInbox.includes('redirect("/resultados")'));
