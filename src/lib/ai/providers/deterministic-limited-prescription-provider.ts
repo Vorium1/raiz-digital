@@ -372,7 +372,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         );
       } else if (spatial.status === "INTERPOLATION_CANDIDATE") {
         deterministic.managementPractices.push(
-          `Análise espacial solicitada: ${n} posições distintas, confiáveis e vinculadas ao laudo possuem suporte 2-D suficiente para avaliar uma técnica de interpolação. O RAIZ não escolheu atributo, IDW/krigagem/Thiessen nem gerou dose espacial automaticamente; a etapa seguinte exige validação por atributo, método, distribuição e revisão profissional, com validação cruzada quando aplicável.`,
+          `Análise espacial solicitada: ${n} posições distintas, confiáveis e vinculadas ao laudo possuem suporte 2-D suficiente para avaliar uma técnica de interpolação. O RAIZ não escolheu atributo, IDW/krigagem/Thiessen nem gerou dose espacial automaticamente; a etapa seguinte exige validação por atributo, método, distribuição e revisão profissional, com validação cruzada e métricas preservadas antes de qualquer superfície oficial.`,
         );
       }
 
@@ -395,6 +395,47 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         deterministic.limitations.push(
           "Espacial: os pontos com evidência formam suporte colinear, insuficiente para uma superfície bidimensional.",
         );
+      }
+
+      const methodValidation = evidence.spatialInterpolationValidationEvidence;
+      if (methodValidation?.status === "INVALID_CONTEXT") {
+        deterministic.limitations.push(
+          "Espacial: existe um registro opcional de validação de interpolação inválido. Ele foi isolado; o parecer por ponto/talhão continua válido e nenhuma superfície foi promovida.",
+        );
+      } else if (methodValidation?.status === "RECORDED") {
+        for (const item of methodValidation.entries) {
+          const cv = item.validation.crossValidation;
+          const cvText = cv
+            ? `${cv.strategy}; n=${cv.validationCount}; RMSE ${cv.rmse == null ? "não informado" : cv.rmse.toLocaleString("pt-BR")}; MAE ${cv.mae == null ? "não informado" : cv.mae.toLocaleString("pt-BR")}; erro médio ${cv.meanError == null ? "não informado" : cv.meanError.toLocaleString("pt-BR")}`
+            : "validação cruzada não informada";
+          const variogramText = item.method === "KRIGING"
+            ? item.validation.variogram
+              ? `; variograma ${item.validation.variogram.model}, nugget ${item.validation.variogram.nugget ?? "não informado"}, sill ${item.validation.variogram.sill ?? "não informado"}, range ${item.validation.variogram.range ?? "não informado"}`
+              : "; variograma não informado"
+            : "";
+
+          if (item.current && item.officialSurfaceAllowed) {
+            deterministic.managementPractices.push(
+              `Espacial ${item.parameterCode}: ${item.method} possui validação técnica corrente sobre ${item.currentSampleCount} ponto(s) comparável(is) (${cvText}${variogramText}). Isso qualifica uma superfície oficial candidata, mas não autoriza dose espacial nem taxa variável automática; a aprovação final continua separada.`,
+            );
+          } else if (item.limitations.includes("SPATIAL_VALIDATION_SAMPLE_COUNT_STALE")) {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: a validação ${item.method} foi calculada com ${item.storedSampleCount} ponto(s), enquanto o suporte comparável atual é ${item.currentSampleCount ?? "indisponível"}. A validação antiga não foi reutilizada.`,
+            );
+          } else if (item.currentAttributeStatus && item.currentAttributeStatus !== "INTERPOLATION_CANDIDATE") {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: existe validação ${item.method} registrada, mas o atributo atualmente está em estado ${item.currentAttributeStatus}; nenhuma superfície oficial foi liberada.`,
+            );
+          } else if (item.validation.status === "REVIEW_REQUIRED") {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: métricas da validação ${item.method} estão registradas (${cvText}${variogramText}), porém a revisão profissional do método ainda não foi aprovada.`,
+            );
+          } else if (item.validation.status !== "VALIDATED_FOR_OFFICIAL_SURFACE") {
+            deterministic.limitations.push(
+              `Espacial ${item.parameterCode}: a validação ${item.method} permanece incompleta ou inválida; o RAIZ não promoveu a superfície.`,
+            );
+          }
+        }
       }
     }
 
