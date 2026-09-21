@@ -191,6 +191,107 @@ export function assessZarcPlantingDate(
 }
 
 
+export type ZarcOfficialCoreResolution =
+  | {
+      status: "READY";
+      cropCode: number;
+      ibgeMunicipalityCode: string;
+      stateCode: string;
+      matchedCropName: string;
+      matchedMunicipalityName: string;
+      warnings: string[];
+    }
+  | {
+      status: "NO_MATCH" | "AMBIGUOUS_OFFICIAL_MAPPING";
+      cropCode: null;
+      ibgeMunicipalityCode: null;
+      stateCode: string;
+      matchedCropName: null;
+      matchedMunicipalityName: null;
+      warnings: string[];
+    };
+
+function normalizedOfficialName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+/**
+ * Resolve cultura e geocódigo usando SOMENTE pares existentes na própria tábua
+ * oficial da safra. Não há fuzzy match, alias inventado nem município vizinho.
+ *
+ * Isso permite que "Soja" / "Passo Fundo" já cadastrados na RAIZ sejam ligados
+ * aos códigos oficiais apenas quando o conjunto MAPA contém correspondência
+ * textual exata após normalização de caixa/acentos e um único código.
+ */
+export function resolveZarcOfficialCoreFromRows(input: {
+  rows: ZarcPlantingRiskEvidence[];
+  seasonStartYear: number;
+  seasonEndYear: number;
+  cropName: string;
+  municipalityName: string;
+  stateCode: string;
+}): ZarcOfficialCoreResolution {
+  if (!Number.isInteger(input.seasonStartYear) || input.seasonEndYear !== input.seasonStartYear + 1) {
+    throw new Error("ZARC_SEASON_INVALID");
+  }
+  const stateCode = input.stateCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(stateCode)) throw new Error("ZARC_STATE_CODE_INVALID");
+  const cropName = normalizedOfficialName(input.cropName);
+  const municipalityName = normalizedOfficialName(input.municipalityName);
+  if (!cropName) throw new Error("ZARC_CROP_NAME_REQUIRED");
+  if (!municipalityName) throw new Error("ZARC_MUNICIPALITY_NAME_REQUIRED");
+
+  const matches = input.rows.filter((row) =>
+    row.seasonStartYear === input.seasonStartYear
+    && row.seasonEndYear === input.seasonEndYear
+    && row.stateCode.toUpperCase() === stateCode
+    && normalizedOfficialName(row.cropName) === cropName
+    && normalizedOfficialName(row.municipalityName) === municipalityName
+  );
+  if (!matches.length) {
+    return {
+      status: "NO_MATCH",
+      cropCode: null,
+      ibgeMunicipalityCode: null,
+      stateCode,
+      matchedCropName: null,
+      matchedMunicipalityName: null,
+      warnings: ["ZARC_OFFICIAL_CROP_MUNICIPALITY_PAIR_NOT_FOUND"],
+    };
+  }
+
+  const cropCodes = [...new Set(matches.map((row) => row.cropCode))];
+  const geocodes = [...new Set(matches.map((row) => row.ibgeMunicipalityCode))];
+  const officialCropNames = [...new Set(matches.map((row) => row.cropName))];
+  const officialMunicipalityNames = [...new Set(matches.map((row) => row.municipalityName))];
+  if (cropCodes.length !== 1 || geocodes.length !== 1) {
+    return {
+      status: "AMBIGUOUS_OFFICIAL_MAPPING",
+      cropCode: null,
+      ibgeMunicipalityCode: null,
+      stateCode,
+      matchedCropName: null,
+      matchedMunicipalityName: null,
+      warnings: ["ZARC_OFFICIAL_MAPPING_AMBIGUOUS_NO_CODE_SELECTED"],
+    };
+  }
+
+  return {
+    status: "READY",
+    cropCode: cropCodes[0],
+    ibgeMunicipalityCode: geocodes[0],
+    stateCode,
+    matchedCropName: officialCropNames[0] ?? input.cropName.trim(),
+    matchedMunicipalityName: officialMunicipalityNames[0] ?? input.municipalityName.trim(),
+    warnings: [],
+  };
+}
+
 export type ZarcPartialContext = {
   seasonStartYear: number;
   seasonEndYear: number;
