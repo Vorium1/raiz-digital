@@ -1,5 +1,6 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
-import { evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
+import { evaluateNitrogenExecutionSnapshotFreshness, evaluatePrescriptionContextFreshness, type PrescriptionContextFreshness } from "@/domain/prescription-context-freshness";
+import { PRESCRIPTION_NITROGEN_RULE_IDS } from "@/domain/nitrogen-prescription-evidence";
 import { withTenant } from "@/lib/db";
 
 /**
@@ -35,6 +36,8 @@ export async function getAgronomicPrescriptionFreshness(input: {
       currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
       latestRuleUpdatedAt: string | null;
+      generationNitrogenExecutionId: string | null;
+      latestNitrogenExecutionId: string | null;
     }>(
       `SELECT g.created_at::text AS "generationCreatedAt",
               g.interpretation_id::text AS "generationInterpretationId",
@@ -45,7 +48,9 @@ export async function getAgronomicPrescriptionFreshness(input: {
               li.crop_profile_id::text AS "latestInterpretationCropProfileId",
               cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
-              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt"
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
+              g.request_payload #>> '{evidence,deterministicNitrogenEvidence,executionId}' AS "generationNitrogenExecutionId",
+              latest_n.id::text AS "latestNitrogenExecutionId"
        FROM ai_generations g
        JOIN analyses a ON a.tenant_id = g.tenant_id AND a.id = g.analysis_id
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
@@ -67,12 +72,21 @@ export async function getAgronomicPrescriptionFreshness(input: {
          FROM crop_profile_parameters cpp
          WHERE cpp.crop_profile_id = cp.id
        ) rule_state ON cp.id IS NOT NULL
+       LEFT JOIN LATERAL (
+         SELECT execution.id
+         FROM agronomic_rule_executions execution
+         WHERE execution.tenant_id = a.tenant_id
+           AND execution.analysis_id = a.id
+           AND execution.rule_id = ANY($4::text[])
+         ORDER BY execution.created_at DESC, execution.id DESC
+         LIMIT 1
+       ) latest_n ON true
        WHERE g.tenant_id = $1::uuid
          AND g.analysis_id = $2::uuid
          AND g.id = $3::uuid
          AND g.kind = 'AGRONOMIC_PRESCRIPTION'
        LIMIT 1`,
-      [input.tenantId, input.analysisId, input.generationId],
+      [input.tenantId, input.analysisId, input.generationId, [...PRESCRIPTION_NITROGEN_RULE_IDS]],
     );
     const row = result.rows[0];
     if (!row) return { current: false, reason: "Não foi possível comprovar a geração de prescrição atual." };
@@ -104,6 +118,12 @@ export async function getAgronomicPrescriptionFreshness(input: {
     if (!evidenceFreshness.current) {
       return { current: false, reason: evidenceFreshness.reason };
     }
+
+    const nitrogenFreshness = evaluateNitrogenExecutionSnapshotFreshness({
+      generationExecutionId: row.generationNitrogenExecutionId,
+      currentExecutionId: row.latestNitrogenExecutionId,
+    });
+    if (!nitrogenFreshness.current) return nitrogenFreshness;
 
     return { current: true, reason: null };
   });
