@@ -40,6 +40,12 @@ jobs:
       HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_SSL: require
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      VERCEL_API_TOKEN_PRIMARY: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_API_TOKEN_ALT1: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+      VERCEL_API_TOKEN_ALT2: ${{ secrets.VERCEL_API_TOKEN }}
+      VERCEL_API_TOKEN_ALT3: ${{ secrets.VERCEL_PERSONAL_TOKEN }}
+      VERCEL_PROJECT_ID: prj_lO7n4ou7rkDgNTDwMrYCNVNIXbAT
+      VERCEL_TEAM_ID: team_2bE6EyCEvEqNaRcKmbS4O5Fd
       E2E_EXPECT_GOOGLE_MAPS: ${{ github.event_name == 'push' && '1' || (inputs.expect_google_maps && '1' || '0') }}
 
     steps:
@@ -60,6 +66,48 @@ jobs:
             const token = await core.getIDToken();
             core.setSecret(token);
             core.setOutput("token", token);
+
+      - name: Criar bypass Vercel efêmero quando houver token autorizado
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            echo "Bypass de automação já configurado; não será alterado."
+            exit 0
+          fi
+
+          VERCEL_API_TOKEN="${VERCEL_API_TOKEN_PRIMARY:-}"
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT1:-}"; fi
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT2:-}"; fi
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT3:-}"; fi
+
+          if [ -z "${VERCEL_API_TOKEN}" ]; then
+            echo "Nenhum token Vercel disponível nos secrets conhecidos; mantendo OIDC como fallback."
+            exit 0
+          fi
+
+          echo "::add-mask::${VERCEL_API_TOKEN}"
+          EPHEMERAL_SECRET="$(openssl rand -hex 16)"
+          echo "::add-mask::${EPHEMERAL_SECRET}"
+
+          payload="$(node -e 'console.log(JSON.stringify({generate:{secret:process.argv[1],note:"RAIZ #84 temporary visual QA"}}))' "${EPHEMERAL_SECRET}")"
+          http_code="$(
+            curl -sS -o /tmp/vercel-bypass-generate.json -w '%{http_code}'               -X PATCH               "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}"               -H "Authorization: Bearer ${VERCEL_API_TOKEN}"               -H "Content-Type: application/json"               --data "${payload}" || true
+          )"
+
+          if [ "${http_code}" != "200" ]; then
+            echo "::warning::Token Vercel encontrado, mas não conseguiu criar bypass efêmero (HTTP ${http_code}). OIDC continuará como fallback."
+            exit 0
+          fi
+
+          {
+            echo "VERCEL_AUTOMATION_BYPASS_SECRET=${EPHEMERAL_SECRET}"
+            echo "E2E_EPHEMERAL_BYPASS=1"
+            echo "E2E_EPHEMERAL_VERCEL_API_TOKEN=${VERCEL_API_TOKEN}"
+          } >> "${GITHUB_ENV}"
+
+          echo "Bypass Vercel efêmero criado para esta execução."
 
       - name: Validar contexto protegido
         env:
@@ -172,6 +220,27 @@ jobs:
           await pool.end();
           console.log("Sessão E2E temporária revogada.");
           NODE
+
+      - name: Revogar bypass Vercel efêmero
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${E2E_EPHEMERAL_BYPASS:-}" != "1" ] || [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ] || [ -z "${E2E_EPHEMERAL_VERCEL_API_TOKEN:-}" ]; then
+            echo "Nenhum bypass efêmero criado por esta execução."
+            exit 0
+          fi
+
+          echo "::add-mask::${E2E_EPHEMERAL_VERCEL_API_TOKEN}"
+          payload="$(node -e 'console.log(JSON.stringify({revoke:{secret:process.argv[1],regenerate:false}}))' "${VERCEL_AUTOMATION_BYPASS_SECRET}")"
+          http_code="$(
+            curl -sS -o /tmp/vercel-bypass-revoke.json -w '%{http_code}'               -X PATCH               "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}"               -H "Authorization: Bearer ${E2E_EPHEMERAL_VERCEL_API_TOKEN}"               -H "Content-Type: application/json"               --data "${payload}" || true
+          )"
+          if [ "${http_code}" = "200" ]; then
+            echo "Bypass Vercel efêmero revogado."
+          else
+            echo "::warning::Falha ao revogar bypass efêmero (HTTP ${http_code}); revisar no Vercel Deployment Protection."
+          fi
 
       - name: Publicar screenshots/traces
         if: always()
