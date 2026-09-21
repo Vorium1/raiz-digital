@@ -15,7 +15,8 @@ import { evaluateIrrigationContext } from "@/domain/irrigation-context";
 import { evaluateIrrigationApplications, irrigationApplicationsFromContext } from "@/domain/irrigation-applications";
 import { evaluateIrrigationWaterEvidence } from "@/domain/irrigation-water-assessment";
 import { evaluateRiceContinuousNitrogenEnvelope, RESEARCH_READY_PROFILES } from "@/domain/research-ready-rules";
-import { isOrganicMatterPercentUnit } from "@/domain/nitrogen-context";
+import { buildNitrogenOrganicMatterFingerprint, isOrganicMatterPercentUnit } from "@/domain/nitrogen-context";
+import { evaluatePersistedNitrogenExecution, PRESCRIPTION_NITROGEN_RULE_IDS, type PersistedNitrogenExecution } from "@/domain/nitrogen-prescription-evidence";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -49,6 +50,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   irrigationApplicationEvidence: ReturnType<typeof evaluateIrrigationApplications>;
   irrigationWaterEvidence: ReturnType<typeof evaluateIrrigationWaterEvidence>;
   riceNitrogenEvidence: ReturnType<typeof buildRiceNitrogenEvidence>;
+  deterministicNitrogenEvidence: ReturnType<typeof evaluatePersistedNitrogenExecution>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -296,7 +298,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
     const base = baseResult.rows[0];
     if (!base) return null;
 
-    const [resultsResult, interpretationResult] = await Promise.all([
+    const [resultsResult, interpretationResult, nitrogenExecutionResult] = await Promise.all([
       client.query(
         `SELECT ls.laboratory_code AS "sampleCode", ls.sample_type AS "sampleType",
                 lr.parameter_code AS "parameterCode",
@@ -320,6 +322,23 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
          LIMIT 1`,
         [tenantId, analysisId],
       ),
+      client.query<PersistedNitrogenExecution>(
+        `SELECT id::text,
+                rule_id AS "ruleId",
+                rule_version AS "ruleVersion",
+                source_snapshot_id AS "sourceSnapshotId",
+                execution_status AS "executionStatus",
+                created_at::text AS "createdAt",
+                input_payload AS "inputPayload",
+                output_payload AS "outputPayload"
+         FROM agronomic_rule_executions
+         WHERE tenant_id = $1::uuid
+           AND analysis_id = $2::uuid
+           AND rule_id = ANY($3::text[])
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`,
+        [tenantId, analysisId, [...PRESCRIPTION_NITROGEN_RULE_IDS]],
+      ),
     ]);
 
     const yieldHistoryResult = await client.query(
@@ -336,6 +355,22 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       : await client.query(
           `SELECT title, institution, edition_year AS "editionYear", subject, content FROM technical_sources WHERE crop_profile_id IS NULL AND status = 'ACTIVE' ORDER BY title`,
         );
+
+    const nitrogenOrganicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(
+      resultsResult.rows
+        .filter((row) => new Set(["OM", "MO", "ORGANIC_MATTER"]).has(String(row.parameterCode).trim().toUpperCase()))
+        .map((row) => ({
+          sampleCode: row.sampleCode,
+          value: row.value,
+          unit: row.unit,
+          method: row.method,
+        })),
+    );
+    const deterministicNitrogenEvidence = evaluatePersistedNitrogenExecution({
+      execution: nitrogenExecutionResult.rows[0] ?? null,
+      currentSeasonUpdatedAt: base.seasonUpdatedAt,
+      currentOrganicMatterFingerprint: nitrogenOrganicMatterFingerprint,
+    });
 
     const deterministicInterpretation = interpretationResult.rows[0] ?? null;
     const interpreted = interpretationItems(deterministicInterpretation?.structuredOutput);
@@ -455,6 +490,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         waterRegime: rawIrrigation.waterRegime ?? "",
       }),
       riceNitrogenEvidence: buildRiceNitrogenEvidence(base.cropProfileCode, resultsResult.rows),
+      deterministicNitrogenEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
