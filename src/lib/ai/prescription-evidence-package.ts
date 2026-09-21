@@ -18,6 +18,7 @@ import { evaluateRiceContinuousNitrogenEnvelope, RESEARCH_READY_PROFILES } from 
 import { buildNitrogenOrganicMatterFingerprint, isOrganicMatterPercentUnit } from "@/domain/nitrogen-context";
 import { evaluatePersistedNitrogenExecution, PRESCRIPTION_NITROGEN_RULE_IDS, type PersistedNitrogenExecution } from "@/domain/nitrogen-prescription-evidence";
 import { evaluateWheatGrainQualityEvidence } from "@/domain/wheat-grain-quality-evidence";
+import { evaluateStoredWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -54,6 +55,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   riceNitrogenEvidence: ReturnType<typeof buildRiceNitrogenEvidence>;
   deterministicNitrogenEvidence: ReturnType<typeof evaluatePersistedNitrogenExecution>;
   wheatGrainQualityEvidence: ReturnType<typeof evaluateWheatGrainQualityEvidence>;
+  wheatBuyerQualityEvidence: ReturnType<typeof evaluateStoredWheatBuyerQualityContext>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -107,6 +109,13 @@ function analysisContextTillageSystem(value: unknown) {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
   const tillageSystem = (draft as { tillageSystem?: unknown }).tillageSystem;
   return typeof tillageSystem === "string" && tillageSystem.trim() ? tillageSystem.trim() : null;
+}
+
+function analysisContextWheatBuyerQuality(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
+  return (draft as { wheatBuyerQualityContext?: unknown }).wheatBuyerQualityContext ?? null;
 }
 
 function analysisContextPlannedManagementNotes(value: unknown) {
@@ -385,6 +394,10 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       nextCultivar: base.nextCultivar,
       rows: resultsResult.rows,
     });
+    const wheatBuyerQualityEvidence = evaluateStoredWheatBuyerQualityContext(
+      analysisContextWheatBuyerQuality(base.analysisContext),
+      base.cropProfileCode,
+    );
 
     const deterministicInterpretation = interpretationResult.rows[0] ?? null;
     const interpreted = interpretationItems(deterministicInterpretation?.structuredOutput);
@@ -485,7 +498,9 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         isFirstYearArea: base.isFirstYearArea, cultivationYears: base.cultivationYears,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
         cropProfileCode: base.cropProfileCode ?? null,
-        wheatQualityObjectiveRequested: base.wheatQualityObjectiveRequested === true,
+        wheatQualityObjectiveRequested:
+          base.wheatQualityObjectiveRequested === true
+          || wheatBuyerQualityEvidence.status === "EVALUATED",
         updatedAt: base.seasonUpdatedAt,
       },
       pkDoseReadiness,
@@ -507,6 +522,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       riceNitrogenEvidence: buildRiceNitrogenEvidence(base.cropProfileCode, resultsResult.rows),
       deterministicNitrogenEvidence,
       wheatGrainQualityEvidence,
+      wheatBuyerQualityEvidence,
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
