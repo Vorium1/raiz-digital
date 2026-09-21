@@ -246,6 +246,12 @@ export async function commitCsvImport(input: {
       sampleType: input.sampleType ?? "SOLO",
     });
 
+    // O arquivo-fonte pode permanecer INCONSISTENT para auditoria quando possui
+    // ocorrências locais, mas a ANÁLISE pode seguir quando ao menos uma evidência
+    // laboratorial segura foi realmente promovida. Uma linha inválida não transforma
+    // todo o conjunto válido em análise inconsistente.
+    const analysisStatus = promoted.promotedResults > 0 ? "IMPORTED" : "INCONSISTENT";
+
     await client.query(
       `UPDATE analyses
        SET status = $3::analysis_status,
@@ -258,7 +264,7 @@ export async function commitCsvImport(input: {
       [
         input.tenantId,
         input.analysisId,
-        preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED",
+        analysisStatus,
         preview.confidence.score,
         preview.confidence.level,
         analysisSourceType,
@@ -294,6 +300,6 @@ export async function commitCsvImport(input: {
       },
     });
 
-    return { importId, preview, analysisStatus: preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED", promoted };
+    return { importId, preview, analysisStatus, promoted };
   });
 }
