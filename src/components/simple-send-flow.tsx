@@ -8,7 +8,7 @@ import { SimpleAreaSetup } from "@/components/simple-area-setup";
 import { buildAnalysisEvidence, EMPTY_ANALYSIS_CONTEXT_DRAFT, type AnalysisContextDraft } from "@/domain/analysis-context";
 import { evaluateAnalysisDepthReadiness } from "@/domain/analysis-depth-readiness";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
-import type { LabImportPreview } from "@/domain/lab-import";
+import type { LabImportPreview, LabSampleType } from "@/domain/lab-import";
 
 const ANALYSIS_DEPTH: AnalysisDepthId = "interpretacao-rapida";
 
@@ -48,6 +48,7 @@ export function SimpleSendFlow() {
   const [seasonId, setSeasonId] = useState("");
   const [laboratoryId, setLaboratoryId] = useState("");
   const [method, setMethod] = useState("");
+  const [sampleType, setSampleType] = useState<LabSampleType>("SOLO");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [file, setFile] = useState<LabImporterReadyFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -135,13 +136,13 @@ export function SimpleSendFlow() {
   }), [selectedSeason]);
 
   const evidence = useMemo(() => buildAnalysisEvidence(analysisContextDraft, {
-    currentSoilAnalysis: importReady,
+    currentSoilAnalysis: importReady && sampleType === "SOLO",
     crop: Boolean(selectedSeason?.nextCrop || selectedSeason?.currentCrop),
     yieldGoal: selectedSeason?.yieldGoal != null,
     yieldUnit: Boolean(selectedSeason?.yieldGoalUnit),
     fieldBoundaryGeoreferenced: Boolean(selectedField?.boundary),
     registeredSoilContext: Boolean(selectedSeason?.soilType || selectedSeason?.soilTexture),
-  }), [analysisContextDraft, importReady, selectedField, selectedSeason]);
+  }), [analysisContextDraft, importReady, sampleType, selectedField, selectedSeason]);
 
   const readiness = useMemo(() => evaluateAnalysisDepthReadiness(ANALYSIS_DEPTH, evidence), [evidence]);
 
@@ -187,6 +188,7 @@ export function SimpleSendFlow() {
           fileName: file.fileName,
           fallbackMethod: method || undefined,
           hasAgronomicContext: readiness.effectiveLayer >= 2,
+          sampleType,
           spatialLinked: false,
         }),
       });
@@ -216,7 +218,41 @@ export function SimpleSendFlow() {
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Envie o que você recebeu</h2><p>Laudo, planilha, PDF ou foto. A RAIZ lê e organiza.</p></div>
           <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
           {importReady && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
-          <details className="simple-send-options"><summary>Opções do arquivo</summary><div><label>Laboratório<select value={laboratoryId} onChange={(event) => setLaboratoryId(event.target.value)}><option value="">Não preciso informar agora</option>{context.laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.name}</option>)}</select></label><label>Método, somente se estiver faltando no arquivo<select value={method} onChange={(event) => setMethod(event.target.value)}><option value="">Não assumir</option><option>Mehlich-1</option><option>Resina</option><option>KCl 1 mol/L</option><option>Acetato de cálcio</option></select></label></div></details>
+          <details className="simple-send-options">
+            <summary>Opções do arquivo</summary>
+            <div>
+              <label>
+                Laboratório
+                <select value={laboratoryId} onChange={(event) => setLaboratoryId(event.target.value)}>
+                  <option value="">Não preciso informar agora</option>
+                  {context.laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Método, somente se estiver faltando no arquivo
+                <select value={method} onChange={(event) => setMethod(event.target.value)}>
+                  <option value="">Não assumir</option>
+                  <option>Mehlich-1</option>
+                  <option>Resina</option>
+                  <option>KCl 1 mol/L</option>
+                  <option>Acetato de cálcio</option>
+                </select>
+              </label>
+              <label>
+                Tipo de amostra
+                <select value={sampleType} onChange={(event) => setSampleType(event.target.value as LabSampleType)}>
+                  <option value="SOLO">Solo</option>
+                  <option value="BIOLOGICO">Biológico / microbiologia / raiz</option>
+                  <option value="FOLIAR">Foliar</option>
+                  <option value="PECIOLO">Pecíolo</option>
+                  <option value="MASSA_SECA">Massa seca</option>
+                  <option value="GRAO">Grão</option>
+                  <option value="SEMENTE">Semente</option>
+                  <option value="FERTILIZANTE">Fertilizante</option>
+                </select>
+              </label>
+            </div>
+          </details>
         </div>
       </section>
 
