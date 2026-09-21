@@ -178,9 +178,6 @@ export function deriveInmetContinuousRainHours(input:{
   const technicalRegionCodes=regions(input.technicalRegionCodes);
   const rows=input.observations.slice().sort((a,b)=>Date.parse(a.observedAtUtc)-Date.parse(b.observedAtUtc));
   if (!rows.length) return {evidence:null,warnings:["INMET_RAIN_DURATION_NO_OBSERVATIONS"]};
-  if (rows.length!==input.expectedHourlySlots) {
-    return {evidence:null,warnings:["INMET_RAIN_DURATION_WINDOW_INCOMPLETE"]};
-  }
 
   for (const row of rows) {
     assertIso(row.observedAtUtc,"observedAtUtc INMET");
@@ -197,6 +194,9 @@ export function deriveInmetContinuousRainHours(input:{
     if (timestamps[i]-timestamps[i-1]!==3_600_000) {
       return {evidence:null,warnings:["INMET_RAIN_DURATION_WINDOW_HAS_GAPS"]};
     }
+  }
+  if (rows.length!==input.expectedHourlySlots) {
+    return {evidence:null,warnings:["INMET_RAIN_DURATION_WINDOW_INCOMPLETE"]};
   }
   if (rows.some(row=>row.precipitationMm==null||!Number.isFinite(row.precipitationMm)||row.precipitationMm<0)) {
     return {evidence:null,warnings:["INMET_RAIN_DURATION_PRECIPITATION_INCOMPLETE_OR_INVALID"]};
