@@ -211,10 +211,10 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await layers.getByRole("button", { name: "Relevo" }).click();
 
     await expect.poll(async () => {
-      const has3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"]').count();
-      const hasFallback = await layers.locator(".real-field-map").count();
-      return has3d + hasFallback;
-    }, { timeout: 35_000, message: "Relevo precisa abrir 3D ou fallback topográfico" }).toBeGreaterThan(0);
+      const mounted3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"] .google-field-terrain-3d-canvas > *').count();
+      const resolvedFallback = await layers.locator('.real-field-map[data-map-provider]').count();
+      return mounted3d + resolvedFallback;
+    }, { timeout: 35_000, message: "Relevo precisa montar 3D de verdade ou resolver um fallback topográfico" }).toBeGreaterThan(0);
 
     const errorDetails = layers.locator(".simple-map-layer-error");
     if (await errorDetails.count()) {
