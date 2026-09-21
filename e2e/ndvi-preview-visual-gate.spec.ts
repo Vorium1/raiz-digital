@@ -208,13 +208,22 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await layers.scrollIntoViewIfNeeded();
     await expect(layers).toBeVisible({ timeout: 15_000 });
 
-    await layers.getByRole("button", { name: "Relevo" }).click();
+    const terrainButton = layers.getByRole("button", { name: "Relevo" });
+    await terrainButton.click();
+    await expect(terrainButton).toHaveClass(/active/);
 
     await expect.poll(async () => {
       const mounted3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"] .google-field-terrain-3d-canvas > *').count();
       const resolvedFallback = await layers.locator('.real-field-map[data-map-provider]').count();
       return mounted3d + resolvedFallback;
     }, { timeout: 35_000, message: "Relevo precisa montar 3D de verdade ou resolver um fallback topográfico" }).toBeGreaterThan(0);
+
+    const mounted3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"] .google-field-terrain-3d-canvas > *').count();
+    if (mounted3d === 0) {
+      const fallback = layers.locator('.real-field-map[data-map-provider]');
+      await expect(fallback).toBeVisible();
+      await expect(fallback.locator(".real-field-map-hint")).toContainText(/relevo|topográfica/i);
+    }
 
     const errorDetails = layers.locator(".simple-map-layer-error");
     if (await errorDetails.count()) {
