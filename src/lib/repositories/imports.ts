@@ -81,6 +81,8 @@ async function promoteRowsToLabResults(
             methodDerivedFromProtocol: row.methodDerivedFromProtocol,
             protocol: row.protocol || null,
             rawMethod: row.rawMethod || null,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
           }),
         ],
       );
@@ -229,6 +231,8 @@ export async function commitCsvImport(input: {
             protocol: row.protocol || null,
             rawMethod: row.rawMethod || null,
             methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
           }),
         ],
       );
