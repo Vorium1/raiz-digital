@@ -113,7 +113,7 @@ export const HOMOLOGATED_DISEASE_CLIMATE_PROFILES: DiseaseClimateProfile[] = [
       locator: "brusone: elevada umidade relativa e temperatura ao redor de 28 °C",
     },
     status: "HOMOLOGATED",
-  },,
+  },
   {
     id: "TRIGO-GIBERELA-BR-EMBRAPA",
     cropCode: "TRIGO",
@@ -207,7 +207,7 @@ export const HOMOLOGATED_DISEASE_CLIMATE_PROFILES: DiseaseClimateProfile[] = [
     },
     source: {
       institution: "Embrapa Hortaliças",
-      title: "Produção Integrada de Tomate Tutorando — módulo de doenças e clima",
+      title: "Produção Integrada de Tomate Tutorado — módulo de doenças e clima",
       locator: "14–20 °C e molhamento foliar superior a 10 horas favorecem requeima",
     },
     status: "HOMOLOGATED",
