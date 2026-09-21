@@ -74,7 +74,7 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
     if (recommendation.qualityObjective?.requested) {
       managementPractices.push(
-        `Trigo — objetivo de proteína/qualidade registrado separadamente da dose-base de produtividade. Nenhum N tardio adicional foi automatizado. ${recommendation.qualityObjective.evidence}`,
+        `Trigo — objetivo industrial de proteína/glúten vital registrado separadamente da dose-base de produtividade. O foco inclui quantidade de proteína e funcionalidade do glúten (principalmente gliadinas e gluteninas). Nenhum N tardio adicional foi automatizado. ${recommendation.qualityObjective.evidence}`,
       );
     }
   } else if (nitrogen?.status === "STALE") {
