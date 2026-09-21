@@ -191,6 +191,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     analysisId: input.analysisId,
     interpretationId: interpretationAfterProvider.id,
     expectedSeasonUpdatedAt: contextAfterProvider.updatedAt,
+    expectedNitrogenExecutionId: evidence.deterministicNitrogenEvidence.executionId,
     provider: result.provider,
     model: result.model,
     promptVersion: result.promptVersion,
