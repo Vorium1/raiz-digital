@@ -94,6 +94,7 @@ assert.ok(functionalBioWide.rows.every((row) => row.method === "Contagem em meio
 
 const complementaryBioCsv = `Amostra;Parametro;Valor;Unidade;Metodo
 BIO1;Carbono da biomassa microbiana;315;mg C/kg solo;Fumigação-extração
+BIO1;Nitrogênio da biomassa microbiana;28;mg N/kg solo;Fumigação-extração
 BIO1;Respiração basal;42;mg C-CO2 kg-1 solo dia-1;Incubação estática
 BIO1;qCO2;0,13;mg C-CO2 g-1 CBM h-1;Calculado a partir de respiração e biomassa
 BIO1;Hidrólise FDA;27;ug fluoresceina g-1 h-1;Hidrólise de diacetato de fluoresceína
@@ -105,6 +106,7 @@ const complementaryBio = buildLabImportPreview(complementaryBioCsv, "biologia-co
 });
 assert.equal(complementaryBio.blockers, 0);
 assert.ok(complementaryBio.parameters.includes("MICROBIO_BIOMASS_C"));
+assert.ok(complementaryBio.parameters.includes("MICROBIO_BIOMASS_N"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_BASAL_RESPIRATION"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_QCO2"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_FDA_HYDROLYSIS"));
