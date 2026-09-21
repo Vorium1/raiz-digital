@@ -6,6 +6,16 @@ assert.equal(empty.resolution, "NOT_EVALUATED");
 assert.equal(empty.policy.missingDataBlocksOfficialReport, false);
 assert.equal(empty.policy.unknownComponentsAssumedZero, false);
 
+const irrigatedContextOnly = evaluate({ waterRegime: "IRRIGADO" });
+assert.equal(irrigatedContextOnly.resolution, "CONTEXT_ONLY");
+assert.equal(irrigatedContextOnly.balance, null);
+assert.ok(irrigatedContextOnly.limitations.includes("IRRIGATED_REGIME_DOES_NOT_PROVE_DAILY_NET_IRRIGATION"));
+
+const rainfedContextOnly = evaluate({ waterRegime: "SEQUEIRO" });
+assert.equal(rainfedContextOnly.resolution, "CONTEXT_ONLY");
+assert.equal(rainfedContextOnly.balance, null);
+assert.equal(rainfedContextOnly.policy.missingDataBlocksOfficialReport, false);
+
 const etoOnly = evaluate({ waterRegime: "", referenceEtMm: 4.8 });
 assert.equal(etoOnly.resolution, "CONTEXT_ONLY");
 assert.equal(etoOnly.demand, null);
