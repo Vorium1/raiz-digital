@@ -53,8 +53,14 @@ assert.equal(wheatHighOm.status, "REQUIRES_AGRONOMIST_REVIEW");
 assert.deepEqual(wheatHighOm.dose, { kind: "RANGE", minKgNPerHa: 0, maxKgNPerHa: 50 });
 
 const wheatQuality = computeWheatNitrogenRecommendation({ organicMatterPct: 2, precedingCrop: "SOY", targetYieldTonPerHa: 3, lateQualityNitrogenRequested: true });
-assert.equal(wheatQuality.status, "REQUIRES_AGRONOMIST_REVIEW");
-assert.ok(wheatQuality.blockers.includes("LATE_QUALITY_N_REQUIRES_SPECIFIC_REVIEW"));
+assert.equal(wheatQuality.status, "READY_FOR_IMPLEMENTATION", "objetivo de qualidade não pode rebaixar a dose-base de produtividade");
+assert.deepEqual(wheatQuality.dose, { kind: "EXACT", kgNPerHa: 60 });
+assert.equal(wheatQuality.blockers.includes("LATE_QUALITY_N_REQUIRES_SPECIFIC_REVIEW"), false);
+assert.equal(wheatQuality.qualityObjective?.status, "REQUIRES_SPECIFIC_REVIEW");
+assert.equal(wheatQuality.qualityObjective?.automaticAdditionalDoseAllowed, false);
+assert.equal(wheatQuality.qualityObjective?.additionalDoseKgNPerHa, null);
+assert.match(wheatQuality.qualityObjective?.evidence ?? "", /pouco efetiva/i);
+assert.match(wheatQuality.qualityObjective?.source ?? "", /2025/);
 
 const canola = computeCanolaNitrogenRecommendation({ organicMatterPct: 3, targetYieldTonPerHa: 2.5 });
 assert.equal(canola.status, "READY_FOR_IMPLEMENTATION");
