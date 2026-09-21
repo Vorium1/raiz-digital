@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { evaluateWheatGrainQualityEvidence } from "../src/domain/wheat-grain-quality-evidence.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
+import { evaluateStoredWheatBuyerQualityContext } from "../src/domain/wheat-buyer-quality-context.ts";
 
 const rows = [
   { sampleCode: "G1", sampleType: "GRAO", parameterCode: "PROTEIN_TOTAL", value: 13.4, unit: "%", method: "NIR", protocol: "AACC" },
@@ -124,5 +125,53 @@ assert.match(industrialText, /não são convertidos uns nos outros/);
 assert.match(industrialText, /não autorizam N adicional automaticamente/);
 assert.match(industrial.prescription.missingInformation.join(" "), /sem especificação oficial\/contratual do comprador/);
 assert.doesNotMatch(industrialText, /atende.*Be8|padrão Be8|prêmio Be8/i);
+
+const selectedBuyer = evaluateStoredWheatBuyerQualityContext({
+  protocolId: "BE8_WHEAT_VITAL_GLUTEN_2026",
+  sowingBaseNitrogenKgN: 25,
+  seedRateKgPerHa: 160,
+  firstNitrogenApplicationKgN: 75,
+  firstNitrogenLatestStage: 7,
+  secondNitrogenProduct: "Sulfato de amônio",
+  secondNitrogenDisplayedAmountKg: 175,
+  secondNitrogenSourceAmountBasisConfirmed: true,
+  fungalApplicationDeclared: true,
+}, "TRIGO");
+
+const industrialWithBuyer = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...baseEvidence(true),
+    wheatBuyerQualityEvidence: selectedBuyer,
+  },
+});
+const buyerN = industrialWithBuyer.prescription.recommendations.filter((row) => row.inputType === "N");
+assert.equal(buyerN.length, 1);
+assert.equal(buyerN[0].quantity, 80, "protocolo comercial não pode alterar a dose-base de N");
+const buyerText = industrialWithBuyer.prescription.managementPractices.join(" ");
+assert.match(buyerText, /Protocolo de comprador selecionado explicitamente: Be8 Agro/);
+assert.match(buyerText, /itens obrigatórios verificados como conformes/i);
+assert.match(buyerText, /não garante prêmio, aceite comercial ou desempenho industrial/i);
+assert.doesNotMatch(buyerText, /prêmio garantido|garante prêmio/i);
+
+const unverifiedBuyer = evaluateStoredWheatBuyerQualityContext({
+  protocolId: "BE8_WHEAT_VITAL_GLUTEN_2026",
+  sowingBaseNitrogenKgN: 25,
+  seedRateKgPerHa: 160,
+  secondNitrogenProduct: "Sulfato de amônio",
+  secondNitrogenDisplayedAmountKg: 175,
+  fungalApplicationDeclared: true,
+}, "TRIGO");
+const industrialUnverifiedBuyer = await deterministicLimitedPrescriptionProvider.prescribe({
+  evidence: {
+    ...baseEvidence(true),
+    wheatBuyerQualityEvidence: unverifiedBuyer,
+  },
+});
+assert.match(industrialUnverifiedBuyer.prescription.managementPractices.join(" "), /a conformidade obrigatória ainda não pode ser fechada/i);
+assert.match(industrialUnverifiedBuyer.prescription.missingInformation.join(" "), /base operacional da quantidade informada/i);
+assert.equal(
+  industrialUnverifiedBuyer.prescription.recommendations.filter((row) => row.inputType === "N")[0].quantity,
+  80,
+);
 
 console.log("wheat-grain-quality: measured grain evidence is preserved, non-prescriptive and cannot alter base N");
