@@ -9,6 +9,7 @@ export type SpatialAttributeEvidenceInput = {
   depthKnownCount: number;
   depthBands: string[];
   sampleDistribution: SampleDistribution;
+  evidenceFingerprint?: string | null;
 };
 
 export type SpatialAttributeEvidence = {
@@ -25,6 +26,7 @@ export type SpatialAttributeEvidence = {
     depthKnownCount: number;
     depthBands: string[];
     sampleDistribution: SampleDistribution;
+    evidenceFingerprint: string | null;
   };
   limitations: string[];
 };
@@ -73,6 +75,7 @@ export function evaluateSpatialAttributeEvidence(
     depthKnownCount,
     depthBands,
     sampleDistribution: input.sampleDistribution,
+    evidenceFingerprint: input.evidenceFingerprint?.trim() || null,
   };
 
   if (distinctReliableCoordinateCount < 3) {
