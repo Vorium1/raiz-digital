@@ -31,15 +31,7 @@ async function enrichEvidenceWithAutomaticNitrogen(input: {
 }, initialEvidence: NonNullable<Awaited<ReturnType<typeof buildAgronomicPrescriptionEvidencePackage>>>) {
   if (initialEvidence.deterministicNitrogenEvidence.status === "CURRENT") return initialEvidence;
 
-  let workspace;
-  try {
-    workspace = await getNitrogenRecommendationWorkspace(input);
-  } catch (error) {
-    if (error instanceof NitrogenRecommendationError && error.status === 404) throw error;
-    // Falha de leitura não vira licença para inventar N. O parecer segue com o
-    // snapshot já obtido e a camada de N permanece sem dose automática.
-    return initialEvidence;
-  }
+  const workspace = await getNitrogenRecommendationWorkspace(input);
 
   if (!workspace.readiness.ready || !workspace.recommendationPreview) {
     return initialEvidence;
