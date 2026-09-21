@@ -4,6 +4,7 @@ import {
 } from "@/domain/agroclimate-analysis-context";
 import { getPlatformSession } from "@/lib/auth/session";
 import { collectOfficialAgroclimateEnrichment } from "@/lib/agroclimate/official-enrichment";
+import { collectInmetRegionalObservation } from "@/lib/agroclimate/inmet-regional-observation";
 import { getAnalysisAgroclimateLocationContext } from "@/lib/repositories/analysis-agroclimate-context";
 import { resolveTechnicalRegionsForLocation } from "@/lib/repositories/agronomic-profiles";
 
@@ -23,7 +24,7 @@ export async function GET(
   if (!location) return Response.json({ error: "Análise não encontrada." }, { status: 404 });
 
   const warnings: string[] = [];
-  let resolvedRegions: Array<{ code?: string }> = [];
+  let resolvedRegions: Array<{ code?: string; specificityScore?: number }> = [];
   try {
     resolvedRegions = await resolveTechnicalRegionsForLocation({
       tenantId: session.tenantId,
@@ -59,6 +60,39 @@ export async function GET(
     zarcSeason,
   });
 
+  const fieldRegionRefs = resolvedRegions.flatMap((region) =>
+    region.code?.trim() && Number.isFinite(region.specificityScore)
+      ? [{
+          code: region.code.trim().toUpperCase(),
+          specificityScore: Number(region.specificityScore),
+        }]
+      : []
+  );
+
+  const inmetObservation = await collectInmetRegionalObservation({
+    fieldLatitude: location.latitude,
+    fieldLongitude: location.longitude,
+    fieldRegions: fieldRegionRefs,
+    resolveStationRegions: async (station) => {
+      const regions = await resolveTechnicalRegionsForLocation({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        countryCode: "BR",
+        stateCode: station.stateCode,
+        latitude: station.latitude,
+        longitude: station.longitude,
+      });
+      return regions.flatMap((region) =>
+        region.code?.trim() && Number.isFinite(region.specificityScore)
+          ? [{
+              code: region.code.trim().toUpperCase(),
+              specificityScore: Number(region.specificityScore),
+            }]
+          : []
+      );
+    },
+  });
+
   return Response.json({
     analysisId: location.analysisId,
     location: {
@@ -77,7 +111,8 @@ export async function GET(
     },
     technicalRegionCodes: uniqueTechnicalRegionCodes,
     enrichment,
-    warnings: [...new Set([...warnings, ...enrichment.warnings])],
+    inmetObservation,
+    warnings: [...new Set([...warnings, ...enrichment.warnings, ...inmetObservation.warnings])],
   }, {
     headers: { "cache-control": "no-store" },
   });
