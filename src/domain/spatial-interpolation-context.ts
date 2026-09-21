@@ -21,6 +21,7 @@ export type SpatialInterpolationValidationContextEntry = {
   parameterCode: string;
   method: SpatialMethod;
   sampleCount: number;
+  evidenceFingerprint: string | null;
   crossValidation: SpatialCrossValidationEvidence | null;
   variogram: SpatialVariogramEvidence | null;
   professionalMethodReviewApproved: boolean;
@@ -32,6 +33,8 @@ export type StoredSpatialInterpolationValidationEvaluation = {
   method: SpatialMethod;
   storedSampleCount: number;
   currentSampleCount: number | null;
+  storedEvidenceFingerprint: string | null;
+  currentEvidenceFingerprint: string | null;
   currentAttributeStatus: SpatialAttributeEvidence["status"] | null;
   current: boolean;
   officialSurfaceAllowed: boolean;
@@ -51,6 +54,16 @@ function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function fingerprintOrNull(value: unknown) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string") throw new Error("Fingerprint da evidência espacial inválido.");
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-f0-9]{32,64}$/.test(normalized)) {
+    throw new Error("Fingerprint da evidência espacial inválido.");
+  }
+  return normalized;
 }
 
 function finiteOrNull(value: unknown, label: string) {
@@ -137,6 +150,7 @@ export function parseSpatialInterpolationValidations(value: unknown): SpatialInt
       parameterCode,
       method: source.method as SpatialMethod,
       sampleCount: source.sampleCount as number,
+      evidenceFingerprint: fingerprintOrNull(source.evidenceFingerprint),
       crossValidation: parseCrossValidation(source.crossValidation),
       variogram: parseVariogram(source.variogram),
       professionalMethodReviewApproved: source.professionalMethodReviewApproved,
@@ -188,6 +202,7 @@ export function evaluateStoredSpatialInterpolationValidations(input: {
   const entries = parsed.map((entry): StoredSpatialInterpolationValidationEvaluation => {
     const attribute = byParameter.get(entry.parameterCode) ?? null;
     const currentSampleCount = attribute?.support.distinctReliableCoordinateCount ?? null;
+    const currentEvidenceFingerprint = attribute?.support.evidenceFingerprint ?? null;
     const limitations: string[] = [];
 
     if (!attribute) limitations.push("SPATIAL_ATTRIBUTE_EVIDENCE_NOT_AVAILABLE");
@@ -196,6 +211,13 @@ export function evaluateStoredSpatialInterpolationValidations(input: {
     }
     if (currentSampleCount != null && currentSampleCount !== entry.sampleCount) {
       limitations.push("SPATIAL_VALIDATION_SAMPLE_COUNT_STALE");
+    }
+    if (!entry.evidenceFingerprint) {
+      limitations.push("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_MISSING");
+    } else if (!currentEvidenceFingerprint) {
+      limitations.push("SPATIAL_CURRENT_EVIDENCE_FINGERPRINT_UNAVAILABLE");
+    } else if (entry.evidenceFingerprint !== currentEvidenceFingerprint.toLowerCase()) {
+      limitations.push("SPATIAL_VALIDATION_EVIDENCE_FINGERPRINT_STALE");
     }
 
     const validation = evaluateSpatialInterpolationValidation({
@@ -211,6 +233,9 @@ export function evaluateStoredSpatialInterpolationValidations(input: {
       attribute
       && attribute.status === "INTERPOLATION_CANDIDATE"
       && currentSampleCount === entry.sampleCount
+      && entry.evidenceFingerprint != null
+      && currentEvidenceFingerprint != null
+      && entry.evidenceFingerprint === currentEvidenceFingerprint.toLowerCase()
       && validation.status === "VALIDATED_FOR_OFFICIAL_SURFACE"
       && validation.officialSurfaceAllowed,
     );
@@ -220,6 +245,8 @@ export function evaluateStoredSpatialInterpolationValidations(input: {
       method: entry.method,
       storedSampleCount: entry.sampleCount,
       currentSampleCount,
+      storedEvidenceFingerprint: entry.evidenceFingerprint,
+      currentEvidenceFingerprint,
       currentAttributeStatus: attribute?.status ?? null,
       current,
       officialSurfaceAllowed: current,
