@@ -120,6 +120,19 @@ export function evaluateIrrigationWaterEvidence(input: IrrigationWaterAssessment
     if (input.waterRegime === "" && netIrrigationMm == null) limitations.push("WATER_REGIME_UNKNOWN_DOES_NOT_PROVE_ZERO_IRRIGATION");
 
     if (providedValues === 0) {
+      if (input.waterRegime !== "") {
+        return {
+          resolution: "CONTEXT_ONLY" as const,
+          waterRegime: input.waterRegime,
+          demand: null,
+          balance: null,
+          policy,
+          limitations: [
+            ...limitations,
+            "FULL_BALANCE_REQUIRES_ALIGNED_ETC_EFFECTIVE_RAIN_NET_IRRIGATION_CAPILLARY_RISE_AND_ROOT_ZONE_STORAGE",
+          ],
+        };
+      }
       return {
         resolution: "NOT_EVALUATED" as const,
         waterRegime: input.waterRegime,
