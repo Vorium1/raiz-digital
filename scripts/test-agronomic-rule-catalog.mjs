@@ -10,6 +10,7 @@ import {
 } from "../src/domain/agronomic-rule-catalog.ts";
 import {
   computeRiceContinuousNitrogen,
+  evaluateRiceContinuousNitrogenEnvelope,
   computeRiceContinuousPhosphorus,
   computeRiceIronToxicityRisk,
   classifyMicronutrientCqfs2016,
@@ -156,6 +157,29 @@ assert.throws(() => computeRiceContinuousNitrogen({
   responseClass: "ALTA",
   responseClassApproved: false,
 }), /explicitamente validada/);
+
+const riceNEnvelope = evaluateRiceContinuousNitrogenEnvelope({
+  profileId: RESEARCH_READY_PROFILES.rice,
+  organicMatterPct: 2.5,
+});
+assert.equal(riceNEnvelope.automaticDoseAllowed, false);
+assert.equal(riceNEnvelope.responseClassResolved, false);
+assert.equal(riceNEnvelope.blocker, "RICE_RESPONSE_CLASS_NOT_RESOLVED");
+assert.deepEqual(riceNEnvelope.alternatives, [
+  { responseClass: "MEDIA", dose: { kind: "EXACT", kgPerHa: 110 } },
+  { responseClass: "ALTA", dose: { kind: "EXACT", kgPerHa: 135 } },
+  { responseClass: "MUITO_ALTA", dose: { kind: "EXACT", kgPerHa: 165 } },
+]);
+
+const riceNEnvelopeHighOm = evaluateRiceContinuousNitrogenEnvelope({
+  profileId: RESEARCH_READY_PROFILES.rice,
+  organicMatterPct: 5.1,
+});
+assert.deepEqual(riceNEnvelopeHighOm.alternatives, [
+  { responseClass: "MEDIA", dose: { kind: "UPPER_BOUND", maxKgPerHa: 90 } },
+  { responseClass: "ALTA", dose: { kind: "UPPER_BOUND", maxKgPerHa: 110 } },
+  { responseClass: "MUITO_ALTA", dose: { kind: "UPPER_BOUND", maxKgPerHa: 135 } },
+]);
 
 const riceP = computeRiceContinuousPhosphorus({
   profileId: RESEARCH_READY_PROFILES.rice,
