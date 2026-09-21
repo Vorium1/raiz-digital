@@ -49,16 +49,21 @@ export type SpatialPrescriptionRequestDecision = {
   };
 };
 
+export function spatialInterpolationClassForCount(
+  sampleCount: number | null | undefined,
+  method: SpatialMethod | null = null,
+): SpatialPrescriptionRequestDecision["policy"]["interpolationClass"] {
+  const n = Number.isInteger(sampleCount) && (sampleCount as number) >= 0 ? (sampleCount as number) : null;
+  if (n == null || n < 3) return "NONE";
+  if (n < 50) return "EXPLORATORY_ONLY";
+  if (n >= 100 && method === "KRIGING") return "CANDIDATE_WITH_CROSS_VALIDATION";
+  return "CANDIDATE_REVIEW";
+}
+
 function basePolicy(input: SpatialPrescriptionRequestInput): SpatialPrescriptionRequestDecision["policy"] {
   const n = Number.isInteger(input.sampleCount) && (input.sampleCount as number) >= 0 ? (input.sampleCount as number) : null;
   const method = input.requestedSpatialMethod ?? null;
-  let interpolationClass: SpatialPrescriptionRequestDecision["policy"]["interpolationClass"] = "NONE";
-  if (n != null) {
-    if (n < 3) interpolationClass = "NONE";
-    else if (n < 50) interpolationClass = "EXPLORATORY_ONLY";
-    else if (n >= 100 && method === "KRIGING") interpolationClass = "CANDIDATE_WITH_CROSS_VALIDATION";
-    else interpolationClass = "CANDIDATE_REVIEW";
-  }
+  const interpolationClass = spatialInterpolationClassForCount(n, method);
   return {
     sampleCount: n,
     requestedSpatialMethod: method,
