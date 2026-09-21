@@ -164,6 +164,8 @@ assert.match(technicalExistingUpload, /seguirão como evidência utilizável/);
 assert.match(existingUpload, /<LabImporter simple /);
 assert.match(existingUpload, /sampleType/);
 assert.match(existingUpload, /BIOLOGICO/);
+assert.match(existingUpload, /canProceedWithPartialEvidence/);
+assert.match(existingUpload, /fora da interpretação/);
 assert.match(technicalExistingUpload, /sampleType/);
 assert.match(technicalExistingUpload, /BIOLOGICO/);
 assert.match(labImporter, /simple && preview && preview\.blockers > 0/);
