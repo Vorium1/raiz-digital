@@ -95,6 +95,7 @@ export async function saveNdviSnapshot(input: {
     algorithm: string;
     mosaickingOrder: string;
   };
+  replaceExistingRasterSha256?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     let result;
@@ -117,6 +118,7 @@ export async function saveNdviSnapshot(input: {
            raster_algorithm = EXCLUDED.raster_algorithm, raster_mosaicking_order = EXCLUDED.raster_mosaicking_order,
            raster_archived_at = now()
          WHERE field_ndvi_snapshots.raster_object_key IS NULL
+            OR ($22::text IS NOT NULL AND field_ndvi_snapshots.raster_sha256 = $22::text)
          RETURNING ${SNAPSHOT_COLUMNS}`,
         [
           input.tenantId, input.fieldId, input.capturedAt, input.source, input.providerSceneId ?? null,
@@ -125,6 +127,7 @@ export async function saveNdviSnapshot(input: {
           input.rasterArtifact.key, input.rasterArtifact.sha256.toLowerCase(), input.rasterArtifact.bytes,
           JSON.stringify(input.rasterArtifact.bbox), input.rasterArtifact.width, input.rasterArtifact.height,
           input.rasterArtifact.algorithm, input.rasterArtifact.mosaickingOrder,
+          input.replaceExistingRasterSha256?.toLowerCase() ?? null,
         ],
       );
     } catch (error) {
@@ -154,6 +157,7 @@ export async function saveNdviSnapshot(input: {
         meanNdvi: persisted.meanNdvi,
         rasterSha256: persisted.rasterSha256,
         rasterArtifactWrittenNow: artifactWrittenNow,
+        replacedStaleRasterSha256: input.replaceExistingRasterSha256?.toLowerCase() ?? null,
       },
     });
     return persisted;

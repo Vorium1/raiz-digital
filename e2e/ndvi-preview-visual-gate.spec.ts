@@ -114,18 +114,44 @@ async function fieldWithArchivedNdvi(page: Page) {
     });
 
     if (!result.ok || !payload?.fieldBoundary) continue;
-    const archived = (payload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
+    let effectivePayload = payload;
+    let archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
+
+    if (!archived?.capturedAt) {
+      const refresh = await page.evaluate(async (fieldId) => {
+        const response = await fetch(`/api/fields/${fieldId}/ndvi`, { method: "POST" });
+        let body: any = null;
+        try { body = await response.json(); } catch {}
+        return { status: response.status, ok: response.ok, body };
+      }, field.id);
+
+      diagnostics.push({
+        fieldId: field.id,
+        refreshStatus: refresh.status,
+        refreshOk: refresh.ok,
+        refreshError: refresh.body?.error ?? refresh.body?.partialFailure?.error ?? null,
+        refreshArchivedCount: Array.isArray(refresh.body?.history)
+          ? refresh.body.history.filter((snapshot: any) => Boolean(snapshot.rasterObjectKey)).length
+          : 0,
+      });
+
+      if (refresh.ok) {
+        effectivePayload = refresh.body as NdviPayload;
+        archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
+      }
+    }
+
     if (archived?.capturedAt) {
       return {
         fieldId: field.id,
         fieldName: field.name ?? field.id,
         rasterDate: archived.capturedAt.slice(0, 10),
-        boundary: payload.fieldBoundary,
+        boundary: effectivePayload.fieldBoundary ?? payload.fieldBoundary,
       };
     }
   }
 
-  throw new Error(`Nenhum raster NDVI arquivado ficou acessível pela API do Preview. Diagnóstico: ${JSON.stringify(diagnostics)}`);
+  throw new Error(`Nenhum raster NDVI arquivado ficou acessível pela API do Preview após refresh seguro. Diagnóstico: ${JSON.stringify(diagnostics)}`);
 }
 
 async function assertRasterEnvelopeContainsBoundary(page: Page, input: {
@@ -163,6 +189,38 @@ async function assertRasterEnvelopeContainsBoundary(page: Page, input: {
     expect(lon, "longitude do contorno fora do envelope do raster").toBeLessThanOrEqual(maxLon + tolerance);
     expect(lat, "latitude do contorno fora do envelope do raster").toBeGreaterThanOrEqual(minLat - tolerance);
     expect(lat, "latitude do contorno fora do envelope do raster").toBeLessThanOrEqual(maxLat + tolerance);
+  }
+}
+
+async function assertNoHorizontalOverflow(page: Page) {
+  try {
+    await assertNoHorizontalOverflow(page);
+  } catch {
+    const diagnostics = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const scrollWidth = document.documentElement.scrollWidth;
+      const offenders = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const overflowRight = Math.max(0, rect.right - viewportWidth);
+          const overflowLeft = Math.max(0, -rect.left);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id || null,
+            className: typeof element.className === "string" ? element.className : null,
+            overflowRight: Math.round(overflowRight * 10) / 10,
+            overflowLeft: Math.round(overflowLeft * 10) / 10,
+            rectLeft: Math.round(rect.left * 10) / 10,
+            rectRight: Math.round(rect.right * 10) / 10,
+            width: Math.round(rect.width * 10) / 10,
+          };
+        })
+        .filter((entry) => entry.overflowRight > 1 || entry.overflowLeft > 1)
+        .sort((a, b) => Math.max(b.overflowRight, b.overflowLeft) - Math.max(a.overflowRight, a.overflowLeft))
+        .slice(0, 12);
+      return { viewportWidth, scrollWidth, overflow: scrollWidth - viewportWidth, offenders };
+    });
+    throw new Error(`overflow horizontal de ${diagnostics.overflow}px; elementos excedentes: ${JSON.stringify(diagnostics.offenders)}`);
   }
 }
 
@@ -226,9 +284,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await vigor.scrollIntoViewIfNeeded();
     await expect(vigor).toBeVisible();
 
-    await expect.poll(async () => page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    )).toBeLessThanOrEqual(1);
+    await assertNoHorizontalOverflow(page);
 
     const box = await vigor.boundingBox();
     expect(box).not.toBeNull();

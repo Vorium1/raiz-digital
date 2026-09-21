@@ -1,4 +1,5 @@
 import { getPlatformSession } from "@/lib/auth/session";
+import { ndviRasterBboxContainsBoundary } from "@/domain/ndvi-raster-spatial-validity";
 import { NdviRasterPersistenceError, readNdviRasterArtifact } from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getNdviSnapshotForDate } from "@/lib/repositories/ndvi";
 
@@ -50,6 +51,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       {
         error: "Este snapshot NDVI é legado e ainda não possui raster histórico arquivado. Atualize o histórico do talhão para criar a cadeia de custódia antes de exibi-lo como mapa histórico.",
         code: "NDVI_RASTER_ARCHIVE_REQUIRED",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (!ndviRasterBboxContainsBoundary(snapshot.rasterBbox, boundary)) {
+    return Response.json(
+      {
+        error: "O raster NDVI arquivado pertence a um contorno anterior deste talhão. Atualize o satélite para gerar evidência espacial compatível com o limite atual.",
+        code: "NDVI_RASTER_BOUNDARY_MISMATCH",
       },
       { status: 409 },
     );
