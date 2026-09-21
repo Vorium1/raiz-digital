@@ -71,6 +71,47 @@ export const HOMOLOGATED_CROP_CLIMATE_PROFILES: CropClimateProfile[] = [
     },
     status: "HOMOLOGATED",
   },
+  {
+    id: "SOJA-BR-EMBRAPA-CLIMA",
+    cropCode: "SOJA",
+    region: { countryCode: "BR" },
+    rules: [
+      {
+        hazard: "WATER_DEFICIT",
+        stages: ["SOWING_EMERGENCE"],
+        impact: "ADVERSE",
+        severity: "HIGH",
+        rationale: "Déficit hídrico entre semeadura e emergência compromete germinação, emergência e estabelecimento da soja.",
+      },
+      {
+        hazard: "WATER_DEFICIT",
+        stages: ["FLOWERING", "REPRODUCTIVE", "GRAIN_FILL"],
+        impact: "ADVERSE",
+        severity: "HIGH",
+        rationale: "A soja é especialmente sensível ao déficit hídrico no período reprodutivo; o enchimento de grãos é ainda mais crítico que a floração.",
+      },
+      {
+        hazard: "HEAT",
+        stages: ["FLOWERING", "REPRODUCTIVE"],
+        impact: "ADVERSE",
+        severity: "HIGH",
+        rationale: "Temperaturas muito elevadas aumentam aborto de flores e vagens e reduzem a retenção de legumes, com agravamento quando coincidem com déficit hídrico.",
+      },
+      {
+        hazard: "LOW_SOIL_TEMPERATURE",
+        stages: ["SOWING_EMERGENCE"],
+        impact: "ADVERSE",
+        severity: "HIGH",
+        rationale: "Temperatura do solo abaixo da faixa adequada compromete germinação e emergência da soja.",
+      },
+    ],
+    source: {
+      institution: "Embrapa Soja",
+      title: "Exigências climáticas da soja / Soja em Carência de Água / 500 Perguntas 500 Respostas",
+      locator: "temperatura do solo, calor, déficit hídrico e fases críticas da soja",
+    },
+    status: "HOMOLOGATED",
+  },
 ];
 
 /**
