@@ -251,6 +251,30 @@ const PARAMETER_ALIASES: Record<string, string> = {
   argila: "CLAY",
   clay: "CLAY",
 
+  // Qualidade tecnológica de grãos/trigo — capturar como evidência medida.
+  // Nenhum código abaixo implica classe tecnológica, aptidão industrial ou recomendação de N.
+  proteina: "PROTEIN_TOTAL",
+  proteinatotal: "PROTEIN_TOTAL",
+  proteinadograo: "PROTEIN_TOTAL",
+  teordeproteina: "PROTEIN_TOTAL",
+  glutenumido: "GLUTEN_WET",
+  teordeglutenumido: "GLUTEN_WET",
+  glutenseco: "GLUTEN_DRY",
+  teordeglutenseco: "GLUTEN_DRY",
+  indicedegluten: "GLUTEN_INDEX",
+  glutenindex: "GLUTEN_INDEX",
+  forcadeglutenw: "ALVEOGRAPH_W",
+  alveografiaw: "ALVEOGRAPH_W",
+  relacaopl: "P_L",
+  pl: "P_L",
+  sedimentacaosds: "SDS_SEDIMENTATION",
+  microssedimentacaosds: "SDS_SEDIMENTATION",
+  mssds: "SDS_SEDIMENTATION",
+  gliadina: "GLIADIN",
+  gliadinas: "GLIADIN",
+  glutenina: "GLUTENIN",
+  gluteninas: "GLUTENIN",
+
   // BioAS / bioanálise do solo — nomes observados em laudos e materiais Embrapa.
   ari: "BIOAS_ARYLSULFATASE",
   arilsulfatase: "BIOAS_ARYLSULFATASE",
