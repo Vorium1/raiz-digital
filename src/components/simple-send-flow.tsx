@@ -8,7 +8,7 @@ import { SimpleAreaSetup } from "@/components/simple-area-setup";
 import { buildAnalysisEvidence, EMPTY_ANALYSIS_CONTEXT_DRAFT, type AnalysisContextDraft } from "@/domain/analysis-context";
 import { evaluateAnalysisDepthReadiness } from "@/domain/analysis-depth-readiness";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
-import type { LabImportPreview, LabSampleType } from "@/domain/lab-import";
+import type { LabImportPreview, LabImportUsability, LabSampleType } from "@/domain/lab-import";
 
 const ANALYSIS_DEPTH: AnalysisDepthId = "interpretacao-rapida";
 
@@ -33,7 +33,7 @@ type ContextData = {
   cropProfiles: Array<{ id: string; code: string; name: string; status: string }>;
 };
 
-type ImportPreview = LabImportPreview & { normalizedRowCount?: number };
+type ImportPreview = LabImportPreview & { normalizedRowCount?: number; usability?: LabImportUsability };
 const BASE_SOIL_PARAMETER_CODES = new Set([
   "PH", "SMP", "P", "K", "CA", "MG", "AL", "H_AL", "CTC", "V", "MO", "C_ORG",
   "S", "B", "ZN", "CU", "MN", "FE", "CLAY",
@@ -127,8 +127,10 @@ export function SimpleSendFlow() {
   function chooseProperty(value: string) { setPropertyId(value); setFieldId(""); setSeasonId(""); }
   function chooseField(value: string) { setFieldId(value); setSeasonId(""); }
 
-  const importReady = Boolean(preview && preview.blockers === 0 && file);
-  const fileNeedsAttention = Boolean(preview && preview.blockers > 0);
+  const partialUsability = preview?.usability;
+  const importReady = Boolean(preview && file && (partialUsability?.canProceedWithPartialEvidence ?? preview.blockers === 0));
+  const fileNeedsAttention = Boolean(preview && preview.blockers > 0 && !importReady);
+  const partialEvidence = Boolean(preview && preview.blockers > 0 && importReady);
   const areaReady = Boolean(clientId && propertyId && fieldId && seasonId);
   const rowCount = preview?.normalizedRowCount ?? preview?.rows.length ?? 0;
 
@@ -225,7 +227,7 @@ export function SimpleSendFlow() {
         <div className="simple-send-content">
           <div className="simple-send-heading"><span>ARQUIVO</span><h2>Envie o que você recebeu</h2><p>Laudo, planilha, PDF ou foto. A RAIZ lê e organiza.</p></div>
           <LabImporter simple method={method} onPreviewChange={(value) => setPreview(value as ImportPreview | null)} onFileReady={setFile}/>
-          {importReady && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>Arquivo recebido</strong><small>{file?.fileName} · {rowCount} resultado(s) reconhecido(s)</small></div></div>}
+          {importReady && <div className="simple-send-ok"><Icon name="check" size={18}/><div><strong>{partialEvidence ? "Arquivo recebido com evidências utilizáveis" : "Arquivo recebido"}</strong><small>{file?.fileName} · {partialUsability ? `${partialUsability.promotableRowCount} resultado(s) utilizável(is)${partialUsability.excludedRowCount ? ` · ${partialUsability.excludedRowCount} linha(s) ficará(ão) fora da interpretação` : ""}` : `${rowCount} resultado(s) reconhecido(s)`}</small></div></div>}
           <details className="simple-send-options">
             <summary>Opções do arquivo</summary>
             <div>
