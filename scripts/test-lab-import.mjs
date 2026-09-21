@@ -92,14 +92,14 @@ assert.ok(functionalBioWide.parameters.some((code) => code.includes("SOLUBILIZAD
 assert.ok(functionalBioWide.rows.every((row) => row.unit === "UFC/g solo"));
 assert.ok(functionalBioWide.rows.every((row) => row.method === "Contagem em meio seletivo informada pelo laboratório"));
 
-const complementaryBioCsv = `Amostra;Parametro;Valor;Unidade;Metodo
-BIO1;Carbono da biomassa microbiana;315;mg C/kg solo;Fumigação-extração
-BIO1;Nitrogênio da biomassa microbiana;28;mg N/kg solo;Fumigação-extração
-BIO1;Respiração basal;42;mg C-CO2 kg-1 solo dia-1;Incubação estática
-BIO1;qCO2;0,13;mg C-CO2 g-1 CBM h-1;Calculado a partir de respiração e biomassa
-BIO1;Hidrólise FDA;27;ug fluoresceina g-1 h-1;Hidrólise de diacetato de fluoresceína
-BIO1;Desidrogenase;8,2;ug TPF g-1 h-1;Atividade de desidrogenase
-BIO1;Fosfatase ácida;125;ug pNP g-1 h-1;Atividade de fosfatase`;
+const complementaryBioCsv = `Amostra;Parametro;Valor;Unidade;Metodo;profundidade_de_cm;profundidade_ate_cm
+BIO1;Carbono da biomassa microbiana;315;mg C/kg solo;Fumigação-extração;0;10
+BIO1;Nitrogênio da biomassa microbiana;28;mg N/kg solo;Fumigação-extração;0;10
+BIO1;Respiração basal;42;mg C-CO2 kg-1 solo dia-1;Incubação estática;0;10
+BIO1;qCO2;0,13;mg C-CO2 g-1 CBM h-1;Calculado a partir de respiração e biomassa;0;10
+BIO1;Hidrólise FDA;27;ug fluoresceina g-1 h-1;Hidrólise de diacetato de fluoresceína;0;10
+BIO1;Desidrogenase;8,2;ug TPF g-1 h-1;Atividade de desidrogenase;0;10
+BIO1;Fosfatase ácida;125;ug pNP g-1 h-1;Atividade de fosfatase;0;10`;
 const complementaryBio = buildLabImportPreview(complementaryBioCsv, "biologia-complementar.csv", {
   hasAgronomicContext: true,
   spatialLinked: true,
@@ -112,6 +112,18 @@ assert.ok(complementaryBio.parameters.includes("MICROBIO_QCO2"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_FDA_HYDROLYSIS"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_DEHYDROGENASE"));
 assert.ok(complementaryBio.parameters.includes("MICROBIO_ACID_PHOSPHATASE"));
+assert.ok(complementaryBio.rows.every((row) => row.depthFromCm === 0 && row.depthToCm === 10));
+
+const invalidDepthCsv = `Amostra;Parametro;Valor;Unidade;Metodo;profundidade_de_cm;profundidade_ate_cm
+BIO2;Respiração basal;42;mg C-CO2 kg-1 solo dia-1;Incubação estática;0;abc`;
+const invalidDepth = buildLabImportPreview(invalidDepthCsv, "biologia-profundidade-invalida.csv", {
+  hasAgronomicContext: true,
+  spatialLinked: true,
+});
+assert.equal(invalidDepth.blockers, 0);
+assert.ok(invalidDepth.issues.some((issue) => issue.code === "DEPTH_INVALID"));
+assert.equal(invalidDepth.rows[0]?.depthFromCm, null);
+assert.equal(invalidDepth.rows[0]?.depthToCm, null);
 
 const complementaryWideCsv = `Amostra;Carbono da biomassa microbiana (mg C/kg solo);Respiração basal (mg C-CO2 kg-1 solo dia-1)
 BIO1;315;42`;
