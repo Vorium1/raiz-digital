@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -9,6 +11,12 @@ function requiredEnv(name: string): string {
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@raiz.local";
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD?.trim() ?? "";
 const SESSION_TOKEN = process.env.E2E_SESSION_TOKEN?.trim() ?? "";
+const VISUAL_EVIDENCE_DIR = join(process.cwd(), "test-results", "visual-evidence");
+
+async function ensureVisualEvidenceDir() {
+  await mkdir(VISUAL_EVIDENCE_DIR, { recursive: true });
+}
+
 
 if (!ADMIN_PASSWORD && !SESSION_TOKEN) {
   throw new Error("E2E_ADMIN_PASSWORD ou E2E_SESSION_TOKEN precisa estar definido para rodar o QA visual.");
@@ -261,6 +269,9 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     const rasterError = vigor.locator('.simple-field-vigor-empty[role="alert"]');
     await expect(rasterError).toHaveCount(0);
 
+    await ensureVisualEvidenceDir();
+    await vigor.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "ndvi-desktop.png") });
+
     if (process.env.E2E_EXPECT_GOOGLE_MAPS === "1") {
       await expect.poll(
         async () => page.locator('script[src*="maps.googleapis.com/maps/api/js"]').count(),
@@ -298,6 +309,8 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await expect(map).toBeVisible({ timeout: 20_000 });
     await assertNoHorizontalOverflow(page);
 
+    await ensureVisualEvidenceDir();
+    await page.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "ndvi-mobile-390x844.png"), fullPage: true });
     await test.info().attach("ndvi-mobile-390x844", {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
@@ -353,6 +366,8 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )).toBeLessThanOrEqual(1);
 
+    await ensureVisualEvidenceDir();
+    await layers.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "relevo-qa.png") });
     await test.info().attach("relevo-qa", {
       body: await layers.screenshot(),
       contentType: "image/png",
