@@ -1,6 +1,7 @@
 import { compactLabImportPreview, LAB_UPLOAD_LIMITS } from "@/domain/lab-upload-limits";
+import type { LabSampleType } from "@/domain/lab-import";
 import { getPlatformSession } from "@/lib/auth/session";
-import { commitCsvImport, type LabSampleType } from "@/lib/repositories/imports";
+import { commitCsvImport } from "@/lib/repositories/imports";
 import { RawImportPersistenceError } from "@/lib/storage";
 
 const MAX_BODY_BYTES = LAB_UPLOAD_LIMITS.functionPayloadBytes;
