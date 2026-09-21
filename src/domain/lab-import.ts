@@ -265,8 +265,8 @@ const VALUE_HEADERS = ["valor", "resultado", "result", "value"];
 const UNIT_HEADERS = ["unidade", "unit", "uom"];
 const METHOD_HEADERS = ["metodo", "method", "extrator", "extractor"];
 const PROTOCOL_HEADERS = ["protocolo", "protocol", "metodologia", "referenciametodo", "methodprotocol"];
-const DEPTH_FROM_HEADERS = ["profundidadedecm", "profundidadeinicialcm", "depthfromcm", "depthfrom"];
-const DEPTH_TO_HEADERS = ["profundidadeatecm", "profundidadefinalcm", "depthtocm", "depthto"];
+const DEPTH_FROM_HEADERS = ["profundidade_de_cm", "profundidadedecm", "profundidadeinicialcm", "depth_from_cm", "depthfromcm", "depthfrom"];
+const DEPTH_TO_HEADERS = ["profundidade_ate_cm", "profundidadeatecm", "profundidadefinalcm", "depth_to_cm", "depthtocm", "depthto"];
 
 function stripDiacritics(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
