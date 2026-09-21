@@ -1,4 +1,7 @@
-import { aggregateInmetAutomaticStationDay } from "../../domain/official-agroclimate-ingestion.ts";
+import {
+  aggregateInmetAutomaticStationDay,
+  deriveInmetContinuousRainHours,
+} from "../../domain/official-agroclimate-ingestion.ts";
 import {
   assessInmetStationApplicability,
   previousCompleteUtcDate,
@@ -17,6 +20,8 @@ export type InmetRegionalObservation = {
   status: "READY" | "PARTIAL" | "SKIPPED" | "NOT_APPLICABLE" | "UNAVAILABLE";
   role: "REGIONAL_OBSERVED_STATION";
   observedDateUtc: string | null;
+  observationWindowFromUtc: string | null;
+  observationWindowToUtc: string | null;
   station: {
     code: string;
     name: string;
@@ -36,6 +41,12 @@ export type InmetRegionalObservation = {
 function errorCode(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message.trim().slice(0, 180);
   return "INMET_REGIONAL_OBSERVATION_UNAVAILABLE";
+}
+
+function utcDateMinusDays(date: string, days: number) {
+  const parsed = new Date(`${date}T12:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() - days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function validCoordinatePair(latitude: number | null | undefined, longitude: number | null | undefined) {
@@ -74,6 +85,8 @@ export async function collectInmetRegionalObservation(input: {
       status: "SKIPPED",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc: null,
+      observationWindowFromUtc: null,
+      observationWindowToUtc: null,
       station: null,
       applicability: null,
       metricEvidence: [],
@@ -93,6 +106,8 @@ export async function collectInmetRegionalObservation(input: {
       status: "UNAVAILABLE",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc: null,
+      observationWindowFromUtc: null,
+      observationWindowToUtc: null,
       station: null,
       applicability: null,
       metricEvidence: [],
@@ -153,12 +168,14 @@ export async function collectInmetRegionalObservation(input: {
 
   const now = (input.now ?? (() => new Date()))();
   const observedDateUtc = previousCompleteUtcDate(now);
+  const observationWindowFromUtc = utcDateMinusDays(observedDateUtc, 2);
+  const observationWindowToUtc = observedDateUtc;
 
   try {
     const fetched = await (input.observationFetcher ?? fetchInmetHourlyStationObservations)({
       stationCode: station.code,
-      dateFrom: observedDateUtc,
-      dateTo: observedDateUtc,
+      dateFrom: observationWindowFromUtc,
+      dateTo: observationWindowToUtc,
       now: () => now,
     });
     const aggregate = aggregateInmetAutomaticStationDay({
@@ -169,14 +186,33 @@ export async function collectInmetRegionalObservation(input: {
       latitude: station.latitude,
       longitude: station.longitude,
     });
+    const rainDuration = deriveInmetContinuousRainHours({
+      observations: fetched.observations,
+      technicalRegionCodes: applicability.sharedTechnicalRegionCodes,
+      retrievedAt: fetched.retrievedAt,
+      latitude: station.latitude,
+      longitude: station.longitude,
+      expectedHourlySlots: 72,
+    });
+    const metricEvidence = [
+      ...aggregate.evidence,
+      ...(rainDuration.evidence ? [rainDuration.evidence] : []),
+    ];
     return {
-      status: aggregate.evidence.length ? "READY" : "PARTIAL",
+      status: aggregate.evidence.length ? "READY" : metricEvidence.length ? "PARTIAL" : "PARTIAL",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc,
+      observationWindowFromUtc,
+      observationWindowToUtc,
       station,
       applicability,
-      metricEvidence: aggregate.evidence,
-      warnings: [...new Set([...applicability.warnings, ...fetched.warnings, ...aggregate.warnings])],
+      metricEvidence,
+      warnings: [...new Set([
+        ...applicability.warnings,
+        ...fetched.warnings,
+        ...aggregate.warnings,
+        ...rainDuration.warnings,
+      ])],
       errorCode: null,
     };
   } catch (error) {
@@ -184,6 +220,8 @@ export async function collectInmetRegionalObservation(input: {
       status: "UNAVAILABLE",
       role: "REGIONAL_OBSERVED_STATION",
       observedDateUtc,
+      observationWindowFromUtc,
+      observationWindowToUtc,
       station,
       applicability,
       metricEvidence: [],
