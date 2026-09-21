@@ -13,6 +13,7 @@ import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evi
 import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type BiologicalSoilRegionScope } from "@/domain/biological-soil-analysis";
 import { evaluateIrrigationContext } from "@/domain/irrigation-context";
 import { evaluateIrrigationApplications, irrigationApplicationsFromContext } from "@/domain/irrigation-applications";
+import { evaluateIrrigationWaterEvidence } from "@/domain/irrigation-water-assessment";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -44,6 +45,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
   irrigationEvidence: ReturnType<typeof evaluateIrrigationContext>;
   irrigationApplicationEvidence: ReturnType<typeof evaluateIrrigationApplications>;
+  irrigationWaterEvidence: ReturnType<typeof evaluateIrrigationWaterEvidence>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -364,6 +366,13 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       biologicalSoilEvidence,
       irrigationEvidence,
       irrigationApplicationEvidence: evaluateIrrigationApplications(irrigationApplicationsFromContext(base.analysisContext)),
+      // Nesta etapa só o regime declarado é encaminhado ao gate hídrico. Lâmina do
+      // usuário/aplicação não é promovida a irrigação LÍQUIDA e nenhum ETc/chuva
+      // efetiva/armazenamento é fabricado. Quando esses motores forem homologados,
+      // o mesmo contrato sobe progressivamente para demanda/balanço.
+      irrigationWaterEvidence: evaluateIrrigationWaterEvidence({
+        waterRegime: rawIrrigation.waterRegime ?? "",
+      }),
       region: { code: base.regionCode },
       analysis: {
         id: base.id,
