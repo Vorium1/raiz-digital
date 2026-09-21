@@ -61,6 +61,16 @@ function normalizeAnalyticalMethod(parameterCode: string, rawMethod: string, pro
   return (acceptedAbbreviation[parameterCode] ?? []).includes(rawMethod) ? fromProtocol : rawMethod;
 }
 
+export type LabSampleType =
+  | "SOLO"
+  | "FOLIAR"
+  | "PECIOLO"
+  | "MASSA_SECA"
+  | "GRAO"
+  | "SEMENTE"
+  | "FERTILIZANTE"
+  | "BIOLOGICO";
+
 export type LabImportSeverity = "BLOCKER" | "WARNING" | "INFO";
 
 export type LabImportIssue = {
