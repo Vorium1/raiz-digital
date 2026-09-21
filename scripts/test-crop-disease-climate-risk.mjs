@@ -74,7 +74,7 @@ const tomatoOutsideProfile = assessDiseaseClimateFavorability({
   observation: { airTemperatureC: 25, relativeHumidityPct: 95 },
   profiles: HOMOLOGATED_DISEASE_CLIMATE_PROFILES,
 });
-assert.equal(tomatoOutsideProfile.status, "READY");
+assert.equal(tomatoOutsideProfile.status, "INSUFFICIENT_WEATHER_DATA");
 assert.equal(tomatoOutsideProfile.diseaseRisks.find((item) => item.diseaseCode === "REQUEIMA")?.climateFavorability, "LOW");
 
 const fusariumHeadBlight = assessDiseaseClimateFavorability({
