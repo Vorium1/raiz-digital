@@ -8,6 +8,13 @@ on:
       - ".github/workflows/ndvi-preview-visual-qa.yml"
       - "e2e/ndvi-preview-visual-gate.spec.ts"
       - "playwright.config.ts"
+      - "src/app/api/fields/**/ndvi/**"
+      - "src/app/ux3-field.css"
+      - "src/components/*field-map*.tsx"
+      - "src/components/simple-field-vigor.tsx"
+      - "src/domain/ndvi-raster-spatial-validity.ts"
+      - "src/lib/maps/**"
+      - "src/lib/repositories/ndvi.ts"
   workflow_dispatch:
     inputs:
       preview_url:
@@ -24,6 +31,10 @@ on:
         required: true
         default: true
         type: boolean
+
+concurrency:
+  group: ndvi-preview-visual-qa-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
