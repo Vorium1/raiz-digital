@@ -135,7 +135,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
 
     const map = vigor.locator(".real-field-map");
     await expect(map).toBeVisible({ timeout: 20_000 });
-    await expect(map.locator(".real-field-map-canvas")).toBeVisible();
+    await expect(map.locator(".real-field-map-canvas")).toBeVisible();\n    await expect(map).toHaveAttribute("data-has-image-overlay", "true");
 
     const legendText = await map.locator(".real-field-map-legend").textContent();
     expect(legendText ?? "").toMatch(/Vigor baixo/i);
@@ -149,7 +149,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
         async () => page.locator('script[src*="maps.googleapis.com/maps/api/js"]').count(),
         { timeout: 20_000, message: "Google Maps JavaScript API deveria estar carregado no Preview" },
       ).toBeGreaterThan(0);
-      await expect(map.locator(".ndvi-panel-limitation")).toHaveCount(0);
+      await expect(map).toHaveAttribute("data-map-provider", "google");\n      await expect(map.locator(".ndvi-panel-limitation")).toHaveCount(0);
     }
 
     await test.info().attach("ndvi-desktop", {
@@ -209,7 +209,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await layers.getByRole("button", { name: "Relevo" }).click();
 
     await expect.poll(async () => {
-      const has3d = await layers.locator(".google-field-terrain-3d").count();
+      const has3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"]').count();
       const hasFallback = await layers.locator(".real-field-map").count();
       return has3d + hasFallback;
     }, { timeout: 35_000, message: "Relevo precisa abrir 3D ou fallback topográfico" }).toBeGreaterThan(0);
