@@ -2,6 +2,13 @@ import {
   adaptCptecForecastXml,
   buildCptecSevenDayLatLonUrl,
 } from "../../domain/official-agroclimate-ingestion.ts";
+import {
+  INMET_AUTOMATIC_STATIONS_URL,
+  adaptInmetAutomaticStationCatalog,
+  adaptInmetHourlyApiRows,
+  buildInmetHourlyStationUrl,
+  selectNearestOperativeInmetAutomaticStation,
+} from "../../domain/inmet-official-observation.ts";
 
 export const MAPA_ZARC_DATASET_ID = "6d3d141c-885e-41a4-ab7f-dc8ff323b96f";
 export const MAPA_ZARC_CKAN_PACKAGE_URL =
@@ -84,6 +91,67 @@ export async function fetchCptecSevenDayMetricEvidence(input: {
     provider: "CPTEC_INPE" as const,
     sourceUrl,
     retrievedAt,
+  };
+}
+
+
+export async function fetchNearestInmetAutomaticStation(input: {
+  latitude: number;
+  longitude: number;
+  fetchImpl?: OfficialSourceFetch;
+  timeoutMs?: number;
+}) {
+  const response = await fetchWithTimeout(INMET_AUTOMATIC_STATIONS_URL, {
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs,
+    accept: "application/json",
+  });
+  if (!response.ok) throw new Error(`INMET_STATIONS_HTTP_${response.status}`);
+  const stations = adaptInmetAutomaticStationCatalog(await response.json());
+  const selected = selectNearestOperativeInmetAutomaticStation({
+    stations,
+    latitude: input.latitude,
+    longitude: input.longitude,
+  });
+  return {
+    ...selected,
+    provider: "INMET" as const,
+    sourceUrl: INMET_AUTOMATIC_STATIONS_URL,
+  };
+}
+
+export async function fetchInmetHourlyStationObservations(input: {
+  stationCode: string;
+  dateFrom: string;
+  dateTo: string;
+  fetchImpl?: OfficialSourceFetch;
+  timeoutMs?: number;
+  now?: () => Date;
+}) {
+  const sourceUrl = buildInmetHourlyStationUrl({
+    stationCode: input.stationCode,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+  });
+  const response = await fetchWithTimeout(sourceUrl, {
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs,
+    accept: "application/json",
+  });
+  if (!response.ok) throw new Error(`INMET_OBSERVATIONS_HTTP_${response.status}`);
+  const observations = adaptInmetHourlyApiRows(await response.json());
+  const stationCodes = [...new Set(observations.map((item) => item.stationCode.trim().toUpperCase()))];
+  const requested = input.stationCode.trim().toUpperCase();
+  if (stationCodes.some((code) => code !== requested)) {
+    throw new Error("INMET_OBSERVATION_STATION_MISMATCH");
+  }
+  return {
+    provider: "INMET" as const,
+    sourceUrl,
+    retrievedAt: (input.now ?? (() => new Date()))().toISOString(),
+    stationCode: requested,
+    observations,
+    warnings: ["INMET_AUTOMATIC_STATION_DATA_RAW_NOT_QUALITY_CONTROLLED_BY_RAIZ"],
   };
 }
 
