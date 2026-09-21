@@ -12,6 +12,7 @@ import { adaptLabResultsToSoilMicrobiology } from "@/domain/soil-microbiology-la
 import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evidence";
 import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type BiologicalSoilRegionScope } from "@/domain/biological-soil-analysis";
 import { evaluateIrrigationContext } from "@/domain/irrigation-context";
+import { evaluateIrrigationApplications, irrigationApplicationsFromContext } from "@/domain/irrigation-applications";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -42,6 +43,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
   irrigationEvidence: ReturnType<typeof evaluateIrrigationContext>;
+  irrigationApplicationEvidence: ReturnType<typeof evaluateIrrigationApplications>;
   region: { code: string | null };
   analysis: {
     id: string;
@@ -361,6 +363,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       soilMicrobiologyEvidence,
       biologicalSoilEvidence,
       irrigationEvidence,
+      irrigationApplicationEvidence: evaluateIrrigationApplications(irrigationApplicationsFromContext(base.analysisContext)),
       region: { code: base.regionCode },
       analysis: {
         id: base.id,

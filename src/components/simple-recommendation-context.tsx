@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
+import { IrrigationApplicationsEditor } from "@/components/irrigation-applications-editor";
+import { parseIrrigationApplications, type IrrigationApplication } from "@/domain/irrigation-applications";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
 import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
@@ -51,10 +53,14 @@ export function SimpleRecommendationContext({
   const [fertilityCyclePlanNotes, setFertilityCyclePlanNotes] = useState("");
   const [initialFertilityCyclePlanNotes, setInitialFertilityCyclePlanNotes] = useState("");
   const [plannedLoaded, setPlannedLoaded] = useState(false);
+  const [irrigationApplications, setIrrigationApplications] = useState<IrrigationApplication[]>([]);
+  const [initialIrrigationApplications, setInitialIrrigationApplications] = useState<unknown>([]);
+  const [irrigationReadError, setIrrigationReadError] = useState("");
 
   useEffect(() => {
     let alive = true;
     setPlannedLoaded(false);
+    setIrrigationReadError("");
     fetch(`/api/analyses/${analysisId}/planned-management`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
@@ -63,6 +69,13 @@ export function SimpleRecommendationContext({
       })
       .then((planning) => {
         if (!alive) return;
+        try {
+          setIrrigationApplications(parseIrrigationApplications(planning.irrigationApplications));
+          setInitialIrrigationApplications(planning.irrigationApplications ?? []);
+        } catch {
+          setIrrigationReadError("Há um registro de irrigação inválido. Ele foi preservado; os demais refinamentos continuam disponíveis.");
+          setIrrigationApplications([]);
+        }
         const notes = String(planning.plannedManagementNotes ?? "");
         const horizon = planning.fertilityPlanningHorizonYears == null ? "" : String(planning.fertilityPlanningHorizonYears);
         const cycleNotes = String(planning.fertilityCyclePlanNotes ?? "");
@@ -77,7 +90,7 @@ export function SimpleRecommendationContext({
       .catch((caught) => {
         if (!alive) return;
         setError(caught instanceof Error ? caught.message : "Não foi possível carregar o manejo planejado.");
-        setPlannedLoaded(true);
+        setPlannedLoaded(false);
       });
     return () => { alive = false; };
   }, [analysisId]);
@@ -99,7 +112,8 @@ export function SimpleRecommendationContext({
     && fertilityHorizonYears !== initialFertilityHorizonYears;
   const fertilityCyclePlanChanged = plannedLoaded
     && fertilityCyclePlanNotes.trim() !== initialFertilityCyclePlanNotes.trim();
-  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged;
+  const irrigationChanged = plannedLoaded && !irrigationReadError && JSON.stringify(irrigationApplications) !== JSON.stringify(parseIrrigationApplications(initialIrrigationApplications));
+  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged;
   const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
   const canSave = seasonContextChanged || planningContextChanged;
 
@@ -119,6 +133,10 @@ export function SimpleRecommendationContext({
           planningPatch.fertilityPlanningHorizonYears = fertilityHorizonYears ? Number(fertilityHorizonYears) : null;
         }
         if (fertilityCyclePlanChanged) planningPatch.fertilityCyclePlanNotes = fertilityCyclePlanNotes;
+        if (irrigationChanged) {
+          planningPatch.irrigationApplications = parseIrrigationApplications(irrigationApplications);
+          planningPatch.expectedIrrigationApplications = initialIrrigationApplications;
+        }
 
         const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
           method: "PATCH",
@@ -128,6 +146,10 @@ export function SimpleRecommendationContext({
         const plannedPayload = await plannedResponse.json().catch(() => ({}));
         if (!plannedResponse.ok) throw new Error(plannedPayload.error ?? "Não foi possível salvar o planejamento agronômico.");
         const saved = plannedPayload.planningContext ?? plannedPayload.plannedManagement ?? {};
+        if (irrigationChanged) {
+          setIrrigationApplications(parseIrrigationApplications(saved.irrigationApplications));
+          setInitialIrrigationApplications(saved.irrigationApplications ?? []);
+        }
         const savedNotes = String(saved.plannedManagementNotes ?? plannedManagement.trim());
         const savedHorizon = saved.fertilityPlanningHorizonYears == null ? "" : String(saved.fertilityPlanningHorizonYears);
         const savedCycleNotes = String(saved.fertilityCyclePlanNotes ?? fertilityCyclePlanNotes.trim());
@@ -178,6 +200,8 @@ export function SimpleRecommendationContext({
       </summary>
 
       <div className="simple-context-fields">
+        <IrrigationApplicationsEditor value={irrigationApplications} onChange={setIrrigationApplications} disabled={!plannedLoaded || busy || Boolean(irrigationReadError)}/>
+        {irrigationReadError && <p role="status">{irrigationReadError}</p>}
         <label>
           <span>Horizonte desta análise do solo <small>(opcional)</small></span>
           <select

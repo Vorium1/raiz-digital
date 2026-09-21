@@ -1,4 +1,5 @@
 import type { AnalysisEvidence, EvidenceStatus } from "./analysis-depth-readiness";
+import type { IrrigationApplication } from "./irrigation-applications";
 
 export type WaterRegime = "" | "SEQUEIRO" | "IRRIGADO";
 
@@ -12,6 +13,7 @@ export type AnalysisContextDraft = {
   irrigationFrequencyDays: number | null;
   irrigationApplicationTime: string;
   irrigationNotes: string;
+  irrigationApplications?: IrrigationApplication[];
   tillageSystem: string;
   managementHistoryStatus: EvidenceStatus;
   managementHistoryNotes: string;

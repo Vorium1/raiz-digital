@@ -1,7 +1,7 @@
 import type { AgronomicPrescriptionProvider } from "@/lib/ai/agronomic-prescription-provider";
 import type { AgronomicPrescriptionEvidencePackage } from "@/lib/ai/prescription-evidence-package";
 
-const PROMPT_VERSION = "deterministic-limited-v2-liming";
+const PROMPT_VERSION = "deterministic-limited-v3-irrigation-evidence";
 
 type InterpretationItem = {
   sampleCode?: string;
@@ -173,6 +173,23 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         .map((item) => item.reason),
     );
     const deterministic = deterministicRecommendations(evidence);
+    const irrigation = evidence.irrigationApplicationEvidence;
+    if (irrigation?.status === "AVAILABLE") {
+      for (const application of irrigation.applications) {
+        const details = [
+          application.date ? `data local ${application.date}` : "data não informada",
+          application.time ? `horário local ${application.time}${application.utcOffset ? ` (UTC${application.utcOffset})` : " (fuso não informado)"}` : null,
+          application.depthMm != null ? `lâmina declarada ${application.depthMm} mm` : null,
+          application.volumeM3 != null ? `volume declarado ${application.volumeM3} m³` : null,
+          application.irrigatedAreaHa != null ? `área irrigada declarada ${application.irrigatedAreaHa} ha` : null,
+          application.depthFromVolumeMm != null ? `lâmina equivalente por volume/área ${application.depthFromVolumeMm} mm` : null,
+        ].filter(Boolean).join("; ");
+        deterministic.managementPractices.push(`Registro de irrigação informado pelo usuário: ${details}.`);
+      }
+      deterministic.managementPractices.push("As aplicações registradas são evidências operacionais. Não representam balanço hídrico nem autorizam alteração automática das doses de nutrientes.");
+    } else if (irrigation?.status === "INVALID_OPTIONAL_EVIDENCE") {
+      deterministic.managementPractices.push("O registro complementar de irrigação contém dados inválidos e não foi usado. As conclusões sustentadas pela análise de solo foram preservadas.");
+    }
     const missingInformation = unique([...deterministicLimitations, ...deterministic.limitations]);
 
     const sources = Array.from(

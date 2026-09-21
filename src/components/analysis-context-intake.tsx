@@ -4,6 +4,7 @@ import type { AnalysisContextDraft } from "@/domain/analysis-context";
 import type { EvidenceStatus } from "@/domain/analysis-depth-readiness";
 import { getRequestedAnalysisLayer, type AnalysisDepthId } from "@/domain/analysis-depths";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
+import { IrrigationApplicationsEditor } from "@/components/irrigation-applications-editor";
 
 function EvidenceStatusSelect({
   value,
@@ -155,6 +156,7 @@ export function AnalysisContextIntake({
               </select>
               <small>Refina a calagem quando conhecido, mas não bloqueia o parecer do RAIZ.</small>
             </label>
+            <IrrigationApplicationsEditor value={value.irrigationApplications ?? []} onChange={(irrigationApplications) => update({ irrigationApplications })}/>
             <label>
               <span>Histórico de calagem/adubação/gessagem *</span>
               <EvidenceStatusSelect value={value.managementHistoryStatus} onChange={(managementHistoryStatus) => update({ managementHistoryStatus })} />

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
 
 function analysisCode() {
   const year = new Date().getFullYear();
@@ -21,6 +23,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       plannedManagementNotes: "",
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
+      irrigationApplications: [],
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -29,6 +32,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       plannedManagementNotes: "",
       fertilityPlanningHorizonYears: null as 2 | 3 | 4 | 5 | null,
       fertilityCyclePlanNotes: "",
+      irrigationApplications: [],
     };
   }
 
@@ -42,6 +46,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     plannedManagementNotes: typeof source.plannedManagementNotes === "string" ? source.plannedManagementNotes : "",
     fertilityPlanningHorizonYears: [2, 3, 4, 5].includes(horizon) ? horizon as 2 | 3 | 4 | 5 : null,
     fertilityCyclePlanNotes: typeof source.fertilityCyclePlanNotes === "string" ? source.fertilityCyclePlanNotes : "",
+    irrigationApplications: irrigationApplicationsFromContext(value) ?? [],
   };
 }
 
@@ -187,7 +192,17 @@ export async function updateAnalysisPlanningContext(input: {
   plannedManagementNotes?: string;
   fertilityPlanningHorizonYears?: 2 | 3 | 4 | 5 | null;
   fertilityCyclePlanNotes?: string;
+  irrigationApplications?: unknown;
+  expectedIrrigationApplications?: unknown;
 }) {
+  let nextApplications: ReturnType<typeof parseIrrigationApplications> | undefined;
+  if (input.irrigationApplications !== undefined) {
+    try { nextApplications = parseIrrigationApplications(input.irrigationApplications); }
+    catch (error) { throw new AnalysisContextError(error instanceof Error ? error.message : "Irrigação inválida.", 400); }
+    if (input.expectedIrrigationApplications === undefined) {
+      throw new AnalysisContextError("Recarregue o contexto antes de editar as aplicações de irrigação.", 409);
+    }
+  }
   if (
     input.fertilityPlanningHorizonYears !== undefined
     && input.fertilityPlanningHorizonYears !== null
@@ -209,6 +224,7 @@ export async function updateAnalysisPlanningContext(input: {
     input.plannedManagementNotes === undefined
     && input.fertilityPlanningHorizonYears === undefined
     && input.fertilityCyclePlanNotes === undefined
+    && input.irrigationApplications === undefined
   ) {
     throw new AnalysisContextError("Nenhum campo de planejamento foi informado.", 400);
   }
@@ -225,7 +241,11 @@ export async function updateAnalysisPlanningContext(input: {
     if (!row) throw new AnalysisContextError("Análise não encontrada.", 404);
 
     const current = planningContextFromAnalysisContext(row.analysisContext);
+    if (nextApplications !== undefined && !isDeepStrictEqual(input.expectedIrrigationApplications, current.irrigationApplications)) {
+      throw new AnalysisContextError("As aplicações de irrigação foram alteradas em outra sessão. Recarregue antes de salvar.", 409);
+    }
     const next = {
+      irrigationApplications: nextApplications ?? current.irrigationApplications,
       plannedManagementNotes: input.plannedManagementNotes === undefined
         ? current.plannedManagementNotes
         : (nextPlannedManagement ?? ""),
@@ -238,6 +258,7 @@ export async function updateAnalysisPlanningContext(input: {
     };
 
     const changedFields: string[] = [];
+    if (!isDeepStrictEqual(next.irrigationApplications, current.irrigationApplications)) changedFields.push("irrigationApplications");
     if (next.plannedManagementNotes !== current.plannedManagementNotes.trim()) changedFields.push("plannedManagementNotes");
     if (next.fertilityPlanningHorizonYears !== current.fertilityPlanningHorizonYears) changedFields.push("fertilityPlanningHorizonYears");
     if (next.fertilityCyclePlanNotes !== current.fertilityCyclePlanNotes.trim()) changedFields.push("fertilityCyclePlanNotes");
@@ -257,6 +278,7 @@ export async function updateAnalysisPlanningContext(input: {
     (draft as Record<string, unknown>).plannedManagementNotes = next.plannedManagementNotes;
     (draft as Record<string, unknown>).fertilityPlanningHorizonYears = next.fertilityPlanningHorizonYears;
     (draft as Record<string, unknown>).fertilityCyclePlanNotes = next.fertilityCyclePlanNotes;
+    if (nextApplications !== undefined) (draft as Record<string, unknown>).irrigationApplications = nextApplications;
     (root as Record<string, unknown>).draft = draft;
 
     await client.query(
@@ -284,6 +306,7 @@ export async function updateAnalysisPlanningContext(input: {
       entityId: row.id,
       metadata: {
         changedFields,
+        irrigationApplicationCount: Array.isArray(next.irrigationApplications) ? next.irrigationApplications.length : null,
         fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
         hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
         hasPlannedManagement: next.plannedManagementNotes.length > 0,
@@ -297,4 +320,3 @@ export async function updateAnalysisPlanningContext(input: {
     };
   });
 }
-

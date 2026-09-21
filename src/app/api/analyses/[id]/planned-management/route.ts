@@ -34,11 +34,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   try {
     const body = await request.json() as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new AnalysisContextError("Contexto inválido.", 400);
     const hasPlannedManagement = Object.prototype.hasOwnProperty.call(body, "plannedManagementNotes");
     const hasHorizon = Object.prototype.hasOwnProperty.call(body, "fertilityPlanningHorizonYears");
     const hasCycleNotes = Object.prototype.hasOwnProperty.call(body, "fertilityCyclePlanNotes");
+    const hasIrrigation = Object.prototype.hasOwnProperty.call(body, "irrigationApplications");
 
-    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes) {
+    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes && !hasIrrigation) {
       throw new AnalysisContextError("Informe ao menos um campo de planejamento.", 400);
     }
 
@@ -50,6 +52,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       tenantId: session.tenantId,
       userId: session.userId,
       analysisId: id,
+      irrigationApplications: hasIrrigation ? body.irrigationApplications : undefined,
+      expectedIrrigationApplications: hasIrrigation ? body.expectedIrrigationApplications : undefined,
       plannedManagementNotes: hasPlannedManagement
         ? (body.plannedManagementNotes == null ? "" : String(body.plannedManagementNotes))
         : undefined,

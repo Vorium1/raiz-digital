@@ -4241,3 +4241,20 @@ Limites: Preview atual bloqueado pelo status Vercel build-rate-limit; login obri
 main/develop indisponível ao conector (403); teste live RLS por raiz_app bloqueado por DNS no Work.
 Plano de integração, backup/PITR (6 horas), migrations e smoke em
 `docs/PR88_FINAL_QA_2026-09-19.md`. #24 e #84 permanecem abertas. Sem merge/deploy de produção.
+
+## 2026-09-21 — PR #88, aplicações opcionais de irrigação
+
+Retomado HEAD remoto `3a5c2f6`, CI `35552458406` verde, após leitura dos checkpoints
+mais recentes da issue #25. Contexto hídrico básico já existente foi preservado.
+Aplicações realizadas agora podem ser registradas no intake e no refinamento do
+resultado, persistidas no JSONB existente e incluídas na evidência da prescrição.
+Conversão explícita volume/área em mm, data/hora/fuso sem inferência e proteção de
+concorrência 409. Relatórios antigos preservados; nenhum ajuste automático de nutrientes.
+Falha de leitura não libera formulário vazio; registro opcional inválido não bloqueia
+planejamento restante ou resultado de solo. Corrigido indicador de irrigação quantificada
+indevidamente verdadeiro quando o regime era SEQUEIRO/desconhecido.
+Typecheck, handoff, domínio/integração instrumentada, permissões, preflight, profundidade
+e build locais passaram. Detalhes/limites em `docs/PR88_IRRIGATION_APPLICATIONS_2026-09-21.md`.
+Sem escrita em banco, migration, merge ou deploy de produção nesta rodada.
+Correção de estado histórico acima: main/develop já estão protegidas (API confirmada
+novamente) e #24 está fechada. #84 segue aberta; teste instrumentado não substitui Preview.
