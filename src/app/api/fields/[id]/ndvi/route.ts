@@ -172,10 +172,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
  * POST atualiza o histórico do talhão pelo provider Sentinel-2 configurado e, antes de efetivar cada
  * snapshot novo, gera o PNG espacial correspondente e o arquiva de forma content-addressed.
  *
- * Uma linha com raster espacialmente compatível com o contorno atual permanece imutável. Se o contorno
- * do talhão mudou depois do arquivamento, o raster antigo deixa de ser evidência espacial utilizável e
- * pode ser substituído somente sob trava do SHA-256 antigo. Linhas legadas sem raster também podem ser
- * promovidas uma única vez. Assim preservamos a cadeia de custódia sem exibir um raster de outro contorno.
+ * Toda linha arquivada permanece imutável no PostgreSQL. Se o contorno ou a versão do algoritmo mudou,
+ * a evidência antiga deixa de ser utilizável no runtime atual, mas continua preservada. O refresh grava
+ * uma NOVA linha versionada por raster_algorithm e registra o SHA antigo apenas como supersessão lógica.
+ * Assim uma correção de cálculo nunca reescreve nem apaga o artefato histórico anterior.
  *
  * O lote pode concluir parcialmente: se um raster posterior falhar depois que outros já foram gravados,
  * a resposta devolve o estado persistido atual com `partialFailure` e a contagem real ainda pendente.
