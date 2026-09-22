@@ -14,3 +14,8 @@ out
 
 .vercel
 .env*
+
+# Fase 4F, item 9 -- artefatos de execução real do harness de benchmark do Assistente RAIZ (nunca
+# segredo/chave, só scorecard/respostas -- ver src/lib/ai/benchmark/artifact-store.ts). Locais/reproduzíveis
+# a qualquer momento rodando o benchmark de novo -- não faz sentido versionar.
+/.benchmark-runs

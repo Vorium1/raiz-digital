@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
-import { analysisStatusMeta, formatRelativeOrDate, ANALYSIS_STATUS_OPTIONS } from "@/domain/analysis-ui";
+import { analysisDisplayStatus, formatRelativeOrDate, ANALYSIS_STATUS_OPTIONS } from "@/domain/analysis-ui";
 
 type Analysis = {
   id: string;
@@ -14,18 +14,28 @@ type Analysis = {
   fieldName: string;
   areaHa: number;
   updatedAt: string;
+  latestInterpretationStatus?: string | null;
+  notInterpretableReason?: string | null;
+  interpretationCurrent?: boolean | null;
+  interpretationStaleReason?: string | null;
 };
 
-const statusFilters = [{ value: "", label: "Todos os status" }, ...ANALYSIS_STATUS_OPTIONS];
+const statusFilters = [
+  { value: "", label: "Todos os status" },
+  { value: "STALE", label: "Precisa atualizar" },
+  ...ANALYSIS_STATUS_OPTIONS,
+];
 
-export function AnalysesTable({ analyses }: { analyses: Analysis[] }) {
-  const [query, setQuery] = useState("");
+export function AnalysesTable({ analyses, initialQuery = "" }: { analyses: Analysis[]; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("");
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return analyses.filter((analysis) => {
-      if (status && analysis.status !== status) return false;
+      const stale = Boolean(analysis.latestInterpretationStatus) && analysis.interpretationCurrent === false;
+      if (status === "STALE" && !stale) return false;
+      if (status && status !== "STALE" && (stale || analysis.status !== status)) return false;
       if (!needle) return true;
       return [analysis.code, analysis.clientName, analysis.fieldName].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle));
     });
@@ -52,7 +62,16 @@ export function AnalysesTable({ analyses }: { analyses: Analysis[] }) {
             <thead><tr><th>Análise</th><th>Área</th><th>Progresso</th><th>Status</th><th>Atualização</th><th></th></tr></thead>
             <tbody>
               {filtered.map((analysis) => {
-                const meta = analysisStatusMeta(analysis.status);
+                const persistedMeta = analysisDisplayStatus(analysis);
+                const stale = Boolean(analysis.latestInterpretationStatus) && analysis.interpretationCurrent === false;
+                const meta = stale
+                  ? {
+                      label: "Precisa atualizar",
+                      tone: "waiting" as const,
+                      progress: persistedMeta.progress,
+                      detail: analysis.interpretationStaleReason ?? null,
+                    }
+                  : persistedMeta;
                 return (
                   <tr key={analysis.id}>
                     <td><Link href={`/analises/${analysis.id}`} className="table-link">{analysis.code}</Link><strong>{analysis.clientName}</strong></td>

@@ -1,29 +1,22 @@
-import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, selectPromotableLabRows, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
-import { saveRawImportFile } from "@/lib/storage";
+import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
+import { saveRequiredRawImportFile, unwrapExtractedLabContent, verifyRawImportArchive } from "@/lib/storage";
 
-/**
- * Promove linhas validadas do laudo (staging em analysis_import_rows) para as
- * tabelas normalizadas lab_samples/lab_results, que é o que o motor
- * determinístico e o restante da plataforma realmente leem. Antes desta
- * função o import commit só gravava em analysis_import_rows e nunca chegava
- * a lab_results — a cadeia de rastreabilidade ficava quebrada exatamente
- * nesse ponto (laudo → amostra → parâmetro).
- *
- * Só promove linhas cuja própria linha não tenha um BLOCKER (unidade/método
- * desconhecidos, valor inválido etc.) — linhas bloqueadas continuam
- * disponíveis em analysis_import_rows para conferência humana, mas nunca
- * viram um lab_result "quase certo".
- */
 async function promoteRowsToLabResults(
   client: PoolClient,
-  input: { tenantId: string; analysisId: string; importId: string; rows: LabImportRow[]; issues: LabImportIssue[] },
+  input: {
+    tenantId: string;
+    analysisId: string;
+    importId: string;
+    rows: LabImportRow[];
+    issues: LabImportIssue[];
+    sampleType: LabSampleType;
+  },
 ) {
-  const blockedLines = new Set(input.issues.filter((issue) => issue.severity === "BLOCKER" && issue.line != null).map((issue) => issue.line));
-  const promotable = input.rows.filter((row) => !blockedLines.has(row.sourceLine));
+  const promotable = selectPromotableLabRows(input.rows, input.issues);
   if (promotable.length === 0) return { promotedSamples: 0, promotedResults: 0 };
 
   const analysisResult = await client.query<{ collectionOrderId: string | null }>(
@@ -52,14 +45,18 @@ async function promoteRowsToLabResults(
     }
 
     const sampleResult = await client.query<{ id: string }>(
-      `INSERT INTO lab_samples (tenant_id, analysis_id, sample_point_id, laboratory_code)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+      `INSERT INTO lab_samples (tenant_id, analysis_id, sample_point_id, laboratory_code, sample_type)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
        ON CONFLICT (tenant_id, analysis_id, laboratory_code)
        DO UPDATE SET sample_point_id = COALESCE(EXCLUDED.sample_point_id, lab_samples.sample_point_id)
+       WHERE lab_samples.sample_type = EXCLUDED.sample_type
        RETURNING id::text`,
-      [input.tenantId, input.analysisId, samplePointId, sampleCode],
+      [input.tenantId, input.analysisId, samplePointId, sampleCode, input.sampleType],
     );
-    const labSampleId = sampleResult.rows[0].id;
+    const labSampleId = sampleResult.rows[0]?.id;
+    if (!labSampleId) {
+      throw new Error(`SAMPLE_TYPE_CONFLICT:${sampleCode}`);
+    }
     promotedSamples += 1;
 
     for (const row of sampleRows) {
@@ -75,7 +72,17 @@ async function promoteRowsToLabResults(
           row.value,
           row.unit,
           row.method,
-          JSON.stringify({ sourceLine: row.sourceLine, importId: input.importId, unitInferred: row.unitInferred, methodInferred: row.methodInferred }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            importId: input.importId,
+            unitInferred: row.unitInferred,
+            methodInferred: row.methodInferred,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
+          }),
         ],
       );
       promotedResults += 1;
@@ -94,45 +101,98 @@ export async function commitCsvImport(input: {
   fallbackMethod?: string;
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
+  sampleType?: LabSampleType;
 }) {
-  const isSpreadsheet = isSpreadsheetFileName(input.fileName);
+  // O fluxo normal chega com recibo de proveniência assinado: PDF/foto traz o CSV extraído; CSV/XLSX
+  // traz o próprio conteúdo validado. Em ambos os casos o recibo vincula tenant + original arquivado +
+  // hash exato do conteúdo entregue ao parser. Chamadas diretas sem recibo continuam fail-closed: o
+  // original é arquivado aqui antes de qualquer parsing.
+  const transported = unwrapExtractedLabContent(input.content, input.tenantId);
+  const sourceReceipt = transported.source;
+  const normalizedContent = transported.content;
+  const originalFileName = sourceReceipt?.fileName ?? input.fileName;
+  const isSpreadsheet = sourceReceipt
+    ? sourceReceipt.sourceType === "XLSX"
+    : isSpreadsheetFileName(input.fileName);
+
+  // Cadeia de custódia fail-closed: a fonte original precisa existir e ter integridade confirmada antes
+  // de o parser agronômico examinar o conteúdo ou qualquer linha poder ser promovida.
+  const stored = sourceReceipt
+    ? await (async () => {
+        await verifyRawImportArchive({ tenantId: input.tenantId, source: sourceReceipt });
+        return sourceReceipt;
+      })()
+    : await saveRequiredRawImportFile({
+        tenantId: input.tenantId,
+        analysisId: input.analysisId,
+        fileName: originalFileName,
+        content: normalizedContent,
+        encoding: isSpreadsheet ? "base64" : "utf8",
+      });
+
   const importContext = {
     fallbackMethod: input.fallbackMethod,
     hasAgronomicContext: input.hasAgronomicContext,
     spatialLinked: input.spatialLinked,
   };
   const preview = isSpreadsheet
-    ? buildLabImportPreviewFromXlsxBase64(input.content, input.fileName, importContext)
-    : buildLabImportPreview(input.content, input.fileName, importContext);
+    ? buildLabImportPreviewFromXlsxBase64(normalizedContent, originalFileName, importContext)
+    : buildLabImportPreview(normalizedContent, originalFileName, importContext);
 
-  const sha256 = createHash("sha256").update(input.content).digest("hex");
+  const sourceFormat: "CSV_LONG" | "CSV_WIDE" | "XLSX" | "PDF_OCR" = sourceReceipt?.sourceType === "PDF_OCR"
+    ? "PDF_OCR"
+    : isSpreadsheet
+      ? "XLSX"
+      : preview.format === "LONG"
+        ? "CSV_LONG"
+        : "CSV_WIDE";
+  const analysisSourceType: "CSV" | "XLSX" | "PDF_OCR" = sourceReceipt?.sourceType
+    ?? (isSpreadsheet ? "XLSX" : "CSV");
+
+  // O hash e a chave vêm obrigatoriamente do arquivo original persistido e, quando o preview ocorreu
+  // antes, do mesmo recibo assinado que foi emitido após esse arquivamento.
+  const sourceSha256 = stored.sha256;
   const persistedStatus = preview.blockers > 0 ? "INCONSISTENT" : "VALIDATED";
-  const stored = await saveRawImportFile({
-    tenantId: input.tenantId,
-    analysisId: input.analysisId,
-    fileName: input.fileName,
-    content: input.content,
-    encoding: isSpreadsheet ? "base64" : "utf8",
-  });
 
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    // Serializa mutações da evidência laboratorial com o cálculo/revisão/publicação da mesma análise.
+    // O parser e o arquivamento bruto acontecem antes, mas nenhuma linha persistida muda sem este lock.
+    // Assim, uma interpretação nunca pode ser criada "depois" de uma importação que ela na verdade não leu.
+    const analysisLock = await client.query<{ id: string }>(
+      `SELECT id::text FROM analyses
+       WHERE tenant_id = $1::uuid AND id = $2::uuid
+       FOR UPDATE`,
+      [input.tenantId, input.analysisId],
+    );
+    if (!analysisLock.rows[0]) throw new Error("Análise não encontrada para importação.");
+
+    // `clock_timestamp()` é deliberado: `now()` representa o início da transação e poderia ficar
+    // anterior a uma interpretação que terminou enquanto esta importação aguardava o lock da análise.
     const importResult = await client.query<{ id: string }>(
       `INSERT INTO analysis_imports
-       (tenant_id, analysis_id, file_name, file_sha256, source_format, status, detected_headers,
-        normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::import_status, $7::jsonb, $8, $9, $10, $11, $12::jsonb, $13::uuid)
+       (tenant_id, analysis_id, file_name, file_sha256, raw_object_key, source_format, status, detected_headers,
+        normalized_row_count, blocker_count, warning_count, confidence_score, validation_issues, created_by, committed_at)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::import_status, $8::jsonb, $9, $10, $11, $12, $13::jsonb, $14::uuid, clock_timestamp())
        ON CONFLICT (tenant_id, file_sha256, analysis_id)
-       DO UPDATE SET blocker_count = EXCLUDED.blocker_count,
+       DO UPDATE SET file_name = EXCLUDED.file_name,
+                     raw_object_key = COALESCE(analysis_imports.raw_object_key, EXCLUDED.raw_object_key),
+                     source_format = EXCLUDED.source_format,
+                     status = EXCLUDED.status,
+                     detected_headers = EXCLUDED.detected_headers,
+                     normalized_row_count = EXCLUDED.normalized_row_count,
+                     blocker_count = EXCLUDED.blocker_count,
                      warning_count = EXCLUDED.warning_count,
                      confidence_score = EXCLUDED.confidence_score,
-                     validation_issues = EXCLUDED.validation_issues
+                     validation_issues = EXCLUDED.validation_issues,
+                     committed_at = clock_timestamp()
        RETURNING id::text`,
       [
         input.tenantId,
         input.analysisId,
-        input.fileName,
-        sha256,
-        isSpreadsheet ? "XLSX" : preview.format === "LONG" ? "CSV_LONG" : "CSV_WIDE",
+        originalFileName,
+        sourceSha256,
+        stored.key,
+        sourceFormat,
         persistedStatus,
         JSON.stringify(preview.detectedHeaders),
         preview.rows.length,
@@ -164,7 +224,15 @@ export async function commitCsvImport(input: {
           row.method,
           row.unitInferred,
           row.methodInferred,
-          JSON.stringify({ sourceLine: row.sourceLine, source: row.source }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            source: row.source,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
+          }),
         ],
       );
     }
@@ -175,7 +243,14 @@ export async function commitCsvImport(input: {
       importId,
       rows: preview.rows,
       issues: preview.issues,
+      sampleType: input.sampleType ?? "SOLO",
     });
+
+    // O arquivo-fonte pode permanecer INCONSISTENT para auditoria quando possui
+    // ocorrências locais, mas a ANÁLISE pode seguir quando ao menos uma evidência
+    // laboratorial segura foi realmente promovida. Uma linha inválida não transforma
+    // todo o conjunto válido em análise inconsistente.
+    const analysisStatus = promoted.promotedResults > 0 ? "IMPORTED" : "INCONSISTENT";
 
     await client.query(
       `UPDATE analyses
@@ -189,13 +264,20 @@ export async function commitCsvImport(input: {
       [
         input.tenantId,
         input.analysisId,
-        preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED",
+        analysisStatus,
         preview.confidence.score,
         preview.confidence.level,
-        isSpreadsheet ? "XLSX" : "CSV",
-        stored?.key ?? null,
+        analysisSourceType,
+        stored.key,
       ],
     );
+
+    // Um novo arquivo ou uma proveniência antes ausente pode tornar a confirmação anterior insuficiente.
+    // Recalculamos o resumo usando somente confirmações que batem exatamente import + SHA + object key.
+    const verificationState = await refreshAnalysisSourceHumanVerified(client, {
+      tenantId: input.tenantId,
+      analysisId: input.analysisId,
+    });
 
     await writeAudit(client, {
       tenantId: input.tenantId,
@@ -205,14 +287,19 @@ export async function commitCsvImport(input: {
       entityId: input.analysisId,
       metadata: {
         importId,
-        sha256,
+        sha256: sourceSha256,
+        sourceFormat,
+        sourceArchived: true,
+        sourceFileKey: stored.key,
+        sourceHumanVerified: verificationState.verified,
         blockers: preview.blockers,
         warnings: preview.warnings,
         promotedSamples: promoted.promotedSamples,
         promotedResults: promoted.promotedResults,
+        sampleType: input.sampleType ?? "SOLO",
       },
     });
 
-    return { importId, preview, analysisStatus: preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED", promoted };
+    return { importId, preview, analysisStatus, promoted };
   });
 }

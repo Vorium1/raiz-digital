@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import { resolveParameterCrossValidationProvider } from "@/lib/ai/parameter-cross-validation-provider";
 
 export class AgronomicProfileError extends Error {
   constructor(message: string, public status = 400) {
@@ -16,6 +17,25 @@ export class AgronomicProfileError extends Error {
  * e registrar auditoria com o autor da ação — a leitura/escrita em si não é
  * filtrada por tenant porque a tabela não tem RLS habilitada.
  */
+
+/**
+ * Resumo real de homologação do catálogo -- usado pra tirar o cabeçalho fixo "regras homologadas" da
+ * Biblioteca Técnica, que antes não dizia quantas culturas/parâmetros estavam de fato ACTIVE vs DRAFT
+ * (bug real confirmado na auditoria, item I: cabeçalho estático podia passar a impressão de que tudo já
+ * estava homologado). Conta o catálogo inteiro (não é filtrado por tenant -- ver comentário acima).
+ */
+export async function getCropCatalogHomologationSummary(tenantId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT
+         (SELECT count(*) FROM crop_profiles)::int AS "totalCrops",
+         (SELECT count(*) FROM crop_profiles WHERE status = 'ACTIVE')::int AS "activeCrops",
+         (SELECT count(*) FROM crop_profile_parameters)::int AS "totalParameters",
+         (SELECT count(*) FROM crop_profile_parameters WHERE status = 'ACTIVE')::int AS "activeParameters"`,
+    );
+    return result.rows[0] as { totalCrops: number; activeCrops: number; totalParameters: number; activeParameters: number };
+  });
+}
 
 export async function listCropProfiles(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
@@ -48,6 +68,9 @@ export async function getCropProfile(tenantId: string, cropProfileId: string, us
               analytical_method_allowed AS "analyticalMethodAllowed", unit_expected AS "unitExpected",
               sufficiency_ranges AS "sufficiencyRanges", criticality, yield_goal_bracket AS "yieldGoalBracket",
               technical_notes AS "technicalNotes", recommendation_rules AS "recommendationRules", status,
+              ai_validation_status AS "aiValidationStatus", ai_validation_confidence::float8 AS "aiValidationConfidence",
+              ai_validation_summary AS "aiValidationSummary", ai_validation_sources AS "aiValidationSources",
+              ai_validation_model AS "aiValidationModel", ai_validated_at::text AS "aiValidatedAt",
               condition_parameter_code AS "conditionParameterCode",
               condition_min::float8 AS "conditionMin", condition_max::float8 AS "conditionMax",
               derived_parameter_code AS "derivedParameterCode",
@@ -200,6 +223,71 @@ export async function activateAllCropProfileParameters(input: { tenantId: string
 }
 
 /**
+ * Cruza UM parâmetro DRAFT com a literatura agronômica reconhecida via IA e salva o veredito em
+ * `ai_validation_*` -- pedido do diretor, 2026-09-09, pra virar um sinal visível ("bate com a literatura" /
+ * "diverge" / "sem base suficiente") que acelera a decisão do curador humano. Nunca muda `status` do
+ * parâmetro: a homologação continua exigindo o clique humano em `setCropProfileParameterStatus` /
+ * `activateAllCropProfileParameters`, sempre.
+ */
+export async function crossValidateCropProfileParameter(input: { tenantId: string; userId: string; parameterId: string }) {
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const parameterResult = await client.query(
+      `SELECT cpp.id::text, cpp.parameter_code AS "parameterCode", cpp.parameter_category AS "parameterCategory",
+              cpp.sample_type AS "sampleType", cpp.depth_from_cm::float8 AS "depthFromCm", cpp.depth_to_cm::float8 AS "depthToCm",
+              cpp.unit_expected AS "unitExpected", cpp.analytical_method_allowed AS "analyticalMethodAllowed",
+              cpp.sufficiency_ranges AS "sufficiencyRanges", cp.name AS "cropName", cp.code AS "cropCode"
+       FROM crop_profile_parameters cpp JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
+       WHERE cpp.id = $1::uuid`,
+      [input.parameterId],
+    );
+    const parameter = parameterResult.rows[0];
+    if (!parameter) throw new AgronomicProfileError("Parâmetro não encontrado.", 404);
+    if (!parameter.sufficiencyRanges) throw new AgronomicProfileError("Cadastre as faixas de suficiência antes de cruzar com a IA.", 400);
+
+    const provider = resolveParameterCrossValidationProvider();
+    const validation = await provider.crossValidate({
+      cropName: parameter.cropName,
+      cropCode: parameter.cropCode,
+      parameterCode: parameter.parameterCode,
+      parameterCategory: parameter.parameterCategory,
+      sampleType: parameter.sampleType,
+      depthFromCm: parameter.depthFromCm,
+      depthToCm: parameter.depthToCm,
+      unitExpected: parameter.unitExpected,
+      analyticalMethodAllowed: parameter.analyticalMethodAllowed ?? [],
+      sufficiencyRanges: parameter.sufficiencyRanges,
+    });
+
+    const autoActivate = provider.isRealLanguageModel
+      && validation.status === "CONSISTENTE"
+      && validation.confidence >= 90
+      && validation.sources.length > 0;
+
+    const result = await client.query(
+      `UPDATE crop_profile_parameters
+       SET ai_validation_status = $2, ai_validation_confidence = $3, ai_validation_summary = $4,
+           ai_validation_sources = $5::jsonb, ai_validation_model = $6, ai_validated_at = now(),
+           status = CASE WHEN $7::boolean THEN 'ACTIVE'::crop_profile_status ELSE status END,
+           updated_at = now()
+       WHERE id = $1::uuid
+       RETURNING id::text, parameter_code AS "parameterCode", status,
+                 ai_validation_status AS "aiValidationStatus",
+                 ai_validation_confidence::float8 AS "aiValidationConfidence", ai_validation_summary AS "aiValidationSummary",
+                 ai_validation_sources AS "aiValidationSources", ai_validation_model AS "aiValidationModel",
+                 ai_validated_at::text AS "aiValidatedAt"`,
+      [input.parameterId, validation.status, validation.confidence, validation.summary, JSON.stringify(validation.sources), validation.model, autoActivate],
+    );
+    const updated = result.rows[0];
+    await writeAudit(client, {
+      tenantId: input.tenantId, userId: input.userId, action: "CROP_PROFILE_PARAMETER_AI_VALIDATED",
+      entityType: "crop_profile_parameter", entityId: updated.id,
+      metadata: { status: validation.status, confidence: validation.confidence, model: validation.model, provider: validation.provider, autoActivated: updated.status === "ACTIVE" && autoActivate },
+    });
+    return updated;
+  });
+}
+
+/**
  * Base de conhecimento agronômico. Só uma fonte com status ACTIVE pode ser
  * citada como referência técnica pela IA (ver evidence-package.ts) --
  * documentos em DRAFT existem no cadastro mas nunca chegam a uma geração
@@ -257,20 +345,190 @@ export async function setTechnicalSourceStatus(input: { tenantId: string; userId
 
 export async function listTechnicalRegions(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
-    const result = await client.query(`SELECT id::text, code, name, description FROM technical_regions ORDER BY name`);
+    const result = await client.query(
+      `SELECT id::text, code, name, description,
+              country_code AS "countryCode",
+              state_codes AS "stateCodes",
+              municipality_codes AS "municipalityCodes",
+              parent_region_code AS "parentRegionCode",
+              climate_zone_code AS "climateZoneCode",
+              CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::jsonb END AS "boundaryGeoJson",
+              valid_from::text AS "validFrom",
+              valid_until::text AS "validUntil",
+              updated_at::text AS "updatedAt"
+       FROM technical_regions
+       ORDER BY name`,
+    );
     return result.rows;
   });
 }
 
-export async function createTechnicalRegion(input: { tenantId: string; userId: string; code: string; name: string; description?: string | null }) {
+export async function createTechnicalRegion(input: {
+  tenantId: string;
+  userId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  countryCode?: string;
+  stateCodes?: string[];
+  municipalityCodes?: string[];
+  parentRegionCode?: string | null;
+  climateZoneCode?: string | null;
+  boundaryGeoJson?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+}) {
+  const countryCode = (input.countryCode ?? "BR").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) {
+    throw new AgronomicProfileError("Código de país deve ter duas letras.", 400);
+  }
+  const stateCodes = [...new Set((input.stateCodes ?? []).map((value) => value.trim().toUpperCase()).filter(Boolean))];
+  const municipalityCodes = [...new Set((input.municipalityCodes ?? []).map((value) => value.trim()).filter(Boolean))];
+
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
-      `INSERT INTO technical_regions (code, name, description) VALUES ($1, $2, nullif($3,'')) RETURNING id::text, code, name, description`,
-      [input.code.trim().toUpperCase(), input.name.trim(), input.description ?? ""],
+      `INSERT INTO technical_regions
+       (code, name, description, country_code, state_codes, municipality_codes,
+        parent_region_code, climate_zone_code, boundary, valid_from, valid_until)
+       VALUES (
+         $1, $2, nullif($3,''), $4, $5::text[], $6::text[],
+         nullif($7,''), nullif($8,''),
+         CASE WHEN nullif($9,'') IS NULL THEN NULL
+              ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($9), 4326)) END,
+         $10::date, $11::date
+       )
+       RETURNING id::text, code, name, description,
+                 country_code AS "countryCode",
+                 state_codes AS "stateCodes",
+                 municipality_codes AS "municipalityCodes",
+                 parent_region_code AS "parentRegionCode",
+                 climate_zone_code AS "climateZoneCode",
+                 CASE WHEN boundary IS NULL THEN NULL ELSE ST_AsGeoJSON(boundary)::jsonb END AS "boundaryGeoJson",
+                 valid_from::text AS "validFrom", valid_until::text AS "validUntil"`,
+      [
+        input.code.trim().toUpperCase(),
+        input.name.trim(),
+        input.description ?? "",
+        countryCode,
+        stateCodes,
+        municipalityCodes,
+        input.parentRegionCode?.trim().toUpperCase() ?? "",
+        input.climateZoneCode?.trim().toUpperCase() ?? "",
+        input.boundaryGeoJson ?? "",
+        input.validFrom ?? null,
+        input.validUntil ?? null,
+      ],
     );
     const created = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "TECHNICAL_REGION_CREATED", entityType: "technical_region", entityId: created.id, metadata: { code: created.code } });
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "TECHNICAL_REGION_CREATED",
+      entityType: "technical_region",
+      entityId: created.id,
+      metadata: {
+        code: created.code,
+        countryCode,
+        stateCodes,
+        municipalityCodesCount: municipalityCodes.length,
+        hasBoundary: Boolean(input.boundaryGeoJson?.trim()),
+        parentRegionCode: input.parentRegionCode ?? null,
+        climateZoneCode: input.climateZoneCode ?? null,
+      },
+    });
     return created;
+  });
+}
+
+/**
+ * Resolve regiões técnicas aplicáveis para uma localização sem "vazamento" espacial.
+ *
+ * Precedência:
+ *   boundary > município > UF > país.
+ *
+ * Se a região possui boundary, ela SÓ corresponde por interseção espacial.
+ * Isso impede que um subclima do Oeste do Paraná, por exemplo, seja aplicado
+ * ao estado inteiro só porque "PR" também foi informado no cadastro.
+ */
+export async function resolveTechnicalRegionsForLocation(input: {
+  tenantId: string;
+  userId?: string;
+  countryCode?: string;
+  stateCode?: string | null;
+  municipalityCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  atDate?: string | null;
+}) {
+  const countryCode = (input.countryCode ?? "BR").trim().toUpperCase();
+  const stateCode = input.stateCode?.trim().toUpperCase() || null;
+  const municipalityCode = input.municipalityCode?.trim() || null;
+  const hasCoordinates = Number.isFinite(input.latitude) && Number.isFinite(input.longitude);
+
+  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const result = await client.query(
+      `WITH location AS (
+         SELECT CASE
+           WHEN $5::boolean
+             THEN ST_SetSRID(ST_Point($7::float8, $6::float8), 4326)
+           ELSE NULL::geometry
+         END AS point
+       )
+       SELECT tr.id::text, tr.code, tr.name, tr.description,
+              tr.country_code AS "countryCode",
+              tr.state_codes AS "stateCodes",
+              tr.municipality_codes AS "municipalityCodes",
+              tr.parent_region_code AS "parentRegionCode",
+              tr.climate_zone_code AS "climateZoneCode",
+              CASE
+                WHEN tr.boundary IS NOT NULL THEN 400
+                WHEN cardinality(tr.municipality_codes) > 0 THEN 300
+                WHEN cardinality(tr.state_codes) > 0 THEN 200
+                ELSE 100
+              END AS "specificityScore"
+       FROM technical_regions tr
+       CROSS JOIN location l
+       WHERE tr.country_code = $1
+         AND (tr.valid_from IS NULL OR tr.valid_from <= COALESCE($8::date, CURRENT_DATE))
+         AND (tr.valid_until IS NULL OR tr.valid_until >= COALESCE($8::date, CURRENT_DATE))
+         AND (
+           (
+             tr.boundary IS NOT NULL
+             AND l.point IS NOT NULL
+             AND ST_Covers(tr.boundary, l.point)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) > 0
+             AND $3::text IS NOT NULL
+             AND $3 = ANY(tr.municipality_codes)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) = 0
+             AND cardinality(tr.state_codes) > 0
+             AND $2::text IS NOT NULL
+             AND $2 = ANY(tr.state_codes)
+           )
+           OR (
+             tr.boundary IS NULL
+             AND cardinality(tr.municipality_codes) = 0
+             AND cardinality(tr.state_codes) = 0
+           )
+         )
+       ORDER BY "specificityScore" DESC, tr.name`,
+      [
+        countryCode,
+        stateCode,
+        municipalityCode,
+        null,
+        hasCoordinates,
+        hasCoordinates ? input.latitude : null,
+        hasCoordinates ? input.longitude : null,
+        input.atDate ?? null,
+      ],
+    );
+    return result.rows;
   });
 }
 

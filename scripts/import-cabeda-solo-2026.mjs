@@ -89,20 +89,33 @@ const AREAS = [
   { name: "Área 03", areaHa: 2.0, sqcStart: 1148, relatorioStart: 1426, points: AREA_03_POINTS, offsetX: 400 },
 ];
 
+// Achado real (RAIZ_2.0/Cabeda, 2026-09-11, revisado no fechamento técnico item 5): só CTC abaixo usa o
+// nome CANÔNICO do método (mesma fórmula, notação abreviada -- defensável sem o PDF original,
+// `src/domain/lab-method-normalization.ts`). S/B/MN voltaram a usar o texto BRUTO exatamente como o PDF
+// original do laboratório Mondial escreve -- a versão anterior deste script presumia que o laboratório
+// usou a técnica mais específica do que escreveu (turbidimetria -> extrator+leitura completos, etc.), mas
+// isso nunca foi confirmado contra o texto literal dos PDFs (fora deste repositório, não acessíveis nesta
+// auditoria) -- "não inventar detalhe de método pra fazer cadastro bater". Essas 3 equivalências ficam
+// documentadas em `PENDING_METHOD_EQUIVALENCES` (mesmo arquivo), prontas pra aplicar quando alguém
+// confirmar contra o documento -- não aplicadas até lá. Não muda nenhuma classificação hoje: CTC/S/B/MN
+// continuam DRAFT no cadastro (nenhum foi homologado pra ACTIVE).
 function toRow(point) {
   const [clay, ph, smp, p, k, mo, al, ca, mg, hAl, ctc, s, zn, cu, b, mn] = point;
   return [
     { code: "CLAY", value: clay, unit: "%", method: "Densímetro" },
     { code: "PH", value: ph, unit: "", method: "H2O" },
     { code: "SMP", value: smp, unit: "", method: "Índice SMP" },
-    { code: "P", value: p, unit: "mg/L", method: "Mehlich-1" },
-    { code: "K", value: k, unit: "mg/L", method: "Mehlich-1" },
+    // "mg/L" (como o PDF do laboratório escreve) e "mg/dm³" (como o perfil homologado espera) são
+    // NUMERICAMENTE IDÊNTICOS -- 1 L = 1 dm³ exatamente, nenhuma conversão de valor, só rótulo diferente.
+    // Normalizado pra "mg/dm³" aqui por consistência/rastreabilidade (achado real, 2026-09-11).
+    { code: "P", value: p, unit: "mg/dm³", method: "Mehlich-1" },
+    { code: "K", value: k, unit: "mg/dm³", method: "Mehlich-1" },
     { code: "MO", value: mo, unit: "%", method: "Oxidação sulfocrômica" },
     { code: "AL", value: al, unit: "cmolc/dm³", method: "KCl 1 mol/L" },
     { code: "CA", value: ca, unit: "cmolc/dm³", method: "KCl 1 mol/L" },
     { code: "MG", value: mg, unit: "cmolc/dm³", method: "KCl 1 mol/L" },
     { code: "H_AL", value: hAl, unit: "cmolc/dm³", method: "SMP" },
-    { code: "CTC", value: ctc, unit: "cmolc/dm³", method: "Calculado: Ca+Mg+K+(H+Al)" },
+    { code: "CTC", value: ctc, unit: "cmolc/dm³", method: "Calculado: CTCpH7,0 = Ca + Mg + K + (H+Al)" },
     { code: "S", value: s, unit: "mg/dm³", method: "Turbidimetria" },
     { code: "ZN", value: zn, unit: "mg/dm³", method: "Mehlich-1" },
     { code: "CU", value: cu, unit: "mg/dm³", method: "Mehlich-1" },

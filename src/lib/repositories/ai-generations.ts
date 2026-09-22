@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
+import type { KnowledgeResearchSource } from "@/lib/ai/knowledge-research-schema";
 
 export class AiGenerationError extends Error {
   constructor(message: string, public status = 400) {
@@ -210,16 +211,20 @@ export async function reviewAgronomicPrescription(input: { tenantId: string; use
 export async function recordOperationalAssistantGeneration(input: {
   tenantId: string; userId: string; provider: string; model: string; promptVersion: string;
   requestPayload: unknown; responsePayload: unknown; tokensUsed?: number | null; costUsd?: number | null;
+  /** Fase 4A (auditoria, Correção 3 da arquitetura) -- `PENDING_REVIEW` quando a resposta trouxe hipótese
+   *  agronômica (`requires_professional_review === true`, calculado por código, nunca pelo provider);
+   *  `APPROVED` (padrão, igual ao comportamento anterior) pra resposta puramente operacional/factual. */
+  status?: "APPROVED" | "PENDING_REVIEW";
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO ai_generations (tenant_id, kind, provider, model, prompt_version, request_payload, response_payload, tokens_used, cost_usd, status, created_by)
-       VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, 'APPROVED', $9::uuid)
+       VALUES ($1::uuid, 'OPERATIONAL_ASSISTANT', $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::ai_review_status, $10::uuid)
        RETURNING id::text, created_at::text AS "createdAt"`,
-      [input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload), JSON.stringify(input.responsePayload), input.tokensUsed ?? null, input.costUsd ?? null, input.userId],
+      [input.tenantId, input.provider, input.model, input.promptVersion, JSON.stringify(input.requestPayload), JSON.stringify(input.responsePayload), input.tokensUsed ?? null, input.costUsd ?? null, input.status ?? "APPROVED", input.userId],
     );
     const created = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "AI_ASSISTANT_QUERY", entityType: "ai_generation", entityId: created.id, metadata: { provider: input.provider, model: input.model } });
+    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "AI_ASSISTANT_QUERY", entityType: "ai_generation", entityId: created.id, metadata: { provider: input.provider, model: input.model, status: input.status ?? "APPROVED" } });
     return created;
   });
 }
@@ -258,6 +263,34 @@ export function knowledgeResearchCooldownRemainingDays(lastRunCreatedAt: string 
  * falharam), nasce já APPROVED porque não é ela quem carrega a afirmação
  * técnica -- as fontes DRAFT que ela gera é que precisam de homologação.
  */
+function normalizeResearchSourceIdentity(source: Pick<KnowledgeResearchSource, "doi" | "sourceUrl">) {
+  const doi = source.doi?.trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, "") ?? "";
+  if (doi) return `doi:${doi}`;
+  const rawUrl = source.sourceUrl?.trim() ?? "";
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    url.hash = "";
+    url.search = "";
+    return `url:${url.toString().replace(/\/$/, "").toLowerCase()}`;
+  } catch {
+    return null;
+  }
+}
+
+function researchSourceCanAutoActivate(
+  source: KnowledgeResearchSource & { providerName: string },
+  providerAgreementCount: number,
+) {
+  const blockedStrength = new Set(["CONFLICTING", "INSUFFICIENT", "UNASSESSED"]);
+  return providerAgreementCount >= 2
+    && Boolean(normalizeResearchSourceIdentity(source))
+    && Boolean(source.evidenceStrength)
+    && !blockedStrength.has(source.evidenceStrength ?? "UNASSESSED")
+    && source.requiresLocalCalibration !== true
+    && source.requiresAgronomistReview !== true;
+}
+
 export async function recordKnowledgeResearchRun(input: {
   tenantId: string;
   userId: string;
@@ -266,7 +299,7 @@ export async function recordKnowledgeResearchRun(input: {
   requestPayload: unknown;
   perCrop: Array<{
     cropId: string; cropCode: string; cropName: string;
-    sources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string; content: string; regionCode: string | null }>;
+    sources: Array<KnowledgeResearchSource & { providerName: string; providerModel: string }>;
     providerResults: Array<{ provider: string; model: string; sourcesCreated: number; error: string | null }>;
   }>;
   tokensUsed?: number | null;
@@ -274,15 +307,53 @@ export async function recordKnowledgeResearchRun(input: {
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const createdSourceIds: string[] = [];
+    let autoActivatedSources = 0;
     for (const crop of input.perCrop) {
+      const providerAgreement = new Map<string, Set<string>>();
       for (const source of crop.sources) {
+        const identity = normalizeResearchSourceIdentity(source);
+        if (!identity) continue;
+        const providers = providerAgreement.get(identity) ?? new Set<string>();
+        providers.add(source.providerName);
+        providerAgreement.set(identity, providers);
+      }
+
+      for (const source of crop.sources) {
+        const identity = normalizeResearchSourceIdentity(source);
+        const agreementCount = identity ? (providerAgreement.get(identity)?.size ?? 0) : 0;
+        const autoActive = researchSourceCanAutoActivate(source, agreementCount);
         const inserted = await client.query(
-          `INSERT INTO technical_sources (title, institution, edition_year, crop_profile_id, region_code, subject, content, authored_by)
-           VALUES ($1, nullif($2,''), $3, $4::uuid, nullif($5,''), $6, $7, $8::uuid)
-           RETURNING id::text`,
-          [source.title, source.institution ?? "", source.editionYear, crop.cropId, source.regionCode ?? "", source.subject, source.content, input.userId],
+          `INSERT INTO technical_sources
+           (title, institution, edition_year, crop_profile_id, region_code, subject, content, authored_by,
+            status, evidence_type, evidence_strength, context_profile, critical_dimensions,
+            requires_local_calibration, requires_agronomist_review, quantitative_use_status,
+            quantitative_applicability_approved, homologated_rule_id, source_locator, source_url, doi,
+            study_design, peer_reviewed)
+           VALUES
+           ($1, nullif($2,''), $3, $4::uuid, nullif($5,''), $6, $7, $8::uuid,
+            $9::crop_profile_status, $10, $11, $12::jsonb, $13::text[],
+            $14, $15, $16, false, null, $17, $18, $19, $20, $21)
+           RETURNING id::text, status`,
+          [
+            source.title, source.institution ?? "", source.editionYear, crop.cropId, source.regionCode ?? "",
+            source.subject, source.content, input.userId,
+            autoActive ? "ACTIVE" : "DRAFT",
+            source.evidenceType ?? "UNCLASSIFIED",
+            source.evidenceStrength ?? "UNASSESSED",
+            JSON.stringify(source.contextProfile ?? {}),
+            source.criticalDimensions ?? [],
+            source.requiresLocalCalibration ?? false,
+            source.requiresAgronomistReview ?? false,
+            source.quantitativeUseStatus ?? "CONTEXT_ONLY",
+            source.sourceLocator ?? null,
+            source.sourceUrl ?? null,
+            source.doi ?? null,
+            source.studyDesign ?? null,
+            source.peerReviewed ?? null,
+          ],
         );
         createdSourceIds.push(inserted.rows[0].id);
+        if (inserted.rows[0].status === "ACTIVE") autoActivatedSources += 1;
       }
     }
 
@@ -293,15 +364,15 @@ export async function recordKnowledgeResearchRun(input: {
        RETURNING id::text, created_at::text AS "createdAt"`,
       [
         input.tenantId, input.providersUsed.join(",") || "none", "multiple", input.promptVersion, JSON.stringify(input.requestPayload),
-        JSON.stringify({ perCrop: summary, totalSourcesCreated: createdSourceIds.length, providersUsed: input.providersUsed }),
+        JSON.stringify({ perCrop: summary, totalSourcesCreated: createdSourceIds.length, autoActivatedSources, providersUsed: input.providersUsed }),
         input.tokensUsed ?? null, input.costUsd ?? null, input.userId,
       ],
     );
     const generation = created.rows[0];
     await writeAudit(client, {
       tenantId: input.tenantId, userId: input.userId, action: "KNOWLEDGE_RESEARCH_RUN", entityType: "ai_generation", entityId: generation.id,
-      metadata: { sourcesCreated: createdSourceIds.length, cropsResearched: input.perCrop.length, tokensUsed: input.tokensUsed ?? null },
+      metadata: { sourcesCreated: createdSourceIds.length, autoActivatedSources, cropsResearched: input.perCrop.length, tokensUsed: input.tokensUsed ?? null },
     });
-    return { ...generation, sourcesCreated: createdSourceIds.length, perCrop: summary };
+    return { ...generation, sourcesCreated: createdSourceIds.length, autoActivatedSources, perCrop: summary };
   });
 }

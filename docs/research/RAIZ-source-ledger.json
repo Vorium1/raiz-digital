@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-09-14",
+  "sources": [
+    {"file":"cqfs2016.pdf","sha256":"b2c5122a05962dc1b32d8f9265bef99a357d748cc6a21a4dd1f1502f1d070104","bytes":30973588},
+    {"file":"sosbai2025.pdf","sha256":"7e2b2de2d74993ccd6f92d56f93f1d062f1bd6e04bfd162b6aff90febd7689a5","bytes":17060663},
+    {"file":"canola2009.pdf","sha256":"1d11ca7de832835e1c6487c307288f4c72f719c0c393940c2e8b60d2e19b668a","bytes":13917003},
+    {"file":"canola2022.pdf","sha256":"e3ea65423f14fe0afecc0fcd4ad4aaf67d9dfe5f233bcfb51326f792d80e0a95","bytes":3876332},
+    {"file":"soja2020.pdf","sha256":"a3bc85a7fbe29a6630583803fa54da38614c36da225b7e216ccb363ff166701e","bytes":5935809},
+    {"file":"gesso2005.pdf","sha256":"39125c7661c38d009b9d38c0509983ace63b8e3a7bd12e1d654ff2716f800bc4","bytes":1149925}
+  ]
+}

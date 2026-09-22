@@ -88,20 +88,30 @@ export default async function EvolutionReportPage({ params }: { params: Promise<
                 })}</tbody>
               </table></div>
             ) : <p className="report-empty-note">Nenhuma recomendação de insumo registrada para este talhão ainda.</p>}
-            <p className="report-empty-note" style={{ marginTop: 8 }}>Compara a última recomendação técnica de cada análise com o total realmente aplicado — serve como respaldo técnico quando a produtividade não corresponde ao esperado por falta de adesão ao manejo recomendado.</p>
+            {/* Antes esta nota afirmava uma relação causal ("produtividade não corresponde ao esperado por
+                falta de adesão") sem nenhum modelo estatístico por trás -- achado real numa revisão
+                independente. Corrigido pra descrever só o que a tabela É (comparação documental entre
+                recomendado e aplicado), sem atribuir causa a nenhum resultado de produtividade. */}
+            <p className="report-empty-note" style={{ marginTop: 8 }}>Comparação documental entre a última recomendação técnica de cada análise e o total realmente aplicado em campo — registro de rastreabilidade, não uma explicação de causa para nenhum resultado de produtividade.</p>
           </section>
 
           <section className="report-section">
             <h2>Rotação de culturas</h2>
             {seasons.length ? (
               <>
+                {/* Antes o título e a legenda desta seção afirmavam "sequência real" -- mas a ordem vem de
+                    `created_at` (quando a linha foi cadastrada no sistema), não de uma data agronômica real
+                    de plantio (crop_seasons não guarda essa data). Cadastro fora de ordem (ex.: usuário
+                    registrando uma safra antiga depois) produziria uma sequência errada aqui sem nenhum
+                    aviso. Achado real numa revisão independente -- corrigido pra nunca afirmar mais
+                    certeza do que o dado garante. */}
                 <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
                   {seasons.map((season: any) => `${season.currentCrop || "cultura não informada"} ${season.seasonLabel}`).join("  →  ")}
                 </p>
-                <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Ordem</th><th>Safra</th><th>Cultura</th></tr></thead>
+                <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Ordem de cadastro</th><th>Safra</th><th>Cultura</th></tr></thead>
                   <tbody>{seasons.map((season: any, index: number) => <tr key={season.id}><td>{index + 1}</td><td>{season.seasonLabel}</td><td>{season.currentCrop || "não informada"}</td></tr>)}</tbody>
                 </table></div>
-                <p className="report-empty-note" style={{ marginTop: 8 }}>Sequência real por ordem de cadastro — nenhuma safra é sobrescrita, cada sucessão fica rastreável para comparar evolução química, física e microbiológica entre ciclos.</p>
+                <p className="report-empty-note" style={{ marginTop: 8 }}>Ordem de cadastro no sistema — nenhuma safra é sobrescrita, cada uma fica rastreável, mas esta ordem não comprova a sequência agronômica real de plantio. Confira o rótulo de cada safra (ex.: "2025/26") para confirmar a ordem real.</p>
               </>
             ) : <p className="report-empty-note">Nenhuma safra cadastrada para este talhão.</p>}
           </section>

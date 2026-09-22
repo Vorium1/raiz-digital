@@ -17,11 +17,15 @@ export type AgronomicEvidencePackage = {
   };
   region: { code: string | null };
   analysis: { id: string; code: string; status: string; createdAt: string };
+  /** Identidade explícita da revisão que originou `classifications`; usada para descartar pacote stale. */
+  interpretation: { id: string; createdAt: string } | null;
   results: Array<{ sampleCode: string; parameterCode: string; value: number; unit: string; method: string }>;
   classifications: Array<{ sampleCode: string; parameterCode: string; interpretable: boolean; classification: string | null; reason: string | null }>;
   ruleUsed: { cropProfileCode: string | null; cropProfileName: string | null; version: string | null; contentHash: string | null } | null;
   confidence: { score: number; level: string } | null;
-  technicalSources: Array<{ title: string; institution: string | null; editionYear: number | null; subject: string | null }>;
+  /** `id` incluído (fechamento técnico, 2º pedido, item 1) -- sem ele, o manifesto de auditoria nunca
+   *  conseguia registrar QUAL fonte técnica foi realmente usada, só o título em texto livre. */
+  technicalSources: Array<{ id: string; title: string; institution: string | null; editionYear: number | null; subject: string | null }>;
   history: Array<{ analysisCode: string; seasonLabel: string; createdAt: string; parameterCode: string; classification: string }>;
   reviewStatus: string | null;
 };
@@ -37,6 +41,8 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
     const tenant = tenantResult.rows[0];
     if (!tenant) return null;
 
+    // Mantém análise + safra estáveis durante TODO o pacote. Importação usa FOR UPDATE em analyses e
+    // edição do contexto atualiza crop_seasons, então ambas esperam este snapshot terminar.
     const baseResult = await client.query(
       `SELECT a.id::text, a.code, a.status::text, a.created_at::text AS "createdAt",
               c.id::text AS "clientId", c.name AS "clientName",
@@ -51,7 +57,8 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
        JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       FOR SHARE OF a, cs`,
       [tenantId, analysisId],
     );
     const base = baseResult.rows[0];
@@ -65,10 +72,10 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
     );
 
     const interpretationResult = await client.query(
-      `SELECT i.status, i.structured_output AS "structuredOutput", cp.code AS "cropProfileCode", cp.name AS "cropProfileName",
+      `SELECT i.id::text, i.created_at::text AS "createdAt", i.status, i.structured_output AS "structuredOutput", cp.code AS "cropProfileCode", cp.name AS "cropProfileName",
               cp.semantic_version AS "cropProfileVersion", cp.content_hash AS "cropProfileHash"
        FROM interpretations i LEFT JOIN crop_profiles cp ON cp.id = i.crop_profile_id
-       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid ORDER BY i.created_at DESC LIMIT 1`,
+       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid ORDER BY i.revision DESC LIMIT 1`,
       [tenantId, analysisId],
     );
     const interpretation = interpretationResult.rows[0];
@@ -76,7 +83,7 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
 
     const sourcesResult = base.cropProfileId
       ? await client.query(
-          `SELECT title, institution, edition_year AS "editionYear", subject FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
+          `SELECT id::text, title, institution, edition_year AS "editionYear", subject FROM technical_sources WHERE crop_profile_id = $1::uuid AND status = 'ACTIVE' ORDER BY title`,
           [base.cropProfileId],
         )
       : { rows: [] };
@@ -115,6 +122,7 @@ export async function buildAgronomicEvidencePackage(tenantId: string, userId: st
       },
       region: { code: base.regionCode },
       analysis: { id: base.id, code: base.code, status: base.status, createdAt: base.createdAt },
+      interpretation: interpretation ? { id: interpretation.id, createdAt: interpretation.createdAt } : null,
       results: resultsResult.rows,
       classifications: (structured?.interpretation ?? []).map((item) => ({ sampleCode: item.sampleCode, parameterCode: item.parameterCode, interpretable: item.interpretable, classification: item.interpretable ? (item.classification ?? null) : null, reason: item.interpretable ? null : (item.reason ?? null) })),
       ruleUsed: interpretation ? { cropProfileCode: interpretation.cropProfileCode, cropProfileName: interpretation.cropProfileName, version: interpretation.cropProfileVersion, contentHash: interpretation.cropProfileHash } : null,

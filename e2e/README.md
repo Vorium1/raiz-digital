@@ -85,3 +85,29 @@ Estes testes cobrem os fluxos de autenticação/segurança já identificados com
 substituem os testes manuais de UX/responsividade documentados em `docs/PROJECT_STATE.md` a cada
 funcionalidade nova — ainda vale testar visualmente em desktop e celular antes de considerar uma tela
 pronta.
+
+
+## QA visual do Preview NDVI (#84)
+
+O gate visual hospedado da issue #84 possui um spec dedicado:
+
+```bash
+E2E_BASE_URL="https://<preview>.vercel.app" \
+E2E_ADMIN_PASSWORD="<senha da conta de homologação>" \
+VERCEL_AUTOMATION_BYPASS_SECRET="<segredo de bypass, se o Preview for protegido>" \
+E2E_EXPECT_GOOGLE_MAPS=1 \
+npm run test:e2e:ndvi-preview
+```
+
+O segredo de bypass é opcional em Preview público e nunca deve ser commitado. Quando presente, o Playwright envia os headers oficiais `x-vercel-protection-bypass` e `x-vercel-set-bypass-cookie`.
+
+O spec:
+- descobre dinamicamente um talhão com raster NDVI arquivado;
+- valida que o PNG real responde e que o bbox do raster contém o contorno do talhão;
+- confirma NDVI médio, maior vigor, faixas de vigor e linguagem que não confunde vigor com produtividade;
+- verifica mapa/legenda e, quando `E2E_EXPECT_GOOGLE_MAPS=1`, exige carregamento do Google Maps;
+- testa viewport mobile 390×844 sem overflow horizontal;
+- abre a camada Relevo e aceita somente 3D funcional ou fallback topográfico limpo;
+- anexa screenshots do NDVI desktop, mobile e Relevo ao resultado do Playwright.
+
+Esse teste automatiza evidências objetivas do gate, mas a aprovação visual humana final do alinhamento continua necessária antes de fechar #84.

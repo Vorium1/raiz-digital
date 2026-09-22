@@ -1,5 +1,35 @@
 import assert from "node:assert/strict";
-import { classifyNdviValue, computeZoneBreakdownPct, detectWithinFieldVariability } from "../src/domain/ndvi-engine.ts";
+import {
+  analyzeNdviTemporalHistory,
+  classifyNdviObservationQuality,
+  classifyNdviValue,
+  computeZoneBreakdownPct,
+  detectWithinFieldVariability,
+} from "../src/domain/ndvi-engine.ts";
+import {
+  NDVI_RASTER_ALGORITHM_VERSION,
+  ndviRasterKeyBelongsToField,
+  ndviRasterObjectKey,
+  ndviRasterSha256,
+  ndviRasterStorageProvider,
+  readNdviRasterArtifact,
+  saveRequiredNdviRasterArtifact,
+  verifyNdviRasterIntegrity,
+} from "../src/lib/ndvi-raster-storage.ts";
+import {
+  COPERNICUS_NDVI_MOSAICKING_ORDER,
+  copernicusNdviDataFilter,
+  fieldGeometryBbox,
+  summarizePixelValidity,
+} from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import {
+  EARTH_SEARCH_COLLECTION,
+  EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
+  EARTH_SEARCH_STAC_URL,
+  computeEarthSearchNdvi,
+  resolveEarthSearchBandTransform,
+  selectEarthSearchScenes,
+} from "../src/lib/satellite/earth-search-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -25,9 +55,9 @@ assert.equal(Object.keys(uniform).length, 1);
 
 // 9. Histograma misto -- percentuais somam ~100 e batem com a contagem de pixels real.
 const mixed = computeZoneBreakdownPct([
-  { ndvi: 0.1, pixelCount: 100 }, // SEM_VEGETACAO
-  { ndvi: 0.3, pixelCount: 200 }, // BAIXO
-  { ndvi: 0.7, pixelCount: 700 }, // ALTO
+  { ndvi: 0.1, pixelCount: 100 },
+  { ndvi: 0.3, pixelCount: 200 },
+  { ndvi: 0.7, pixelCount: 700 },
 ]);
 assert.equal(mixed.SEM_VEGETACAO, 10);
 assert.equal(mixed.BAIXO, 20);
@@ -43,8 +73,262 @@ assert.equal(variable.hasSignificantVariability, true);
 const uniformField = detectWithinFieldVariability({ MODERADO: 5, ALTO: 90, MUITO_ALTO: 5 });
 assert.equal(uniformField.hasSignificantVariability, false);
 
-// 12. Nunca inventa causa nem número -- a nota é só descritiva do padrão, checagem de tipo/forma.
+// 12. Nunca inventa causa nem número -- nota é só descritiva do padrão.
 assert.equal(typeof variable.note, "string");
 assert.ok(variable.note.length > 0);
 
-console.log("ndvi-engine: 12 cenários aprovados (classificação de vigor, breakdown por histograma, variabilidade interna)");
+// 13-16. Gate de qualidade operacional pela fração sem pixel válido.
+assert.equal(classifyNdviObservationQuality({ cloudCoverPct: 5 }), "ALTA");
+assert.equal(classifyNdviObservationQuality({ cloudCoverPct: 18 }), "MODERADA");
+assert.equal(classifyNdviObservationQuality({ cloudCoverPct: 31 }), "BAIXA");
+assert.equal(classifyNdviObservationQuality({ cloudCoverPct: null }), "INDETERMINADA");
+
+// 17. Sem leitura -> sem baseline e sem falso alerta.
+const emptyTemporal = analyzeNdviTemporalHistory([]);
+assert.equal(emptyTemporal.direction, "SEM_BASELINE");
+assert.equal(emptyTemporal.hasRelevantTemporalChange, false);
+assert.equal(emptyTemporal.latestMeanNdvi, null);
+
+// 18. Duas leituras: compara com anterior, mas não finge baseline robusto.
+const shortTemporal = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-08-01", meanNdvi: 0.52, cloudCoverPct: 8 },
+  { capturedAt: "2026-08-10", meanNdvi: 0.58, cloudCoverPct: 6 },
+]);
+assert.equal(shortTemporal.baselineMedian, null);
+assert.equal(shortTemporal.deltaFromPrevious, 0.06);
+assert.equal(shortTemporal.hasRelevantTemporalChange, false);
+
+// 19. Histórico suficiente e queda relevante frente à mediana das anteriores.
+const dropTemporal = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.72, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-10", meanNdvi: 0.74, cloudCoverPct: 5 },
+  { capturedAt: "2026-07-20", meanNdvi: 0.71, cloudCoverPct: 7 },
+  { capturedAt: "2026-08-01", meanNdvi: 0.73, cloudCoverPct: 6 },
+  { capturedAt: "2026-08-12", meanNdvi: 0.51, cloudCoverPct: 9 },
+]);
+assert.equal(dropTemporal.direction, "QUEDA");
+assert.equal(dropTemporal.hasRelevantTemporalChange, true);
+assert.equal(dropTemporal.baselineMedian, 0.725);
+assert.equal(dropTemporal.deltaFromBaseline, -0.215);
+assert.equal(dropTemporal.latestQuality, "ALTA");
+assert.ok(dropTemporal.note.includes("não uma causa agronômica"));
+
+// 20. Histórico suficiente, mas leitura atual perto da mediana: não sinaliza mudança relevante.
+const stableTemporal = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.61, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-10", meanNdvi: 0.63, cloudCoverPct: 5 },
+  { capturedAt: "2026-07-20", meanNdvi: 0.62, cloudCoverPct: 7 },
+  { capturedAt: "2026-08-01", meanNdvi: 0.64, cloudCoverPct: 6 },
+]);
+assert.equal(stableTemporal.direction, "ESTAVEL");
+assert.equal(stableTemporal.hasRelevantTemporalChange, false);
+
+// 21. Envelope espacial de Polygon preserva ordem GeoJSON lon/lat.
+assert.deepEqual(
+  fieldGeometryBbox({
+    type: "Polygon",
+    coordinates: [[[-52.25, -28.22], [-52.20, -28.22], [-52.20, -28.18], [-52.25, -28.18], [-52.25, -28.22]]],
+  }),
+  [-52.25, -28.22, -52.20, -28.18],
+);
+
+// 22. MultiPolygon também consolida o envelope sem depender de CRS inventado.
+assert.deepEqual(
+  fieldGeometryBbox({
+    type: "MultiPolygon",
+    coordinates: [
+      [[[-52.30, -28.30], [-52.28, -28.30], [-52.28, -28.28], [-52.30, -28.30]]],
+      [[[-52.20, -28.20], [-52.18, -28.20], [-52.18, -28.18], [-52.20, -28.20]]],
+    ],
+  }),
+  [-52.30, -28.30, -52.18, -28.18],
+);
+
+// 23. Geometria sem extensão espacial útil falha fechado.
+assert.throws(
+  () => fieldGeometryBbox({ type: "Polygon", coordinates: [[[1, 1], [1, 1], [1, 1]]] }),
+  /Geometria do talhão inválida/,
+);
+
+// 24. Statistical API: noDataCount é subconjunto de sampleCount, não soma adicional.
+assert.deepEqual(summarizePixelValidity(810, 428), {
+  total: 810,
+  invalid: 428,
+  valid: 382,
+  maskedPixelPct: (428 / 810) * 100,
+});
+
+// 25. Contagem inválida nunca ultrapassa o total e leitura 100% mascarada resulta em zero válido.
+assert.deepEqual(summarizePixelValidity(100, 150), {
+  total: 100,
+  invalid: 100,
+  valid: 0,
+  maskedPixelPct: 100,
+});
+
+// 26. Uma imagem atual ruim pode parecer uma queda enorme, mas NÃO vira alerta temporal acionável.
+const lowQualityLatest = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.72, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-10", meanNdvi: 0.73, cloudCoverPct: 5 },
+  { capturedAt: "2026-07-20", meanNdvi: 0.71, cloudCoverPct: 7 },
+  { capturedAt: "2026-08-01", meanNdvi: 0.70, cloudCoverPct: 6 },
+  { capturedAt: "2026-08-12", meanNdvi: 0.31, cloudCoverPct: 42 },
+]);
+assert.equal(lowQualityLatest.latestQuality, "BAIXA");
+assert.equal(lowQualityLatest.direction, "QUEDA");
+assert.equal(lowQualityLatest.hasRelevantTemporalChange, false);
+assert.ok(lowQualityLatest.note.includes("não dispara sinal temporal acionável"));
+
+// 27. Uma aquisição histórica ruim é preservada, mas não contamina a mediana do baseline.
+const badPriorExcluded = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.70, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-08", meanNdvi: 0.20, cloudCoverPct: 40 },
+  { capturedAt: "2026-07-15", meanNdvi: 0.72, cloudCoverPct: 8 },
+  { capturedAt: "2026-07-22", meanNdvi: 0.71, cloudCoverPct: 9 },
+  { capturedAt: "2026-08-05", meanNdvi: 0.55, cloudCoverPct: 7 },
+]);
+assert.equal(badPriorExcluded.baselineCount, 3);
+assert.equal(badPriorExcluded.baselineMedian, 0.71);
+assert.equal(badPriorExcluded.deltaFromBaseline, -0.16);
+assert.equal(badPriorExcluded.hasRelevantTemporalChange, true);
+
+// 28. Qualidade indeterminada também falha fechado: não dispara alerta temporal.
+const unknownQualityLatest = analyzeNdviTemporalHistory([
+  { capturedAt: "2026-07-01", meanNdvi: 0.70, cloudCoverPct: 4 },
+  { capturedAt: "2026-07-10", meanNdvi: 0.72, cloudCoverPct: 5 },
+  { capturedAt: "2026-07-20", meanNdvi: 0.71, cloudCoverPct: 7 },
+  { capturedAt: "2026-08-01", meanNdvi: 0.69, cloudCoverPct: 6 },
+  { capturedAt: "2026-08-12", meanNdvi: 0.30, cloudCoverPct: null },
+]);
+assert.equal(unknownQualityLatest.latestQuality, "INDETERMINADA");
+assert.equal(unknownQualityLatest.direction, "QUEDA");
+assert.equal(unknownQualityLatest.hasRelevantTemporalChange, false);
+assert.ok(unknownQualityLatest.note.includes("não dispara alerta"));
+
+// 29. Statistical e Process API usam uma única política de seleção de tiles.
+assert.equal(COPERNICUS_NDVI_MOSAICKING_ORDER, "leastCC");
+assert.deepEqual(copernicusNdviDataFilter(17), {
+  maxCloudCoverage: 17,
+  mosaickingOrder: "leastCC",
+});
+
+// 30-33. Contrato de cadeia de custódia do raster histórico.
+const archivedBytes = Buffer.from("raster-ndvi-sintetico-v1", "utf8");
+const archivedSha = ndviRasterSha256(archivedBytes);
+const archivedKey = ndviRasterObjectKey({
+  tenantId: "11111111-1111-1111-1111-111111111111",
+  fieldId: "22222222-2222-2222-2222-222222222222",
+  capturedAt: "2026-08-12",
+  sha256: archivedSha,
+});
+assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V2_BOA_OFFSET_SAFE");
+assert.equal(
+  archivedKey,
+  `ndvi/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222/2026-08-12/${archivedSha}.png`,
+);
+assert.equal(ndviRasterKeyBelongsToField(`s3:v1:${archivedKey}`, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"), true);
+assert.equal(verifyNdviRasterIntegrity(archivedBytes, { sha256: archivedSha, bytes: archivedBytes.length }), true);
+assert.throws(
+  () => verifyNdviRasterIntegrity(Buffer.from("raster-alterado", "utf8"), { sha256: archivedSha, bytes: archivedBytes.length }),
+  /Integridade do raster NDVI arquivado não confere/,
+);
+
+console.log("ndvi-engine: 33 cenários aprovados (vigor, temporal, gate de qualidade, mosaico Copernicus e cadeia de custódia do raster)");
+
+
+// 34-37. Earth Search público: seleção determinística por cobertura integral + menor nuvem.
+const publicAssets = {
+  red: { href: "https://example.test/red.tif", "proj:epsg": 32722 },
+  nir: { href: "https://example.test/nir.tif", "proj:epsg": 32722 },
+  scl: { href: "https://example.test/scl.tif", "proj:epsg": 32722 },
+};
+const fieldBbox = [-51.897, -28.176, -51.894, -28.174];
+const selectedPublic = selectEarthSearchScenes([
+  {
+    id: "scene-cloudy",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-08T13:00:00Z", "eo:cloud_cover": 22 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-clear",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-08T13:01:00Z", "eo:cloud_cover": 4 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-partial",
+    bbox: [-51.896, -28.176, -51.894, -28.174],
+    properties: { datetime: "2026-09-10T13:00:00Z", "eo:cloud_cover": 1 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-no-scl",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-11T13:00:00Z", "eo:cloud_cover": 1 },
+    assets: { red: publicAssets.red, nir: publicAssets.nir },
+  },
+], fieldBbox, 30);
+assert.equal(EARTH_SEARCH_STAC_URL, "https://earth-search.aws.element84.com/v1/search");
+assert.equal(EARTH_SEARCH_COLLECTION, "sentinel-2-l2a");
+assert.equal(EARTH_SEARCH_NDVI_MOSAICKING_ORDER, "leastCC");
+assert.deepEqual(selectedPublic.map((item) => item.id), ["scene-clear"]);
+
+// 38-41. Raster inline: storage durável no Neon/Vercel sem bucket externo, mantendo hash e escopo do talhão.
+const previousNdviProvider = process.env.NDVI_RASTER_STORAGE_PROVIDER;
+process.env.NDVI_RASTER_STORAGE_PROVIDER = "inline";
+try {
+  assert.equal(ndviRasterStorageProvider(), "inline");
+  const inlineBytes = Buffer.from("png-ndvi-inline-real-contract", "utf8");
+  const inlineStored = await saveRequiredNdviRasterArtifact({
+    tenantId: "11111111-1111-1111-1111-111111111111",
+    fieldId: "22222222-2222-2222-2222-222222222222",
+    capturedAt: "2026-09-08",
+    bytes: inlineBytes,
+  });
+  assert.match(inlineStored.key, /^inline-ndvi:v1:11111111-1111-1111-1111-111111111111\/22222222-2222-2222-2222-222222222222\/2026-09-08\//);
+  assert.equal(inlineStored.sha256, ndviRasterSha256(inlineBytes));
+  const inlineRead = await readNdviRasterArtifact({
+    tenantId: "11111111-1111-1111-1111-111111111111",
+    fieldId: "22222222-2222-2222-2222-222222222222",
+    key: inlineStored.key,
+    sha256: inlineStored.sha256,
+    bytes: inlineStored.bytes,
+  });
+  assert.deepEqual(inlineRead, inlineBytes);
+} finally {
+  if (previousNdviProvider === undefined) delete process.env.NDVI_RASTER_STORAGE_PROVIDER;
+  else process.env.NDVI_RASTER_STORAGE_PROVIDER = previousNdviProvider;
+}
+
+
+// 42-46. Earth Search BOA offset: evita dupla aplicação e falha fechado fora do domínio físico.
+const harmonizedItem = {
+  id: "harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": true,
+    "s2:processing_baseline": "05.12",
+  },
+};
+const rawBoaAsset = { "raster:bands": [{ scale: 0.0001, offset: -0.1 }] };
+assert.deepEqual(resolveEarthSearchBandTransform(harmonizedItem, rawBoaAsset), {
+  scale: 0.0001,
+  declaredOffset: -0.1,
+  effectiveOffset: 0,
+  boaOffsetApplied: true,
+});
+const nonHarmonizedItem = {
+  id: "non-harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": false,
+    "s2:processing_baseline": "05.12",
+  },
+};
+assert.equal(resolveEarthSearchBandTransform(nonHarmonizedItem, rawBoaAsset).effectiveOffset, -0.1);
+assert.ok(Math.abs(computeEarthSearchNdvi(0.05, 0.25) - (2 / 3)) < 1e-12);
+assert.equal(computeEarthSearchNdvi(-0.05, 0.25), null);
+assert.equal(computeEarthSearchNdvi(-0.2, 0.1), null);
+
+console.log("ndvi-engine: 46 cenários aprovados, incluindo BOA offset seguro do Earth Search");

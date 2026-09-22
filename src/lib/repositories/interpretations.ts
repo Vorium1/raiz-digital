@@ -1,6 +1,8 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/domain/agronomic-engine";
+import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
+import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
 
 export class InterpretationError extends Error {
   constructor(message: string, public status = 400) {
@@ -18,11 +20,16 @@ export class InterpretationError extends Error {
  */
 export async function runInterpretationForAnalysis(input: { tenantId: string; userId: string; analysisId: string }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    // Mesmo lock usado pela importação: o motor não pode ler lab_results enquanto um novo laudo da
+    // mesma análise está sendo promovido. Se a importação chegou primeiro, esperamos e lemos a nova
+    // evidência; se o cálculo chegou primeiro, a importação espera e, ao concluir depois, torna esta
+    // revisão histórica/stale pelos gates de freshness.
     const analysisResult = await client.query<{ cropSeasonId: string; cropProfileId: string | null }>(
       `SELECT a.crop_season_id::text AS "cropSeasonId", cs.crop_profile_id::text AS "cropProfileId"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid`,
+       WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       FOR UPDATE OF a`,
       [input.tenantId, input.analysisId],
     );
     const analysis = analysisResult.rows[0];
@@ -49,13 +56,15 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
            FROM crop_profile_parameters WHERE crop_profile_id = $1::uuid`,
           [analysis.cropProfileId],
         );
-        cropProfile = { ...profileRow, parameters: paramsResult.rows };
+        cropProfile = { ...profileRow, parameters: paramsResult.rows, auxiliaryParameterCodes: auxiliaryParameterCodesFor(profileRow.code) };
       }
     }
 
     const resultsResult = await client.query<LabResultInput>(
       `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS "value",
-              lr.unit, lr.analytical_method AS "method", ls.sample_type AS "sampleType",
+              lr.unit, lr.analytical_method AS "method",
+              lr.original_payload->>'protocol' AS "protocol",
+              lr.source, ls.sample_type AS "sampleType",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
        FROM lab_samples ls
        JOIN lab_results lr ON lr.lab_sample_id = ls.id
@@ -64,7 +73,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
        ORDER BY ls.laboratory_code, lr.parameter_code`,
       [input.tenantId, input.analysisId],
     );
-    const labResults = resultsResult.rows.map((row) => ({ ...row, depthFromCm: row.depthFromCm ?? null, depthToCm: row.depthToCm ?? null }));
+    const labResults = resultsResult.rows.map((row) => ({
+      ...row,
+      unit: normalizeUnit(row.parameterCode, row.unit),
+      method: normalizeAnalyticalMethod(row.parameterCode, row.method, row.protocol),
+      depthFromCm: row.depthFromCm ?? null,
+      depthToCm: row.depthToCm ?? null,
+    }));
     if (labResults.length === 0) {
       throw new InterpretationError("Não há resultados de laboratório persistidos para esta análise. Importe e confira o laudo antes de interpretar.", 409);
     }
@@ -76,7 +91,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
       [input.tenantId, input.analysisId],
     );
     const revision = revisionResult.rows[0].nextRevision;
-    const status = engineResult.interpretable ? "IN_REVIEW" : "CALCULATED";
+    const status = engineResult.interpretable ? "APPROVED" : "CALCULATED";
     const notInterpretableReason = engineResult.interpretable ? null : (engineResult.pendencies[0] ?? "Sem contexto suficiente para interpretar.");
 
     const insertResult = await client.query<{ id: string; revision: number; status: string; createdAt: string }>(
@@ -99,13 +114,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     await client.query(
       `UPDATE analyses SET status = $3::analysis_status, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [input.tenantId, input.analysisId, engineResult.interpretable ? "AWAITING_REVIEW" : "READY_TO_INTERPRET"],
+      [input.tenantId, input.analysisId, engineResult.interpretable ? "APPROVED" : "READY_TO_INTERPRET"],
     );
 
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
-      action: "INTERPRETATION_CALCULATED",
+      action: engineResult.interpretable ? "INTERPRETATION_ENGINE_VALIDATED" : "INTERPRETATION_CALCULATED",
       entityType: "interpretation",
       entityId: created.id,
       metadata: { analysisId: input.analysisId, revision, status, interpretable: engineResult.interpretable, pendencyCount: engineResult.pendencies.length },
@@ -115,27 +130,101 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
   });
 }
 
-/** Registro de toda interpretação já calculada nesta empresa — a trilha de auditoria da inteligência agronômica. */
-export async function listAllInterpretations(tenantId: string, userId?: string) {
+export type IntelligenceQueueFilters = {
+  clientId?: string | null;
+  propertyId?: string | null;
+  fieldId?: string | null;
+  seasonId?: string | null;
+  bucket?: string | null;
+};
+
+/**
+ * Fila de trabalho técnico da Inteligência Agronômica (Fase 3, Bloco A). Uma linha por ANÁLISE, sempre
+ * com a revisão mais recente (`DISTINCT ON (a.id) ... ORDER BY i.revision DESC`) -- nunca uma linha por
+ * execução antiga, que faria a mesma análise recalculada 5 vezes parecer 5 problemas diferentes
+ * (achado real confirmado nesta Fase: `listAllInterpretations`, usada antes, listava cada revisão como
+ * linha própria). `revisionCount` informa quantas versões existem, sem listá-las aqui -- a consulta
+ * (Bloco B/D) é quem mostra o histórico completo.
+ */
+export async function getIntelligenceQueue(tenantId: string, filters: IntelligenceQueueFilters, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
-      `SELECT i.id::text, i.revision, i.status, i.created_at::text AS "createdAt",
-              i.structured_output->'confidence'->>'score' AS "confidenceScore",
-              a.id::text AS "analysisId", a.code AS "analysisCode",
-              c.name AS "clientName", f.name AS "fieldName", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
-              cp.name AS "cropProfileName"
-       FROM interpretations i
-       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN crop_profiles cp ON cp.id = i.crop_profile_id
-       WHERE i.tenant_id = $1::uuid
-       ORDER BY i.created_at DESC LIMIT 200`,
-      [tenantId],
+      `SELECT * FROM (
+         SELECT DISTINCT ON (a.id)
+                i.id::text, i.revision, i.status, i.not_interpretable_reason AS "notInterpretableReason",
+                i.reviewed_by::text AS "reviewedBy", reviewer.name AS "reviewedByName", i.reviewed_at::text AS "reviewedAt",
+                i.approved_by::text AS "approvedBy", approver.name AS "approvedByName", i.approved_at::text AS "approvedAt",
+                i.created_at::text AS "createdAt",
+                i.structured_output->'confidence'->>'score' AS "confidenceScore",
+                a.id::text AS "analysisId", a.code AS "analysisCode",
+                c.id::text AS "clientId", c.name AS "clientName",
+                p.id::text AS "propertyId", p.name AS "propertyName",
+                f.id::text AS "fieldId", f.name AS "fieldName",
+                cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
+                cp.name AS "cropProfileName",
+                (SELECT count(*)::int FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = a.id) AS "revisionCount",
+                -- Fechamento técnico (auditoria Cabeda, 2026-09-11, revisão): a fila mostrava só a 1a
+                -- pendência (notInterpretableReason) mesmo quando a análise tinha dezenas/centenas de
+                -- resultados -- nunca dizia quantos foram de fato cobertos. Contagem real a partir do
+                -- mesmo structured_output.interpretation que o motor já grava (nenhum dado novo, só
+                -- agregado), agora separando 3 categorias reais (classificationRole do motor) em vez de só
+                -- "interpretável/não": um dado AUXILIAR (nunca terá faixa própria, por desenho) nunca conta
+                -- como pendência de cobertura -- só um parâmetro TARGET não interpretado conta.
+                -- coalesce(...,'TARGET') trata revisão antiga (calculada antes deste campo existir) como
+                -- TARGET -- mesmo comportamento de antes pra dado histórico, nunca quebra revisão velha.
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE (e->>'interpretable')::boolean) AS "classifiedCount",
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE NOT (e->>'interpretable')::boolean AND coalesce(e->>'classificationRole','TARGET') = 'TARGET') AS "pendingTargetCount",
+                (SELECT count(*)::int FROM jsonb_array_elements(coalesce(i.structured_output->'interpretation', '[]'::jsonb)) e WHERE coalesce(e->>'classificationRole','TARGET') = 'AUXILIARY') AS "auxiliaryCount"
+         FROM interpretations i
+         JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
+         JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+         JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+         JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+         JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
+         LEFT JOIN crop_profiles cp ON cp.id = i.crop_profile_id
+         LEFT JOIN users reviewer ON reviewer.id = i.reviewed_by
+         LEFT JOIN users approver ON approver.id = i.approved_by
+         WHERE i.tenant_id = $1::uuid
+           AND ($2::uuid IS NULL OR c.id = $2)
+           AND ($3::uuid IS NULL OR p.id = $3)
+           AND ($4::uuid IS NULL OR f.id = $4)
+           AND ($5::uuid IS NULL OR cs.id = $5)
+         ORDER BY a.id, i.revision DESC
+       ) latest
+       ORDER BY latest."createdAt" DESC
+       LIMIT 300`,
+      [tenantId, filters.clientId ?? null, filters.propertyId ?? null, filters.fieldId ?? null, filters.seasonId ?? null],
     );
     return result.rows;
+  });
+}
+
+export type IntelligenceFilterOptions = {
+  clients: Array<{ id: string; name: string }>;
+  properties: Array<{ id: string; name: string; clientId: string }>;
+  fields: Array<{ id: string; name: string; propertyId: string; clientId: string }>;
+  seasons: Array<{ id: string; seasonLabel: string; fieldId: string; propertyId: string; clientId: string }>;
+};
+
+export async function getIntelligenceFilterOptions(tenantId: string, userId?: string): Promise<IntelligenceFilterOptions> {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const [clients, properties, fields, seasons] = await Promise.all([
+      client.query(`SELECT id::text, name FROM clients ORDER BY name`),
+      client.query(`SELECT id::text, name, client_id::text AS "clientId" FROM properties ORDER BY name`),
+      client.query(
+        `SELECT f.id::text, f.name, f.property_id::text AS "propertyId", p.client_id::text AS "clientId"
+         FROM fields f JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id ORDER BY f.name`,
+      ),
+      client.query(
+        `SELECT cs.id::text, cs.season_label AS "seasonLabel", cs.field_id::text AS "fieldId",
+                f.property_id::text AS "propertyId", p.client_id::text AS "clientId"
+         FROM crop_seasons cs
+         JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+         JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+         ORDER BY cs.created_at DESC`,
+      ),
+    ]);
+    return { clients: clients.rows, properties: properties.rows, fields: fields.rows, seasons: seasons.rows };
   });
 }
 
@@ -144,9 +233,13 @@ export async function getLatestInterpretation(tenantId: string, analysisId: stri
     const result = await client.query(
       `SELECT i.id::text, i.revision, i.structured_output AS "structuredOutput", i.assumptions, i.warnings, i.status,
               i.crop_profile_id::text AS "cropProfileId", i.not_interpretable_reason AS "notInterpretableReason",
-              i.reviewed_by::text AS "reviewedBy", i.reviewed_at::text AS "reviewedAt",
-              i.approved_by::text AS "approvedBy", i.approved_at::text AS "approvedAt", i.created_at::text AS "createdAt"
-       FROM interpretations i WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+              i.reviewed_by::text AS "reviewedBy", reviewer.name AS "reviewedByName", i.reviewed_at::text AS "reviewedAt",
+              i.approved_by::text AS "approvedBy", approver.name AS "approvedByName", i.approved_at::text AS "approvedAt",
+              i.created_at::text AS "createdAt"
+       FROM interpretations i
+       LEFT JOIN users reviewer ON reviewer.id = i.reviewed_by
+       LEFT JOIN users approver ON approver.id = i.approved_by
+       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
        ORDER BY i.revision DESC LIMIT 1`,
       [tenantId, analysisId],
     );
@@ -157,9 +250,14 @@ export async function getLatestInterpretation(tenantId: string, analysisId: stri
 export async function listInterpretationHistory(tenantId: string, analysisId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
-      `SELECT id::text, revision, status, not_interpretable_reason AS "notInterpretableReason",
-              created_at::text AS "createdAt", reviewed_at::text AS "reviewedAt", approved_at::text AS "approvedAt"
-       FROM interpretations WHERE tenant_id = $1::uuid AND analysis_id = $2::uuid ORDER BY revision DESC`,
+      `SELECT i.id::text, i.revision, i.status, i.not_interpretable_reason AS "notInterpretableReason",
+              i.created_at::text AS "createdAt",
+              i.reviewed_by::text AS "reviewedBy", reviewer.name AS "reviewedByName", i.reviewed_at::text AS "reviewedAt",
+              i.approved_by::text AS "approvedBy", approver.name AS "approvedByName", i.approved_at::text AS "approvedAt"
+       FROM interpretations i
+       LEFT JOIN users reviewer ON reviewer.id = i.reviewed_by
+       LEFT JOIN users approver ON approver.id = i.approved_by
+       WHERE i.tenant_id = $1::uuid AND i.analysis_id = $2::uuid ORDER BY i.revision DESC`,
       [tenantId, analysisId],
     );
     return result.rows;

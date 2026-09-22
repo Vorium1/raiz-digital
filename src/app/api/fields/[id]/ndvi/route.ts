@@ -1,41 +1,214 @@
-import { computeZoneBreakdownPct, detectWithinFieldVariability } from "@/domain/ndvi-engine";
+import {
+  analyzeNdviTemporalHistory,
+  classifyNdviObservationQuality,
+  computeZoneBreakdownPct,
+  detectWithinFieldVariability,
+} from "@/domain/ndvi-engine";
 import { getPlatformSession } from "@/lib/auth/session";
+import { getSatelliteNdviReadiness } from "@/domain/operational-readiness";
+import { ndviRasterBboxContainsBoundary } from "@/domain/ndvi-raster-spatial-validity";
+import {
+  NDVI_RASTER_ALGORITHM_VERSION,
+  NdviRasterPersistenceError,
+  ndviRasterStorageProvider,
+  saveRequiredNdviRasterArtifact,
+} from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getLatestNdviSnapshot, listNdviHistoryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
-import { copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import {
+  EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
+  earthSearchNdviProvider,
+} from "@/lib/satellite/earth-search-ndvi-provider";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const HISTORY_LOOKBACK_DAYS = 120;
+const MAX_SCENES_PER_REFRESH = 18;
+/**
+ * Cada raster exige leitura/processamento da cena + persistência durável. Fazer 18 pares seriais em uma
+ * única Vercel Function transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
+ * mas cada chamada arquiva no máximo quatro datas ainda pendentes (das mais recentes para trás).
+ * Repetir o refresh progride de forma idempotente até zerar `pendingArchiveCount`.
+ */
+const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
 
-/** Leitura de vigor por satélite não é feita a cada carregamento de tela -- só quando alguém pede
- * explicitamente (POST), já que é uma chamada a serviço externo. GET só lê o que já foi salvo. */
+function ndviRuntimeReadiness() {
+  const missing: string[] = [];
+  const satelliteReadiness = getSatelliteNdviReadiness(process.env);
+  const satelliteProvider = satelliteReadiness.provider;
+  const copernicusConfigured = satelliteProvider === "copernicus" && satelliteReadiness.ready;
+  const satelliteConfigured = satelliteReadiness.ready;
+
+  if (satelliteProvider === "copernicus") {
+    if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
+    if (!process.env.COPERNICUS_CLIENT_SECRET?.trim()) missing.push("COPERNICUS_CLIENT_SECRET");
+  } else if (satelliteProvider !== "earth-search") {
+    missing.push(`NDVI_SATELLITE_PROVIDER=${satelliteProvider} não suportado`);
+  }
+
+  const storageProvider = ndviRasterStorageProvider();
+  let durableStorageConfigured = false;
+  if (storageProvider === "inline") {
+    durableStorageConfigured = true;
+  } else if (storageProvider === "s3") {
+    durableStorageConfigured = Boolean(
+      process.env.S3_ENDPOINT?.trim()
+      && process.env.S3_BUCKET?.trim()
+      && process.env.S3_ACCESS_KEY?.trim()
+      && process.env.S3_SECRET_KEY?.trim(),
+    );
+    if (!process.env.S3_ENDPOINT?.trim()) missing.push("S3_ENDPOINT");
+    if (!process.env.S3_BUCKET?.trim()) missing.push("S3_BUCKET");
+    if (!process.env.S3_ACCESS_KEY?.trim()) missing.push("S3_ACCESS_KEY");
+    if (!process.env.S3_SECRET_KEY?.trim()) missing.push("S3_SECRET_KEY");
+  } else if (storageProvider === "local" && !process.env.VERCEL) {
+    durableStorageConfigured = true;
+  } else {
+    missing.push(`NDVI_RASTER_STORAGE_PROVIDER=${storageProvider} não é durável neste runtime`);
+  }
+
+  const mosaickingOrder = satelliteProvider === "copernicus"
+    ? COPERNICUS_NDVI_MOSAICKING_ORDER
+    : EARTH_SEARCH_NDVI_MOSAICKING_ORDER;
+
+  return {
+    ready: satelliteConfigured && durableStorageConfigured,
+    satelliteProvider,
+    satelliteConfigured,
+    copernicusConfigured,
+    durableStorageConfigured,
+    storageProvider,
+    mosaickingOrder,
+    missing: [...new Set(missing)],
+  };
+}
+
+function runtimeProvider(runtime: ReturnType<typeof ndviRuntimeReadiness>) {
+  return runtime.satelliteProvider === "copernicus" ? copernicusNdviProvider : earthSearchNdviProvider;
+}
+
+function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
+  return {
+    variability: latest ? detectWithinFieldVariability(latest.zoneBreakdownPct ?? {}) : null,
+    quality: latest ? classifyNdviObservationQuality(latest) : "INDETERMINADA",
+    temporal: analyzeNdviTemporalHistory(history),
+  };
+}
+
+function hasArchivedRaster(snapshot: any) {
+  return Boolean(
+    snapshot?.rasterObjectKey && snapshot?.rasterSha256 && snapshot?.rasterBytes &&
+    Array.isArray(snapshot?.rasterBbox) && snapshot.rasterBbox.length === 4 &&
+    snapshot?.rasterWidth && snapshot?.rasterHeight && snapshot?.rasterAlgorithm &&
+    snapshot?.rasterMosaickingOrder && snapshot?.rasterArchivedAt,
+  );
+}
+
+function rasterMatchesCurrentBoundary(snapshot: any, fieldBoundary: any) {
+  return hasArchivedRaster(snapshot) && ndviRasterBboxContainsBoundary(snapshot.rasterBbox, fieldBoundary);
+}
+
+function rasterMatchesCurrentAlgorithm(snapshot: any) {
+  return hasArchivedRaster(snapshot) && snapshot.rasterAlgorithm === NDVI_RASTER_ALGORITHM_VERSION;
+}
+
+function rasterMatchesCurrentEvidence(snapshot: any, fieldBoundary: any) {
+  return rasterMatchesCurrentBoundary(snapshot, fieldBoundary) && rasterMatchesCurrentAlgorithm(snapshot);
+}
+
+function usableHistoryForBoundary(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => !hasArchivedRaster(snapshot) || rasterMatchesCurrentEvidence(snapshot, fieldBoundary));
+}
+
+function staleSpatialSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentBoundary(snapshot, fieldBoundary)).length;
+}
+
+function staleAlgorithmSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) =>
+    hasArchivedRaster(snapshot)
+    && rasterMatchesCurrentBoundary(snapshot, fieldBoundary)
+    && !rasterMatchesCurrentAlgorithm(snapshot)
+  ).length;
+}
+
+function staleEvidenceSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, fieldBoundary)).length;
+}
+
+/**
+ * GET nunca chama o provedor externo: só lê os snapshots já persistidos e calcula inteligência
+ * determinística sobre eles. A geometria retornada já passa pelo mesmo escopo tenant/RLS.
+ */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id: fieldId } = await context.params;
 
-  const [latest, history] = await Promise.all([
+  const [latest, history, fieldBoundary] = await Promise.all([
     getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
+    getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
   ]);
-  const variability = latest ? detectWithinFieldVariability(latest.zoneBreakdownPct ?? {}) : null;
-  return Response.json({ latest, history, variability });
+  if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
+
+  const usableHistory = usableHistoryForBoundary(history, fieldBoundary);
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, fieldBoundary)
+    ? (usableHistory[0] ?? null)
+    : latest;
+
+  return Response.json({
+    latest: usableLatest,
+    history: usableHistory,
+    fieldBoundary,
+    staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, fieldBoundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, fieldBoundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, fieldBoundary),
+    runtime: ndviRuntimeReadiness(),
+    ...intelligencePayload(usableLatest, usableHistory),
+  });
 }
 
+/**
+ * POST atualiza o histórico do talhão pelo provider Sentinel-2 configurado e, antes de efetivar cada
+ * snapshot novo, gera o PNG espacial correspondente e o arquiva de forma content-addressed.
+ *
+ * Toda linha arquivada permanece imutável no PostgreSQL. Se o contorno ou a versão do algoritmo mudou,
+ * a evidência antiga deixa de ser utilizável no runtime atual, mas continua preservada. O refresh grava
+ * uma NOVA linha versionada por raster_algorithm e registra o SHA antigo apenas como supersessão lógica.
+ * Assim uma correção de cálculo nunca reescreve nem apaga o artefato histórico anterior.
+ *
+ * O lote pode concluir parcialmente: se um raster posterior falhar depois que outros já foram gravados,
+ * a resposta devolve o estado persistido atual com `partialFailure` e a contagem real ainda pendente.
+ * Se nenhum raster foi arquivado, a falha continua retornando HTTP de erro e não é mascarada como sucesso.
+ */
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!runRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode buscar leitura de satélite." }, { status: 403 });
   const { id: fieldId } = await context.params;
 
+  const runtime = ndviRuntimeReadiness();
+  if (!runtime.ready) {
+    return Response.json(
+      {
+        error: `NDVI real ainda não está configurado neste ambiente. Falta: ${runtime.missing.join(", ") || "configuração de runtime"}.`,
+        code: "NDVI_RUNTIME_NOT_CONFIGURED",
+        runtime,
+      },
+      { status: 503 },
+    );
+  }
+
   const boundary = await getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
 
   const toDate = new Date();
   const fromDate = new Date(toDate);
-  fromDate.setDate(fromDate.getDate() - 30);
+  fromDate.setDate(fromDate.getDate() - HISTORY_LOOKBACK_DAYS);
 
-  let scene;
+  let scenes;
   try {
-    scene = await copernicusNdviProvider.fetchFieldNdvi({
+    scenes = await runtimeProvider(runtime).fetchFieldNdviSeries({
       fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
       fromDate: fromDate.toISOString().slice(0, 10),
       toDate: toDate.toISOString().slice(0, 10),
@@ -45,26 +218,153 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: message }, { status: 502 });
   }
 
-  if (!scene) {
-    return Response.json({ error: "Nenhuma cena Sentinel-2 com nuvem aceitável nos últimos 30 dias para este talhão." }, { status: 404 });
+  if (scenes.length === 0) {
+    return Response.json({ error: `Nenhuma cena Sentinel-2 válida nos últimos ${HISTORY_LOOKBACK_DAYS} dias para este talhão.` }, { status: 404 });
   }
 
-  const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
-  const saved = await saveNdviSnapshot({
-    tenantId: session.tenantId,
-    userId: session.userId,
-    fieldId,
-    capturedAt: scene.capturedAt,
-    source: "SENTINEL_2",
-    providerSceneId: scene.sceneId,
-    cloudCoverPct: scene.cloudCoverPct,
-    pixelCount: scene.pixelCount,
-    meanNdvi: scene.meanNdvi,
-    minNdvi: scene.minNdvi,
-    maxNdvi: scene.maxNdvi,
-    stddevNdvi: scene.stddevNdvi,
-    zoneBreakdownPct,
-  });
+  const selectedScenes = scenes.slice(-MAX_SCENES_PER_REFRESH);
+  const existingHistory = await listNdviHistoryForField(session.tenantId, fieldId, session.userId);
+  const archivedByDate = new Map(
+    existingHistory
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && rasterMatchesCurrentEvidence(snapshot, boundary))
+      .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
+  );
+  const staleArchivedByDate = new Map(
+    existingHistory
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, boundary))
+      .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
+  );
 
-  return Response.json({ snapshot: saved, variability: detectWithinFieldVariability(zoneBreakdownPct) }, { status: 201 });
+  const missingScenes = selectedScenes.filter((scene) => !archivedByDate.has(scene.capturedAt));
+  const scenesToArchive = missingScenes.slice(-MAX_RASTERS_TO_ARCHIVE_PER_REQUEST);
+  const pendingOutsideThisBatch = Math.max(0, missingScenes.length - scenesToArchive.length);
+  const preservedArchivedCount = selectedScenes.length - missingScenes.length;
+  let archivedRasterCount = 0;
+  let partialFailure: { error: string; capturedAt: string; status: number } | null = null;
+
+  for (const scene of scenesToArchive) {
+    let raster;
+    try {
+      raster = await runtimeProvider(runtime).fetchFieldNdviMap({
+        fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
+        capturedAt: scene.capturedAt,
+      });
+    } catch (error) {
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao gerar o raster NDVI da aquisição.",
+        capturedAt: scene.capturedAt,
+        status: 502,
+      };
+      break;
+    }
+
+    let storedRaster;
+    try {
+      storedRaster = await saveRequiredNdviRasterArtifact({
+        tenantId: session.tenantId,
+        fieldId,
+        capturedAt: scene.capturedAt,
+        bytes: Buffer.from(raster.bytes),
+      });
+    } catch (error) {
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao arquivar o raster NDVI.",
+        capturedAt: scene.capturedAt,
+        status: error instanceof NdviRasterPersistenceError ? 503 : 502,
+      };
+      break;
+    }
+
+    const zoneBreakdownPct = computeZoneBreakdownPct(scene.histogram);
+    try {
+      await saveNdviSnapshot({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        fieldId,
+        capturedAt: scene.capturedAt,
+        source: "SENTINEL_2",
+        providerSceneId: scene.sceneId,
+        cloudCoverPct: scene.cloudCoverPct,
+        pixelCount: scene.pixelCount,
+        meanNdvi: scene.meanNdvi,
+        minNdvi: scene.minNdvi,
+        maxNdvi: scene.maxNdvi,
+        stddevNdvi: scene.stddevNdvi,
+        zoneBreakdownPct,
+        rasterArtifact: {
+          key: storedRaster.key,
+          sha256: storedRaster.sha256,
+          bytes: storedRaster.bytes,
+          bbox: raster.bbox,
+          width: raster.width,
+          height: raster.height,
+          algorithm: NDVI_RASTER_ALGORITHM_VERSION,
+          mosaickingOrder: runtime.mosaickingOrder,
+        },
+        supersedesRasterSha256: staleArchivedByDate.get(scene.capturedAt)?.rasterSha256 ?? null,
+      });
+    } catch (error) {
+      partialFailure = {
+        error: error instanceof Error ? error.message : "Falha ao persistir o snapshot NDVI após arquivar o objeto.",
+        capturedAt: scene.capturedAt,
+        status: 500,
+      };
+      break;
+    }
+    archivedRasterCount += 1;
+  }
+
+  const pendingArchiveCount = partialFailure
+    ? pendingOutsideThisBatch + (scenesToArchive.length - archivedRasterCount)
+    : pendingOutsideThisBatch;
+
+  const [latest, history] = await Promise.all([
+    getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
+    listNdviHistoryForField(session.tenantId, fieldId, session.userId),
+  ]);
+  const usableHistory = usableHistoryForBoundary(history, boundary);
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, boundary)
+    ? (usableHistory[0] ?? null)
+    : latest;
+
+  const responsePayload = {
+    snapshot: usableLatest,
+    latest: usableLatest,
+    history: usableHistory,
+    staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, boundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, boundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, boundary),
+    fieldBoundary: boundary,
+    importedCount: archivedRasterCount,
+    archivedRasterCount,
+    preservedArchivedCount,
+    pendingArchiveCount,
+    archiveCompleteForSelectedWindow: pendingArchiveCount === 0 && !partialFailure,
+    maxRastersArchivedPerRequest: MAX_RASTERS_TO_ARCHIVE_PER_REQUEST,
+    consideredSceneCount: selectedScenes.length,
+    requestedWindowDays: HISTORY_LOOKBACK_DAYS,
+    ...(partialFailure
+      ? {
+          partialFailure: {
+            code: "NDVI_ARCHIVE_PARTIAL_FAILURE",
+            error: partialFailure.error,
+            capturedAt: partialFailure.capturedAt,
+          },
+        }
+      : {}),
+    ...intelligencePayload(usableLatest, usableHistory),
+  };
+
+  if (partialFailure && archivedRasterCount === 0) {
+    return Response.json(
+      {
+        ...responsePayload,
+        error: partialFailure.error,
+        capturedAt: partialFailure.capturedAt,
+      },
+      { status: partialFailure.status },
+    );
+  }
+
+  return Response.json(responsePayload, { status: 201 });
 }

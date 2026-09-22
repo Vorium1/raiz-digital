@@ -22,17 +22,25 @@ export type LabExtractionInput = { fileBase64: string; mimeType: string };
 export type LabExtractionResult = { csvContent: string; provider: "google"; model: string };
 
 const PROMPT = [
-  "Você está transcrevendo, número por número, um laudo real de análise de solo ou foliar. Pode ter várias amostras, pontos ou profundidades no mesmo documento.",
+  "Você está transcrevendo, número por número, um laudo real de análise de solo químico/físico, análise biológica do solo (ex.: BioAS), análise foliar ou análise de grãos/qualidade tecnológica de trigo. Pode ter várias amostras, pontos ou profundidades no mesmo documento.",
   "NÃO interprete, NÃO classifique (ex.: não diga se é \"baixo\" ou \"adequado\"), NÃO calcule nada -- apenas transcreva cada resultado exatamente como está impresso.",
-  "Responda SOMENTE com uma tabela CSV, separador ponto e vírgula (;), sem nenhum texto antes ou depois, sem bloco de código markdown, com EXATAMENTE estas 5 colunas na primeira linha: amostra;parametro;valor;unidade;metodo",
+  "Responda SOMENTE com uma tabela CSV, separador ponto e vírgula (;), sem nenhum texto antes ou depois, sem bloco de código markdown, com EXATAMENTE estas 8 colunas na primeira linha: amostra;parametro;valor;unidade;metodo;protocolo;profundidade_de_cm;profundidade_ate_cm",
   "Regras:",
   "- Uma linha de dado por resultado. Se o laudo tem várias profundidades ou pontos, cada um é uma \"amostra\" diferente -- use o identificador exato impresso (ex.: \"0-20cm\", \"Ponto 1\", \"P1-0-20\"). Se não houver identificador nenhum, use \"AMOSTRA-1\" para todas as linhas.",
-  "- Coluna \"parametro\": o nome ou sigla exatamente como impresso no laudo (ex.: \"pH\", \"Fósforo\", \"P\", \"Potássio\", \"Ca\", \"V%\", \"MO\"). Não troque por outro código nem traduza.",
+  "- Coluna \"parametro\": o nome ou sigla exatamente como impresso no laudo (ex.: \"pH\", \"Fósforo\", \"P\", \"Potássio\", \"Ca\", \"V%\", \"MO\", \"β-glicosidase\", \"Arilsulfatase\", \"Proteína\", \"Glúten úmido\", \"Glúten seco\", \"Índice de glúten\", \"Força de glúten - W\", \"P/L\", \"Sedimentação SDS\", \"Gliadina\", \"Glutenina\"). Não troque por outro código nem traduza.",
   "- Coluna \"valor\": só o número. Nunca escreva a unidade junto.",
   "- Coluna \"unidade\": exatamente como impressa (ex.: \"mg/dm³\", \"cmolc/dm³\", \"%\"). Se não tiver certeza, deixe vazio -- nunca invente.",
-  "- Coluna \"metodo\": o método/extrator, se estiver impresso (ex.: \"Mehlich-1\", \"Resina\"). Se não estiver impresso, deixe vazio.",
+  "- Coluna \"metodo\": o método/extrator específico daquela linha, SOMENTE se estiver explicitamente associado ao parâmetro no documento. Se não estiver, deixe vazio.",
+  "- Em laudos BioAS, transcreva também índices numéricos e escores impressos (ex.: IQS Biológico, IQS Químico, IQS FertBio, ciclagem, armazenamento e suprimento). NÃO tente recalcular nenhum índice e NÃO converta cores/classes em números.",
+  "- Em laudos microbiológicos funcionais, transcreva exatamente o organismo/táxon ou grupo funcional impresso (ex.: Azospirillum brasilense, Bradyrhizobium spp., bactérias solubilizadoras de fósforo, micorrizas), o valor, unidade e método. NÃO converta UFC/g, NMP, cópias de gene, % colonização ou outro resultado em kg/ha de nutriente.",
+  "- Em análises biológicas complementares, preserve também carbono da biomassa microbiana, respiração basal, qCO2, hidrólise de FDA, atividade de desidrogenase, fosfatases e outros bioindicadores impressos. Preserve unidade, método/protocolo e profundidade explícita; não padronize unidades nem compare métodos diferentes por suposição. Interpretações textuais/classes do laboratório permanecem verificáveis no arquivo original arquivado e NÃO devem ser convertidas em números.",
+  "- Presença/abundância de microrganismos, qPCR, metabarcoding ou capacidade de solubilização NÃO autoriza inferir automaticamente fixação de N, disponibilização de P/K ou redução de fertilizante. Apenas transcreva o laudo; a interpretação é responsabilidade do motor determinístico.",
+  "- Coluna \"protocolo\": procure no DOCUMENTO INTEIRO (cabeçalho, rodapé, observações, notas, título ou quadro de metodologia) a referência global de método/protocolo usada pelo laboratório (ex.: \"Tedesco, M. J. et al. Boletim técnico n° 5 - Análises de Solo, Plantas e Outros Materiais. 2 ed. Porto Alegre, 1995\"). Se existir e valer para os ensaios da página/documento, transcreva a referência e REPITA a mesma referência em todas as linhas correspondentes. Se não existir, deixe vazio. Não deduza o protocolo por logo, laboratório ou aparência.",
+  "- Colunas \"profundidade_de_cm\" e \"profundidade_ate_cm\": preencha SOMENTE quando a camada/profundidade estiver explicitamente impressa para aquela amostra ou resultado (ex.: 0–10 cm -> 0 e 10; 10–20 cm -> 10 e 20). Use apenas números em centímetros. Se a camada não estiver explícita, deixe ambas vazias. Nunca estime profundidade pela cultura, método, tipo de análise ou nome da amostra.",
+  "- Nunca complete uma técnica específica a partir do nome do protocolo. Ex.: se o documento só diz Tedesco 1995, transcreva isso em protocolo e deixe metodo vazio; a resolução protocolo→método é responsabilidade do código determinístico do RAIZ.",
   "- Se um número estiver ilegível ou você não tiver certeza do valor, NÃO inclua essa linha -- é preferível omitir um resultado a transcrever um valor errado.",
   "- Nunca invente amostra, parâmetro ou valor que não esteja realmente impresso no documento.",
+  "- Em laudos de grãos/trigo, nunca derive proteína total a partir de glúten, glúten a partir de proteína, W a partir de P/L, nem gliadina/glutenina a partir de qualquer outro parâmetro. Transcreva somente medições explicitamente impressas.",
 ].join("\n");
 
 function extractText(payload: unknown): string | null {

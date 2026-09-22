@@ -18,7 +18,12 @@ export async function POST(request: Request) {
       return Response.json({ error: "A nova senha precisa ser diferente da atual." }, { status: 400 });
     }
 
-    await changeOwnPassword({ userId: session.userId, currentPassword, newPassword });
+    await changeOwnPassword({
+      userId: session.userId,
+      currentSessionId: session.sessionId,
+      currentPassword,
+      newPassword,
+    });
     return Response.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível alterar a senha.";

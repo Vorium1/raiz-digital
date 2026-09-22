@@ -11,6 +11,14 @@ const valid = {
 };
 assert.deepEqual(validateAgronomicPrescription(valid), valid);
 
+const limitedClosure = {
+  ...valid,
+  recommendations: [],
+  managementPractices: [],
+  missingInformation: ["Dose não incluída sem evidência suficiente."],
+};
+assert.deepEqual(validateAgronomicPrescription(limitedClosure), limitedClosure);
+
 // nulo / não-objeto
 assert.equal(validateAgronomicPrescription(null), null);
 assert.equal(validateAgronomicPrescription("texto livre"), null);

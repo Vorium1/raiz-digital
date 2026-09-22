@@ -1,0 +1,79 @@
+.simple-review-list {
+  background: #fff;
+  border: 1px solid var(--simple-line);
+  border-radius: 22px;
+  box-shadow: 0 10px 28px rgba(45,70,53,.04);
+  overflow: hidden;
+}
+
+.simple-review-row {
+  align-items: center;
+  border-bottom: 1px solid #edf1eb;
+  color: var(--simple-text);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 46px minmax(0,1fr) auto 18px;
+  min-height: 82px;
+  padding: 14px 18px;
+  text-decoration: none;
+}
+.simple-review-row:last-child { border-bottom: 0; }
+.simple-review-row:hover { background: #f8faf6; }
+.simple-review-row > svg { color: #9aa79f; }
+.simple-review-icon {
+  align-items: center;
+  border-radius: 13px;
+  display: flex;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+.simple-review-icon.ready { background: #edf5ec; color: #2f7d45; }
+.simple-review-icon.attention { background: #fff5df; color: #b27d2e; }
+.simple-review-copy strong,
+.simple-review-copy small { display: block; }
+.simple-review-copy strong { font-size: 15px; }
+.simple-review-copy small { color: var(--simple-muted); font-size: 11px; margin-top: 4px; }
+.simple-review-state {
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.simple-review-state.ready { background: #edf5ec; color: #2f7d45; }
+.simple-review-state.attention { background: #fff5df; color: #9a6a24; }
+
+.simple-empty-state {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--simple-line);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
+  justify-content: center;
+  padding: 34px;
+  text-align: center;
+}
+.simple-empty-state > span {
+  align-items: center;
+  background: #edf5ec;
+  border-radius: 18px;
+  color: #2f7d45;
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  margin-bottom: 14px;
+  width: 58px;
+}
+.simple-empty-state strong { color: var(--simple-text); font-size: 18px; }
+.simple-empty-state small { color: var(--simple-muted); margin-top: 7px; max-width: 360px; }
+.simple-empty-state a { color: #2f7d45; font-size: 11px; font-weight: 800; margin-top: 18px; }
+
+@media (max-width: 700px) {
+  .simple-review-row { grid-template-columns: 42px minmax(0,1fr) 16px; padding: 12px 14px; }
+  .simple-review-icon { height: 42px; width: 42px; }
+  .simple-review-state { grid-column: 2; justify-self: start; }
+  .simple-review-row > svg { grid-column: 3; grid-row: 1 / span 2; }
+}

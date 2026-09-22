@@ -1,7 +1,34 @@
 import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
-import { writeAudit } from "@/lib/repositories/audit";
-import { saveReportSnapshot } from "@/lib/storage";
+import { readRawStoredFile } from "@/lib/storage";
+import { getExecutiveDashboard, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
+import type { TenantBranding } from "@/lib/repositories/tenant-branding";
+
+/** Schema do JSON gravado no publish -- versão 2 (fechamento técnico Fase 3, item 2). Snapshots
+ * publicados ANTES desta mudança (se algum dia existirem em outro ambiente) não têm `reportSnapshotVersion`
+ * nem `publishedContext`/`brandingSnapshot` -- tratados como versão 1 implícita em `getPublishedReportSnapshot`/
+ * na tela, que marca esses campos como não capturados em vez de usar dado atual disfarçado de imutável. */
+export const REPORT_SNAPSHOT_VERSION = 2;
+
+export type PublishedReportContext = {
+  id: string; code: string; status: string; confidenceScore: number | null; confidenceLevel: string | null;
+  createdAt: string; updatedAt: string;
+  clientName: string; propertyName: string; municipality: string; state: string;
+  fieldId: string; fieldName: string; areaHa: number;
+  seasonLabel: string; currentCrop: string | null; nextCrop?: string | null; cropProfileName?: string | null; cultivar: string | null; managementSystem: string | null;
+  soilTexture: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; laboratoryName: string | null;
+};
+
+export type ReportSnapshotV2 = {
+  reportSnapshotVersion: 2;
+  interpretationId: string;
+  revision: number;
+  publishedContext: PublishedReportContext;
+  structuredOutput: unknown;
+  brandingSnapshot: TenantBranding;
+  publishedAt: string;
+  publishedBy: string;
+};
 
 export class ReportError extends Error {
   constructor(message: string, public status = 400) {
@@ -34,9 +61,16 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
     if (!analysis) return null;
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
-              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm", sp.collected_at::text AS "collectedAt"
-       FROM sample_points sp WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid ORDER BY sp.sequence NULLS LAST, sp.code`,
+      `SELECT sp.id::text, sp.code,
+              ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
+              sp.collected_at::text AS "collectedAt", sp.accuracy_m::float8 AS "accuracyM",
+              sp.gps_source AS "gpsSource"
+       FROM sample_points sp
+       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid
+       ORDER BY sp.sequence NULLS LAST, sp.code`,
       [tenantId, analysis.collectionOrderId],
     );
 
@@ -61,11 +95,32 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
       [tenantId, analysisId],
     );
 
+    // Fase 3, Bloco F: a tela que gera este relatório sempre lê a interpretação MAIS RECENTE ao vivo
+    // (linha acima), mas o registro imutável publicado (`reports`, com hash) pode ser de uma revisão
+    // ANTERIOR -- reabrir esta URL depois de recalcular mostra o dado novo, não o publicado. A tela avisa
+    // quando divergirem, e o fechamento técnico da Fase 3 passou a servir de volta o snapshot real
+    // (ver `getPublishedReportSnapshot` abaixo) quando `STORAGE_PROVIDER=local` -- a alternância "Versão
+    // atual / Versão publicada" lê o arquivo gravado no publish, não reconstrói a partir do dado atual.
+    const publishedResult = await client.query(
+      `SELECT r.id::text, r.revision AS "reportRevision", r.storage_key AS "storageKey", r.published_at::text AS "publishedAt", r.sha256 AS "contentHash",
+              i.id::text AS "interpretationId", i.revision AS "interpretationRevision", publisher.name AS "publishedByName"
+       FROM reports r
+       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
+       LEFT JOIN users publisher ON publisher.id = r.published_by
+       WHERE r.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+       ORDER BY r.published_at DESC LIMIT 1`,
+      [tenantId, analysisId],
+    );
+    const publishedReport = publishedResult.rows[0] ?? null;
+    const latestInterpretation = interpretationResult.rows[0] ?? null;
+
     return {
       analysis,
       points: pointsResult.rows,
       results: resultsResult.rows,
-      interpretation: interpretationResult.rows[0] ?? null,
+      interpretation: latestInterpretation,
+      publishedReport,
+      isShowingPublishedVersion: Boolean(publishedReport && latestInterpretation && publishedReport.interpretationId === latestInterpretation.id),
     };
   });
 }
@@ -91,11 +146,16 @@ export async function getCollectionReportData(tenantId: string, collectionOrderI
     if (!order) return null;
 
     const pointsResult = await client.query(
-      `SELECT sp.id::text, sp.code, ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
-              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm", sp.collected_at::text AS "collectedAt",
+      `SELECT sp.id::text, sp.code,
+              ST_Y(sp.position)::float8 AS latitude, ST_X(sp.position)::float8 AS longitude,
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+              sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",
+              sp.collected_at::text AS "collectedAt", sp.accuracy_m::float8 AS "accuracyM",
               sp.gps_source AS "gpsSource", collector.name AS "collectedByName", sp.notes
        FROM sample_points sp LEFT JOIN users collector ON collector.id = sp.collected_by
-       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid ORDER BY sp.sequence NULLS LAST, sp.code`,
+       WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid
+       ORDER BY sp.sequence NULLS LAST, sp.code`,
       [tenantId, collectionOrderId],
     );
 
@@ -123,13 +183,21 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
 
     const analysesResult = await client.query(
       `SELECT a.id::text, a.code, a.created_at::text AS "createdAt", cs.season_label AS "seasonLabel",
-              i.structured_output AS "structuredOutput", i.status AS "interpretationStatus"
+              approved_i.structured_output AS "structuredOutput",
+              approved_i.status AS "interpretationStatus",
+              approved_i.revision AS "interpretationRevision",
+              approved_i.approved_at::text AS "interpretationApprovedAt"
        FROM analyses a
        JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
        LEFT JOIN LATERAL (
-         SELECT structured_output, status FROM interpretations
-         WHERE tenant_id = a.tenant_id AND analysis_id = a.id ORDER BY revision DESC LIMIT 1
-       ) i ON true
+         SELECT structured_output, status, revision, approved_at
+         FROM interpretations
+         WHERE tenant_id = a.tenant_id
+           AND analysis_id = a.id
+           AND status = 'APPROVED'
+         ORDER BY revision DESC
+         LIMIT 1
+       ) approved_i ON true
        WHERE a.tenant_id = $1::uuid AND cs.field_id = $2::uuid
        ORDER BY a.created_at`,
       [tenantId, fieldId],
@@ -150,9 +218,11 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
      */
     const adherenceResult = await client.query(
       `WITH latest_recommendations AS (
-         SELECT DISTINCT ON (analysis_id, input_type) analysis_id, input_type, quantity, unit
-         FROM input_recommendations WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
-         ORDER BY analysis_id, input_type, calculated_at DESC
+         SELECT DISTINCT ON (analysis_id, input_type)
+                id, analysis_id, input_type, quantity, unit, calculation_source, source_generation_id, calculated_at
+         FROM input_recommendations
+         WHERE tenant_id = $1::uuid AND analysis_id = ANY($2::uuid[])
+         ORDER BY analysis_id, input_type, calculated_at DESC, id DESC
        ),
        applied_totals AS (
          SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
@@ -163,6 +233,16 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
               a.total_quantity::float8 AS "appliedQuantity"
        FROM latest_recommendations r
        LEFT JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
+       LEFT JOIN ai_generations g
+         ON g.tenant_id = $1::uuid
+        AND g.id = r.source_generation_id
+        AND g.kind = 'AGRONOMIC_PRESCRIPTION'
+       WHERE
+         (r.source_generation_id IS NULL AND coalesce(r.calculation_source, '') NOT LIKE 'ai_generations:%')
+         OR (
+           r.source_generation_id IS NOT NULL
+           AND g.status = 'APPROVED'
+         )
        ORDER BY r.analysis_id, r.input_type`,
       [tenantId, analysesResult.rows.map((row) => row.id)],
     );
@@ -196,6 +276,12 @@ export async function getHistoricalEvolutionReportData(tenantId: string, fieldId
   });
 }
 
+/**
+ * Relatório EXECUTIVO (Fase 3, Bloco E): situação da propriedade, áreas que exigem atenção, cobertura
+ * da avaliação, decisões e impedimentos, próximos passos. Reaproveita as MESMAS agregações já usadas na
+ * Central de Decisão (`getExecutiveDashboard`/`getPortfolioFieldSummaries`, Fase 1) -- nenhum número novo
+ * inventado pra este relatório, só a mesma fonte já auditada, reapresentada pro destinatário executivo.
+ */
 export async function getPropertyExecutiveReportData(tenantId: string, propertyId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const propertyResult = await client.query(
@@ -207,64 +293,98 @@ export async function getPropertyExecutiveReportData(tenantId: string, propertyI
     const property = propertyResult.rows[0];
     if (!property) return null;
 
-    const fieldsResult = await client.query(
-      `SELECT f.id::text, f.name, f.area_ha::float8 AS "areaHa",
-              (SELECT count(*)::int FROM crop_seasons cs WHERE cs.tenant_id = f.tenant_id AND cs.field_id = f.id) AS "seasonCount",
-              (SELECT count(*)::int FROM sample_points sp
-                 JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
-                 JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-                 WHERE cs.field_id = f.id) AS "totalPoints",
-              (SELECT count(*)::int FROM sample_points sp
-                 JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
-                 JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-                 WHERE cs.field_id = f.id AND sp.collected_at IS NOT NULL) AS "collectedPoints"
-       FROM fields f WHERE f.tenant_id = $1::uuid AND f.property_id = $2::uuid ORDER BY f.name`,
-      [tenantId, propertyId],
-    );
+    const [summary, fieldSummaries] = await Promise.all([
+      getExecutiveDashboard(tenantId, { propertyId }, userId),
+      getPortfolioFieldSummaries(tenantId, { propertyId }, userId),
+    ]);
 
-    const analysesResult = await client.query(
-      `SELECT count(*)::int AS total,
-              count(*) FILTER (WHERE a.status = 'AWAITING_REVIEW')::int AS "awaitingReview",
-              count(*) FILTER (WHERE a.status = 'APPROVED')::int AS approved,
-              count(*) FILTER (WHERE a.status = 'INCONSISTENT')::int AS inconsistent,
-              avg(a.confidence_score)::float8 AS "avgConfidence"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       WHERE f.tenant_id = $1::uuid AND f.property_id = $2::uuid`,
-      [tenantId, propertyId],
-    );
+    const attentionFields = fieldSummaries.filter((f) => f.evaluationStatus !== "APROVADO");
 
-    return { property, fields: fieldsResult.rows, analysesSummary: analysesResult.rows[0] };
+    return { property, summary, fields: fieldSummaries, attentionFields };
   });
 }
 
-/** Fecha o elo mapa -> relatório: publica um relatório real a partir de uma interpretação já aprovada. */
-export async function publishFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
-  return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
-    const interpretationResult = await client.query(
-      `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.revision, i.status, i.structured_output AS "structuredOutput"
-       FROM interpretations i WHERE i.tenant_id = $1::uuid AND i.id = $2::uuid`,
-      [input.tenantId, input.interpretationId],
-    );
-    const interpretation = interpretationResult.rows[0];
-    if (!interpretation) throw new ReportError("Interpretação não encontrada.", 404);
-    if (interpretation.status !== "APPROVED") throw new ReportError("Só é possível publicar um relatório de uma interpretação já aprovada por um agrônomo responsável.", 409);
+/** Compatibilidade: o publisher v2 antigo foi desativado.
+ * Ele não revalidava a decisão completa (laudo/regra/perfil + prescrição oficial corrente).
+ * O único caminho de escrita oficial é publishPremiumFieldAnalysisReport pela rota /publish-report. */
+export async function publishFieldAnalysisReport(_input: { tenantId: string; userId: string; interpretationId: string }) {
+  throw new ReportError(
+    "Fluxo legado de publicação desabilitado. Use a publicação oficial com os gates atuais de integridade.",
+    409,
+  );
+}
 
-    const snapshot = JSON.stringify({ interpretationId: interpretation.id, revision: interpretation.revision, structuredOutput: interpretation.structuredOutput, publishedAt: new Date().toISOString() });
-    const sha256 = createHash("sha256").update(snapshot).digest("hex");
-    const stored = await saveReportSnapshot({ tenantId: input.tenantId, interpretationId: interpretation.id, revision: interpretation.revision, content: snapshot });
-    const storageKey = stored?.key ?? `reports/${input.tenantId}/${interpretation.id}/rev-${interpretation.revision}`;
+/** Snapshot legado (versão 1 implícita, gravado antes desta correção -- sem `reportSnapshotVersion` nem
+ * `publishedContext`/`brandingSnapshot`). Continua legível (nunca quebra um publish antigo), mas a tela
+ * precisa tratar contexto/marca como NÃO capturados nesse caso, nunca usar dado atual como se fosse. */
+export type ReportSnapshotV1Legacy = { interpretationId: string; revision: number; structuredOutput: unknown; publishedAt: string; reportSnapshotVersion?: undefined };
 
-    const result = await client.query(
-      `INSERT INTO reports (tenant_id, interpretation_id, revision, storage_key, sha256, published_at, published_by)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), $6::uuid)
-       RETURNING id::text, revision, storage_key AS "storageKey", published_at::text AS "publishedAt"`,
-      [input.tenantId, interpretation.id, interpretation.revision, storageKey, sha256, input.userId],
+export type PublishedReportSnapshotResult =
+  | { found: false }
+  | {
+      found: true;
+      report: { id: string; revision: number; publishedAt: string; publishedByName: string | null; sha256: string };
+      /** Conteúdo exatamente como gravado no publish -- nunca reconstruído a partir da interpretação
+       * atual. `null` quando o arquivo não pôde ser lido OU quando o hash não bateu (ver `readError`/
+       * `hashVerified`) -- item 1 do fechamento (fail closed): conteúdo com hash divergente NUNCA é
+       * devolvido como `snapshot` utilizável, mesmo tendo sido lido e parseado com sucesso. */
+      snapshot: ReportSnapshotV2 | ReportSnapshotV1Legacy | null;
+      /** true = hash recalculado do arquivo lido bate com `reports.sha256` (prova de integridade real,
+       * não presumida) -- ÚNICO caso em que `snapshot` vem preenchido. false = arquivo lido e parseado,
+       * mas o conteúdo diverge do hash gravado -- tratado como violação de integridade, `snapshot` volta
+       * `null` de propósito (nunca devolve conteúdo não confiável pro chamador usar por engano).
+       * null = não deu pra ler/parsear o arquivo. */
+      hashVerified: boolean | null;
+      readError: string | null;
+    };
+
+/**
+ * Fechamento técnico da Fase 3 (item 2 do primeiro pedido do diretor): lê de volta o snapshot IMUTÁVEL
+ * gravado no publish (`saveReportSnapshot`/`storage_key`), em vez de reconstruir o conteúdo publicado a
+ * partir da interpretação mais recente. Só funciona quando `STORAGE_PROVIDER=local` (única implementação
+ * real de `readRawStoredFile` hoje -- outros provedores como S3 não estão implementados em
+ * `src/lib/storage.ts`, então aqui isso vira `readError` explícito, nunca um retorno silencioso de dado
+ * desatualizado como se fosse o publicado).
+ *
+ * Fail closed (item 1 do segundo pedido do diretor): esta função é a ÚNICA fonte de verdade sobre
+ * integridade -- `snapshot` só volta preenchido quando o hash recalculado bate com `reports.sha256`. Um
+ * hash divergente (adulteração, corrupção, truncamento) sempre devolve `snapshot: null` com
+ * `hashVerified: false`, nunca o conteúdo lido "mesmo assim" -- quem chama não precisa (e não deve)
+ * reimplementar essa checagem.
+ */
+export async function getPublishedReportSnapshot(tenantId: string, analysisId: string, userId?: string): Promise<PublishedReportSnapshotResult> {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const publishedResult = await client.query(
+      `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.sha256, r.published_at::text AS "publishedAt", publisher.name AS "publishedByName"
+       FROM reports r
+       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
+       LEFT JOIN users publisher ON publisher.id = r.published_by
+       WHERE r.tenant_id = $1::uuid AND i.analysis_id = $2::uuid
+       ORDER BY r.published_at DESC LIMIT 1`,
+      [tenantId, analysisId],
     );
-    const report = result.rows[0];
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "REPORT_PUBLISHED", entityType: "report", entityId: report.id, metadata: { interpretationId: interpretation.id, analysisId: interpretation.analysisId } });
-    return report;
+    const reportRow = publishedResult.rows[0];
+    if (!reportRow) return { found: false };
+
+    const report = { id: reportRow.id, revision: reportRow.revision, publishedAt: reportRow.publishedAt, publishedByName: reportRow.publishedByName, sha256: reportRow.sha256 };
+    try {
+      const buffer = await readRawStoredFile(reportRow.storageKey);
+      const rawContent = buffer.toString("utf8");
+      const recomputedHash = createHash("sha256").update(rawContent).digest("hex");
+      const hashVerified = recomputedHash === reportRow.sha256;
+      // Fail closed: hash divergente NUNCA devolve o conteúdo parseado como `snapshot` utilizável, mesmo
+      // que o JSON seja válido -- adulteração/corrupção não pode virar "versão publicada" só porque o
+      // arquivo ainda abre. Quem chama recebe `hashVerified: false` e trata como violação de integridade,
+      // nunca como um snapshot incompleto/degradado que dá pra usar "mesmo assim".
+      if (!hashVerified) return { found: true, report, snapshot: null, hashVerified: false, readError: null };
+      const snapshot = JSON.parse(rawContent);
+      return { found: true, report, snapshot, hashVerified: true, readError: null };
+    } catch (error) {
+      // STORAGE_PROVIDER != local (arquivo nunca foi gravado de verdade) ou arquivo removido/indisponível
+      // -- nunca finge que a versão atual é a publicada nesse caso, devolve o motivo real pra tela avisar.
+      const message = error instanceof Error ? error.message : "Falha desconhecida ao ler o snapshot.";
+      return { found: true, report, snapshot: null, hashVerified: null, readError: message };
+    }
   });
 }
 

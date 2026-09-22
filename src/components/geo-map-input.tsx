@@ -49,6 +49,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
   const drawingRef = useRef(false);
   const [drawing, setDrawing] = useState(false);
   const [pointCount, setPointCount] = useState(0);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     drawingRef.current = drawing;
@@ -149,6 +150,19 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referenceBoundary]);
 
+  function centerOnCurrentLocation() {
+    if (!navigator.geolocation || !mapRef.current) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        mapRef.current?.setView([position.coords.latitude, position.coords.longitude], 15);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+    );
+  }
+
   function startDrawing() {
     drawPointsRef.current = [];
     setPointCount(0);
@@ -180,6 +194,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
         {!drawing ? (
           <>
             <button type="button" className="button tiny" onClick={startDrawing}><Icon name="location" size={14} />Desenhar no mapa</button>
+            <button type="button" className="button tiny secondary" disabled={locating} onClick={centerOnCurrentLocation}><Icon name="map" size={14} />{locating ? "Localizando…" : "Minha localização"}</button>
             {value.trim() && <button type="button" className="button tiny secondary" onClick={clearShape}><Icon name="close" size={14} />Limpar</button>}
           </>
         ) : (

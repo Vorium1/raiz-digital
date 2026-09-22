@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { query } from "@/lib/db";
+import { getPool, query } from "@/lib/db";
 import { generateBackupCodes, generateTotpSecret, hashBackupCode, totpAuthUri, verifyTotpCode } from "@/lib/auth/totp";
 
 const PENDING_LOGIN_TTL_MINUTES = 10;
@@ -17,25 +17,59 @@ function hashPendingToken(token: string) {
 
 export async function startTwoFactorSetup(input: { userId: string; email: string }) {
   const secret = generateTotpSecret();
-  await query("UPDATE users SET totp_secret = $1, two_factor_enabled = false WHERE id = $2::uuid", [secret, input.userId]);
+  // Nunca desativa uma proteção já vigente para iniciar uma rotação. Sem um campo separado para segredo
+  // pendente, sobrescrever `totp_secret` faria a conta ficar sem 2FA entre gerar o QR e confirmar o novo
+  // aparelho. A rotação, por enquanto, exige desativar explicitamente com senha e só então configurar de
+  // novo. O WHERE também protege chamadas diretas ao domínio, não apenas a rota HTTP.
+  const updated = await query(
+    "UPDATE users SET totp_secret = $1 WHERE id = $2::uuid AND two_factor_enabled = false",
+    [secret, input.userId],
+  );
+  if ((updated.rowCount ?? 0) === 0) {
+    throw new TwoFactorError("A verificação em duas etapas já está ativa. Desative-a primeiro para configurar outro autenticador.", 409);
+  }
   return { secret, otpauthUri: totpAuthUri({ secret, accountLabel: input.email }) };
 }
 
 export async function confirmTwoFactorSetup(input: { userId: string; code: string }) {
-  const result = await query<{ totp_secret: string | null }>("SELECT totp_secret FROM users WHERE id = $1::uuid", [input.userId]);
+  const result = await query<{ totp_secret: string | null }>(
+    "SELECT totp_secret FROM users WHERE id = $1::uuid AND two_factor_enabled = false",
+    [input.userId],
+  );
   const secret = result.rows[0]?.totp_secret;
-  if (!secret) throw new TwoFactorError("Nenhuma configuração de 2FA em andamento. Inicie novamente.", 409);
+  if (!secret) throw new TwoFactorError("Nenhuma configuração de 2FA pendente. Inicie novamente.", 409);
   const matchedCounter = verifyTotpCode(secret, input.code);
   if (matchedCounter === null) throw new TwoFactorError("Código inválido. Confira o horário do dispositivo e tente novamente.", 422);
 
   const codes = generateBackupCodes();
-  await query("UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid", [input.userId, matchedCounter]);
-  await query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
-  await query(
-    `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
-    [input.userId, codes.map(hashBackupCode)],
-  );
-  return { backupCodes: codes };
+  const codeHashes = codes.map(hashBackupCode);
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    // Só uma confirmação concorrente pode mudar false -> true. A criação dos códigos de backup fica na
+    // mesma transação: se qualquer INSERT falhar, o ROLLBACK também desfaz a ativação do 2FA, evitando uma
+    // conta marcada como protegida mas sem o conjunto de recuperação que a tela acabou de prometer.
+    const enabled = await client.query(
+      "UPDATE users SET two_factor_enabled = true, totp_last_counter = $2 WHERE id = $1::uuid AND two_factor_enabled = false",
+      [input.userId, matchedCounter],
+    );
+    if ((enabled.rowCount ?? 0) === 0) {
+      throw new TwoFactorError("A verificação em duas etapas já foi ativada. Atualize a página.", 409);
+    }
+
+    await client.query("DELETE FROM totp_backup_codes WHERE user_id = $1::uuid", [input.userId]);
+    await client.query(
+      `INSERT INTO totp_backup_codes (user_id, code_hash) SELECT $1::uuid, unnest($2::text[])`,
+      [input.userId, codeHashes],
+    );
+    await client.query("COMMIT");
+    return { backupCodes: codes };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function disableTwoFactor(userId: string) {
@@ -58,9 +92,6 @@ export async function verifyTwoFactorCode(userId: string, code: string) {
 
   const matchedCounter = verifyTotpCode(row.totp_secret, code);
   if (matchedCounter !== null) {
-    // Só aceita se esse passo de 30s ainda não tiver sido usado (impede reaproveitar o mesmo código
-    // dentro da janela de tolerância) e só marca como usado se ainda for o maior contador na hora do
-    // UPDATE — evita que duas tentativas simultâneas com o mesmo código passem as duas.
     const lastCounter = row.totp_last_counter;
     if (lastCounter == null || matchedCounter > lastCounter) {
       const updated = await query(
@@ -71,9 +102,6 @@ export async function verifyTwoFactorCode(userId: string, code: string) {
     }
   }
 
-  // UPDATE ... WHERE used_at IS NULL num único statement (em vez de SELECT e depois UPDATE) para que
-  // duas tentativas simultâneas com o mesmo código de backup não consigam as duas passar pela checagem
-  // antes de qualquer uma marcar o código como usado — só uma linha é afetada, a outra tentativa perde.
   const backupHash = hashBackupCode(code);
   const backup = await query<{ id: string }>(
     "UPDATE totp_backup_codes SET used_at = now() WHERE user_id = $1::uuid AND code_hash = $2 AND used_at IS NULL RETURNING id::text",
