@@ -1,11 +1,19 @@
-import { getPool } from "../src/lib/db.ts";
+import pg from "pg";
 import { auditEarthSearchReflectanceQuality } from "../src/lib/satellite/earth-search-ndvi-provider.ts";
 
 const EXPECTED_GUARD = "PR88_CABEDA_OFFICIAL_RESULT";
 const TARGET_FIELDS = ["Área 01", "Área 02", "Área 03"];
 
 async function main() {
-  const client = await getPool().connect();
+  const databaseUrl = (process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL)?.trim();
+  if (!databaseUrl) throw new Error("READ_ONLY_AUDIT_REFUSED: URL da homologação ausente.");
+
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+  });
+  const client = await pool.connect();
   try {
     const guard = await client.query(
       `SELECT EXISTS (
@@ -89,7 +97,7 @@ async function main() {
     }, null, 2));
   } finally {
     client.release();
-    await getPool().end().catch(() => {});
+    await pool.end().catch(() => {});
   }
 }
 
