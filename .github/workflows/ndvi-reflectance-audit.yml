@@ -1,0 +1,42 @@
+name: NDVI Reflectance Quality Audit
+
+on:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/ndvi-reflectance-audit.yml"
+      - "scripts/audit-earth-search-reflectance-quality.mjs"
+      - "src/lib/satellite/earth-search-ndvi-provider.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ndvi-reflectance-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: sentinel-reflectance-readonly
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 12
+    env:
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditar reflectância e NDVI bruto sem escrita
+        run: node --experimental-strip-types scripts/audit-earth-search-reflectance-quality.mjs

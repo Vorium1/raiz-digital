@@ -377,6 +377,117 @@ async function searchItems(input: FetchFieldNdviInput) {
   );
 }
 
+export type EarthSearchReflectanceAudit = {
+  capturedAt: string;
+  sceneId: string;
+  declaredCloudCoverPct: number;
+  insidePixels: number;
+  validSclPixels: number;
+  usablePairs: number;
+  negativeRedPixels: number;
+  negativeNirPixels: number;
+  nonPositiveDenominatorPixels: number;
+  rawNdviOverOnePixels: number;
+  rawNdviUnderMinusOnePixels: number;
+  rawNdviWithinRangePixels: number;
+  rawNdviMin: number | null;
+  rawNdviMax: number | null;
+  rawNdviMean: number | null;
+};
+
+/**
+ * Auditoria somente leitura para diagnosticar saturação numérica antes do clamp operacional.
+ * Não grava snapshot, não persiste raster e não expõe coordenadas do talhão no resultado.
+ */
+export async function auditEarthSearchReflectanceQuality(
+  input: FetchFieldNdviInput,
+): Promise<EarthSearchReflectanceAudit[]> {
+  const items = await searchItems(input);
+  const audits: EarthSearchReflectanceAudit[] = [];
+
+  for (const item of items) {
+    const assets = sceneAssets(item);
+    const capturedAt = stacDate(item);
+    if (!assets || !capturedAt) continue;
+
+    const polygons = projectGeometry(input.fieldBoundaryGeoJson, assets.epsg);
+    const bbox = projectedBbox(polygons);
+    const { width, height } = outputSize(bbox, STATS_RESOLUTION_METERS, MAX_STATS_SIDE);
+    const arrays = await sceneArrays(item, input.fieldBoundaryGeoJson, width, height);
+
+    let insidePixels = 0;
+    let validSclPixels = 0;
+    let usablePairs = 0;
+    let negativeRedPixels = 0;
+    let negativeNirPixels = 0;
+    let nonPositiveDenominatorPixels = 0;
+    let rawNdviOverOnePixels = 0;
+    let rawNdviUnderMinusOnePixels = 0;
+    let rawNdviWithinRangePixels = 0;
+    let rawNdviMin = Infinity;
+    let rawNdviMax = -Infinity;
+    let rawNdviSum = 0;
+
+    for (let index = 0; index < width * height; index += 1) {
+      if (!pointInProjectedGeometry(pixelPoint(index, width, height, arrays.bbox), arrays.polygons)) continue;
+      insidePixels += 1;
+
+      const rawRed = Number(arrays.red[index]);
+      const rawNir = Number(arrays.nir[index]);
+      const scl = Number(arrays.scl[index]);
+      if (!validScl(scl)) continue;
+      validSclPixels += 1;
+
+      if (!Number.isFinite(rawRed) || !Number.isFinite(rawNir)) continue;
+      if (isNoData(rawRed, arrays.assets.red) || isNoData(rawNir, arrays.assets.nir)) continue;
+
+      const red = physicalValue(rawRed, arrays.assets.red);
+      const nir = physicalValue(rawNir, arrays.assets.nir);
+      if (!Number.isFinite(red) || !Number.isFinite(nir)) continue;
+
+      if (red < 0) negativeRedPixels += 1;
+      if (nir < 0) negativeNirPixels += 1;
+
+      const denominator = nir + red;
+      if (!Number.isFinite(denominator) || denominator <= 0) {
+        nonPositiveDenominatorPixels += 1;
+        continue;
+      }
+
+      const rawNdvi = (nir - red) / denominator;
+      if (!Number.isFinite(rawNdvi)) continue;
+      usablePairs += 1;
+      rawNdviSum += rawNdvi;
+      rawNdviMin = Math.min(rawNdviMin, rawNdvi);
+      rawNdviMax = Math.max(rawNdviMax, rawNdvi);
+
+      if (rawNdvi > 1) rawNdviOverOnePixels += 1;
+      else if (rawNdvi < -1) rawNdviUnderMinusOnePixels += 1;
+      else rawNdviWithinRangePixels += 1;
+    }
+
+    audits.push({
+      capturedAt,
+      sceneId: item.id,
+      declaredCloudCoverPct: cloudCover(item),
+      insidePixels,
+      validSclPixels,
+      usablePairs,
+      negativeRedPixels,
+      negativeNirPixels,
+      nonPositiveDenominatorPixels,
+      rawNdviOverOnePixels,
+      rawNdviUnderMinusOnePixels,
+      rawNdviWithinRangePixels,
+      rawNdviMin: usablePairs ? rawNdviMin : null,
+      rawNdviMax: usablePairs ? rawNdviMax : null,
+      rawNdviMean: usablePairs ? rawNdviSum / usablePairs : null,
+    });
+  }
+
+  return audits;
+}
+
 async function sceneStatistics(item: EarthSearchItem, geometry: FieldGeometry): Promise<NdviSceneResult | null> {
   const assets = sceneAssets(item);
   const capturedAt = stacDate(item);
