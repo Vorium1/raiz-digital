@@ -6,7 +6,19 @@ import {
   computeZoneBreakdownPct,
   detectWithinFieldVariability,
 } from "../src/domain/ndvi-engine.ts";
-import { fieldGeometryBbox, summarizePixelValidity } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import {
+  NDVI_RASTER_ALGORITHM_VERSION,
+  ndviRasterKeyBelongsToField,
+  ndviRasterObjectKey,
+  ndviRasterSha256,
+  verifyNdviRasterIntegrity,
+} from "../src/lib/ndvi-raster-storage.ts";
+import {
+  COPERNICUS_NDVI_MOSAICKING_ORDER,
+  copernicusNdviDataFilter,
+  fieldGeometryBbox,
+  summarizePixelValidity,
+} from "../src/lib/satellite/copernicus-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -182,4 +194,32 @@ assert.equal(unknownQualityLatest.direction, "QUEDA");
 assert.equal(unknownQualityLatest.hasRelevantTemporalChange, false);
 assert.ok(unknownQualityLatest.note.includes("não dispara alerta"));
 
-console.log("ndvi-engine: 28 cenários aprovados (vigor, temporal, gate de qualidade, pixels válidos e envelope espacial)");
+// 29. Statistical e Process API usam uma única política de seleção de tiles.
+assert.equal(COPERNICUS_NDVI_MOSAICKING_ORDER, "leastCC");
+assert.deepEqual(copernicusNdviDataFilter(17), {
+  maxCloudCoverage: 17,
+  mosaickingOrder: "leastCC",
+});
+
+// 30-33. Contrato de cadeia de custódia do raster histórico.
+const archivedBytes = Buffer.from("raster-ndvi-sintetico-v1", "utf8");
+const archivedSha = ndviRasterSha256(archivedBytes);
+const archivedKey = ndviRasterObjectKey({
+  tenantId: "11111111-1111-1111-1111-111111111111",
+  fieldId: "22222222-2222-2222-2222-222222222222",
+  capturedAt: "2026-08-12",
+  sha256: archivedSha,
+});
+assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V1");
+assert.equal(
+  archivedKey,
+  `ndvi/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222/2026-08-12/${archivedSha}.png`,
+);
+assert.equal(ndviRasterKeyBelongsToField(`s3:v1:${archivedKey}`, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"), true);
+assert.equal(verifyNdviRasterIntegrity(archivedBytes, { sha256: archivedSha, bytes: archivedBytes.length }), true);
+assert.throws(
+  () => verifyNdviRasterIntegrity(Buffer.from("raster-alterado", "utf8"), { sha256: archivedSha, bytes: archivedBytes.length }),
+  /Integridade do raster NDVI arquivado não confere/,
+);
+
+console.log("ndvi-engine: 33 cenários aprovados (vigor, temporal, gate de qualidade, mosaico Copernicus e cadeia de custódia do raster)");
