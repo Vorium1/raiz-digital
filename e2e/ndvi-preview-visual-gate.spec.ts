@@ -288,17 +288,19 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     const rasterError = vigor.locator('.simple-field-vigor-empty[role="alert"]');
     await expect(rasterError).toHaveCount(0);
 
-    await ensureVisualEvidenceDir();
-    await vigor.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "ndvi-desktop.png") });
-
     if (process.env.E2E_EXPECT_GOOGLE_MAPS === "1") {
       await expect.poll(
         async () => page.locator('script[src*="maps.googleapis.com/maps/api/js"]').count(),
         { timeout: 20_000, message: "Google Maps JavaScript API deveria estar carregado no Preview" },
       ).toBeGreaterThan(0);
       await expect(map).toHaveAttribute("data-map-provider", "google");
+      await expect(map).toHaveAttribute("data-map-ready", "true", { timeout: 20_000 });
+      await expect(map.locator(".real-field-map-loading")).toHaveCount(0);
       await expect(map.locator(".ndvi-panel-limitation")).toHaveCount(0);
     }
+
+    await ensureVisualEvidenceDir();
+    await vigor.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "ndvi-desktop.png") });
 
     await test.info().attach("ndvi-desktop", {
       body: await vigor.screenshot(),
@@ -373,6 +375,13 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
       const fallback = layers.locator('.real-field-map[data-map-provider]');
       await expect(fallback).toBeVisible();
       await expect(fallback.locator(".real-field-map-hint")).toContainText(/relevo|topográfica/i);
+      await expect.poll(async () => {
+        const provider = await fallback.getAttribute("data-map-provider");
+        if (!provider) return false;
+        if (provider !== "google") return true;
+        return (await fallback.getAttribute("data-map-ready")) === "true";
+      }, { timeout: 20_000, message: "Fallback topográfico precisa resolver tiles Google ou trocar de provider" }).toBe(true);
+      await expect(fallback.locator(".real-field-map-loading")).toHaveCount(0);
     } else {
       await expect(layers.locator('.google-field-terrain-3d[data-3d-state="ready"]')).toBeVisible();
       await expect(layers.locator(".google-field-terrain-3d-loading")).toHaveCount(0);

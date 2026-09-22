@@ -180,6 +180,7 @@ assert.equal(
 );
 
 const ndviRasterRouteSource = readFileSync(new URL("../src/app/api/fields/[id]/ndvi/map/route.ts", import.meta.url), "utf8");
+const googleFieldMapSource = readFileSync(new URL("../src/components/google-field-map.tsx", import.meta.url), "utf8");
 assert.match(
   ndviRasterRouteSource,
   /["']cache-control["']\s*:\s*["']private, no-store["']/,
@@ -191,10 +192,14 @@ assert.doesNotMatch(
   "imutabilidade do artefato não pode tornar imutável a autorização de acesso no navegador",
 );
 
+assert.match(googleFieldMapSource, /data-map-ready=/, "GoogleFieldMap deve expor readiness de tiles ao QA/runtime");
+assert.match(googleFieldMapSource, /"tilesloaded"/, "GoogleFieldMap só pode declarar mapa pronto após tilesloaded");
+assert.match(googleFieldMapSource, /real-field-map-loading/, "canvas transitório sem tiles deve ficar coberto por loading limpo");
+
 assert.ok(GOOGLE_MAPS_LOAD_TIMEOUT_MS >= 10_000, "loader deve ter timeout explícito e conservador");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS >= 8_000, "saúde dos tiles deve esperar tempo suficiente antes do fallback");
 assert.ok(GOOGLE_MAPS_TILE_HEALTH_TIMEOUT_MS < GOOGLE_MAPS_LOAD_TIMEOUT_MS, "health check de tiles deve ser limitado e inferior ao teto do loader");
 assert.equal(MAPBOX_GL_VERSION, "3.30.0", "integração Mapbox deve usar a versão documentada do GL JS");
 assert.ok(MAPBOX_LOAD_TIMEOUT_MS >= 10_000, "loader Mapbox também deve falhar com timeout explícito");
 
-console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, auth latch, cache privado e timeouts fail-closed.");
+console.log("OK — mapa espacial: coordenada efetiva, proveniência exata, MultiPolygon, tiles ready, auth latch, cache privado e timeouts fail-closed.");
