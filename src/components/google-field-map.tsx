@@ -42,6 +42,7 @@ export function GoogleFieldMap({
 }: FieldMapProps & { onProviderFailure?: (error: Error) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
+  const [tilesReady, setTilesReady] = useState(false);
 
   function defaultColor(point: MapPoint) {
     const collected = Boolean(point.collectedAt);
@@ -63,6 +64,7 @@ export function GoogleFieldMap({
     };
 
     setSelectedPoint(null);
+    setTilesReady(false);
     unsubscribeAuthFailure = subscribeGoogleMapsAuthFailure(failProvider);
 
     void loadGoogleMaps()
@@ -90,6 +92,7 @@ export function GoogleFieldMap({
         tilesLoadedListener = maps.event.addListenerOnce(map, "tilesloaded", () => {
           tilesConfirmed = true;
           if (tileHealthTimer) clearTimeout(tileHealthTimer);
+          if (!cancelled) setTilesReady(true);
         });
         tileHealthTimer = setTimeout(() => {
           if (!tilesConfirmed) {
@@ -198,8 +201,32 @@ export function GoogleFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map" data-map-provider="google" data-has-image-overlay={imageOverlay ? "true" : "false"}>
-      <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
+    <div
+      className="real-field-map"
+      data-map-provider="google"
+      data-map-ready={tilesReady ? "true" : "false"}
+      data-has-image-overlay={imageOverlay ? "true" : "false"}
+    >
+      <div style={{ position: "relative" }}>
+        <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
+        {!tilesReady && (
+          <div
+            role="status"
+            className="real-field-map-loading"
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
+              background: "#edf0f3",
+              zIndex: 2,
+              fontWeight: 700,
+            }}
+          >
+            {baseLayer === "terrain" ? "Preparando base topográfica…" : "Preparando mapa de satélite…"}
+          </div>
+        )}
+      </div>
       <div className="real-field-map-legend">
         {activeLegend.map((entry) => <span key={entry.label}><i style={{ background: entry.color }}/>{entry.label}</span>)}
         {hasAuditedSourcePoints && <span className="portfolio-map-note">Fonte espacial auditada = coordenada real preservada no banco</span>}
