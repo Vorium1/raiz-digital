@@ -86,6 +86,18 @@ async function main() {
         rawNdviMin: scene.rawNdviMin == null ? null : Number(scene.rawNdviMin.toFixed(6)),
         rawNdviMax: scene.rawNdviMax == null ? null : Number(scene.rawNdviMax.toFixed(6)),
         rawNdviMean: scene.rawNdviMean == null ? null : Number(scene.rawNdviMean.toFixed(6)),
+        redScale: scene.redScale,
+        redOffset: scene.redOffset,
+        nirScale: scene.nirScale,
+        nirOffset: scene.nirOffset,
+        rawRedMin: scene.rawRedMin,
+        rawRedMax: scene.rawRedMax,
+        rawNirMin: scene.rawNirMin,
+        rawNirMax: scene.rawNirMax,
+        physicalRedMin: scene.physicalRedMin == null ? null : Number(scene.physicalRedMin.toFixed(6)),
+        physicalRedMax: scene.physicalRedMax == null ? null : Number(scene.physicalRedMax.toFixed(6)),
+        physicalNirMin: scene.physicalNirMin == null ? null : Number(scene.physicalNirMin.toFixed(6)),
+        physicalNirMax: scene.physicalNirMax == null ? null : Number(scene.physicalNirMax.toFixed(6)),
       });
     }
 

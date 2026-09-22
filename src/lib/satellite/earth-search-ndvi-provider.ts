@@ -393,6 +393,18 @@ export type EarthSearchReflectanceAudit = {
   rawNdviMin: number | null;
   rawNdviMax: number | null;
   rawNdviMean: number | null;
+  redScale: number;
+  redOffset: number;
+  nirScale: number;
+  nirOffset: number;
+  rawRedMin: number | null;
+  rawRedMax: number | null;
+  rawNirMin: number | null;
+  rawNirMax: number | null;
+  physicalRedMin: number | null;
+  physicalRedMax: number | null;
+  physicalNirMin: number | null;
+  physicalNirMax: number | null;
 };
 
 /**
@@ -427,6 +439,14 @@ export async function auditEarthSearchReflectanceQuality(
     let rawNdviMin = Infinity;
     let rawNdviMax = -Infinity;
     let rawNdviSum = 0;
+    let rawRedMin = Infinity;
+    let rawRedMax = -Infinity;
+    let rawNirMin = Infinity;
+    let rawNirMax = -Infinity;
+    let physicalRedMin = Infinity;
+    let physicalRedMax = -Infinity;
+    let physicalNirMin = Infinity;
+    let physicalNirMax = -Infinity;
 
     for (let index = 0; index < width * height; index += 1) {
       if (!pointInProjectedGeometry(pixelPoint(index, width, height, arrays.bbox), arrays.polygons)) continue;
@@ -444,6 +464,15 @@ export async function auditEarthSearchReflectanceQuality(
       const red = physicalValue(rawRed, arrays.assets.red);
       const nir = physicalValue(rawNir, arrays.assets.nir);
       if (!Number.isFinite(red) || !Number.isFinite(nir)) continue;
+
+      rawRedMin = Math.min(rawRedMin, rawRed);
+      rawRedMax = Math.max(rawRedMax, rawRed);
+      rawNirMin = Math.min(rawNirMin, rawNir);
+      rawNirMax = Math.max(rawNirMax, rawNir);
+      physicalRedMin = Math.min(physicalRedMin, red);
+      physicalRedMax = Math.max(physicalRedMax, red);
+      physicalNirMin = Math.min(physicalNirMin, nir);
+      physicalNirMax = Math.max(physicalNirMax, nir);
 
       if (red < 0) negativeRedPixels += 1;
       if (nir < 0) negativeNirPixels += 1;
@@ -482,6 +511,18 @@ export async function auditEarthSearchReflectanceQuality(
       rawNdviMin: usablePairs ? rawNdviMin : null,
       rawNdviMax: usablePairs ? rawNdviMax : null,
       rawNdviMean: usablePairs ? rawNdviSum / usablePairs : null,
+      redScale: typeof rasterBand(arrays.assets.red).scale === "number" ? rasterBand(arrays.assets.red).scale! : 1,
+      redOffset: typeof rasterBand(arrays.assets.red).offset === "number" ? rasterBand(arrays.assets.red).offset! : 0,
+      nirScale: typeof rasterBand(arrays.assets.nir).scale === "number" ? rasterBand(arrays.assets.nir).scale! : 1,
+      nirOffset: typeof rasterBand(arrays.assets.nir).offset === "number" ? rasterBand(arrays.assets.nir).offset! : 0,
+      rawRedMin: Number.isFinite(rawRedMin) ? rawRedMin : null,
+      rawRedMax: Number.isFinite(rawRedMax) ? rawRedMax : null,
+      rawNirMin: Number.isFinite(rawNirMin) ? rawNirMin : null,
+      rawNirMax: Number.isFinite(rawNirMax) ? rawNirMax : null,
+      physicalRedMin: Number.isFinite(physicalRedMin) ? physicalRedMin : null,
+      physicalRedMax: Number.isFinite(physicalRedMax) ? physicalRedMax : null,
+      physicalNirMin: Number.isFinite(physicalNirMin) ? physicalNirMin : null,
+      physicalNirMax: Number.isFinite(physicalNirMax) ? physicalNirMax : null,
     });
   }
 
