@@ -17,6 +17,8 @@ let authFailureHookInstalled = false;
 let authFailureLatched = false;
 const authFailureListeners = new Set<GoogleMapsFailureListener>();
 
+// Mantém a leitura da chave pública no módulo compilado do Preview; mudanças de escopo
+// em NEXT_PUBLIC_* exigem novo build para serem incorporadas ao bundle do navegador.
 export function googleMapsBrowserKey(): string {
   return (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
 }
