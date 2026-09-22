@@ -4,7 +4,9 @@ import {
   computeCanolaSulfurRecommendation,
   computeRiceSulfurRecommendation,
   RICE_S_SOSBAI_2025_PROFILE,
+  computeSoybeanSulfurRecommendation,
 } from "../src/domain/sulfur-dose-engine.ts";
+import { validatePrescriptionSulfurRecommendation } from "../src/domain/prescription-sulfur-validation.ts";
 
 const wheatDeficient = computeWheatSulfurRecommendation({ sulfurMgDm3: 4.9, methodValidated: true });
 assert.equal(wheatDeficient.status, "READY_FOR_IMPLEMENTATION");
@@ -82,6 +84,81 @@ assert.equal(riceWrongUnit.status, "REQUIRES_AGRONOMIST_REVIEW");
 assert.equal(riceWrongUnit.dose.kind, "BLOCKED");
 assert.deepEqual(riceWrongUnit.blockers, ["ANALYTICAL_UNIT_NOT_VALIDATED"]);
 
+
+
+const soybeanMethod = "Ca(H2PO4)2 500mg P/L, turbidimetria";
+const soybeanArea01 = computeSoybeanSulfurRecommendation({
+  cropCode: "SOJA",
+  observations: [9.8, 8.4, 12.2, 6.9, 12.8, 8.4, 12.1, 8.9].map((sulfurMgDm3, index) => ({
+    sampleCode: `A1-${index + 1}`,
+    sulfurMgDm3,
+    method: soybeanMethod,
+    depthFromCm: 0,
+    depthToCm: 20,
+  })),
+});
+assert.equal(soybeanArea01.status, "READY_FOR_IMPLEMENTATION");
+assert.equal(soybeanArea01.needed, true);
+assert.deepEqual(soybeanArea01.dose, { kind: "EXACT", kgSPerHa: 20 });
+assert.equal(soybeanArea01.basis, "STRICT_PREDOMINANCE");
+assert.equal(soybeanArea01.matchingCount, 5);
+
+const soybeanArea03Tie = computeSoybeanSulfurRecommendation({
+  cropCode: "SOJA",
+  observations: [9.5, 6.0, 14.2, 13.7].map((sulfurMgDm3, index) => ({
+    sampleCode: `A3-${index + 1}`,
+    sulfurMgDm3,
+    method: soybeanMethod,
+    depthFromCm: 0,
+    depthToCm: 20,
+  })),
+});
+assert.equal(soybeanArea03Tie.needed, null);
+assert.equal(soybeanArea03Tie.dose.kind, "BLOCKED");
+assert.deepEqual(soybeanArea03Tie.blockers, ["S_NO_STRICT_PREDOMINANCE"]);
+
+const soybeanWrongDepth = computeSoybeanSulfurRecommendation({
+  cropCode: "SOJA",
+  observations: [{ sampleCode: "A1", sulfurMgDm3: 8, method: soybeanMethod, depthFromCm: 0, depthToCm: 10 }],
+});
+assert.equal(soybeanWrongDepth.dose.kind, "BLOCKED");
+assert.deepEqual(soybeanWrongDepth.blockers, ["S_DEPTH_NOT_0_20_CM"]);
+
+const soybeanWrongMethod = computeSoybeanSulfurRecommendation({
+  cropCode: "SOJA",
+  observations: [{ sampleCode: "A1", sulfurMgDm3: 8, method: "Outro", depthFromCm: 0, depthToCm: 20 }],
+});
+assert.equal(soybeanWrongMethod.dose.kind, "BLOCKED");
+assert.deepEqual(soybeanWrongMethod.blockers, ["ANALYTICAL_METHOD_NOT_VALIDATED"]);
+
+
+const sulfurProviderOk = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 20, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderOk.allowed, true);
+
+const sulfurProviderWrong = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 15, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderWrong.allowed, false);
+assert.ok(sulfurProviderWrong.blockers.includes("S_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+const sulfurProviderMissing = validatePrescriptionSulfurRecommendation({
+  recommendations: [],
+  deterministicDecision: soybeanArea01,
+});
+assert.equal(sulfurProviderMissing.allowed, false);
+assert.ok(sulfurProviderMissing.blockers.includes("S_EXPECTED_RECOMMENDATION_MISSING"));
+
+const sulfurProviderBlocked = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 20, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea03Tie,
+});
+assert.equal(sulfurProviderBlocked.allowed, false);
+assert.ok(sulfurProviderBlocked.blockers.includes("S_DETERMINISTIC_DOSE_NOT_READY"));
+
 assert.throws(() => computeWheatSulfurRecommendation({ sulfurMgDm3: -1, methodValidated: true }), /enxofre/i);
 assert.throws(() => computeRiceSulfurRecommendation({
   profileId: RICE_S_SOSBAI_2025_PROFILE,
@@ -90,4 +167,4 @@ assert.throws(() => computeRiceSulfurRecommendation({
   unit: "mg/dm3",
 }), /enxofre/i);
 
-console.log("sulfur-dose-engine: trigo/canola/arroz respeitam limiar + método; faixa não vira dose inventada");
+console.log("sulfur-dose-engine: soja/trigo/canola/arroz respeitam limiar, método, profundidade e predominância");

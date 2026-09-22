@@ -1,0 +1,173 @@
+/* UX3 — camada final de legibilidade.
+   Regra de produto: a jornada simples deve continuar confortável sem treinamento,
+   inclusive para usuários com menor acuidade visual. Não altera telas técnicas. */
+
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) label {
+  font-size: 12px;
+}
+
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) input,
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) select,
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) textarea {
+  font-size: 14px;
+  min-height: 46px;
+}
+
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) button {
+  font-size: 13px;
+  min-height: 44px;
+}
+
+:where(
+  .simple-home,
+  .simple-send-page,
+  .simple-field-shell,
+  .simple-analysis-page,
+  .simple-result-page
+) summary {
+  font-size: 12px;
+  min-height: 44px;
+}
+
+.simple-home-head > div > span,
+.simple-send-page-head > span,
+.simple-send-heading > span,
+.simple-field-map-head span,
+.simple-field-vigor-head span,
+.simple-analysis-head > div:first-child > span,
+.simple-analysis-section-title > span,
+.simple-review-summary > span,
+.simple-review-recommendations > span,
+.simple-review-practices > span,
+.simple-result-hero > span,
+.simple-result-section-head > span,
+.simple-result-findings span {
+  font-size: 11px;
+}
+
+.simple-sidebar nav a,
+.simple-sidebar-bottom a {
+  font-size: 13px;
+}
+
+.simple-mobile-nav a span,
+.simple-mobile-send b {
+  font-size: 11px;
+}
+
+.simple-attention > a,
+.simple-section-head > a,
+.simple-analysis-empty > a,
+.simple-final-review.done > a,
+.simple-review-more a,
+.simple-analysis-technical a,
+.simple-result-technical-link {
+  font-size: 12px;
+}
+
+.simple-area-confirmed > button,
+.simple-area-new-menu button,
+.simple-inline-setup > button,
+.simple-send-finish button,
+.simple-context-question > button,
+.simple-final-review > button,
+.simple-review-actions button,
+.simple-publish-result button,
+.simple-field-vigor-head button {
+  min-height: 44px;
+}
+
+.simple-area-new-menu button {
+  font-size: 12px;
+}
+
+.simple-area-confirmed-label {
+  font-size: 12px;
+}
+
+.simple-map-hint {
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  :where(
+    .simple-home,
+    .simple-send-page,
+    .simple-field-shell,
+    .simple-analysis-page,
+    .simple-result-page
+  ) input,
+  :where(
+    .simple-home,
+    .simple-send-page,
+    .simple-field-shell,
+    .simple-analysis-page,
+    .simple-result-page
+  ) select,
+  :where(
+    .simple-home,
+    .simple-send-page,
+    .simple-field-shell,
+    .simple-analysis-page,
+    .simple-result-page
+  ) textarea {
+    font-size: 16px;
+  }
+
+  .simple-mobile-nav a {
+    min-height: 56px;
+  }
+}
+
+@media print {
+  .simple-result-page small {
+    font-size: 10.5px;
+  }
+
+  .simple-result-page .simple-result-hero > span,
+  .simple-result-page .simple-result-section-head > span,
+  .simple-result-page .simple-result-findings span {
+    font-size: 10px;
+  }
+}

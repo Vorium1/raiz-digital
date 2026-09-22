@@ -47,14 +47,28 @@ const wheat = computeWheatNitrogenRecommendation({ organicMatterPct: 2, precedin
 assert.equal(wheat.status, "READY_FOR_IMPLEMENTATION");
 assert.deepEqual(wheat.dose, { kind: "EXACT", kgNPerHa: 80 });
 assert.deepEqual(wheat.sowingRangeKgNPerHa, { min: 15, max: 20 });
+assert.equal(wheat.qualityObjective?.status, "NOT_REQUESTED");
+assert.equal(wheat.qualityObjective?.requested, false);
+assert.equal(wheat.qualityObjective?.automaticAdditionalDoseAllowed, false);
 
 const wheatHighOm = computeWheatNitrogenRecommendation({ organicMatterPct: 5.5, precedingCrop: "CORN", targetYieldTonPerHa: 4 });
 assert.equal(wheatHighOm.status, "REQUIRES_AGRONOMIST_REVIEW");
 assert.deepEqual(wheatHighOm.dose, { kind: "RANGE", minKgNPerHa: 0, maxKgNPerHa: 50 });
 
 const wheatQuality = computeWheatNitrogenRecommendation({ organicMatterPct: 2, precedingCrop: "SOY", targetYieldTonPerHa: 3, lateQualityNitrogenRequested: true });
-assert.equal(wheatQuality.status, "REQUIRES_AGRONOMIST_REVIEW");
-assert.ok(wheatQuality.blockers.includes("LATE_QUALITY_N_REQUIRES_SPECIFIC_REVIEW"));
+assert.equal(wheatQuality.status, "READY_FOR_IMPLEMENTATION", "objetivo de qualidade não pode rebaixar a dose-base de produtividade");
+assert.deepEqual(wheatQuality.dose, { kind: "EXACT", kgNPerHa: 60 });
+assert.equal(wheatQuality.blockers.includes("LATE_QUALITY_N_REQUIRES_SPECIFIC_REVIEW"), false);
+assert.equal(wheatQuality.qualityObjective?.status, "REQUIRES_SPECIFIC_REVIEW");
+assert.equal(wheatQuality.qualityObjective?.automaticAdditionalDoseAllowed, false);
+assert.equal(wheatQuality.qualityObjective?.additionalDoseKgNPerHa, null);
+assert.equal(wheatQuality.qualityObjective?.industrialTarget, "VITAL_WHEAT_GLUTEN");
+assert.deepEqual(wheatQuality.qualityObjective?.targetProteinFractions, ["GLIADIN", "GLUTENIN"]);
+assert.ok(wheatQuality.qualityObjective?.screeningMetrics.includes("WET_GLUTEN"));
+assert.ok(wheatQuality.qualityObjective?.screeningMetrics.includes("ALVEOGRAPH_W"));
+assert.equal(wheatQuality.qualityObjective?.buyerSpecificationRequired, true);
+assert.match(wheatQuality.qualityObjective?.evidence ?? "", /pouco efetiva/i);
+assert.match(wheatQuality.qualityObjective?.source ?? "", /2025/);
 
 const canola = computeCanolaNitrogenRecommendation({ organicMatterPct: 3, targetYieldTonPerHa: 2.5 });
 assert.equal(canola.status, "READY_FOR_IMPLEMENTATION");

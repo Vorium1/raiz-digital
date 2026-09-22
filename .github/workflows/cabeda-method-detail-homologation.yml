@@ -1,0 +1,100 @@
+name: Cabeda Method Detail Homologation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/cabeda-method-detail-homologation.yml"
+      - "scripts/homologate-cabeda-method-detail-readonly.mjs"
+      - "src/domain/agronomic-engine.ts"
+      - "src/domain/lab-method-normalization.ts"
+      - "src/domain/crop-profile-auxiliary-parameters.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cabeda-method-detail-homologation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate-cabeda-method-detail-readonly
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: homologation
+    env:
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - name: Checkout do candidato PR #88
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar secret de homologação sem expor valor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_DATABASE_URL:-}" ]; then
+            echo "::error::HOMOLOGATION_DATABASE_URL não está configurado no environment homologation."
+            exit 1
+          fi
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Validar resolução de protocolo e métodos Cabeda
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_FILE="cabeda-method-detail-readonly.json"
+          echo "result_file=${RESULT_FILE}" >> "${GITHUB_OUTPUT}"
+          node --experimental-strip-types --experimental-transform-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
+            scripts/homologate-cabeda-method-detail-readonly.mjs | tee "${RESULT_FILE}"
+
+      - name: Resumo sanitizado
+        if: ${{ always() && steps.validate.outputs.result_file != '' }}
+        shell: bash
+        run: |
+          RESULT_FILE="${{ steps.validate.outputs.result_file }}"
+          if [ ! -s "${RESULT_FILE}" ]; then
+            echo "## Cabeda · metodologia laboratorial" >> "${GITHUB_STEP_SUMMARY}"
+            echo "" >> "${GITHUB_STEP_SUMMARY}"
+            echo "Validação não produziu JSON sanitizado." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          RESULT_FILE="${RESULT_FILE}" node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RESULT_FILE, "utf8"));
+          console.log("## Cabeda · metodologia laboratorial · somente leitura");
+          console.log("");
+          console.log("Quando o laudo declara protocolo ou método reconhecido, o motor deve resolver o método compatível por parâmetro e interpretar o resultado.");
+          console.log("Fail-closed fica restrito aos casos em que protocolo/método realmente não possa ser resolvido com segurança; nunca à ausência de repetição textual do método em cada linha.");
+          console.log("");
+          for (const item of payload.results || []) {
+            console.log(`- **${item.code}**: amostras=${item.sampleCount}; resultados=${item.resultCount}; confiança=${item.confidence}`);
+            for (const [parameter, counts] of Object.entries(item.checks || {})) {
+              console.log(`  - ${parameter}: ${Object.entries(counts).map(([k,v]) => `${k}=${v}`).join(", ")}`);
+            }
+          }
+          console.log("");
+          console.log("Execução protegida por BEGIN READ ONLY + ROLLBACK. Nenhum laudo/interpretação é alterado.");
+          NODE
+
+      - name: Salvar evidência sanitizada
+        if: ${{ always() && steps.validate.outputs.result_file != '' && hashFiles(steps.validate.outputs.result_file) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cabeda-method-detail-homologation
+          path: ${{ steps.validate.outputs.result_file }}
+          if-no-files-found: ignore
+          retention-days: 30

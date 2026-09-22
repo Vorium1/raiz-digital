@@ -16,6 +16,19 @@ export type NitrogenRecommendation = {
   blockers: string[];
   notes: string[];
   source: string;
+  qualityObjective?: {
+    kind: "WHEAT_PROTEIN_QUALITY";
+    requested: boolean;
+    industrialTarget: "VITAL_WHEAT_GLUTEN" | null;
+    targetProteinFractions: Array<"GLIADIN" | "GLUTENIN">;
+    screeningMetrics: Array<"GRAIN_PROTEIN" | "WET_GLUTEN" | "DRY_GLUTEN" | "GLUTEN_INDEX" | "ALVEOGRAPH_W" | "P_L" | "SDS_SEDIMENTATION">;
+    buyerSpecificationRequired: true;
+    status: "NOT_REQUESTED" | "REQUIRES_SPECIFIC_REVIEW";
+    automaticAdditionalDoseAllowed: false;
+    additionalDoseKgNPerHa: null;
+    evidence: string;
+    source: string;
+  };
 };
 
 const SNAPSHOT = "RAIZ-WORK-RESEARCH-2026-09-14";
@@ -119,13 +132,15 @@ export function computeWheatNitrogenRecommendation(input: {
   const notes = [`Ajuste por rendimento acima de 3 t/ha: ${yieldAdjustment} kg N/ha.`];
 
   if (band === 2) blockers.push("BASE_IS_UPPER_LIMIT_WHEN_OM_ABOVE_5");
-  if (input.lateQualityNitrogenRequested) blockers.push("LATE_QUALITY_N_REQUIRES_SPECIFIC_REVIEW");
   const total = round1(base + yieldAdjustment);
   const dose: NitrogenDose = band === 2
     ? { kind: "RANGE", minKgNPerHa: 0, maxKgNPerHa: total }
     : { kind: "EXACT", kgNPerHa: total };
 
-  notes.push("Aplicar 15-20 kg N/ha na semeadura; restante entre perfilhamento e alongamento. N tardio para proteína não é default de produtividade.");
+  notes.push("Aplicar 15-20 kg N/ha na semeadura; restante entre perfilhamento e alongamento. A dose de produtividade é uma decisão separada de qualquer objetivo de proteína/qualidade.");
+  if (input.lateQualityNitrogenRequested) {
+    notes.push("Objetivo de qualidade registrado: a RAIZ não acrescenta N tardio automaticamente. Estudo Embrapa Trigo 2025 em 12 ambientes PR/RS encontrou baixa efetividade geral do parcelamento tardio para elevar os indicadores de qualidade avaliados e variabilidade entre cultivares/ambientes.");
+  }
 
   return {
     crop: "TRIGO",
@@ -138,6 +153,19 @@ export function computeWheatNitrogenRecommendation(input: {
     blockers,
     notes,
     source: "Embrapa Trigo 2026, Tabela 3, pp.29-33",
+    qualityObjective: {
+      kind: "WHEAT_PROTEIN_QUALITY",
+      requested: input.lateQualityNitrogenRequested === true,
+      industrialTarget: input.lateQualityNitrogenRequested ? "VITAL_WHEAT_GLUTEN" : null,
+      targetProteinFractions: ["GLIADIN", "GLUTENIN"],
+      screeningMetrics: ["GRAIN_PROTEIN", "WET_GLUTEN", "DRY_GLUTEN", "GLUTEN_INDEX", "ALVEOGRAPH_W", "P_L", "SDS_SEDIMENTATION"],
+      buyerSpecificationRequired: true,
+      status: input.lateQualityNitrogenRequested ? "REQUIRES_SPECIFIC_REVIEW" : "NOT_REQUESTED",
+      automaticAdditionalDoseAllowed: false,
+      additionalDoseKgNPerHa: null,
+      evidence: "Aplicação tardia de parte do N foi pouco efetiva, em geral, para elevar proteína, glúten úmido e força de glúten nos ambientes avaliados; houve variação entre cultivares e ambientes. Mais proteína total não prova, isoladamente, maior funcionalidade do glúten.",
+      source: "Embrapa Trigo, Boletim de Pesquisa e Desenvolvimento 120, 2025 — Estratégias de adubação nitrogenada em trigo, efeitos na qualidade tecnológica; Embrapa Trigo — proteínas de reserva e qualidade tecnológica.",
+    },
   };
 }
 

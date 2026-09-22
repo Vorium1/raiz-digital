@@ -16,7 +16,7 @@ export function Topbar({ eyebrow, title, children }: { eyebrow?: string; title: 
         {children}
         {database && <LogoutButton />}
         {database ? <NotificationsButton/> : <button type="button" className="icon-button notification-button" aria-label="Abrir notificações"><Icon name="bell"/><i aria-hidden="true" /></button>}
-        <Link href="/analises/nova" className="button primary topbar-create"><Icon name="plus" size={18}/>Nova análise</Link>
+        <Link href="/analises/nova?etapa=laudo&nivel=interpretacao-rapida" className="button primary topbar-create"><Icon name="upload" size={18}/>Enviar dados</Link>
       </div>
     </header>
   );

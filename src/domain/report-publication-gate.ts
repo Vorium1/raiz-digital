@@ -44,7 +44,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
   if (!input.interpretationEvidenceCurrent) {
     return {
       allowed: false,
-      reason: "O laudo laboratorial mudou depois desta interpretação. Recalcule e aprove uma nova interpretação antes da entrega oficial.",
+      reason: "Os dados ou as regras agronômicas desta análise foram atualizados. Atualize e aprove a análise novamente antes da entrega oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
@@ -62,7 +62,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
   if (!input.prescriptionId) {
     return {
       allowed: false,
-      reason: "Gere e aprove a Recomendação Assistida RAIZ antes de publicar o relatório oficial.",
+      reason: "Prepare e aprove a conclusão técnica antes de publicar o resultado oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: null,
       prescriptionId: null,
@@ -72,10 +72,10 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
     return {
       allowed: false,
       reason: input.prescriptionStatus === "PENDING_REVIEW"
-        ? "A recomendação está pronta, mas ainda precisa de revisão profissional antes da publicação."
+        ? "A conclusão técnica está pronta, mas ainda precisa de revisão profissional antes da publicação."
         : input.prescriptionStatus === "CHANGES_REQUESTED"
-          ? "A recomendação recebeu solicitação de ajuste e precisa de uma nova versão aprovada antes da publicação."
-          : "A recomendação atual não está aprovada; a entrega oficial permanece bloqueada.",
+          ? "A conclusão técnica recebeu solicitação de ajuste e precisa de uma nova versão aprovada antes da publicação."
+          : "A conclusão técnica atual não está aprovada; a entrega oficial permanece bloqueada.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,
@@ -84,7 +84,7 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
   if (input.prescriptionCurrent === false) {
     return {
       allowed: false,
-      reason: "A recomendação aprovada foi gerada com um contexto agronômico anterior. Gere e aprove uma nova versão antes da entrega oficial.",
+      reason: "A conclusão técnica aprovada foi preparada com um contexto agronômico anterior. Prepare e aprove uma nova versão antes da entrega oficial.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,

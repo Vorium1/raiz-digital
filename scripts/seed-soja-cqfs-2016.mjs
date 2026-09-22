@@ -137,9 +137,9 @@ const PARAMETERS = [
   {
     parameterCode: "S", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
     analyticalMethodAllowed: ["Ca(H2PO4)2 500mg P/L, turbidimetria"], unitExpected: "mg/dm³",
-    sufficiencyRanges: [{ label: "Baixo", max: 2.0 }, { label: "Médio", min: 2.0, max: 5.0 }, { label: "Alto", min: 10.0 }],
+    sufficiencyRanges: [{ label: "Baixo", max: 2.0 }, { label: "Médio", min: 2.0, max: 5.0 }, { label: "Alto", min: 5.0 }],
     criticality: "MEDIA",
-    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.11, p.97, incl. nota (1). Soja é leguminosa -> grupo mais exigente em S: teor crítico "Alto" = 10 mg/dm³ (não 5, que vale pra demais culturas). A camada 10-20cm pode subir o teor de S em plantio direto -- um laudo só 0-20cm pode subdiagnosticar deficiência; um laudo só 0-10cm pode superdiagnosticar. Verificado contra o PDF oficial em 2026-09-04.`,
+    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.11, p.97, incl. nota (1). A classe geral de S é Alto >5 mg/dm³; para soja (leguminosa), o teor crítico agronômico é 10 mg/dm³. Portanto 5-10 mg/dm³ continua classificado pela tabela geral, mas deve ser avaliado pela regra específica da soja antes de decidir adubação. A camada 10-20cm pode subir o teor de S em plantio direto. Verificado contra o PDF oficial em 2026-09-04.`,
   },
   {
     parameterCode: "B", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
@@ -150,24 +150,24 @@ const PARAMETERS = [
   },
   {
     parameterCode: "CU", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
-    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    analyticalMethodAllowed: ["Mehlich-1", "HCl 0,1 mol/L (Tedesco 1995)"], unitExpected: "mg/dm³",
     sufficiencyRanges: [{ label: "Baixo", max: 0.2 }, { label: "Médio", min: 0.2, max: 0.4 }, { label: "Alto", min: 0.4 }],
     criticality: "BAIXA",
-    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.12, p.98. Nota: o extrator de Cu/Zn mudou entre 2004 (HCl 0,1mol/L) e 2016 (Mehlich-1, valores ~30% menores que HCl) -- não aceitar laudo antigo com extrator HCl nesta faixa sem conversão. Verificado contra o PDF oficial em 2026-09-04.`,
+    technicalNotes: `Fonte atual: ${SOURCE_2016}, Tabela 6.12, p.98 (Mehlich-1). Compatibilidade legada explicitamente rastreada: Tedesco et al. (1995) / CQFS-RS/SC 2004 usavam HCl 0,1 mol/L para Cu e as classes publicadas eram <0,2; 0,2-0,4; >0,4 mg/dm³. O RAIZ mantém o método no trace; não troca HCl por Mehlich silenciosamente.`,
   },
   {
     parameterCode: "ZN", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
-    analyticalMethodAllowed: ["Mehlich-1"], unitExpected: "mg/dm³",
+    analyticalMethodAllowed: ["Mehlich-1", "HCl 0,1 mol/L (Tedesco 1995)"], unitExpected: "mg/dm³",
     sufficiencyRanges: [{ label: "Baixo", max: 0.2 }, { label: "Médio", min: 0.2, max: 0.5 }, { label: "Alto", min: 0.5 }],
     criticality: "BAIXA",
-    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.12, p.98. Mesma ressalva de extrator do Cu (ver notas de CU). Verificado contra o PDF oficial em 2026-09-04.`,
+    technicalNotes: `Fonte atual: ${SOURCE_2016}, Tabela 6.12, p.98 (Mehlich-1). Compatibilidade legada explicitamente rastreada: Tedesco et al. (1995) / CQFS-RS/SC 2004 usavam HCl 0,1 mol/L para Zn e as classes publicadas eram <0,2; 0,2-0,5; >0,5 mg/dm³. O método original permanece no trace.`,
   },
   {
     parameterCode: "MN", parameterCategory: "QUIMICO", depthFromCm: 0, depthToCm: 20,
-    analyticalMethodAllowed: ["KCl 1 mol/L (acidificado com HCl 2%)"], unitExpected: "mg/dm³",
+    analyticalMethodAllowed: ["KCl 1 mol/L (acidificado com HCl 2%)", "KCl 1 mol/L (Tedesco 1995)"], unitExpected: "mg/dm³",
     sufficiencyRanges: [{ label: "Baixo", max: 2.5 }, { label: "Médio", min: 2.5, max: 5.0 }, { label: "Alto", min: 5.0 }],
     criticality: "BAIXA",
-    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.12, p.98. Nota: extrator mudou de Mehlich-1 (2004) para KCl 1mol/L (2016) -- não misturar laudo antigo sem checar. Verificado contra o PDF oficial em 2026-09-04.`,
+    technicalNotes: `Fonte: ${SOURCE_2016}, Tabela 6.12, p.98. O método atual usa KCl 1 mol/L com acidificação do extrato; Tedesco et al. (1995) também determina Mn a partir de extração com KCl 1 mol/L e fica registrado como variante própria no trace, sem fingir identidade textual da etapa de leitura.`,
   },
 ];
 

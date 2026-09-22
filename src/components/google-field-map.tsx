@@ -37,10 +37,12 @@ export function GoogleFieldMap({
   hint = "Clique num ponto para ver os dados",
   boundaryFillColor,
   imageOverlay,
+  baseLayer = "default",
   onProviderFailure,
 }: FieldMapProps & { onProviderFailure?: (error: Error) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
+  const [tilesReady, setTilesReady] = useState(false);
 
   function defaultColor(point: MapPoint) {
     const collected = Boolean(point.collectedAt);
@@ -62,6 +64,7 @@ export function GoogleFieldMap({
     };
 
     setSelectedPoint(null);
+    setTilesReady(false);
     unsubscribeAuthFailure = subscribeGoogleMapsAuthFailure(failProvider);
 
     void loadGoogleMaps()
@@ -73,7 +76,9 @@ export function GoogleFieldMap({
         map = new maps.Map(containerRef.current, {
           center: { lat: first[1], lng: first[0] },
           zoom: positions.length ? 16 : 4,
-          mapTypeId: maps.MapTypeId?.SATELLITE ?? "satellite",
+          mapTypeId: baseLayer === "terrain"
+            ? (maps.MapTypeId?.TERRAIN ?? "terrain")
+            : (maps.MapTypeId?.SATELLITE ?? "satellite"),
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
@@ -87,6 +92,7 @@ export function GoogleFieldMap({
         tilesLoadedListener = maps.event.addListenerOnce(map, "tilesloaded", () => {
           tilesConfirmed = true;
           if (tileHealthTimer) clearTimeout(tileHealthTimer);
+          if (!cancelled) setTilesReady(true);
         });
         tileHealthTimer = setTimeout(() => {
           if (!tilesConfirmed) {
@@ -185,7 +191,7 @@ export function GoogleFieldMap({
       try { if (maps && map) maps.event?.clearInstanceListeners?.(map); } catch { /* noop */ }
       if (containerRef.current) containerRef.current.replaceChildren();
     };
-  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay, onProviderFailure]);
+  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay, baseLayer, onProviderFailure]);
 
   const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;
@@ -195,8 +201,32 @@ export function GoogleFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map">
-      <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
+    <div
+      className="real-field-map"
+      data-map-provider="google"
+      data-map-ready={tilesReady ? "true" : "false"}
+      data-has-image-overlay={imageOverlay ? "true" : "false"}
+    >
+      <div style={{ position: "relative" }}>
+        <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
+        {!tilesReady && (
+          <div
+            role="status"
+            className="real-field-map-loading"
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
+              background: "#edf0f3",
+              zIndex: 2,
+              fontWeight: 700,
+            }}
+          >
+            {baseLayer === "terrain" ? "Preparando base topográfica…" : "Preparando mapa de satélite…"}
+          </div>
+        )}
+      </div>
       <div className="real-field-map-legend">
         {activeLegend.map((entry) => <span key={entry.label}><i style={{ background: entry.color }}/>{entry.label}</span>)}
         {hasAuditedSourcePoints && <span className="portfolio-map-note">Fonte espacial auditada = coordenada real preservada no banco</span>}
@@ -210,7 +240,7 @@ export function GoogleFieldMap({
             <button type="button" className="icon-button" aria-label="Fechar" onClick={() => setSelectedPoint(null)}><Icon name="close" size={13}/></button>
           </div>
           <dl>
-            <div><dt>Status</dt><dd>{selectedPoint.collectedAt ? "Coletado" : "Pendente"}</dd></div>
+            <div><dt>Status</dt><dd>{pointPositionKind(selectedPoint) === "PLANNED" ? "Planejado" : selectedPoint.collectedAt ? "Coletado" : "Coordenada real"}</dd></div>
             {showAgronomicFields && (
               <>
                 <div><dt>Valor</dt><dd>{selectedPoint.value != null ? `${selectedPoint.value} ${selectedPoint.unit ?? ""}` : "Sem resultado"}</dd></div>

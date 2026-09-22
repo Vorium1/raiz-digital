@@ -199,6 +199,7 @@ export type DeterministicPkDoseDecision = {
     minimumKgPerHa: number;
     maximumKgPerHa: number;
     isDiscretionaryRange: boolean;
+    assumptions: string[];
     source: string;
   };
 };
@@ -213,13 +214,6 @@ export function computeDeterministicPkDose(input: {
   nutrient: UniformPkTarget;
 }): DeterministicPkDoseDecision {
   const blockers: string[] = [];
-  const context = evaluatePkDoseReadiness({
-    yieldGoal: input.yieldGoal,
-    yieldGoalUnit: input.yieldGoalUnit,
-    cultivationOrderAfterSoilAnalysis: input.cultivationOrderAfterSoilAnalysis,
-  });
-  if (!context.ready) blockers.push(...context.blockers.map((code) => `PK_CONTEXT:${code}`));
-
   const uniform = evaluateUniformPkReadiness({ cropCode: input.cropCode, interpretation: input.interpretation });
   const nutrientState = uniform.nutrients[input.nutrient];
   if (!uniform.ruleReady) blockers.push(...uniform.blockers.filter((code) => code.startsWith("PK_")));
@@ -227,10 +221,26 @@ export function computeDeterministicPkDose(input: {
 
   const cropCode = uniform.cropCode;
   const table = cropCode ? DOSE_TABLE_BY_CROP[cropCode] : null;
+  if (!table) blockers.push("PK_DETERMINISTIC_TABLE_NOT_IMPLEMENTED");
+
+  const assumptions: string[] = [];
+  const usingReferenceYield = input.yieldGoal == null && Boolean(table);
+  const usingFirstCultivationDefault = input.cultivationOrderAfterSoilAnalysis == null;
+
+  const context = evaluatePkDoseReadiness({
+    yieldGoal: usingReferenceYield ? table?.referenceYieldTonPerHa : input.yieldGoal,
+    yieldGoalUnit: usingReferenceYield ? "t/ha" : input.yieldGoalUnit,
+    cultivationOrderAfterSoilAnalysis: usingFirstCultivationDefault ? 1 : input.cultivationOrderAfterSoilAnalysis,
+  });
+  if (!context.ready) blockers.push(...context.blockers.map((code) => `PK_CONTEXT:${code}`));
+  if (usingReferenceYield && table) {
+    assumptions.push(`YIELD_GOAL_DEFAULTED_TO_CROP_REFERENCE:${table.referenceYieldTonPerHa}_T_HA`);
+  }
+  if (usingFirstCultivationDefault) assumptions.push("CULTIVATION_ORDER_DEFAULTED_TO_FIRST_AFTER_ANALYSIS");
+
   const level = nutrientState.soilLevel;
   const cultivationYear = context.normalized.cultivationYear;
   const yieldGoalTonPerHa = context.normalized.yieldGoalTonPerHa;
-  if (!table) blockers.push("PK_DETERMINISTIC_TABLE_NOT_IMPLEMENTED");
 
   if (blockers.length || !uniform.ruleId || !table || !level || !cultivationYear || yieldGoalTonPerHa == null) {
     return { ready: false, blockers: [...new Set(blockers)], expected: null };
@@ -253,6 +263,7 @@ export function computeDeterministicPkDose(input: {
       minimumKgPerHa,
       maximumKgPerHa,
       isDiscretionaryRange: result.isDiscretionaryRange,
+      assumptions,
       source: result.source,
     },
   };

@@ -2,6 +2,7 @@ import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/domain/agronomic-engine";
 import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
+import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
 
 export class InterpretationError extends Error {
   constructor(message: string, public status = 400) {
@@ -61,7 +62,9 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     const resultsResult = await client.query<LabResultInput>(
       `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS "value",
-              lr.unit, lr.analytical_method AS "method", lr.source, ls.sample_type AS "sampleType",
+              lr.unit, lr.analytical_method AS "method",
+              lr.original_payload->>'protocol' AS "protocol",
+              lr.source, ls.sample_type AS "sampleType",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm"
        FROM lab_samples ls
        JOIN lab_results lr ON lr.lab_sample_id = ls.id
@@ -70,7 +73,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
        ORDER BY ls.laboratory_code, lr.parameter_code`,
       [input.tenantId, input.analysisId],
     );
-    const labResults = resultsResult.rows.map((row) => ({ ...row, depthFromCm: row.depthFromCm ?? null, depthToCm: row.depthToCm ?? null }));
+    const labResults = resultsResult.rows.map((row) => ({
+      ...row,
+      unit: normalizeUnit(row.parameterCode, row.unit),
+      method: normalizeAnalyticalMethod(row.parameterCode, row.method, row.protocol),
+      depthFromCm: row.depthFromCm ?? null,
+      depthToCm: row.depthToCm ?? null,
+    }));
     if (labResults.length === 0) {
       throw new InterpretationError("Não há resultados de laboratório persistidos para esta análise. Importe e confira o laudo antes de interpretar.", 409);
     }
@@ -82,7 +91,7 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
       [input.tenantId, input.analysisId],
     );
     const revision = revisionResult.rows[0].nextRevision;
-    const status = engineResult.interpretable ? "IN_REVIEW" : "CALCULATED";
+    const status = engineResult.interpretable ? "APPROVED" : "CALCULATED";
     const notInterpretableReason = engineResult.interpretable ? null : (engineResult.pendencies[0] ?? "Sem contexto suficiente para interpretar.");
 
     const insertResult = await client.query<{ id: string; revision: number; status: string; createdAt: string }>(
@@ -105,13 +114,13 @@ export async function runInterpretationForAnalysis(input: { tenantId: string; us
 
     await client.query(
       `UPDATE analyses SET status = $3::analysis_status, updated_at = now() WHERE tenant_id = $1::uuid AND id = $2::uuid`,
-      [input.tenantId, input.analysisId, engineResult.interpretable ? "AWAITING_REVIEW" : "READY_TO_INTERPRET"],
+      [input.tenantId, input.analysisId, engineResult.interpretable ? "APPROVED" : "READY_TO_INTERPRET"],
     );
 
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
-      action: "INTERPRETATION_CALCULATED",
+      action: engineResult.interpretable ? "INTERPRETATION_ENGINE_VALIDATED" : "INTERPRETATION_CALCULATED",
       entityType: "interpretation",
       entityId: created.id,
       metadata: { analysisId: input.analysisId, revision, status, interpretable: engineResult.interpretable, pendencyCount: engineResult.pendencies.length },

@@ -154,6 +154,8 @@ export type LabResultInput = {
   value: number;
   unit: string;
   method: string;
+  /** Protocolo laboratorial global declarado no documento, quando disponível. */
+  protocol?: string | null;
   sampleType: SampleType;
   depthFromCm: number | null;
   depthToCm: number | null;
@@ -174,6 +176,7 @@ export type ParameterFact = {
   value: number;
   unit: string;
   method: string;
+  protocol?: string | null;
   source?: "MEASURED" | "CALCULATED";
 };
 
@@ -211,6 +214,7 @@ export type ParameterInterpretation =
         | "SAMPLE_TYPE_NOT_COVERED"
         | "AWAITING_HOMOLOGATION"
         | "METHOD_NOT_SUPPORTED"
+        | "METHOD_DETAIL_INCOMPLETE"
         | "UNIT_NOT_SUPPORTED"
         | "DEPTH_UNKNOWN"
         | "DEPTH_NOT_COVERED"
@@ -258,6 +262,26 @@ function depthCompatible(resultFrom: number | null, resultTo: number | null, rul
   const ruleF = ruleFrom ?? -Infinity;
   const ruleT = ruleTo ?? Infinity;
   return resultFrom >= ruleF && resultTo <= ruleT;
+}
+
+function normalizeMethodText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function methodLooksIncomplete(reported: string, allowed: string[]) {
+  const reportedNormalized = normalizeMethodText(reported);
+  if (reportedNormalized.length < 4) return null;
+  return allowed.find((candidate) => {
+    const candidateNormalized = normalizeMethodText(candidate);
+    return candidateNormalized !== reportedNormalized
+      && candidateNormalized.includes(reportedNormalized);
+  }) ?? null;
 }
 
 /**
@@ -318,6 +342,17 @@ function interpretOne(result: LabResultInput, cropProfile: CropProfileDef | null
 
   const methodMatches = depthMatches.filter((param) => param.analyticalMethodAllowed.length === 0 || param.analyticalMethodAllowed.includes(result.method));
   if (methodMatches.length === 0) {
+    const allowedMethods = Array.from(new Set(depthMatches.flatMap((param) => param.analyticalMethodAllowed)));
+    const likelyFullMethod = methodLooksIncomplete(result.method, allowedMethods);
+    if (likelyFullMethod) {
+      return {
+        ...base,
+        classificationRole: "TARGET",
+        interpretable: false,
+        reason: `Método "${result.method}" foi informado sem detalhe suficiente para confirmar o procedimento homologado "${likelyFullMethod}" para ${result.parameterCode}. Confirme a metodologia completa do laboratório antes de classificar.`,
+        code: "METHOD_DETAIL_INCOMPLETE",
+      };
+    }
     return { ...base, classificationRole: "TARGET", interpretable: false, reason: `Método "${result.method}" não está entre os métodos aceitos para ${result.parameterCode} neste perfil.`, code: "METHOD_NOT_SUPPORTED" };
   }
 
@@ -398,7 +433,15 @@ function interpretDerivedParameter(param: CropProfileParameterDef, sampleCode: s
 }
 
 export function runAgronomicEngine(input: EngineInput): EngineResult {
-  const facts: ParameterFact[] = input.labResults.map((row) => ({ sampleCode: row.sampleCode, parameterCode: row.parameterCode, value: row.value, unit: row.unit, method: row.method, source: row.source }));
+  const facts: ParameterFact[] = input.labResults.map((row) => ({
+    sampleCode: row.sampleCode,
+    parameterCode: row.parameterCode,
+    value: row.value,
+    unit: row.unit,
+    method: row.method,
+    protocol: row.protocol ?? null,
+    source: row.source,
+  }));
   const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));
 
   const derivedParameters = (input.cropProfile?.parameters ?? []).filter((param) => param.status === "ACTIVE" && param.derivedParameterCode);

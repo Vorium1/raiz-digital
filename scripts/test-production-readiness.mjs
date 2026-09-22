@@ -24,8 +24,6 @@ const safeBase = {
   ...s3,
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
-  COPERNICUS_CLIENT_ID: "copernicus-client",
-  COPERNICUS_CLIENT_SECRET: "copernicus-secret",
 };
 
 const good = evaluateProductionReadiness({
@@ -39,6 +37,39 @@ assert.equal(good.failures.length, 0);
 assert.ok(good.checks.some((item) => item.name === "raw-import-archive" && item.level === "PASS"));
 assert.ok(good.checks.some((item) => item.name === "billing" && item.level === "PASS"));
 assert.ok(good.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"));
+assert.ok(good.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"));
+
+const explicitCopernicusMissing = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(explicitCopernicusMissing.ok, false);
+assert.ok(explicitCopernicusMissing.failures.some((item) => item.name === "satellite-ndvi"));
+
+const explicitCopernicusReady = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  COPERNICUS_CLIENT_ID: "copernicus-client",
+  COPERNICUS_CLIENT_SECRET: "copernicus-secret",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(explicitCopernicusReady.ok, true);
+assert.ok(explicitCopernicusReady.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"));
+
+const invalidSatelliteProvider = evaluateProductionReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "inventado",
+  MERCADO_PAGO_ACCESS_TOKEN: "mp-token",
+  MERCADO_PAGO_WEBHOOK_SECRET: "mp-secret",
+  MERCADO_PAGO_CHECKOUT_ENABLED: "false",
+});
+assert.equal(invalidSatelliteProvider.ok, false);
+assert.ok(invalidSatelliteProvider.failures.some((item) => item.name === "satellite-ndvi"));
 
 const goodWithCheckout = evaluateProductionReadiness({
   ...safeBase,
@@ -77,6 +108,7 @@ for (const required of ["data-mode", "app-database", "least-privilege", "databas
   assert.ok(unsafe.failures.some((item) => item.name === required), `Preflight deveria bloquear ${required}.`);
 }
 assert.ok(unsafe.checks.some((item) => item.name === "billing-checkout" && item.level === "PASS"), "Checkout ausente/desligado deve continuar sendo um estado seguro.");
+assert.ok(unsafe.checks.some((item) => item.name === "satellite-ndvi" && item.level === "PASS"), "Earth Search público não deve depender de segredo Copernicus.");
 
 const noAdminRuntime = evaluateProductionReadiness({
   DATA_MODE: "database",

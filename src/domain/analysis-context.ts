@@ -1,4 +1,5 @@
 import type { AnalysisEvidence, EvidenceStatus } from "./analysis-depth-readiness";
+import type { IrrigationApplication } from "./irrigation-applications";
 
 export type WaterRegime = "" | "SEQUEIRO" | "IRRIGADO";
 
@@ -7,9 +8,18 @@ export type AnalysisContextDraft = {
   objective: string;
   samplingDepthLabel: string;
   waterRegime: WaterRegime;
+  irrigationSystem: string;
+  irrigationDepthMm: number | null;
+  irrigationFrequencyDays: number | null;
+  irrigationApplicationTime: string;
+  irrigationNotes: string;
+  irrigationApplications?: IrrigationApplication[];
   tillageSystem: string;
   managementHistoryStatus: EvidenceStatus;
   managementHistoryNotes: string;
+  plannedManagementNotes: string;
+  fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
+  fertilityCyclePlanNotes: string;
   soilContextNotes: string;
   yieldHistoryStatus: EvidenceStatus;
   yieldHistoryNotes: string;
@@ -28,9 +38,17 @@ export const EMPTY_ANALYSIS_CONTEXT_DRAFT: AnalysisContextDraft = {
   objective: "",
   samplingDepthLabel: "",
   waterRegime: "",
+  irrigationSystem: "",
+  irrigationDepthMm: null,
+  irrigationFrequencyDays: null,
+  irrigationApplicationTime: "",
+  irrigationNotes: "",
   tillageSystem: "",
   managementHistoryStatus: "MISSING",
   managementHistoryNotes: "",
+  plannedManagementNotes: "",
+  fertilityPlanningHorizonYears: null,
+  fertilityCyclePlanNotes: "",
   soilContextNotes: "",
   yieldHistoryStatus: "MISSING",
   yieldHistoryNotes: "",

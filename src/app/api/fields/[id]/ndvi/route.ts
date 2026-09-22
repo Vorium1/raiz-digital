@@ -5,24 +5,86 @@ import {
   detectWithinFieldVariability,
 } from "@/domain/ndvi-engine";
 import { getPlatformSession } from "@/lib/auth/session";
+import { getSatelliteNdviReadiness } from "@/domain/operational-readiness";
+import { ndviRasterBboxContainsBoundary } from "@/domain/ndvi-raster-spatial-validity";
 import {
   NDVI_RASTER_ALGORITHM_VERSION,
   NdviRasterPersistenceError,
+  ndviRasterStorageProvider,
   saveRequiredNdviRasterArtifact,
 } from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getLatestNdviSnapshot, listNdviHistoryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
 import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
+import {
+  EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
+  earthSearchNdviProvider,
+} from "@/lib/satellite/earth-search-ndvi-provider";
 
 const runRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const HISTORY_LOOKBACK_DAYS = 120;
 const MAX_SCENES_PER_REFRESH = 18;
 /**
- * Cada raster exige Process API + PUT durável. Fazer 18 pares seriais em uma única Vercel Function
- * transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
+ * Cada raster exige leitura/processamento da cena + persistência durável. Fazer 18 pares seriais em uma
+ * única Vercel Function transforma o refresh em uma tarefa longa e frágil. O histórico considerado continua com 18 cenas,
  * mas cada chamada arquiva no máximo quatro datas ainda pendentes (das mais recentes para trás).
  * Repetir o refresh progride de forma idempotente até zerar `pendingArchiveCount`.
  */
 const MAX_RASTERS_TO_ARCHIVE_PER_REQUEST = 4;
+
+function ndviRuntimeReadiness() {
+  const missing: string[] = [];
+  const satelliteReadiness = getSatelliteNdviReadiness(process.env);
+  const satelliteProvider = satelliteReadiness.provider;
+  const copernicusConfigured = satelliteProvider === "copernicus" && satelliteReadiness.ready;
+  const satelliteConfigured = satelliteReadiness.ready;
+
+  if (satelliteProvider === "copernicus") {
+    if (!process.env.COPERNICUS_CLIENT_ID?.trim()) missing.push("COPERNICUS_CLIENT_ID");
+    if (!process.env.COPERNICUS_CLIENT_SECRET?.trim()) missing.push("COPERNICUS_CLIENT_SECRET");
+  } else if (satelliteProvider !== "earth-search") {
+    missing.push(`NDVI_SATELLITE_PROVIDER=${satelliteProvider} não suportado`);
+  }
+
+  const storageProvider = ndviRasterStorageProvider();
+  let durableStorageConfigured = false;
+  if (storageProvider === "inline") {
+    durableStorageConfigured = true;
+  } else if (storageProvider === "s3") {
+    durableStorageConfigured = Boolean(
+      process.env.S3_ENDPOINT?.trim()
+      && process.env.S3_BUCKET?.trim()
+      && process.env.S3_ACCESS_KEY?.trim()
+      && process.env.S3_SECRET_KEY?.trim(),
+    );
+    if (!process.env.S3_ENDPOINT?.trim()) missing.push("S3_ENDPOINT");
+    if (!process.env.S3_BUCKET?.trim()) missing.push("S3_BUCKET");
+    if (!process.env.S3_ACCESS_KEY?.trim()) missing.push("S3_ACCESS_KEY");
+    if (!process.env.S3_SECRET_KEY?.trim()) missing.push("S3_SECRET_KEY");
+  } else if (storageProvider === "local" && !process.env.VERCEL) {
+    durableStorageConfigured = true;
+  } else {
+    missing.push(`NDVI_RASTER_STORAGE_PROVIDER=${storageProvider} não é durável neste runtime`);
+  }
+
+  const mosaickingOrder = satelliteProvider === "copernicus"
+    ? COPERNICUS_NDVI_MOSAICKING_ORDER
+    : EARTH_SEARCH_NDVI_MOSAICKING_ORDER;
+
+  return {
+    ready: satelliteConfigured && durableStorageConfigured,
+    satelliteProvider,
+    satelliteConfigured,
+    copernicusConfigured,
+    durableStorageConfigured,
+    storageProvider,
+    mosaickingOrder,
+    missing: [...new Set(missing)],
+  };
+}
+
+function runtimeProvider(runtime: ReturnType<typeof ndviRuntimeReadiness>) {
+  return runtime.satelliteProvider === "copernicus" ? copernicusNdviProvider : earthSearchNdviProvider;
+}
 
 function intelligencePayload(latest: Awaited<ReturnType<typeof getLatestNdviSnapshot>>, history: Awaited<ReturnType<typeof listNdviHistoryForField>>) {
   return {
@@ -41,6 +103,38 @@ function hasArchivedRaster(snapshot: any) {
   );
 }
 
+function rasterMatchesCurrentBoundary(snapshot: any, fieldBoundary: any) {
+  return hasArchivedRaster(snapshot) && ndviRasterBboxContainsBoundary(snapshot.rasterBbox, fieldBoundary);
+}
+
+function rasterMatchesCurrentAlgorithm(snapshot: any) {
+  return hasArchivedRaster(snapshot) && snapshot.rasterAlgorithm === NDVI_RASTER_ALGORITHM_VERSION;
+}
+
+function rasterMatchesCurrentEvidence(snapshot: any, fieldBoundary: any) {
+  return rasterMatchesCurrentBoundary(snapshot, fieldBoundary) && rasterMatchesCurrentAlgorithm(snapshot);
+}
+
+function usableHistoryForBoundary(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => !hasArchivedRaster(snapshot) || rasterMatchesCurrentEvidence(snapshot, fieldBoundary));
+}
+
+function staleSpatialSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentBoundary(snapshot, fieldBoundary)).length;
+}
+
+function staleAlgorithmSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) =>
+    hasArchivedRaster(snapshot)
+    && rasterMatchesCurrentBoundary(snapshot, fieldBoundary)
+    && !rasterMatchesCurrentAlgorithm(snapshot)
+  ).length;
+}
+
+function staleEvidenceSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, fieldBoundary)).length;
+}
+
 /**
  * GET nunca chama o provedor externo: só lê os snapshots já persistidos e calcula inteligência
  * determinística sobre eles. A geometria retornada já passa pelo mesmo escopo tenant/RLS.
@@ -56,16 +150,32 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
   ]);
   if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
-  return Response.json({ latest, history, fieldBoundary, ...intelligencePayload(latest, history) });
+
+  const usableHistory = usableHistoryForBoundary(history, fieldBoundary);
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, fieldBoundary)
+    ? (usableHistory[0] ?? null)
+    : latest;
+
+  return Response.json({
+    latest: usableLatest,
+    history: usableHistory,
+    fieldBoundary,
+    staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, fieldBoundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, fieldBoundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, fieldBoundary),
+    runtime: ndviRuntimeReadiness(),
+    ...intelligencePayload(usableLatest, usableHistory),
+  });
 }
 
 /**
- * POST atualiza o histórico do talhão pela Statistical API e, antes de efetivar cada snapshot novo,
- * gera o PNG espacial correspondente pela Process API e o arquiva de forma content-addressed.
+ * POST atualiza o histórico do talhão pelo provider Sentinel-2 configurado e, antes de efetivar cada
+ * snapshot novo, gera o PNG espacial correspondente e o arquiva de forma content-addressed.
  *
- * Uma linha que já possui raster arquivado vira evidência imutável: refresh posterior preserva tanto
- * a estatística quanto o artefato daquele dia. Linhas legadas sem raster podem ser promovidas uma única
- * vez para o novo contrato. Assim a visualização histórica deixa de ser regenerada sob demanda.
+ * Toda linha arquivada permanece imutável no PostgreSQL. Se o contorno ou a versão do algoritmo mudou,
+ * a evidência antiga deixa de ser utilizável no runtime atual, mas continua preservada. O refresh grava
+ * uma NOVA linha versionada por raster_algorithm e registra o SHA antigo apenas como supersessão lógica.
+ * Assim uma correção de cálculo nunca reescreve nem apaga o artefato histórico anterior.
  *
  * O lote pode concluir parcialmente: se um raster posterior falhar depois que outros já foram gravados,
  * a resposta devolve o estado persistido atual com `partialFailure` e a contagem real ainda pendente.
@@ -77,6 +187,18 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!runRoles.has(session.role)) return Response.json({ error: "Seu perfil não pode buscar leitura de satélite." }, { status: 403 });
   const { id: fieldId } = await context.params;
 
+  const runtime = ndviRuntimeReadiness();
+  if (!runtime.ready) {
+    return Response.json(
+      {
+        error: `NDVI real ainda não está configurado neste ambiente. Falta: ${runtime.missing.join(", ") || "configuração de runtime"}.`,
+        code: "NDVI_RUNTIME_NOT_CONFIGURED",
+        runtime,
+      },
+      { status: 503 },
+    );
+  }
+
   const boundary = await getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
 
@@ -86,7 +208,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
 
   let scenes;
   try {
-    scenes = await copernicusNdviProvider.fetchFieldNdviSeries({
+    scenes = await runtimeProvider(runtime).fetchFieldNdviSeries({
       fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
       fromDate: fromDate.toISOString().slice(0, 10),
       toDate: toDate.toISOString().slice(0, 10),
@@ -104,7 +226,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const existingHistory = await listNdviHistoryForField(session.tenantId, fieldId, session.userId);
   const archivedByDate = new Map(
     existingHistory
-      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot))
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && rasterMatchesCurrentEvidence(snapshot, boundary))
+      .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
+  );
+  const staleArchivedByDate = new Map(
+    existingHistory
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, boundary))
       .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
   );
 
@@ -118,7 +245,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   for (const scene of scenesToArchive) {
     let raster;
     try {
-      raster = await copernicusNdviProvider.fetchFieldNdviMap({
+      raster = await runtimeProvider(runtime).fetchFieldNdviMap({
         fieldBoundaryGeoJson: boundary as { type: string; coordinates: unknown },
         capturedAt: scene.capturedAt,
       });
@@ -172,8 +299,9 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
           width: raster.width,
           height: raster.height,
           algorithm: NDVI_RASTER_ALGORITHM_VERSION,
-          mosaickingOrder: COPERNICUS_NDVI_MOSAICKING_ORDER,
+          mosaickingOrder: runtime.mosaickingOrder,
         },
+        supersedesRasterSha256: staleArchivedByDate.get(scene.capturedAt)?.rasterSha256 ?? null,
       });
     } catch (error) {
       partialFailure = {
@@ -194,11 +322,18 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     getLatestNdviSnapshot(session.tenantId, fieldId, session.userId),
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
   ]);
+  const usableHistory = usableHistoryForBoundary(history, boundary);
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, boundary)
+    ? (usableHistory[0] ?? null)
+    : latest;
 
   const responsePayload = {
-    snapshot: latest,
-    latest,
-    history,
+    snapshot: usableLatest,
+    latest: usableLatest,
+    history: usableHistory,
+    staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, boundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, boundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, boundary),
     fieldBoundary: boundary,
     importedCount: archivedRasterCount,
     archivedRasterCount,
@@ -217,7 +352,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
           },
         }
       : {}),
-    ...intelligencePayload(latest, history),
+    ...intelligencePayload(usableLatest, usableHistory),
   };
 
   if (partialFailure && archivedRasterCount === 0) {

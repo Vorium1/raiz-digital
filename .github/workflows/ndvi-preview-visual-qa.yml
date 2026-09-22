@@ -1,0 +1,336 @@
+name: NDVI Preview Visual QA
+
+on:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/ndvi-preview-visual-qa.yml"
+      - "e2e/ndvi-preview-visual-gate.spec.ts"
+      - "playwright.config.ts"
+      - "src/app/api/fields/**/ndvi/**"
+      - "src/app/ux3-field.css"
+      - "src/components/*field-map*.tsx"
+      - "src/components/simple-field-vigor.tsx"
+      - "src/domain/ndvi-raster-spatial-validity.ts"
+      - "src/lib/maps/**"
+      - "src/lib/repositories/ndvi.ts"
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "URL completa do Preview Vercel a validar"
+        required: true
+        type: string
+      admin_email:
+        description: "Conta de homologação do RAIZ"
+        required: false
+        default: "admin@raiz.local"
+        type: string
+      expect_google_maps:
+        description: "Exigir Google Maps/Satellite neste Preview"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: ndvi-preview-visual-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  visual-qa:
+    name: issue-84-preview
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 20
+    env:
+      E2E_BASE_URL: ${{ inputs.preview_url || 'https://raiz-digital-git-feature-u-6a3ad7-guilherme-figueiredo-lagaggio.vercel.app' }}
+      E2E_ADMIN_EMAIL: ${{ inputs.admin_email || 'admin@raiz.local' }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      VERCEL_API_TOKEN_PRIMARY: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_API_TOKEN_ALT1: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+      VERCEL_API_TOKEN_ALT2: ${{ secrets.VERCEL_API_TOKEN }}
+      VERCEL_API_TOKEN_ALT3: ${{ secrets.VERCEL_PERSONAL_TOKEN }}
+      VERCEL_PROJECT_ID: prj_lO7n4ou7rkDgNTDwMrYCNVNIXbAT
+      VERCEL_TEAM_ID: team_2bE6EyCEvEqNaRcKmbS4O5Fd
+      E2E_EXPECT_GOOGLE_MAPS: ${{ github.event_name == 'push' && '1' || (inputs.expect_google_maps && '1' || '0') }}
+
+    steps:
+      - name: Checkout do SHA acionado
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Obter token OIDC confiável do GitHub Actions
+        id: vercel_oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
+      - name: Criar bypass Vercel efêmero quando houver token autorizado
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            echo "Bypass de automação já configurado; não será alterado."
+            exit 0
+          fi
+
+          VERCEL_API_TOKEN="${VERCEL_API_TOKEN_PRIMARY:-}"
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT1:-}"; fi
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT2:-}"; fi
+          if [ -z "${VERCEL_API_TOKEN}" ]; then VERCEL_API_TOKEN="${VERCEL_API_TOKEN_ALT3:-}"; fi
+
+          if [ -z "${VERCEL_API_TOKEN}" ] && [ -n "${VERCEL_TRUSTED_OIDC_TOKEN:-}" ]; then
+            exchange_json="$(
+              curl -sS -X POST https://api.vercel.com/login/oauth/token \
+                --data "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+                --data "client_id=cl_kyUx2zVvA4MGptBohkmtYHJly2XltXzD" \
+                --data "subject_token_type=urn:ietf:params:oauth:token-type:id_token" \
+                --data "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+                --data-urlencode "team_id_or_slug=${VERCEL_TEAM_ID}" \
+                --data-urlencode "subject_token=${VERCEL_TRUSTED_OIDC_TOKEN}" || true
+            )"
+            exchanged="$(node -e 'try { const x=JSON.parse(process.argv[1]); process.stdout.write(x.access_token || "") } catch {}' "${exchange_json}")"
+            if [ -n "${exchanged}" ]; then
+              VERCEL_API_TOKEN="${exchanged}"
+              echo "::add-mask::${VERCEL_API_TOKEN}"
+              echo "Token Vercel efêmero obtido via exchange OIDC."
+            else
+              echo "Exchange OIDC não produziu access token Vercel; mantendo OIDC direto como fallback."
+            fi
+          fi
+
+          if [ -z "${VERCEL_API_TOKEN}" ]; then
+            echo "Nenhum token Vercel disponível; mantendo OIDC como fallback."
+            exit 0
+          fi
+
+          echo "::add-mask::${VERCEL_API_TOKEN}"
+
+          read_code="$(
+            curl -sS -o /tmp/vercel-project-probe.json -w '%{http_code}' \
+              "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_TEAM_ID}" \
+              -H "Authorization: Bearer ${VERCEL_API_TOKEN}" || true
+          )"
+          if [ "${read_code}" != "200" ]; then
+            echo "::warning::Token Vercel existe, mas não tem leitura do projeto (HTTP ${read_code}); nenhum bypass será criado."
+            exit 0
+          fi
+
+          EPHEMERAL_SECRET="$(openssl rand -hex 16)"
+          echo "::add-mask::${EPHEMERAL_SECRET}"
+
+          payload="$(node -e 'console.log(JSON.stringify({generate:{secret:process.argv[1],note:"RAIZ #84 temporary visual QA"}}))' "${EPHEMERAL_SECRET}")"
+          http_code="$(
+            curl -sS -o /tmp/vercel-bypass-generate.json -w '%{http_code}' \
+              -X PATCH \
+              "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}" \
+              -H "Authorization: Bearer ${VERCEL_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "${payload}" || true
+          )"
+
+          if [ "${http_code}" != "200" ]; then
+            echo "::warning::Token Vercel tem leitura, mas não conseguiu criar bypass efêmero (HTTP ${http_code})."
+            exit 0
+          fi
+
+          {
+            echo "VERCEL_AUTOMATION_BYPASS_SECRET=${EPHEMERAL_SECRET}"
+            echo "E2E_EPHEMERAL_BYPASS=1"
+            echo "E2E_EPHEMERAL_VERCEL_API_TOKEN=${VERCEL_API_TOKEN}"
+          } >> "${GITHUB_ENV}"
+
+          echo "Bypass Vercel efêmero criado para esta execução."
+
+      - name: Validar contexto protegido
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${E2E_ADMIN_PASSWORD:-}" ] && [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then
+            echo "::error::É necessário E2E_ADMIN_PASSWORD ou HOMOLOGATION_DATABASE_URL para autenticar o QA."
+            exit 1
+          fi
+          if [[ "${E2E_BASE_URL}" != https://* ]]; then
+            echo "::error::preview_url precisa ser HTTPS."
+            exit 1
+          fi
+          if [[ "${E2E_BASE_URL}" == *".vercel.app"* ]] \
+             && [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ] \
+             && [ -z "${VERCEL_TRUSTED_OIDC_TOKEN:-}" ]; then
+            echo "::error::Preview protegido sem bypass secret nem token OIDC confiável."
+            exit 1
+          fi
+
+      - name: Aguardar Preview Vercel do mesmo SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          sha="${GITHUB_SHA}"
+          deadline=$((SECONDS + 300))
+          echo "Aguardando Vercel SUCCESS para ${sha}..."
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            json="$(curl -fsS               -H "Authorization: Bearer ${GH_TOKEN}"               -H "Accept: application/vnd.github+json"               "https://api.github.com/repos/${repo}/commits/${sha}/status")"
+            state="$(node -e '
+              const x=JSON.parse(process.argv[1]);
+              const s=(x.statuses||[]).find(v=>v.context==="Vercel");
+              process.stdout.write(s?.state||"missing");
+            ' "${json}")"
+            echo "Vercel status: ${state}"
+            if [ "${state}" = "success" ]; then
+              # Dá tempo para o alias de branch propagar após o status Ready.
+              sleep 8
+              exit 0
+            fi
+            if [ "${state}" = "failure" ] || [ "${state}" = "error" ]; then
+              echo "::error::Deployment Vercel do SHA falhou (${state})."
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::Timeout aguardando Vercel SUCCESS para o SHA atual."
+          exit 1
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Preparar sessão temporária de homologação
+        if: ${{ env.E2E_ADMIN_PASSWORD == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+
+          const pool = new pg.Pool({
+            connectionString: databaseUrl,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            const account = await client.query(
+              `SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
+               FROM users u
+               JOIN tenant_members tm ON tm.user_id = u.id AND tm.active = true
+               JOIN tenants t ON t.id = tm.tenant_id AND t.status = 'ACTIVE'
+               WHERE u.email = $1::citext
+               ORDER BY u.is_platform_curator DESC, tm.tenant_id
+               LIMIT 1`,
+              [process.env.E2E_ADMIN_EMAIL ?? "admin@raiz.local"],
+            );
+            const row = account.rows[0];
+            if (!row?.user_id || !row?.tenant_id) throw new Error("Conta E2E ativa não encontrada na homologação.");
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid, $2::uuid, $3, now() + interval '45 minutes', 'github-actions-ndvi-qa', NULL)
+               RETURNING id::text`,
+              [row.user_id, row.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
+            console.log("Sessão E2E temporária criada somente na homologação.");
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar gate visual NDVI da issue 84
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel_oidc.outputs.token }}
+        run: npm run test:e2e:ndvi-preview
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${E2E_SESSION_ID:-}" ]; then
+            echo "Nenhuma sessão temporária para revogar."
+            exit 0
+          fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({
+            connectionString: process.env.HOMOLOGATION_DATABASE_URL,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at = now() WHERE id = $1::uuid AND user_agent = 'github-actions-ndvi-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          console.log("Sessão E2E temporária revogada.");
+          NODE
+
+      - name: Revogar bypass Vercel efêmero
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${E2E_EPHEMERAL_BYPASS:-}" != "1" ] || [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ] || [ -z "${E2E_EPHEMERAL_VERCEL_API_TOKEN:-}" ]; then
+            echo "Nenhum bypass efêmero criado por esta execução."
+            exit 0
+          fi
+
+          echo "::add-mask::${E2E_EPHEMERAL_VERCEL_API_TOKEN}"
+          payload="$(node -e 'console.log(JSON.stringify({revoke:{secret:process.argv[1],regenerate:false}}))' "${VERCEL_AUTOMATION_BYPASS_SECRET}")"
+          http_code="$(
+            curl -sS -o /tmp/vercel-bypass-revoke.json -w '%{http_code}'               -X PATCH               "https://api.vercel.com/v1/projects/${VERCEL_PROJECT_ID}/protection-bypass?teamId=${VERCEL_TEAM_ID}"               -H "Authorization: Bearer ${E2E_EPHEMERAL_VERCEL_API_TOKEN}"               -H "Content-Type: application/json"               --data "${payload}" || true
+          )"
+          if [ "${http_code}" = "200" ]; then
+            echo "Bypass Vercel efêmero revogado."
+          else
+            echo "::warning::Falha ao revogar bypass efêmero (HTTP ${http_code}); revisar no Vercel Deployment Protection."
+          fi
+
+      - name: Publicar screenshots/traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndvi-preview-visual-qa-${{ github.sha }}
+          path: |
+            test-results
+          if-no-files-found: warn
+          retention-days: 14

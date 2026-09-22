@@ -11,6 +11,9 @@ import {
   ndviRasterKeyBelongsToField,
   ndviRasterObjectKey,
   ndviRasterSha256,
+  ndviRasterStorageProvider,
+  readNdviRasterArtifact,
+  saveRequiredNdviRasterArtifact,
   verifyNdviRasterIntegrity,
 } from "../src/lib/ndvi-raster-storage.ts";
 import {
@@ -19,6 +22,14 @@ import {
   fieldGeometryBbox,
   summarizePixelValidity,
 } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import {
+  EARTH_SEARCH_COLLECTION,
+  EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
+  EARTH_SEARCH_STAC_URL,
+  computeEarthSearchNdvi,
+  resolveEarthSearchBandTransform,
+  selectEarthSearchScenes,
+} from "../src/lib/satellite/earth-search-ndvi-provider.ts";
 
 // 1-5. Classificação de faixa por valor pontual.
 assert.equal(classifyNdviValue(-0.1), "SEM_VEGETACAO");
@@ -210,7 +221,7 @@ const archivedKey = ndviRasterObjectKey({
   capturedAt: "2026-08-12",
   sha256: archivedSha,
 });
-assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V1");
+assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V2_BOA_OFFSET_SAFE");
 assert.equal(
   archivedKey,
   `ndvi/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222/2026-08-12/${archivedSha}.png`,
@@ -223,3 +234,101 @@ assert.throws(
 );
 
 console.log("ndvi-engine: 33 cenários aprovados (vigor, temporal, gate de qualidade, mosaico Copernicus e cadeia de custódia do raster)");
+
+
+// 34-37. Earth Search público: seleção determinística por cobertura integral + menor nuvem.
+const publicAssets = {
+  red: { href: "https://example.test/red.tif", "proj:epsg": 32722 },
+  nir: { href: "https://example.test/nir.tif", "proj:epsg": 32722 },
+  scl: { href: "https://example.test/scl.tif", "proj:epsg": 32722 },
+};
+const fieldBbox = [-51.897, -28.176, -51.894, -28.174];
+const selectedPublic = selectEarthSearchScenes([
+  {
+    id: "scene-cloudy",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-08T13:00:00Z", "eo:cloud_cover": 22 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-clear",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-08T13:01:00Z", "eo:cloud_cover": 4 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-partial",
+    bbox: [-51.896, -28.176, -51.894, -28.174],
+    properties: { datetime: "2026-09-10T13:00:00Z", "eo:cloud_cover": 1 },
+    assets: publicAssets,
+  },
+  {
+    id: "scene-no-scl",
+    bbox: [-52, -29, -51, -28],
+    properties: { datetime: "2026-09-11T13:00:00Z", "eo:cloud_cover": 1 },
+    assets: { red: publicAssets.red, nir: publicAssets.nir },
+  },
+], fieldBbox, 30);
+assert.equal(EARTH_SEARCH_STAC_URL, "https://earth-search.aws.element84.com/v1/search");
+assert.equal(EARTH_SEARCH_COLLECTION, "sentinel-2-l2a");
+assert.equal(EARTH_SEARCH_NDVI_MOSAICKING_ORDER, "leastCC");
+assert.deepEqual(selectedPublic.map((item) => item.id), ["scene-clear"]);
+
+// 38-41. Raster inline: storage durável no Neon/Vercel sem bucket externo, mantendo hash e escopo do talhão.
+const previousNdviProvider = process.env.NDVI_RASTER_STORAGE_PROVIDER;
+process.env.NDVI_RASTER_STORAGE_PROVIDER = "inline";
+try {
+  assert.equal(ndviRasterStorageProvider(), "inline");
+  const inlineBytes = Buffer.from("png-ndvi-inline-real-contract", "utf8");
+  const inlineStored = await saveRequiredNdviRasterArtifact({
+    tenantId: "11111111-1111-1111-1111-111111111111",
+    fieldId: "22222222-2222-2222-2222-222222222222",
+    capturedAt: "2026-09-08",
+    bytes: inlineBytes,
+  });
+  assert.match(inlineStored.key, /^inline-ndvi:v1:11111111-1111-1111-1111-111111111111\/22222222-2222-2222-2222-222222222222\/2026-09-08\//);
+  assert.equal(inlineStored.sha256, ndviRasterSha256(inlineBytes));
+  const inlineRead = await readNdviRasterArtifact({
+    tenantId: "11111111-1111-1111-1111-111111111111",
+    fieldId: "22222222-2222-2222-2222-222222222222",
+    key: inlineStored.key,
+    sha256: inlineStored.sha256,
+    bytes: inlineStored.bytes,
+  });
+  assert.deepEqual(inlineRead, inlineBytes);
+} finally {
+  if (previousNdviProvider === undefined) delete process.env.NDVI_RASTER_STORAGE_PROVIDER;
+  else process.env.NDVI_RASTER_STORAGE_PROVIDER = previousNdviProvider;
+}
+
+
+// 42-46. Earth Search BOA offset: evita dupla aplicação e falha fechado fora do domínio físico.
+const harmonizedItem = {
+  id: "harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": true,
+    "s2:processing_baseline": "05.12",
+  },
+};
+const rawBoaAsset = { "raster:bands": [{ scale: 0.0001, offset: -0.1 }] };
+assert.deepEqual(resolveEarthSearchBandTransform(harmonizedItem, rawBoaAsset), {
+  scale: 0.0001,
+  declaredOffset: -0.1,
+  effectiveOffset: 0,
+  boaOffsetApplied: true,
+});
+const nonHarmonizedItem = {
+  id: "non-harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": false,
+    "s2:processing_baseline": "05.12",
+  },
+};
+assert.equal(resolveEarthSearchBandTransform(nonHarmonizedItem, rawBoaAsset).effectiveOffset, -0.1);
+assert.ok(Math.abs(computeEarthSearchNdvi(0.05, 0.25) - (2 / 3)) < 1e-12);
+assert.equal(computeEarthSearchNdvi(-0.05, 0.25), null);
+assert.equal(computeEarthSearchNdvi(-0.2, 0.1), null);
+
+console.log("ndvi-engine: 46 cenários aprovados, incluindo BOA offset seguro do Earth Search");

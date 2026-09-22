@@ -3,6 +3,8 @@
 import type { AnalysisContextDraft } from "@/domain/analysis-context";
 import type { EvidenceStatus } from "@/domain/analysis-depth-readiness";
 import { getRequestedAnalysisLayer, type AnalysisDepthId } from "@/domain/analysis-depths";
+import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
+import { IrrigationApplicationsEditor } from "@/components/irrigation-applications-editor";
 
 function EvidenceStatusSelect({
   value,
@@ -75,21 +77,86 @@ export function AnalysisContextIntake({
               />
             </label>
             <label>
-              <span>Regime hídrico *</span>
+              <span>Regime hídrico <small>(opcional)</small></span>
               <select value={value.waterRegime} onChange={(event) => update({ waterRegime: event.target.value as AnalysisContextDraft["waterRegime"] })}>
                 <option value="">Selecione</option>
                 <option value="SEQUEIRO">Sequeiro</option>
                 <option value="IRRIGADO">Irrigado</option>
               </select>
             </label>
+            {value.waterRegime === "IRRIGADO" && (
+              <>
+                <label>
+                  <span>Sistema de irrigação <small>(opcional)</small></span>
+                  <input
+                    value={value.irrigationSystem}
+                    onChange={(event) => update({ irrigationSystem: event.target.value })}
+                    placeholder="Ex.: pivô central, gotejamento, aspersão"
+                  />
+                </label>
+                <label>
+                  <span>Lâmina aplicada <small>(opcional)</small></span>
+                  <div className="simple-context-input">
+                    <input
+                      inputMode="decimal"
+                      value={value.irrigationDepthMm ?? ""}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        update({ irrigationDepthMm: raw === "" ? null : Number(raw) });
+                      }}
+                      placeholder="Ex.: 12"
+                    />
+                    <b>mm</b>
+                  </div>
+                </label>
+                <label>
+                  <span>Intervalo entre irrigações <small>(opcional)</small></span>
+                  <div className="simple-context-input">
+                    <input
+                      inputMode="decimal"
+                      value={value.irrigationFrequencyDays ?? ""}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(",", ".");
+                        update({ irrigationFrequencyDays: raw === "" ? null : Number(raw) });
+                      }}
+                      placeholder="Ex.: 4"
+                    />
+                    <b>dias</b>
+                  </div>
+                </label>
+                <label>
+                  <span>Horário usual <small>(opcional)</small></span>
+                  <input
+                    type="time"
+                    value={value.irrigationApplicationTime}
+                    onChange={(event) => update({ irrigationApplicationTime: event.target.value })}
+                  />
+                </label>
+                <label style={{ gridColumn: "1 / -1" }}>
+                  <span>Detalhes da irrigação <small>(opcional)</small></span>
+                  <textarea
+                    value={value.irrigationNotes}
+                    onChange={(event) => update({ irrigationNotes: event.target.value })}
+                    placeholder="Fonte da água, vazão, fertirrigação, restrições operacionais, histórico de excesso ou déficit etc."
+                    rows={2}
+                  />
+                  <small>Informar apenas “irrigado” já é válido. Quanto mais detalhe houver, mais preciso fica o diagnóstico hídrico.</small>
+                </label>
+              </>
+            )}
+
             <label>
-              <span>Sistema de manejo do solo *</span>
-              <input
-                value={value.tillageSystem}
+              <span>Sistema de preparo do solo <small>(opcional)</small></span>
+              <select
+                value={value.tillageSystem.trim() ? normalizeManagementSystem(value.tillageSystem) : ""}
                 onChange={(event) => update({ tillageSystem: event.target.value })}
-                placeholder="Ex.: plantio direto"
-              />
+              >
+                <option value="">Ainda não definido</option>
+                {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <small>Refina a calagem quando conhecido, mas não bloqueia o parecer do RAIZ.</small>
             </label>
+            <IrrigationApplicationsEditor value={value.irrigationApplications ?? []} onChange={(irrigationApplications) => update({ irrigationApplications })}/>
             <label>
               <span>Histórico de calagem/adubação/gessagem *</span>
               <EvidenceStatusSelect value={value.managementHistoryStatus} onChange={(managementHistoryStatus) => update({ managementHistoryStatus })} />
@@ -107,6 +174,49 @@ export function AnalysisContextIntake({
               />
             </label>
           )}
+
+          <div className="form-grid">
+            <label>
+              <span>Horizonte desta análise do solo <small>(opcional)</small></span>
+              <select
+                value={value.fertilityPlanningHorizonYears ?? ""}
+                onChange={(event) => update({
+                  fertilityPlanningHorizonYears: event.target.value
+                    ? Number(event.target.value) as 2 | 3 | 4 | 5
+                    : null,
+                })}
+              >
+                <option value="">Ainda não definido</option>
+                <option value="2">2 anos</option>
+                <option value="3">3 anos</option>
+                <option value="4">4 anos</option>
+                <option value="5">5 anos</option>
+              </select>
+              <small>Representa o ciclo de correção e manutenção até a próxima reavaliação, não a meta de uma única safra.</small>
+            </label>
+          </div>
+
+          <label>
+            <span>Planejamento do ciclo até a próxima análise <small>(opcional)</small></span>
+            <textarea
+              value={value.fertilityCyclePlanNotes}
+              onChange={(event) => update({ fertilityCyclePlanNotes: event.target.value })}
+              placeholder="Ex.: verão soja 70–80 sc/ha; inverno trigo 60–70; verão seguinte soja 70–80. Pode registrar só o que já souber."
+              rows={3}
+            />
+            <small>O RAIZ separa correção do solo da manutenção de cada cultivo. O que ainda não estiver definido pode ser completado depois.</small>
+          </label>
+
+          <label>
+            <span>Manejo planejado da próxima safra <small>(opcional)</small></span>
+            <textarea
+              value={value.plannedManagementNotes}
+              onChange={(event) => update({ plannedManagementNotes: event.target.value })}
+              placeholder="Se já estiver definido: cultivar, adubo/fonte, tratamento de sementes, fungicidas, inseticidas, bioinsumos, população, espaçamento etc. Pode deixar em branco."
+              rows={3}
+            />
+            <small>O RAIZ usa isso para refinar a recomendação. A ausência dessas decisões não impede a análise do solo.</small>
+          </label>
         </>
       )}
 
@@ -131,7 +241,7 @@ export function AnalysisContextIntake({
               <EvidenceStatusSelect value={value.yieldHistoryStatus} onChange={(yieldHistoryStatus) => update({ yieldHistoryStatus })} />
             </label>
             <label>
-              <span>Histórico hídrico relevante *</span>
+              <span>Histórico hídrico relevante <small>(opcional)</small></span>
               <EvidenceStatusSelect value={value.waterHistoryStatus} onChange={(waterHistoryStatus) => update({ waterHistoryStatus })} />
             </label>
           </div>

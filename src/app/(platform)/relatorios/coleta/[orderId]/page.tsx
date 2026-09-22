@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { PrintButton } from "@/components/print-button";
 import { RealFieldMap } from "@/components/real-field-map";
+import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getCollectionReportData } from "@/lib/repositories/reports";
@@ -20,11 +21,26 @@ export default async function CollectionReportPage({ params }: { params: Promise
   if (!data) notFound();
   const { order, points } = data;
   const collected = points.filter((point: any) => point.collectedAt);
-  // Nenhum ponto é inventado (posição sempre vem de uma geometria real do PostGIS), mas nem todo ponto tem
-  // GPS confirmado em campo -- só os que passaram por "Confirmar aqui" no celular carregam 'BROWSER_GPS'
-  // no gps_source; os demais são a posição planejada do grid ou uma estimativa. Antes o banner afirmava
-  // "dados reais... nenhuma coordenada inventada" sem checar isso (bug real confirmado na auditoria, item H).
-  const gpsConfirmedCount = points.filter((point: any) => String(point.gpsSource || "").includes("BROWSER_GPS")).length;
+  const mapPoints: Array<MapPoint & { collectedByName?: string | null }> = points.map((point: any) => ({
+    ...point,
+    sequence: null,
+    observedLatitude: point.observedLatitude ?? null,
+    observedLongitude: point.observedLongitude ?? null,
+    subsampleCount: null,
+    accuracyM: point.accuracyM ?? null,
+    notes: point.notes ?? null,
+    labResultCount: 0,
+  }));
+  const observedCount = mapPoints.filter((point) => pointPositionKind(point) === "OBSERVED").length;
+  const auditedImportCount = mapPoints.filter((point) => pointPositionKind(point) === "AUDITED_SOURCE").length;
+  const plannedCount = mapPoints.filter((point) => pointPositionKind(point) === "PLANNED").length;
+
+  const provenanceLabel = (point: MapPoint) => {
+    const kind = pointPositionKind(point);
+    if (kind === "OBSERVED") return "Posição observada em campo";
+    if (kind === "AUDITED_SOURCE") return "Importação espacial auditada";
+    return "Planejada / estimada";
+  };
 
   return (
     <>
@@ -32,7 +48,7 @@ export default async function CollectionReportPage({ params }: { params: Promise
         <Link href="/relatorios" className="button ghost no-print">Voltar</Link>
       </Topbar>
       <div className="content-wrap">
-        <div className="report-toolbar no-print"><span className="report-empty-note">Nenhuma coordenada é inventada — {gpsConfirmedCount} de {points.length} ponto(s) com GPS confirmado em campo; os demais mostram a posição planejada do grid (coluna "Origem GPS" abaixo identifica cada um).</span><PrintButton/></div>
+        <div className="report-toolbar no-print"><span className="report-empty-note">Origem espacial rastreada: {observedCount} posição(ões) observada(s) em campo · {auditedImportCount} importada(s) de fonte auditada · {plannedCount} planejada(s)/estimada(s). A tabela identifica cada caso sem promover posição planejada a GPS real.</span><PrintButton/></div>
         <article className="report-doc">
           <header className="report-header">
             <ReportBrand branding={branding} />
@@ -67,16 +83,19 @@ export default async function CollectionReportPage({ params }: { params: Promise
               quebrado. A origem geográfica de cada ponto (coordenadas reais + Origem GPS) continua
               presente no PDF pela tabela "Pontos" abaixo, que é a evidência espacial que SOBREVIVE à
               exportação. */}
-          {points.length > 0 && <section className="report-section no-print"><h2>Mapa do talhão <span className="report-empty-note">(só na tela — no PDF, ver coordenadas na tabela de pontos abaixo)</span></h2><RealFieldMap boundary={order.fieldBoundary} points={points.map((point: any) => ({ ...point, sequence: null, observedLatitude: null, observedLongitude: null, subsampleCount: null, accuracyM: null, labResultCount: 0 }))} height={340}/></section>}
+          {mapPoints.length > 0 && <section className="report-section no-print"><h2>Mapa do talhão <span className="report-empty-note">(só na tela — no PDF, ver coordenadas e origem espacial na tabela abaixo)</span></h2><RealFieldMap boundary={order.fieldBoundary} points={mapPoints} height={340}/></section>}
 
           <section className="report-section">
             <h2>Pontos ({points.length})</h2>
             {points.length ? (
               <div className="report-table-wrap"><table className="report-table">
-                <thead><tr><th>Código</th><th>Coordenadas</th><th>Status</th><th>Coletado em</th><th>Coletor</th><th>Origem GPS</th></tr></thead>
-                <tbody>{points.map((point: any) => (
-                  <tr key={point.id}><td>{point.code}</td><td>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td><td>{point.collectedAt ? new Date(point.collectedAt).toLocaleString("pt-BR") : "—"}</td><td>{point.collectedByName || "—"}</td><td>{String(point.gpsSource || "").includes("BROWSER_GPS") ? "Confirmado em campo" : point.gpsSource ? "Estimado / planejado" : "—"}</td></tr>
-                ))}</tbody>
+                <thead><tr><th>Código</th><th>Coordenada usada</th><th>Status</th><th>Coletado em</th><th>Coletor</th><th>Origem espacial</th></tr></thead>
+                <tbody>{mapPoints.map((point) => {
+                  const effective = effectivePointCoordinates(point);
+                  return (
+                    <tr key={point.id}><td>{point.code}</td><td>{effective.latitude.toFixed(6)}, {effective.longitude.toFixed(6)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td><td>{point.collectedAt ? new Date(point.collectedAt).toLocaleString("pt-BR") : "—"}</td><td>{point.collectedByName || "—"}</td><td>{provenanceLabel(point)}</td></tr>
+                  );
+                })}</tbody>
               </table></div>
             ) : <p className="report-empty-note">Nenhum ponto gerado ainda para esta ordem.</p>}
           </section>

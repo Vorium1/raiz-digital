@@ -4228,3 +4228,41 @@ Bloqueador comercial real: as 3 análises reais do Rafael Cabeda apareciam bloqu
 - Validação final: typecheck, build, `test:handoff` (25 scripts) e suíte e2e inteira (111 testes: 106
   passed, 5 skipped honestos, 0 failed -- 1 teste que antes era pulado por falta de dado passou a rodar
   como efeito colateral positivo desta correção).
+
+## 2026-09-19 — PR #88, QA pontual final
+
+Checkpoint retomado pela issue #25 e HEAD remoto c467e1d, sem refazer agronomia/GPS/NDVI Cabeda.
+Corrigidos erros de rede/raster NDVI sem saída de loading, retry da leitura do raster, cancelamento
+de requests abandonados e fallback do Google 3D em erro/timeout/autenticação. Providers de mapa
+separados em chunks dinâmicos. Testes executam efeitos e handlers reais com dependências isoladas.
+Handoff, typecheck, preflight, profundidade e build locais aprovados; CI remoto deve confirmar o
+HEAD publicado. Nenhuma escrita no banco. Homologação 039 / produção 037 confirmadas por leitura.
+Limites: Preview atual bloqueado pelo status Vercel build-rate-limit; login obrigatório; proteção
+main/develop indisponível ao conector (403); teste live RLS por raiz_app bloqueado por DNS no Work.
+Plano de integração, backup/PITR (6 horas), migrations e smoke em
+`docs/PR88_FINAL_QA_2026-09-19.md`. #24 e #84 permanecem abertas. Sem merge/deploy de produção.
+
+## 2026-09-21 — PR #88, aplicações opcionais de irrigação
+
+Retomado HEAD remoto `3a5c2f6`, CI `35552458406` verde, após leitura dos checkpoints
+mais recentes da issue #25. Contexto hídrico básico já existente foi preservado.
+Aplicações realizadas agora podem ser registradas no intake e no refinamento do
+resultado, persistidas no JSONB existente e incluídas na evidência da prescrição.
+Conversão explícita volume/área em mm, data/hora/fuso sem inferência e proteção de
+concorrência 409. Relatórios antigos preservados; nenhum ajuste automático de nutrientes.
+Falha de leitura não libera formulário vazio; registro opcional inválido não bloqueia
+planejamento restante ou resultado de solo. Corrigido indicador de irrigação quantificada
+indevidamente verdadeiro quando o regime era SEQUEIRO/desconhecido.
+Typecheck, handoff, domínio/integração instrumentada, permissões, preflight, profundidade
+e build locais passaram. Detalhes/limites em `docs/PR88_IRRIGATION_APPLICATIONS_2026-09-21.md`.
+Sem escrita em banco, migration, merge ou deploy de produção nesta rodada.
+Correção de estado histórico acima: main/develop já estão protegidas (API confirmada
+novamente) e #24 está fechada. #84 segue aberta; teste instrumentado não substitui Preview.
+
+Continuação da mesma rodada: incorporado o avanço concorrente até `d16147e`, CI verde,
+sem reimplementar importação parcial/gate hídrico adicionados pela outra sessão.
+Inspeção autenticada do editor na Área 01: adicionar/remover formulário local funciona,
+sem salvar dados; desktop 1348 px sem overflow. Corrigidos contraste/tamanho dos rótulos
+via CSS Module, inputs 16 px e alvos 44 px. O estado de publicação mostrado no Preview
+diverge do checkpoint de homologação e requer reconciliação antes do smoke com escrita;
+não houve geração de laudo ou gravação de aplicações nesta inspeção.

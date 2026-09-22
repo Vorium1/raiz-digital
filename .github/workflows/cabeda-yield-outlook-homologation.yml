@@ -1,0 +1,43 @@
+name: Cabeda Yield Outlook Homologation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/ux-2.0-intelligent-flow"
+    paths:
+      - ".github/workflows/cabeda-yield-outlook-homologation.yml"
+      - "scripts/homologate-cabeda-yield-outlook.mjs"
+      - "src/domain/yield-outlook.ts"
+      - "src/lib/yield/ibge-pam-yield-provider.ts"
+      - "src/lib/repositories/yield-outlook.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validar secret sem expor valor
+        shell: bash
+        run: |
+          test -n "${APP_DATABASE_URL:-}" || { echo "::error::HOMOLOGATION_DATABASE_URL ausente"; exit 1; }
+      - name: Instalar dependências
+        run: npm ci
+      - name: Calcular cenário Cabeda em modo somente leitura
+        run: |
+          node --experimental-strip-types --experimental-loader ./scripts/node-ts-alias-loader.mjs \
+            scripts/homologate-cabeda-yield-outlook.mjs

@@ -13,6 +13,8 @@ import {
   computeSoybeanLowBufferingLiming2025,
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
+import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
+import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
 assert.equal(targetBaseSaturationForPh("5.5"), 65);
@@ -82,8 +84,9 @@ assert.equal(conventional.decision, "APPLY");
 assert.equal(conventional.recommendedDoseTonHaPrnt100, 5.4);
 assert.equal(conventional.applicationMode, "INCORPORATED");
 
-// 10. A nota negativa da Tabela 2.2 não autoriza o complemento lógico: quadrante misto fica fora do domínio explícito.
-const conventionalUnspecified = evaluateSoybeanLimingRsSc2025({
+// 10. A Tabela 2.2 usa pH<5,5 como gatilho e define uma única exceção negativa:
+ // não aplicar quando V>=65% E saturação por Al<10%.
+const conventionalLowAlButLowV = evaluateSoybeanLimingRsSc2025({
   region: "SC",
   system: "CONVENTIONAL",
   phWater0To20: 5.2,
@@ -91,12 +94,10 @@ const conventionalUnspecified = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 5,
   smp0To20: 5.6,
 });
-assert.equal(conventionalUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
-assert.equal(conventionalUnspecified.automaticDoseAllowed, false);
-assert.ok(conventionalUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
-assert.equal(conventionalUnspecified.evidenceConflict, null);
+assert.equal(conventionalLowAlButLowV.decision, "APPLY");
+assert.equal(conventionalLowAlButLowV.recommendedDoseTonHaPrnt100, 5.4);
 
-// 10a. Fronteiras C3: domínio positivo, exceção negativa e zonas não especificadas permanecem distintos.
+// 10a. Fronteiras: somente V>=65 E Al<10 desliga a calagem quando pH<5,5.
 const conventionalPositiveBoundary = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "CONVENTIONAL",
@@ -125,7 +126,7 @@ const conventionalMixedHighV = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 10.1,
   smp0To20: 5.6,
 });
-assert.equal(conventionalMixedHighV.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(conventionalMixedHighV.decision, "APPLY");
 
 const conventionalAlExact10 = evaluateSoybeanLimingRsSc2025({
   region: "RS",
@@ -135,7 +136,7 @@ const conventionalAlExact10 = evaluateSoybeanLimingRsSc2025({
   aluminumSaturation0To20Pct: 10,
   smp0To20: 5.6,
 });
-assert.equal(conventionalAlExact10.decision, "BLOCKED_SOURCE_DOMAIN");
+assert.equal(conventionalAlExact10.decision, "APPLY");
 
 // 11. Implantação de SPD permanece direta: pH<5,5 + 1 SMP para pH 6,0 incorporado.
 const establishment = evaluateSoybeanLimingRsSc2025({
@@ -185,8 +186,9 @@ assert.equal(consolidatedSurfaceCap.recommendedDoseTonHaPrnt100, 5);
 assert.equal(consolidatedSurfaceCap.surfaceCapApplied, true);
 assert.ok(consolidatedSurfaceCap.warnings.includes("SURFACE_APPLICATION_CAPPED_AT_5_T_HA_PRNT100"));
 
-// 14. No SPD sem restrições, quadrante misto também é lacuna de domínio e continua fail-closed.
-const consolidatedVAlUnspecified = evaluateSoybeanLimingRsSc2025({
+// 14. No SPD consolidado sem restrições, a exceção negativa continua sendo somente V>=65 E Al<10.
+// V alto com Al>=10 permanece no domínio de aplicação quando pH<5,5.
+const consolidatedHighVHighAl = evaluateSoybeanLimingRsSc2025({
   region: "RS",
   system: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
   noRestrictions10To20Confirmed: true,
@@ -196,9 +198,9 @@ const consolidatedVAlUnspecified = evaluateSoybeanLimingRsSc2025({
   smp0To10: 5.6,
   yearsSinceLastLiming: 4,
 });
-assert.equal(consolidatedVAlUnspecified.decision, "BLOCKED_SOURCE_DOMAIN");
-assert.equal(consolidatedVAlUnspecified.automaticDoseAllowed, false);
-assert.ok(consolidatedVAlUnspecified.blockers.includes("V_AL_COMBINATION_NOT_EXPLICITLY_AUTHORIZED_BY_SOURCE"));
+assert.equal(consolidatedHighVHighAl.decision, "APPLY");
+assert.equal(consolidatedHighVHighAl.automaticDoseAllowed, true);
+assert.equal(consolidatedHighVHighAl.recommendedDoseTonHaPrnt100, 2.7);
 
 // 15. Ata oficial resolve Al>=10%; entre 10 e 30% não há mais conflito de fonte, mas incorporação exige decisão agronômica.
 const consolidatedNeedsReview = evaluateSoybeanLimingRsSc2025({
@@ -292,5 +294,142 @@ assert.equal(lowBuffer.ready, true);
 assert.equal(lowBuffer.recommendedDoseTonHaPrnt100, 2.31);
 assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
+
+
+// 20. Evidência por amostra: duas doses distintas nunca viram média uniforme.
+const spatialEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "A", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "CA", value: 6.29, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "MG", value: 2.61, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "K", value: 229.9, unit: "mg/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "AL", value: 0.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "CTC", value: 16.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+
+    { sampleCode: "B", parameterCode: "PH", value: 5.4, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "SMP", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "CA", value: 5.62, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "MG", value: 2.63, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "K", value: 151.8, unit: "mg/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "AL", value: 0.1, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "CTC", value: 14.4, unit: "cmolc/dm³", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(spatialEvidence.status, "SPATIAL");
+assert.equal(spatialEvidence.automaticUniformDoseAllowed, false);
+assert.equal(spatialEvidence.uniformDoseTonHaPrnt100, null);
+assert.equal(spatialEvidence.automaticGeneralDoseAllowed, true);
+assert.equal(spatialEvidence.operationalGeneralDoseTonHaPrnt100, 4.8);
+assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_WEIGHT_SAMPLE_MEAN");
+assert.deepEqual(spatialEvidence.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
+assert.equal(spatialEvidence.applicationMode, "INCORPORATED");
+assert.deepEqual(
+  spatialEvidence.sampleDecisions.map((item) => item.recommendedDoseTonHaPrnt100),
+  [5.4, 4.2],
+);
+assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedBaseSaturation));
+assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedAluminumSaturation));
+
+// 21. pH>=5,5 em todos os pontos resulta em decisão uniforme de não aplicar quando o restante da evidência é válido.
+const noApplyEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "C", parameterCode: "PH", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "SMP", value: 6.0, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "V", value: 72, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "C", parameterCode: "M", value: 2, unit: "%", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(noApplyEvidence.status, "UNIFORM_NO_APPLY");
+assert.equal(noApplyEvidence.automaticUniformDoseAllowed, true);
+assert.equal(noApplyEvidence.uniformDoseTonHaPrnt100, 0);
+assert.equal(noApplyEvidence.automaticGeneralDoseAllowed, true);
+assert.equal(noApplyEvidence.operationalGeneralDoseTonHaPrnt100, 0);
+
+// 22. Duas amostras com a mesma regra/dose/manejo podem liberar dose uniforme.
+const uniformEvidence = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "SC",
+  managementSystem: "NO_TILL_ESTABLISHMENT",
+  results: [
+    { sampleCode: "D", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "D", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "E", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "E", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(uniformEvidence.status, "UNIFORM_APPLY");
+assert.equal(uniformEvidence.uniformDoseTonHaPrnt100, 5.4);
+assert.equal(uniformEvidence.operationalGeneralDoseTonHaPrnt100, 5.4);
+assert.equal(uniformEvidence.generalDoseBasis, "UNIFORM");
+assert.equal(uniformEvidence.applicationMode, "INCORPORATED");
+
+// 23. Manejo ausente/ambíguo bloqueia sem escolher sistema por conta própria.
+const missingManagement = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "plantio direto",
+  results: [],
+});
+assert.equal(missingManagement.status, "BLOCKED");
+assert.ok(missingManagement.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING"));
+
+
+// 24. Firewall de prescrição de calcário: dose uniforme exata passa; qualquer divergência falha.
+const validUniformLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 5.4, unit: "t/ha" }],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(validUniformLime.allowed, true);
+assert.equal(validUniformLime.expectedTonHaPrnt100, 5.4);
+
+const wrongUniformLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "calcário PRNT 100", quantity: 4.9, unit: "t/ha" }],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(wrongUniformLime.allowed, false);
+assert.ok(wrongUniformLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+const missingExpectedLime = validatePrescriptionLimingRecommendation({
+  recommendations: [],
+  deterministicDecision: uniformEvidence,
+});
+assert.equal(missingExpectedLime.allowed, false);
+assert.ok(missingExpectedLime.blockers.includes("LIME_EXPECTED_RECOMMENDATION_MISSING"));
+
+// 25. Área heterogênea preserva os pontos, mas pode liberar a média operacional calculada pelo motor.
+const validSpatialAverageLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.8, unit: "t/ha" }],
+  deterministicDecision: spatialEvidence,
+});
+assert.equal(validSpatialAverageLime.allowed, true);
+assert.equal(validSpatialAverageLime.expectedTonHaPrnt100, 4.8);
+
+const wrongSpatialAverageLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.7, unit: "t/ha" }],
+  deterministicDecision: spatialEvidence,
+});
+assert.equal(wrongSpatialAverageLime.allowed, false);
+assert.ok(wrongSpatialAverageLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+// 26. Decisão uniforme de não aplicar aceita ausência de calcário e rejeita dose positiva.
+const noApplyWithoutLime = validatePrescriptionLimingRecommendation({
+  recommendations: [],
+  deterministicDecision: noApplyEvidence,
+});
+assert.equal(noApplyWithoutLime.allowed, true);
+
+const forbiddenNoApplyLime = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 1, unit: "t/ha" }],
+  deterministicDecision: noApplyEvidence,
+});
+assert.equal(forbiddenNoApplyLime.allowed, false);
+assert.ok(forbiddenNoApplyLime.blockers.includes("LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");

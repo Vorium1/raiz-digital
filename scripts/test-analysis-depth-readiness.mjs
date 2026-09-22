@@ -32,6 +32,39 @@ assert.equal(management.effectiveLayer, 2);
 assert.equal(management.completeForRequestedDepth, true);
 assert.equal(management.limitations.length, 1);
 
+const optionalYieldAndPrep = evaluateAnalysisDepthReadiness("recomendacao-manejo", {
+  ...empty,
+  currentSoilAnalysis: true,
+  crop: true,
+  samplingDepth: true,
+  waterRegime: true,
+  managementHistory: "DECLARED_UNAVAILABLE",
+});
+assert.equal(optionalYieldAndPrep.effectiveLayer, 2);
+assert.equal(optionalYieldAndPrep.completeForRequestedDepth, true);
+assert.deepEqual(
+  optionalYieldAndPrep.missing
+    .filter((item) => item.blocks === "CALCULATION_ONLY")
+    .map((item) => item.code)
+    .sort(),
+  ["TILLAGE_SYSTEM_MISSING", "YIELD_GOAL_MISSING", "YIELD_UNIT_MISSING"].sort(),
+);
+assert.ok(optionalYieldAndPrep.limitations.some((item) => item.includes("Meta de produtividade ainda não definida")));
+assert.ok(optionalYieldAndPrep.limitations.some((item) => item.includes("Sistema de preparo do solo ainda não definido")));
+
+
+const optionalWaterContext = evaluateAnalysisDepthReadiness("recomendacao-manejo", {
+  ...empty,
+  currentSoilAnalysis: true,
+  crop: true,
+  samplingDepth: true,
+  managementHistory: "DECLARED_UNAVAILABLE",
+});
+assert.equal(optionalWaterContext.effectiveLayer, 2);
+assert.equal(optionalWaterContext.completeForRequestedDepth, true);
+assert.ok(optionalWaterContext.missing.some((item) => item.code === "WATER_REGIME_MISSING" && item.blocks === "CALCULATION_ONLY"));
+assert.ok(optionalWaterContext.limitations.some((item) => item.includes("Regime hídrico ainda não informado")));
+
 const incompleteField = evaluateAnalysisDepthReadiness("analise-completa-campo", {
   ...empty,
   currentSoilAnalysis: true,
@@ -49,6 +82,7 @@ const incompleteField = evaluateAnalysisDepthReadiness("analise-completa-campo",
 assert.equal(incompleteField.effectiveLayer, 2);
 assert.equal(incompleteField.completeForRequestedDepth, false);
 assert.ok(incompleteField.missing.some((item) => item.code === "YIELD_HISTORY_NOT_DECLARED"));
+assert.equal(incompleteField.missing.some((item) => item.code === "WATER_HISTORY_NOT_DECLARED" && item.blocks === "LEVEL_COMPLETION"), false);
 
 const full360WithoutSpatial = evaluateAnalysisDepthReadiness("diagnostico-360", {
   ...empty,

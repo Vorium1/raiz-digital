@@ -1,12 +1,13 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { NdviRasterPersistenceError, readNdviRasterArtifact } from "@/lib/ndvi-raster-storage";
+import { ndviRasterBboxContainsBoundary } from "@/domain/ndvi-raster-spatial-validity";
+import { NDVI_RASTER_ALGORITHM_VERSION, NdviRasterPersistenceError, readNdviRasterArtifact } from "@/lib/ndvi-raster-storage";
 import { getFieldBoundaryGeoJson, getNdviSnapshotForDate } from "@/lib/repositories/ndvi";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Serve exclusivamente o PNG arquivado junto ao snapshot histórico. Não existe fallback para uma nova
- * chamada ao Copernicus: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
+ * chamada ao provider de satélite: se a linha for legada ou o objeto falhar na verificação SHA-256, a rota falha
  * fechado. Isso impede que uma visualização regenerada no futuro seja apresentada como a mesma evidência.
  *
  * O artefato é imutável, mas a autorização do usuário não é. Por isso a resposta não pode ficar
@@ -30,6 +31,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       capturedAt: requestedDate,
       userId: session.userId,
       source: "SENTINEL_2",
+      rasterAlgorithm: NDVI_RASTER_ALGORITHM_VERSION,
     }),
   ]);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
@@ -50,6 +52,27 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       {
         error: "Este snapshot NDVI é legado e ainda não possui raster histórico arquivado. Atualize o histórico do talhão para criar a cadeia de custódia antes de exibi-lo como mapa histórico.",
         code: "NDVI_RASTER_ARCHIVE_REQUIRED",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (snapshot.rasterAlgorithm !== NDVI_RASTER_ALGORITHM_VERSION) {
+    return Response.json(
+      {
+        error: "O raster NDVI arquivado usa uma versão anterior do cálculo e precisa ser regenerado antes de ser exibido.",
+        code: "NDVI_RASTER_ALGORITHM_STALE",
+        currentAlgorithm: NDVI_RASTER_ALGORITHM_VERSION,
+      },
+      { status: 409 },
+    );
+  }
+
+  if (!ndviRasterBboxContainsBoundary(snapshot.rasterBbox, boundary)) {
+    return Response.json(
+      {
+        error: "O raster NDVI arquivado pertence a um contorno anterior deste talhão. Atualize o satélite para gerar evidência espacial compatível com o limite atual.",
+        code: "NDVI_RASTER_BOUNDARY_MISMATCH",
       },
       { status: 409 },
     );

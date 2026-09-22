@@ -41,12 +41,14 @@ type Interpretation = {
 type HistoryEntry = { id: string; revision: number; status: string; createdAt: string; reviewedByName: string | null; reviewedAt: string | null; approvedByName: string | null; approvedAt: string | null };
 
 type MapLayerResponse = { fieldBoundary: unknown; points: MapPoint[]; availableParameters: string[] };
+type EvidenceFreshness = { current: boolean; code: string; reason: string | null };
 
 export function AgronomicIntelligencePanel({
   analysisId, fieldId, collectionOrderId, canRun, canReview,
 }: { analysisId: string; fieldId: string | null; collectionOrderId: string | null; canRun: boolean; canReview: boolean }) {
   const [latest, setLatest] = useState<Interpretation | null | undefined>(undefined);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [evidenceFreshness, setEvidenceFreshness] = useState<EvidenceFreshness | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
@@ -62,6 +64,7 @@ export function AgronomicIntelligencePanel({
     const data = await response.json().catch(() => ({}));
     setLatest(data.latest ?? null);
     setHistory(data.history ?? []);
+    setEvidenceFreshness(data.evidenceFreshness ?? null);
   }
 
   useEffect(() => { void load(); }, [analysisId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -120,6 +123,7 @@ export function AgronomicIntelligencePanel({
     return entries;
   }, [layer]);
 
+  const interpretationCurrent = evidenceFreshness?.current === true;
   const predominances = useMemo(() => (latest?.structuredOutput ? computeParameterPredominance(latest.structuredOutput.interpretation) : []), [latest]);
 
   // Bloco D: se existe uma revisão anterior APROVADA e a revisão atual não é a mesma (dado novo depois da
@@ -205,6 +209,7 @@ export function AgronomicIntelligencePanel({
 
   return (
     <div className="cockpit">
+      {!interpretationCurrent && evidenceFreshness && <div className="agro-message waiting" style={{ gridColumn: "1 / -1" }}><Icon name="warning" size={15}/><span><strong>Revisão histórica.</strong> {evidenceFreshness.reason ?? "Esta interpretação não representa mais a evidência agronômica corrente."} Recalcule antes de aprovar ou gerar uma nova decisão.</span></div>}
       {message && <div className={`agro-message ${message.tone}`} style={{ gridColumn: "1 / -1" }}><Icon name={message.tone === "success" ? "check" : "warning"} size={15}/><span>{message.text}</span></div>}
 
       {/* Região 1 (Bloco B): evidência selecionada -- mapa real, pontos, ligação com satélite/histórico/comparativos. */}
@@ -291,7 +296,7 @@ export function AgronomicIntelligencePanel({
                     : classifiedResultCount === 0
                       ? `0 de ${targetTotalCount} resultados interpretados.`
                       : classifiedResultCount < targetTotalCount
-                        ? `Interpretação parcial — ${classifiedResultCount}/${targetTotalCount} resultados cobertos.`
+                        ? `Interpretação em atualização técnica — ${classifiedParamCodes.length}/${classifiedParamCodes.length + pendingParamCodes.length} parâmetros cobertos.`
                         : `${classifiedResultCount}/${targetTotalCount} resultados interpretados.`}
                   {globalImpedimentGroups.length > 0 && ` ${globalImpedimentGroups[0].reason}`}
                 </span>
@@ -299,9 +304,9 @@ export function AgronomicIntelligencePanel({
               {/* Item 2 do fechamento técnico (auditoria Cabeda): 3 categorias reais, nunca só
                   "interpretável/não" -- um dado auxiliar nunca é mostrado como erro/pendência. */}
               <div className="agro-role-summary">
-                <span className="agro-role-chip agro-role-classified">{classifiedParamCodes.length} parâmetro{classifiedParamCodes.length === 1 ? "" : "s"} classificado{classifiedParamCodes.length === 1 ? "" : "s"} ({classifiedResultCount} resultado{classifiedResultCount === 1 ? "" : "s"})</span>
-                <span className="agro-role-chip agro-role-pending">{pendingParamCodes.length} aguardando homologação ({pendingResultCount} resultado{pendingResultCount === 1 ? "" : "s"})</span>
-                <span className="agro-role-chip agro-role-auxiliary">{auxiliaryParamCodes.length} dado{auxiliaryParamCodes.length === 1 ? "" : "s"} auxiliar{auxiliaryParamCodes.length === 1 ? "" : "es"} ({auxiliaryResultCount} resultado{auxiliaryResultCount === 1 ? "" : "s"})</span>
+                <span className="agro-role-chip agro-role-classified">{classifiedParamCodes.length} parâmetro{classifiedParamCodes.length === 1 ? "" : "s"} classificado{classifiedParamCodes.length === 1 ? "" : "s"}</span>
+                {pendingParamCodes.length > 0 && <span className="agro-role-chip agro-role-pending">{pendingParamCodes.length} parâmetro{pendingParamCodes.length === 1 ? "" : "s"} com observação técnica</span>}
+                <span className="agro-role-chip agro-role-auxiliary">{auxiliaryParamCodes.length} dado{auxiliaryParamCodes.length === 1 ? "" : "s"} auxiliar{auxiliaryParamCodes.length === 1 ? "" : "es"}</span>
               </div>
               {auxiliaryParamCodes.length > 0 && (
                 <p className="agro-auxiliary-note">
@@ -313,7 +318,7 @@ export function AgronomicIntelligencePanel({
           {impedimentGroups.length > 0 && (
             <div className="agro-impediments">
               <button type="button" className="button ghost small" onClick={() => setShowAllImpediments((v) => !v)}>
-                {showAllImpediments ? "Ocultar impedimentos" : "Ver todos os impedimentos"} ({impedimentGroups.reduce((sum, g) => sum + g.count, 0)})
+                {showAllImpediments ? "Ocultar detalhes técnicos" : "Ver detalhes técnicos"} ({impedimentGroups.length})
               </button>
               {showAllImpediments && (
                 <ul className="agro-impediments-list">
@@ -343,7 +348,7 @@ export function AgronomicIntelligencePanel({
               })}</tbody>
             </table></div>
           )}
-          <AgronomicNarrativePanel analysisId={analysisId} hasClassifications={Boolean(interpretation.length)} canRun={canRun} canReview={canReview}/>
+          <AgronomicNarrativePanel analysisId={analysisId} hasClassifications={Boolean(interpretation.length)} canRun={canRun && interpretationCurrent} canReview={canReview && interpretationCurrent}/>
         </section>
 
         {/* 3. PADRÃO -- corrigido no fechamento técnico da Fase 3: isto é contagem/proporção de
@@ -375,7 +380,7 @@ export function AgronomicIntelligencePanel({
         {/* 5. RECOMENDAÇÃO */}
         <section className="cockpit-category">
           <h3><span className="cockpit-category-number">5</span>Recomendação</h3>
-          <AgronomicPrescriptionPanel analysisId={analysisId} hasLabResults={Boolean(facts.length)} canRun={canRun} canReview={canReview}/>
+          <AgronomicPrescriptionPanel analysisId={analysisId} hasLabResults={Boolean(facts.length)} canRun={canRun && interpretationCurrent} canReview={canReview && interpretationCurrent}/>
         </section>
 
         {/* 6. VALIDAÇÃO PROFISSIONAL */}
@@ -389,8 +394,8 @@ export function AgronomicIntelligencePanel({
           </dl>
           <div className="agro-actions">
             {canRun && <button className="button ghost" disabled={busy} onClick={() => void runEngine()}>{busy ? "Recalculando…" : "Recalcular"}</button>}
-            {canReview && latest.status === "IN_REVIEW" && <button className="button primary" disabled={busy} onClick={() => void review(true)}>Aprovar interpretação</button>}
-            {canReview && latest.status === "IN_REVIEW" && latest.reviewedByName && <button className="button ghost" disabled={busy} onClick={() => void review(false)}>Registrar nova devolução</button>}
+            {canReview && interpretationCurrent && latest.status === "IN_REVIEW" && <button className="button primary" disabled={busy} onClick={() => void review(true)}>Aprovar interpretação</button>}
+            {canReview && interpretationCurrent && latest.status === "IN_REVIEW" && latest.reviewedByName && <button className="button ghost" disabled={busy} onClick={() => void review(false)}>Registrar nova devolução</button>}
             {latest.status === "APPROVED" && <StatusBadge tone="success"><Icon name="check" size={12}/>Aprovada</StatusBadge>}
           </div>
           {history.length > 1 && (

@@ -50,6 +50,7 @@ const REQUIREMENTS: Array<{
   code: string;
   label: string;
   test: (evidence: AnalysisEvidence) => boolean;
+  blocks?: "LEVEL_COMPLETION" | "CALCULATION_ONLY";
 }> = [
   {
     layer: 1,
@@ -68,12 +69,14 @@ const REQUIREMENTS: Array<{
     code: "YIELD_GOAL_MISSING",
     label: "Meta de produtividade",
     test: (evidence) => evidence.yieldGoal,
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
     code: "YIELD_UNIT_MISSING",
     label: "Unidade da meta de produtividade",
     test: (evidence) => evidence.yieldUnit,
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
@@ -86,12 +89,14 @@ const REQUIREMENTS: Array<{
     code: "WATER_REGIME_MISSING",
     label: "Regime hídrico (sequeiro ou irrigado)",
     test: (evidence) => evidence.waterRegime,
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
     code: "TILLAGE_SYSTEM_MISSING",
-    label: "Sistema de manejo do solo (ex.: plantio direto ou convencional)",
+    label: "Sistema de preparo do solo (quando conhecido)",
     test: (evidence) => evidence.tillageSystem,
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
@@ -114,8 +119,9 @@ const REQUIREMENTS: Array<{
   {
     layer: 3,
     code: "WATER_HISTORY_NOT_DECLARED",
-    label: "Histórico hídrico relevante (seca, excesso de chuva/encharcamento), ou declaração de que não está disponível",
+    label: "Histórico hídrico relevante (seca, excesso de chuva/encharcamento), quando conhecido",
     test: (evidence) => evidence.waterHistory !== "MISSING",
+    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 4,
@@ -137,20 +143,29 @@ function missingThroughLayer(evidence: AnalysisEvidence, layer: 1 | 2 | 3 | 4) {
     .map<MissingRequirement>((requirement) => ({
       code: requirement.code,
       label: requirement.label,
-      blocks: "LEVEL_COMPLETION",
+      blocks: requirement.blocks ?? "LEVEL_COMPLETION",
       layer: requirement.layer,
     }));
 }
 
 function computeEffectiveLayer(evidence: AnalysisEvidence): 0 | 1 | 2 | 3 | 4 {
   for (const layer of [4, 3, 2, 1] as const) {
-    if (missingThroughLayer(evidence, layer).length === 0) return layer;
+    if (missingThroughLayer(evidence, layer).every((item) => item.blocks !== "LEVEL_COMPLETION")) return layer;
   }
   return 0;
 }
 
 function declaredLimitations(evidence: AnalysisEvidence) {
   const limitations: string[] = [];
+  if (!evidence.yieldGoal || !evidence.yieldUnit) {
+    limitations.push("Meta de produtividade ainda não definida; o parecer do solo continua válido, mas doses dependentes da expectativa de rendimento ficam como recomendação base até a meta ser informada.");
+  }
+  if (!evidence.tillageSystem) {
+    limitations.push("Sistema de preparo do solo ainda não definido; o parecer continua disponível e a calagem pode ser refinada quando o sistema for informado.");
+  }
+  if (!evidence.waterRegime) {
+    limitations.push("Regime hídrico ainda não informado; o parecer do solo continua válido e riscos ligados à irrigação, déficit ou excesso de água ficam sem refinamento.");
+  }
   if (evidence.managementHistory === "DECLARED_UNAVAILABLE") {
     limitations.push("Histórico recente de calagem/adubação/gessagem declarado como indisponível; recomendações dependentes desse histórico devem explicitar a incerteza.");
   }

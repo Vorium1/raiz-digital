@@ -91,6 +91,27 @@ function makeParam(overrides = {}) {
   assert.equal(result.interpretation[0].code, "METHOD_NOT_SUPPORTED");
 }
 
+{
+  const profile = makeProfile({
+    parameters: [makeParam({
+      parameterCode: "S",
+      analyticalMethodAllowed: ["Ca(H2PO4)2 500mg P/L, turbidimetria"],
+      unitExpected: "mg/dm³",
+    })],
+  });
+  const result = runAgronomicEngine({
+    cropProfile: profile,
+    labResults: [makeResult({
+      parameterCode: "S",
+      method: "Turbidimetria",
+      unit: "mg/dm³",
+      value: 9.8,
+    })],
+  });
+  assert.equal(result.interpretation[0].code, "METHOD_DETAIL_INCOMPLETE");
+  assert.match(result.interpretation[0].reason, /sem detalhe suficiente/);
+}
+
 // 8. Parâmetro/profundidade/método corretos mas faixas ainda aguardando homologação (sufficiencyRanges null).
 {
   const profile = makeProfile({ parameters: [makeParam({ sufficiencyRanges: null })] });

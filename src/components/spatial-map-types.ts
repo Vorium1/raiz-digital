@@ -8,6 +8,9 @@ export type MapPoint = {
   longitude: number;
   observedLatitude: number | null;
   observedLongitude: number | null;
+  /** Posição originalmente planejada, quando a fonte real substituiu/confirmou o ponto de campo. */
+  plannedLatitude?: number | null;
+  plannedLongitude?: number | null;
   collectedAt: string | null;
   depthFromCm: number;
   depthToCm: number;
@@ -33,6 +36,8 @@ export type MapImageOverlay = {
   opacity?: number;
 };
 
+export type FieldMapBaseLayer = "default" | "terrain";
+
 export type FieldMapProps = {
   boundary: SpatialGeometry;
   points: MapPoint[];
@@ -42,6 +47,7 @@ export type FieldMapProps = {
   hint?: string;
   boundaryFillColor?: string;
   imageOverlay?: MapImageOverlay | null;
+  baseLayer?: FieldMapBaseLayer;
 };
 
 export type PortfolioCanvasField = {
@@ -103,3 +109,4 @@ export function pointPositionKind(point: MapPoint): PointPositionKind {
   if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
   return "PLANNED";
 }
+export const MAP_NEUTRAL_COLOR = "#9AA79F";

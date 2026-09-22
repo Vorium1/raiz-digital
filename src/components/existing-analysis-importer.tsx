@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { LabImporter } from "@/components/lab-importer";
-import type { LabImportPreview } from "@/domain/lab-import";
+import type { LabImportPreview, LabImportUsability, LabSampleType } from "@/domain/lab-import";
 
 type PreviewWithCounts = LabImportPreview & {
   normalizedRowCount?: number;
   issueCount?: number;
+  usability?: LabImportUsability;
 };
 
 type Props = {
@@ -34,6 +35,7 @@ export function ExistingAnalysisImporter({
 }: Props) {
   const router = useRouter();
   const [method, setMethod] = useState("Mehlich-1");
+  const [sampleType, setSampleType] = useState<LabSampleType>("SOLO");
   const [preview, setPreview] = useState<PreviewWithCounts | null>(null);
   const [importFile, setImportFile] = useState<{ fileName: string; content: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,6 +57,7 @@ export function ExistingAnalysisImporter({
           fileName: importFile.fileName,
           fallbackMethod: method || undefined,
           hasAgronomicContext,
+          sampleType,
           // Vínculo espacial nunca é inferido pela tela de upload. Só proveniência persistida pode liberá-lo.
           spatialLinked: false,
         }),
@@ -101,6 +104,22 @@ export function ExistingAnalysisImporter({
                 </select>
               </span>
             </div>
+            <div>
+              <Icon name="layers" />
+              <span>
+                <strong>Tipo de amostra</strong>
+                <select value={sampleType} onChange={(event) => setSampleType(event.target.value as LabSampleType)} disabled={saving}>
+                  <option value="SOLO">Solo</option>
+                  <option value="BIOLOGICO">Biológico / microbiologia / raiz</option>
+                  <option value="FOLIAR">Foliar</option>
+                  <option value="PECIOLO">Pecíolo</option>
+                  <option value="MASSA_SECA">Massa seca</option>
+                  <option value="GRAO">Grão</option>
+                  <option value="SEMENTE">Semente</option>
+                  <option value="FERTILIZANTE">Fertilizante</option>
+                </select>
+              </span>
+            </div>
           </div>
 
           <LabImporter
@@ -115,7 +134,7 @@ export function ExistingAnalysisImporter({
               <div>
                 <span>Pré-validação</span>
                 <strong>{totalRows} resultado(s) · {preview.sampleCount} amostra(s)</strong>
-                <small>{preview.blockers > 0 ? `${preview.blockers} bloqueio(s). O arquivo será registrado como inconsistente e não será tratado como evidência válida até correção.` : "Sem bloqueios estruturais. A fonte original ainda exige conferência humana antes da entrega oficial."}</small>
+                <small>{preview.blockers > 0 ? (preview.usability?.canProceedWithPartialEvidence ? `${preview.usability.promotableRowCount} resultado(s) seguirão como evidência utilizável; ${preview.usability.excludedRowCount} linha(s) ficarão de fora até correção. O restante da análise não é bloqueado.` : `${preview.blockers} bloqueio(s) impedem obter evidência laboratorial utilizável com segurança neste arquivo.`) : "Sem bloqueios estruturais. A fonte original ainda exige conferência humana antes da entrega oficial."}</small>
               </div>
             </div>
           )}

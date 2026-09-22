@@ -136,11 +136,22 @@ function blockerLabel(code: string) {
 
 function doseLabel(decision: DeterministicPkDoseDecision | undefined) {
   const expected = decision?.expected;
-  if (!expected) return "dose bloqueada";
+  if (!expected) return "dose não calculada";
   if (expected.isDiscretionaryRange) {
     return `${expected.minimumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${expected.maximumKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
   }
   return `${expected.doseKgPerHa.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg/ha`;
+}
+
+function uniformDoseStateLabel(state: UniformPkNutrientReadiness, ruleReady: boolean) {
+  if (state.blockers.some((code) => code === "P_NO_STRICT_PREDOMINANCE" || code === "K_NO_STRICT_PREDOMINANCE")) {
+    return "Dose única não indicada";
+  }
+  if (state.blockers.some((code) => code === "P_NO_CLASSIFIED_OBSERVATION" || code === "K_NO_CLASSIFIED_OBSERVATION")) {
+    return "Sem base para dose uniforme";
+  }
+  if (!ruleReady) return "Regra ainda não liberada";
+  return "Revisão técnica necessária";
 }
 
 export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, canReview }: { analysisId: string; hasLabResults: boolean; canRun: boolean; canReview: boolean }) {
@@ -253,7 +264,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         {latest && statusMeta && <StatusBadge tone={statusMeta.tone}>{statusMeta.label}</StatusBadge>}
       </div>
 
-      <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ só libera esta etapa depois de uma interpretação determinística aprovada. Toda recomendação gerada continua exigindo revisão profissional antes de virar recomendação oficial.</p>
+      <p className="report-empty-note" style={{ margin: "0 0 10px" }}>A RAIZ pode preparar o rascunho quando a interpretação determinística corrente entra em revisão. A recomendação só vira oficial depois da aprovação profissional e dos gates de integridade.</p>
 
       {usage && <p className="report-empty-note" style={{ margin: "0 0 10px" }}>Uso assistido da empresa: {usage.usedThisMonth}/{usage.monthlyLimit} gerações neste mês.</p>}
 
@@ -269,7 +280,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           {pkReadiness?.ready ? (
             <p className="report-empty-note" style={{ margin: 0 }}>Contexto mínimo disponível para o motor determinístico de P/K. O nível tecnológico é apenas contexto de cenário e não altera a dose sozinho.</p>
           ) : (
-            <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>P/K quantitativo permanece bloqueado até fechar os campos abaixo. Outras recomendações tecnicamente sustentadas podem continuar sendo analisadas.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
+            <><p className="report-empty-note" style={{ margin: "0 0 6px" }}>Para calcular a dose quantitativa de P/K desta safra, complete os campos abaixo. As demais recomendações tecnicamente sustentadas continuam normalmente.</p><ul>{(pkReadiness?.blockers ?? []).map((blocker) => <li key={blocker}>{PK_BLOCKER_LABELS[blocker] ?? blocker}</li>)}</ul></>
           )}
 
           {uniformPkReadiness && (
@@ -279,7 +290,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
                 const dose = recommendationContext.deterministicPkDoses[nutrient];
                 return <div className="review-summary" key={nutrient}>
                   <span>{nutrient} · aplicação uniforme</span>
-                  <strong>{state.ready && uniformPkReadiness.ruleReady ? `${state.soilLevel ?? "—"} · ${doseLabel(dose)}` : "Bloqueado"}</strong>
+                  <strong>{state.ready && uniformPkReadiness.ruleReady ? `${state.soilLevel ?? "—"} · ${doseLabel(dose)}` : uniformDoseStateLabel(state, uniformPkReadiness.ruleReady)}</strong>
                   {state.ready ? <small>{state.basis === "SINGLE_SAMPLE" ? "Base: única amostra classificada; a representatividade depende do plano de amostragem." : `Predominância estrita: ${state.matchingCount}/${state.totalCount} pontos concordantes.`}</small> : state.blockers.map((blocker) => <small key={blocker}>{blockerLabel(blocker)}</small>)}
                   {state.ready && uniformPkReadiness.ruleId ? <small>Regra versionada: {uniformPkReadiness.ruleId}. A quantidade oficial é recalculada no servidor.</small> : null}
                 </div>;
@@ -332,8 +343,8 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
         <div className="pending-engine" style={{ margin: 0 }}>
           <Icon name={readyToGenerate ? "sparkles" : "shield"} size={22}/>
           <div>
-            <p>{readyToGenerate ? "Interpretação aprovada. A análise está pronta para gerar uma proposta de manejo rastreável." : readiness?.reason ?? "A recomendação será liberada após a aprovação técnica da interpretação."}</p>
-            {canRun && <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar recomendação assistida" : "Aguardando aprovação técnica"}</button>}
+            <p>{readyToGenerate ? "Interpretação corrente e revisável. A análise está pronta para preparar uma proposta de manejo rastreável." : readiness?.reason ?? "A recomendação será liberada após a aprovação técnica da interpretação."}</p>
+            {canRun && <button className="button secondary" disabled={busy || monthlyLimitReached || !readyToGenerate} onClick={() => void generate()}>{busy ? "Gerando…" : monthlyLimitReached ? "Limite mensal atingido" : readyToGenerate ? "Gerar recomendação assistida" : "Aguardando interpretação revisável"}</button>}
           </div>
         </div>
       ) : (
@@ -366,7 +377,7 @@ export function AgronomicPrescriptionPanel({ analysisId, hasLabResults, canRun, 
           )}
 
           {latest.responsePayload.prescription.missingInformation.length > 0 && (
-            <div className="narrative-block attention"><h4><Icon name="warning" size={12}/> Informação necessária para fechar a decisão</h4><ul>{latest.responsePayload.prescription.missingInformation.map((item, i) => <li key={i}>{item}</li>)}</ul></div>
+            <div className="narrative-block attention"><h4><Icon name="shield" size={12}/> Critérios e limites da decisão</h4><ul>{latest.responsePayload.prescription.missingInformation.map((item, i) => <li key={i}>{item}</li>)}</ul></div>
           )}
 
           {latest.responsePayload.prescription.sources.length > 0 && (

@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
 import { Icon } from "@/components/icon";
 import {
+  MAP_NEUTRAL_COLOR as NEUTRAL,
   effectivePointCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
@@ -13,8 +14,6 @@ import {
   type MapPoint,
   type PointPositionKind,
 } from "@/components/spatial-map-types";
-
-const NEUTRAL = "#9AA79F";
 
 function positionDescription(point: MapPoint) {
   const kind = pointPositionKind(point);
@@ -36,6 +35,7 @@ export function LeafletFieldMap({
   hint = "Clique num ponto para ver os dados",
   boundaryFillColor,
   imageOverlay,
+  baseLayer = "default",
   providerNote,
 }: FieldMapProps & { providerNote?: string | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -118,10 +118,15 @@ export function LeafletFieldMap({
       // Contingência deliberadamente SEM Esri. O bug histórico de quadrantes pretos ocorre em qualquer
       // viewport e pode vir de tile opaco inválido (HTTP 200), caso em que uma camada inferior não aparece.
       // O fallback precisa priorizar disponibilidade, não manter imagem aérea a qualquer custo.
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
+      // Enquanto Google Satellite não estiver configurado, usamos relevo/topografia como base visual.
+      // Isso evita o "mapa branco" do OSM padrão e mantém o contexto do terreno sem fingir imagem aérea.
+      L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        {
+          maxZoom: 17,
+          attribution: "Map data &copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap (CC-BY-SA)",
+        },
+      ).addTo(map);
 
       layersRef.current.raster = L.layerGroup().addTo(map);
       layersRef.current.boundary = L.layerGroup().addTo(map);
@@ -144,7 +149,7 @@ export function LeafletFieldMap({
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [baseLayer]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -165,7 +170,7 @@ export function LeafletFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map">
+    <div className="real-field-map" data-map-provider="leaflet" data-has-image-overlay={imageOverlay ? "true" : "false"}>
       {providerNote && <p className="ndvi-panel-limitation"><Icon name="warning" size={13}/>{providerNote}</p>}
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">

@@ -1,0 +1,42 @@
+/* O conceito aprovado usa navegação clara e legível. Neutraliza o rail violeta/compacto anterior. */
+.ux2-shell .concept-home {
+  isolation:isolate;
+  position:relative;
+}
+.ux2-shell .concept-home::before {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(116,154,101,.14), transparent 28%),
+    radial-gradient(circle at 88% 12%, rgba(214,193,142,.16), transparent 30%),
+    repeating-linear-gradient(168deg, rgba(88,119,75,.025) 0 1px, transparent 1px 34px);
+  content:"";
+  inset:-26px -32px auto;
+  height:430px;
+  pointer-events:none;
+  position:absolute;
+  z-index:-1;
+}
+/* Na Home o título principal já está no conteúdo, como na arte. O topo fica só com ações/status. */
+.ux2-shell .topbar:has(+ .concept-home) .page-title { visibility:hidden; }
+
+@media (min-width:821px) {
+  .ux2-shell .ux2-sidebar { width:220px; }
+  .ux2-shell .ux2-sidebar:hover,
+  .ux2-shell .ux2-sidebar:focus-within { box-shadow:8px 0 30px rgba(45,70,53,.035); width:220px; }
+  .ux2-shell .ux2-sidebar ~ .main-content { margin-left:220px; }
+
+  .ux2-shell .ux2-sidebar .brand-logo-word { display:flex !important; }
+  .ux2-shell .ux2-sidebar .tenant-switcher > div:nth-child(2),
+  .ux2-shell .ux2-sidebar .tenant-switcher > svg,
+  .ux2-shell .ux2-sidebar .nav-label,
+  .ux2-shell .ux2-sidebar .sidebar-nav a > span,
+  .ux2-shell .ux2-sidebar .sidebar-bottom > a > span,
+  .ux2-shell .ux2-sidebar .user-card > div:nth-child(2),
+  .ux2-shell .ux2-sidebar .user-card > svg { display:block !important; }
+
+  .ux2-shell .ux2-sidebar .tenant-switcher { grid-template-columns:34px minmax(0,1fr) auto !important; justify-content:stretch; margin:10px 0 22px; padding:10px; }
+  .ux2-shell .ux2-sidebar .sidebar-nav a,
+  .ux2-shell .ux2-sidebar .sidebar-bottom > a { gap:12px; justify-content:flex-start; padding:10px 11px; }
+  .ux2-shell .ux2-sidebar .sidebar-nav a b { font-size:10px; min-width:21px; padding:0 6px; position:static; }
+  .ux2-shell .ux2-sidebar .user-card { grid-template-columns:34px minmax(0,1fr) auto; justify-content:stretch; padding-inline:5px; }
+  .ux2-shell .ux2-sidebar .brand { justify-content:flex-start; padding-inline:10px; }
+}

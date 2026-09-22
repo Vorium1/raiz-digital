@@ -1,40 +1,46 @@
 import { notFound } from "next/navigation";
-import { Topbar } from "@/components/topbar";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getFieldOverview } from "@/lib/repositories/field-overview";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
-import { FieldOverviewTabs } from "@/components/field-overview-tabs";
-import { FieldSatelliteDecisionStrip } from "@/components/field-satellite-decision-strip";
-import { AssistantEntryButton } from "@/components/assistant-entry-button";
+import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
+import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
+import { SimpleFieldOverview } from "@/components/simple-field-overview";
 
 export const metadata = { title: "Talhão" };
 
-/**
- * Talhão 360° (RAIZ 2.0, Fase 1, Etapa 5) -- endereço estável por talhão (`/talhoes/[fieldId]`), o
- * principal item da Fase 1. Só existe em modo banco de dados real -- não há um talhão real "de exemplo"
- * pra simular em modo demo sem inventar dado, e nenhuma outra tela desta base tem uma versão demo desta
- * profundidade (mesma convenção do resto da Inteligência Agronômica).
- */
+const AUTO_REFRESH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+
 export default async function FieldOverviewPage({ params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const session = await requirePlatformSession();
   const overview = await getFieldOverview(session.tenantId, fieldId, session.userId);
   if (!overview) notFound();
 
-  // Antes filtrava por NOME do talhão (alert.context === field.name) -- bug real achado numa revisão
-  // independente: dois talhões homônimos (nome igual, em propriedades/clientes diferentes -- cenário real
-  // e comum, ex. "Área 01" em duas fazendas) mostrariam os alertas um do outro. `listOperationalAlerts` já
-  // é isolado por empresa (`withTenant`); o filtro abaixo agora usa o id real do talhão (fields.id), nunca
-  // o nome, então talhões homônimos nunca mais se confundem.
-  const alerts = (await listOperationalAlerts(session.tenantId, session.userId)).filter((alert) => alert.fieldId === fieldId);
+  const currentSeason = overview.seasons[0] ?? null;
+  const latestAnalysis = overview.analyses.find((analysis) => !currentSeason || analysis.cropSeasonId === currentSeason.id) ?? null;
+  const [alerts, analysisEvidence, deliveryRows] = await Promise.all([
+    listOperationalAlerts(session.tenantId, session.userId),
+    latestAnalysis
+      ? getAnalysisEvidenceState({
+          tenantId: session.tenantId,
+          userId: session.userId,
+          analysisId: latestAnalysis.id,
+        })
+      : Promise.resolve(null),
+    latestAnalysis
+      ? getDecisionDeliveryStatuses(session.tenantId, [latestAnalysis.id], session.userId)
+      : Promise.resolve([]),
+  ]);
 
   return (
-    <>
-      <Topbar eyebrow="Talhões" title={overview.field.name}><AssistantEntryButton label={`Pergunte sobre ${overview.field.name}`}/></Topbar>
-      <div className="content-wrap">
-        <FieldSatelliteDecisionStrip fieldId={fieldId} snapshots={overview.ndviSnapshots} />
-        <FieldOverviewTabs overview={overview} alerts={alerts} />
-      </div>
-    </>
+    <div className="simple-field-shell">
+      <SimpleFieldOverview
+        overview={overview}
+        alerts={alerts.filter((alert) => alert.fieldId === fieldId)}
+        analysisFreshness={analysisEvidence?.freshness ?? null}
+        deliveryStatus={deliveryRows[0] ?? null}
+        canRefreshAnalysis={AUTO_REFRESH_ROLES.has(session.role)}
+      />
+    </div>
   );
 }

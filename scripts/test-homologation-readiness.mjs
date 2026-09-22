@@ -26,8 +26,6 @@ const safeBase = {
   S3_SECRET_KEY: configured("storage-secret"),
   REPORT_STORAGE_PROVIDER: "inline",
   RAIZ_ASSISTANT_MODE: "local",
-  COPERNICUS_CLIENT_ID: configured("copernicus-client"),
-  COPERNICUS_CLIENT_SECRET: configured("copernicus-secret"),
   MERCADO_PAGO_ACCESS_TOKEN: configured("billing-access"),
   MERCADO_PAGO_WEBHOOK_SECRET: configured("billing-webhook"),
   MERCADO_PAGO_CHECKOUT_ENABLED: "false",
@@ -40,6 +38,41 @@ assert.equal(complete.automatedOk, true, "Contexto técnico completo não deve t
 assert.equal(complete.releaseReady, false, "Preflight nunca pode emitir GO de produção automaticamente.");
 assert.ok(complete.manualGates.length > 0, "Gates externos/humanos precisam permanecer explícitos.");
 assert.ok(complete.checks.some((item) => item.name === "cabeda-audit-context" && item.status === "READY_TO_EXECUTE"));
+assert.ok(complete.checks.some((item) => item.name === "satellite-ndvi-provider" && item.status === "PASS"));
+assert.doesNotMatch(JSON.stringify(complete), /copernicus-config|Credenciais Copernicus/);
+
+const blankProviderReadiness = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "   ",
+});
+assert.equal(blankProviderReadiness.automatedOk, true);
+assert.ok(blankProviderReadiness.checks.some(
+  (item) => item.name === "satellite-ndvi-provider"
+    && item.status === "PASS"
+    && /Earth Search/.test(item.message),
+));
+
+const blockedExplicitCopernicus = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+});
+assert.equal(blockedExplicitCopernicus.automatedOk, false);
+assert.ok(blockedExplicitCopernicus.blocked.some((item) => item.name === "satellite-ndvi-provider"));
+
+const readyExplicitCopernicus = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "copernicus",
+  COPERNICUS_CLIENT_ID: "client",
+  COPERNICUS_CLIENT_SECRET: "secret",
+});
+assert.ok(readyExplicitCopernicus.checks.some((item) => item.name === "satellite-ndvi-provider" && item.status === "PASS"));
+
+const blockedInvalidProvider = evaluateHomologationReadiness({
+  ...safeBase,
+  NDVI_SATELLITE_PROVIDER: "inventado",
+});
+assert.equal(blockedInvalidProvider.automatedOk, false);
+assert.ok(blockedInvalidProvider.blocked.some((item) => item.name === "satellite-ndvi-provider"));
 
 const missingCabeda = evaluateHomologationReadiness({
   ...safeBase,
@@ -73,7 +106,6 @@ for (const secret of [
   safeBase.S3_SECRET_KEY,
   safeBase.MERCADO_PAGO_ACCESS_TOKEN,
   safeBase.MERCADO_PAGO_WEBHOOK_SECRET,
-  safeBase.COPERNICUS_CLIENT_SECRET,
   safeBase.HOMOLOGATION_DATABASE_URL,
 ]) {
   assert.equal(serialized.includes(secret), false, "Resultado privacy-safe não pode serializar valores sensíveis.");
@@ -93,7 +125,6 @@ for (const secret of [
   safeBase.S3_SECRET_KEY,
   safeBase.MERCADO_PAGO_ACCESS_TOKEN,
   safeBase.MERCADO_PAGO_WEBHOOK_SECRET,
-  safeBase.COPERNICUS_CLIENT_SECRET,
   safeBase.HOMOLOGATION_DATABASE_URL,
 ]) {
   assert.equal(evidenceSerialized.includes(secret), false, "Artefato de homologação não pode serializar valores sensíveis.");
@@ -135,7 +166,6 @@ for (const secret of [
   safeBase.S3_SECRET_KEY,
   safeBase.MERCADO_PAGO_ACCESS_TOKEN,
   safeBase.MERCADO_PAGO_WEBHOOK_SECRET,
-  safeBase.COPERNICUS_CLIENT_SECRET,
   safeBase.HOMOLOGATION_DATABASE_URL,
 ]) {
   assert.equal(apiSerialized.includes(secret), false, "Resposta HTTP sanitizada nunca pode incluir secret/configuração bruta.");

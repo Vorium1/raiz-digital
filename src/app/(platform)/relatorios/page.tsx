@@ -49,7 +49,7 @@ export default async function ReportsPage() {
           {published.length ? published.map((report: any) => (
             <div key={report.id} className="report-list-item" style={{ padding: "12px 22px" }}>
               <span><strong>{report.analysisCode} · {report.fieldName}</strong><small>{report.clientName} · {report.propertyName} · {report.seasonLabel} · publicado por {report.publishedByName ?? "—"} em {new Date(report.publishedAt).toLocaleString("pt-BR")}</small></span>
-              <Link href={`/relatorios/talhao/${report.analysisId}`} className="button ghost">Abrir</Link>
+              <Link href={`/relatorios/talhao/${report.analysisId}?versao=publicada`} className="button ghost">Abrir versão publicada</Link>
             </div>
           )) : <div style={{ padding: "0 22px 18px" }}><EmptyState icon="file" title="Nenhum relatório publicado ainda" description="Publique a partir de uma interpretação já aprovada, na tela de Análises."/></div>}
         </section>

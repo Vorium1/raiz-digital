@@ -1,0 +1,95 @@
+/* Complemento visual UX 2.0: análise, recomendação, revisão e tabelas no mesmo conceito claro. */
+
+.ux2-shell .ux2-review-workspace { background:#fffdf8; border-color:#dbe4d8; box-shadow:0 10px 28px rgba(46,68,51,.055); }
+.ux2-shell .ux2-review-heading { background:linear-gradient(135deg,#f2f7ee,#fffdf8); border-color:#dfe6dc; }
+.ux2-shell .ux2-review-heading h2 { color:#1d402d; }
+.ux2-shell .ux2-review-heading p { color:#6d786f; }
+.ux2-shell .ux2-review-flow { background:#fbfcf8; border-color:#dfe6dc; }
+.ux2-shell .ux2-review-flow > div { color:#78847c; }
+.ux2-shell .ux2-review-flow > div:not(:last-child)::after { background:#dce5d9; }
+.ux2-shell .ux2-review-flow span { background:#f1f4ef; border-color:#d9e2d7; color:#718078; }
+.ux2-shell .ux2-review-flow .done { color:#477b52; }
+.ux2-shell .ux2-review-flow .done span { background:#e7f3e5; border-color:#cfe5cb; color:#3e874d; }
+.ux2-shell .ux2-review-flow .current { color:#2f7443; }
+.ux2-shell .ux2-review-flow .current span { background:#dfeedd; border-color:#bcdab9; box-shadow:0 0 0 4px rgba(63,132,76,.06); color:#347b45; }
+.ux2-shell .ux2-review-main { border-color:#e0e6de; }
+.ux2-shell .ux2-review-section + .ux2-review-section { border-color:#e0e6de; }
+.ux2-shell .ux2-review-section-head h3,
+.ux2-shell .ux2-audit-head h3 { color:#284735; }
+.ux2-shell .ux2-draft-badge { background:#f7efdd; border-color:#ead9b5; color:#916c2f; }
+.ux2-shell .ux2-dose-item { background:#f8f9f5; border-color:#dfe5dc; }
+.ux2-shell .ux2-dose-item.ready { background:#f1f7ee; border-color:#d4e7d0; }
+.ux2-shell .ux2-dose-item.blocked { background:#fcf2ef; border-color:#ecd8d3; }
+.ux2-shell .ux2-dose-icon { background:#e7f2e4; color:#3e7e4a; }
+.ux2-shell .ux2-dose-item.blocked .ux2-dose-icon { background:#f8e7e3; color:#b95c4e; }
+.ux2-shell .ux2-dose-item small,
+.ux2-shell .ux2-dose-item span { color:#748078; }
+.ux2-shell .ux2-dose-item strong { color:#244532; }
+.ux2-shell .ux2-dose-origin code { background:#edf1eb; color:#52685a; }
+.ux2-shell .ux2-finding-summary > div { background:#f7f8f4; border-color:#e0e6de; }
+.ux2-shell .ux2-finding-summary strong { color:#304d3a; }
+.ux2-shell .ux2-review-warning { background:#fbf5e8; border-color:#ecdfc2; color:#7e673d; }
+.ux2-shell .ux2-audit-footer { background:#f4f6f1; border-left:1px solid #e0e6de; }
+.ux2-shell .ux2-audit-list > div,
+.ux2-shell .ux2-audit-sources,
+.ux2-shell .ux2-audit-blockers,
+.ux2-shell .ux2-signoff { border-color:#dde5db; }
+.ux2-shell .ux2-audit-list dd { color:#36513f; }
+.ux2-shell .ux2-audit-sources > div { background:#fffdf8; border:1px solid #e1e7df; }
+.ux2-shell .ux2-audit-sources code { color:#4f7658; }
+.ux2-shell .ux2-audit-blockers li { background:#faf4e8; }
+.ux2-shell .ux2-signoff-check { color:#465a4d; }
+.ux2-shell .ux2-approved-box { background:#eaf5e8; border-color:#d2e7ce; color:#347344; }
+.ux2-shell .ux2-approved-box small,
+.ux2-shell .ux2-approved-box span { color:#687e6e; }
+.ux2-shell .ux2-review-placeholder,
+.ux2-shell .ux2-review-empty { color:#708078; }
+
+/* Detalhe de análise com hierarquia mais próxima das telas conceituais. */
+.ux2-shell .ux2-analysis-detail .detail-header { background:#fffdf8; border:1px solid #dce4da; border-radius:16px; margin-bottom:14px; padding:18px 20px; }
+.ux2-shell .ux2-analysis-detail .detail-header p { color:#758078; }
+.ux2-shell .ux2-analysis-detail .detail-columns-secondary { opacity:.98; }
+.ux2-shell .ux2-technical-details { background:#fffdf8; border-color:#dce4da; box-shadow:none; }
+.ux2-shell .ux2-technical-details > summary { background:#f4f7f1; color:#425849; }
+.ux2-shell .ux2-technical-details > summary span { color:#7a867e; }
+.ux2-shell .ux2-technical-details[open] > summary { border-color:#dce4da; }
+
+/* Elementos de dados que ainda carregavam fundos escuros do tema anterior. */
+.ux2-shell .data-table th,
+.ux2-shell .agro-table th,
+.ux2-shell .report-table th { background:#f1f4ef; color:#66756c; }
+.ux2-shell .data-table td,
+.ux2-shell .agro-table td,
+.ux2-shell .report-table td { border-color:#e2e7e0; color:#30483a; }
+.ux2-shell .data-table tr:hover td { background:#f8faf6; }
+.ux2-shell .agro-table-wrap { border-color:#dce4da; }
+.ux2-shell .analysis-row:hover,
+.ux2-shell .priority-row:hover,
+.ux2-shell .field-order-item:hover,
+.ux2-shell .field-order-item.active { background:#f1f6ef; }
+.ux2-shell .analysis-progress > div,
+.ux2-shell .continue-progress > div,
+.ux2-shell .range-bar-track { background:#e3e8e1; }
+.ux2-shell .summary-item,
+.ux2-shell .metric-card,
+.ux2-shell .analytics-stat,
+.ux2-shell .executive-metric,
+.ux2-shell .fields-browser-detail { background:#fffdf8; border-color:#dce4da; }
+
+/* Mapas e módulos podem ser visualmente densos, mas a moldura permanece clara. */
+.ux2-shell .fields-browser-list,
+.ux2-shell .map-explorer-list,
+.ux2-shell .ndvi-panel,
+.ux2-shell .field-overview-header,
+.ux2-shell .field-overview-parameter-toolbar { background:#fffdf8; border-color:#dce4da; }
+.ux2-shell .field-overview-tabs,
+.ux2-shell .field-overview-timeline-row { border-color:#dfe5dc; }
+
+/* Relatório: mantém documento branco, agora sem contraste brusco com o aplicativo. */
+.ux2-shell .report-toolbar { color:#314d3b; }
+.ux2-shell .report-version-toggle { background:#e9eee7; }
+.ux2-shell .report-version-toggle a.active { background:#fffdf8; }
+
+@media(max-width:1050px){
+  .ux2-shell .ux2-audit-footer { border-left:0; border-top:1px solid #e0e6de; }
+}

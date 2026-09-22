@@ -1,38 +1,42 @@
 import assert from "node:assert/strict";
-import { checkPrescriptionGate, PRESCRIPTION_GATE_BLOCKED_REASON } from "../src/domain/agronomic-prescription-gate.ts";
+import {
+  checkPrescriptionDraftGate,
+  checkPrescriptionGate,
+  PRESCRIPTION_DRAFT_GATE_BLOCKED_REASON,
+  PRESCRIPTION_DRAFT_STATUS,
+  PRESCRIPTION_GATE_BLOCKED_REASON,
+} from "../src/domain/agronomic-prescription-gate.ts";
 
 let n = 0;
 function scenario(name, fn) { fn(); n++; }
 
-// 1. sem interpretação (null) -> bloqueado
-scenario("sem interpretação -> bloqueado", () => {
-  const result = checkPrescriptionGate(null);
-  assert.equal(result.allowed, false);
-  assert.equal(result.reason, PRESCRIPTION_GATE_BLOCKED_REASON);
+scenario("rascunho sempre nasce PENDING_REVIEW", () => {
+  assert.equal(PRESCRIPTION_DRAFT_STATUS, "PENDING_REVIEW");
 });
 
-// 2. CALCULATED (motor rodou, zero parâmetro interpretável) -> bloqueado
-scenario("CALCULATED -> bloqueado", () => {
-  const result = checkPrescriptionGate("CALCULATED");
-  assert.equal(result.allowed, false);
+scenario("sem interpretação -> ambos bloqueados", () => {
+  assert.deepEqual(checkPrescriptionGate(null), { allowed: false, reason: PRESCRIPTION_GATE_BLOCKED_REASON });
+  assert.deepEqual(checkPrescriptionDraftGate(null), { allowed: false, reason: PRESCRIPTION_DRAFT_GATE_BLOCKED_REASON });
 });
 
-// 3. IN_REVIEW (interpretável, mas ainda sem revisão humana) -> bloqueado
-scenario("IN_REVIEW -> bloqueado (achado real: versão anterior deste gate aceitava, errado)", () => {
-  const result = checkPrescriptionGate("IN_REVIEW");
-  assert.equal(result.allowed, false);
+scenario("CALCULATED -> ambos bloqueados", () => {
+  assert.equal(checkPrescriptionGate("CALCULATED").allowed, false);
+  assert.equal(checkPrescriptionDraftGate("CALCULATED").allowed, false);
 });
 
-// 4. APPROVED -> permitido (só aqui a rota real segue pro provider)
-scenario("APPROVED -> permitido", () => {
-  const result = checkPrescriptionGate("APPROVED");
-  assert.equal(result.allowed, true);
+scenario("IN_REVIEW -> pode preparar rascunho, nunca promover oficialmente", () => {
+  assert.equal(checkPrescriptionDraftGate("IN_REVIEW").allowed, true);
+  assert.equal(checkPrescriptionGate("IN_REVIEW").allowed, false);
 });
 
-// status desconhecido/inesperado -> bloqueado por padrão (fail closed, nunca abre por engano)
-scenario("status desconhecido -> bloqueado (fail closed)", () => {
-  const result = checkPrescriptionGate("PUBLISHED");
-  assert.equal(result.allowed, false);
+scenario("APPROVED -> pode preparar/regenerar e pode promover oficialmente", () => {
+  assert.equal(checkPrescriptionDraftGate("APPROVED").allowed, true);
+  assert.equal(checkPrescriptionGate("APPROVED").allowed, true);
 });
 
-console.log(`agronomic-prescription-gate: ${n} cenários aprovados`);
+scenario("status desconhecido -> ambos fail closed", () => {
+  assert.equal(checkPrescriptionGate("PUBLISHED").allowed, false);
+  assert.equal(checkPrescriptionDraftGate("PUBLISHED").allowed, false);
+});
+
+console.log(`agronomic-prescription-gate: ${n} cenários aprovados (rascunho separado de promoção oficial)`);

@@ -33,7 +33,10 @@ jobs:
       - name: Rodar testes (lógica pura, sem banco de dados)
         run: |
           npm run test:handoff
+          node --experimental-strip-types scripts/test-map-runtime-recovery.mjs
+          node --experimental-strip-types scripts/test-final-route-permissions.mjs
           node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs
+          node --experimental-strip-types scripts/test-ux3-zero-training.mjs
 
       - name: Validar preflight automático de homologação
         run: node --experimental-strip-types scripts/test-homologation-readiness.mjs

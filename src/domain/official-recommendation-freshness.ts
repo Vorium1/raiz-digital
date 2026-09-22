@@ -5,7 +5,7 @@ export type OfficialRecommendationSourceKind = "AI" | "UNRESOLVED_AI" | "NON_AI"
 
 export type OfficialRecommendationFreshness = {
   current: boolean;
-  code: "CURRENT" | "SOURCE_UNRESOLVED" | "GENERATION_NOT_APPROVED" | "CONTEXT_CHANGED" | "INTERPRETATION_SUPERSEDED" | "LAB_EVIDENCE_CHANGED";
+  code: "CURRENT" | "SOURCE_UNRESOLVED" | "GENERATION_NOT_APPROVED" | "CONTEXT_CHANGED" | "INTERPRETATION_SUPERSEDED" | "LAB_EVIDENCE_CHANGED" | "CROP_PROFILE_CHANGED" | "AGRONOMIC_RULES_CHANGED";
   reason: string | null;
 };
 
@@ -25,7 +25,10 @@ export function evaluateOfficialRecommendationFreshness(input: {
   latestInterpretationId?: string | null;
   latestInterpretationStatus?: string | null;
   latestInterpretationCreatedAt?: string | null;
+  latestInterpretationCropProfileId?: string | null;
+  currentCropProfileId?: string | null;
   latestImportCommittedAt?: string | null;
+  latestRuleUpdatedAt?: string | null;
 }): OfficialRecommendationFreshness {
   if (input.sourceKind === "NON_AI") return { current: true, code: "CURRENT", reason: null };
 
@@ -72,12 +75,20 @@ export function evaluateOfficialRecommendationFreshness(input: {
   const evidence = evaluateAnalysisEvidenceFreshness({
     interpretationCreatedAt: input.latestInterpretationCreatedAt,
     latestImportCommittedAt: input.latestImportCommittedAt,
+    interpretationCropProfileId: input.latestInterpretationCropProfileId,
+    currentCropProfileId: input.currentCropProfileId,
+    latestRuleUpdatedAt: input.latestRuleUpdatedAt,
   });
   if (!evidence.current) {
+    const code = evidence.code === "CROP_PROFILE_CHANGED"
+      ? "CROP_PROFILE_CHANGED"
+      : evidence.code === "AGRONOMIC_RULES_CHANGED"
+        ? "AGRONOMIC_RULES_CHANGED"
+        : "LAB_EVIDENCE_CHANGED";
     return {
       current: false,
-      code: "LAB_EVIDENCE_CHANGED",
-      reason: evidence.reason ?? "O laudo laboratorial mudou depois da interpretação usada por esta recomendação.",
+      code,
+      reason: evidence.reason ?? "A evidência ou regra agronômica mudou depois da interpretação usada por esta recomendação.",
     };
   }
 

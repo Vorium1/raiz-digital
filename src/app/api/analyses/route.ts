@@ -1,6 +1,7 @@
 import { isAnalysisDepthId, type AnalysisDepthId } from "@/domain/analysis-depths";
 import { getPlatformSession } from "@/lib/auth/session";
 import { createAnalysis, listAnalyses } from "@/lib/repositories/analyses";
+import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
 
 const sourceTypes = new Set(["INTEGRATION", "CSV", "XLSX", "PDF_OCR", "MANUAL"] as const);
 
@@ -47,6 +48,9 @@ export async function POST(request: Request) {
   if (contextBytes > 64 * 1024) {
     return Response.json({ error: "Contexto da análise excede o limite de 64 KB. Vincule documentos em vez de colar conteúdo integral." }, { status: 413 });
   }
+
+  try { parseIrrigationApplications(irrigationApplicationsFromContext(analysisContext)); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Registro de irrigação inválido." }, { status: 400 }); }
 
   const analysis = await createAnalysis({
     tenantId: session.tenantId,

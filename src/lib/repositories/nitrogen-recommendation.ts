@@ -1,4 +1,5 @@
 import {
+  buildNitrogenOrganicMatterFingerprint,
   evaluateNitrogenRecommendationReadiness,
   isOrganicMatterPercentUnit,
   type NitrogenContextFields,
@@ -178,6 +179,13 @@ export async function getNitrogenRecommendationWorkspace(input: {
     const targetCropSource = base.nextCrop?.trim() ? "NEXT_CROP" : base.currentCrop?.trim() ? "CURRENT_CROP" : "MISSING";
     const organicMatterUnits = [...new Set(omResult.rows.map((row) => row.unit))];
     const percentRows = omResult.rows.filter((row) => isOrganicMatterPercentUnit(row.unit));
+    const organicMatterObservations = omResult.rows.map((row) => ({
+      sampleCode: row.sampleCode,
+      value: row.value,
+      unit: row.unit,
+      method: row.method,
+    }));
+    const organicMatterFingerprint = buildNitrogenOrganicMatterFingerprint(organicMatterObservations);
 
     const readiness = evaluateNitrogenRecommendationReadiness({
       targetCropRaw,
@@ -206,6 +214,8 @@ export async function getNitrogenRecommendationWorkspace(input: {
         units: organicMatterUnits,
         methods: [...new Set(omResult.rows.map((row) => row.method))],
         sampleCodes: [...new Set(omResult.rows.map((row) => row.sampleCode))],
+        observations: organicMatterObservations,
+        fingerprint: organicMatterFingerprint,
       },
       readiness,
       recommendationPreview,
@@ -366,6 +376,7 @@ export async function calculateNitrogenRecommendation(input: {
       seasonUpdatedAt: workspace.seasonUpdatedAt,
       nitrogenContextUpdatedAt: workspace.context.updatedAt,
       organicMatter: workspace.organicMatter,
+      organicMatterFingerprint: workspace.organicMatter.fingerprint,
       context: workspace.context,
       normalized: workspace.readiness.normalized,
     },

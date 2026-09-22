@@ -3,29 +3,30 @@ import {
   NDVI_RASTER_ALGORITHM_VERSION,
   readNdviRasterArtifact,
 } from "../src/lib/ndvi-raster-storage.ts";
-import { COPERNICUS_NDVI_MOSAICKING_ORDER } from "../src/lib/satellite/copernicus-ndvi-provider.ts";
+import { EARTH_SEARCH_NDVI_MOSAICKING_ORDER } from "../src/lib/satellite/earth-search-ndvi-provider.ts";
 
 /**
  * Auditoria SOMENTE LEITURA da cadeia de custódia NDVI em um ambiente autorizado.
  *
- * Prova, sem reconsultar o Copernicus, que:
+ * Prova, sem reconsultar o provider de satélite, que:
  * - migration 037 está aplicada;
  * - o PostgreSQL protege snapshots arquivados contra UPDATE/DELETE e o papel de runtime não possui DELETE;
- * - o snapshot aponta para um objeto S3 durável;
+ * - o snapshot aponta para storage durável suportado (inline no Neon ou S3);
  * - metadados espaciais/algoritmo estão completos;
- * - o objeto pode ser recuperado;
- * - bytes e SHA-256 conferem com o PostgreSQL.
+ * - o raster pode ser recuperado;
+ * - bytes e SHA-256 conferem com o PostgreSQL;
+ * - o artefato recuperado possui assinatura PNG válida.
  *
- * Não imprime bbox/coordenadas do talhão e não executa INSERT/UPDATE/DELETE.
+ * Não imprime bbox/coordenadas do talhão nem a chave do objeto e não executa INSERT/UPDATE/DELETE.
  *
- * Exemplo:
+ * Exemplo atual (inline Neon):
  *   HOMOLOGATION_DATABASE_URL=<url> \
  *   NDVI_AUDIT_TENANT_ID=<tenant-uuid> \
  *   NDVI_AUDIT_FIELD_ID=<field-uuid> \
- *   NDVI_AUDIT_DATE=2026-09-10 \
- *   STORAGE_PROVIDER=s3 \
- *   S3_ENDPOINT=<...> S3_BUCKET=<...> S3_ACCESS_KEY=<...> S3_SECRET_KEY=<...> \
+ *   NDVI_AUDIT_DATE=2026-09-18 \
  *   npm run ndvi:audit-raster
+ *
+ * Para snapshots S3, as credenciais S3 continuam sendo necessárias somente para recuperar o objeto.
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,19 +41,18 @@ const REQUIRED_COLUMNS = [
   "raster_mosaicking_order",
   "raster_archived_at",
 ];
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 
 const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
 const tenantId = process.env.NDVI_AUDIT_TENANT_ID?.trim();
 const fieldId = process.env.NDVI_AUDIT_FIELD_ID?.trim();
 const actorUserId = process.env.NDVI_AUDIT_ACTOR_USER_ID?.trim();
 const requestedDate = process.env.NDVI_AUDIT_DATE?.trim() || null;
-const provider = (process.env.STORAGE_PROVIDER ?? "").trim().toLowerCase();
 
 if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL é obrigatório; esta auditoria não escolhe banco implicitamente.");
 if (!tenantId) throw new Error("NDVI_AUDIT_TENANT_ID é obrigatório.");
 if (!fieldId) throw new Error("NDVI_AUDIT_FIELD_ID é obrigatório.");
 if (requestedDate && !DATE_RE.test(requestedDate)) throw new Error("NDVI_AUDIT_DATE deve usar YYYY-MM-DD.");
-if (provider !== "s3") throw new Error("A prova de homologação exige STORAGE_PROVIDER=s3; storage local não comprova persistência durável.");
 
 const { Client } = pg;
 const client = new Client({
@@ -64,6 +64,18 @@ function bboxIsValid(value) {
   if (!Array.isArray(value) || value.length !== 4 || value.some((item) => typeof item !== "number" || !Number.isFinite(item))) return false;
   const [minLon, minLat, maxLon, maxLat] = value;
   return minLon < maxLon && minLat < maxLat;
+}
+
+function storageKind(key) {
+  if (typeof key !== "string") return null;
+  if (key.startsWith("inline-ndvi:v1:")) return "INLINE_NEON";
+  if (key.startsWith("s3:v1:")) return "S3";
+  return null;
+}
+
+function hasPngSignature(bytes) {
+  if (!bytes || bytes.length < PNG_SIGNATURE.length) return false;
+  return PNG_SIGNATURE.every((expected, index) => bytes[index] === expected);
 }
 
 await client.connect();
@@ -158,24 +170,26 @@ try {
   }
 
   const snapshot = snapshotResult.rows[0];
+  const storage = storageKind(snapshot.rasterObjectKey);
   const blockers = [];
-  if (!snapshot.rasterObjectKey?.startsWith("s3:v1:")) blockers.push("RASTER_NOT_DURABLE_S3");
+  if (!storage) blockers.push("RASTER_STORAGE_NOT_DURABLE");
   if (!/^[a-f0-9]{64}$/.test(snapshot.rasterSha256 ?? "")) blockers.push("RASTER_SHA256_MISSING_OR_INVALID");
   if (!Number.isSafeInteger(Number(snapshot.rasterBytes)) || Number(snapshot.rasterBytes) <= 0) blockers.push("RASTER_BYTES_INVALID");
   if (!bboxIsValid(snapshot.rasterBbox)) blockers.push("RASTER_BBOX_INVALID");
   if (!Number.isSafeInteger(Number(snapshot.rasterWidth)) || Number(snapshot.rasterWidth) <= 0) blockers.push("RASTER_WIDTH_INVALID");
   if (!Number.isSafeInteger(Number(snapshot.rasterHeight)) || Number(snapshot.rasterHeight) <= 0) blockers.push("RASTER_HEIGHT_INVALID");
   if (snapshot.rasterAlgorithm !== NDVI_RASTER_ALGORITHM_VERSION) blockers.push("RASTER_ALGORITHM_UNEXPECTED");
-  if (snapshot.rasterMosaickingOrder !== COPERNICUS_NDVI_MOSAICKING_ORDER) blockers.push("RASTER_MOSAICKING_UNEXPECTED");
+  if (snapshot.rasterMosaickingOrder !== EARTH_SEARCH_NDVI_MOSAICKING_ORDER) blockers.push("RASTER_MOSAICKING_UNEXPECTED");
   if (!snapshot.rasterArchivedAt) blockers.push("RASTER_ARCHIVED_AT_MISSING");
 
   if (blockers.length) {
     console.log(JSON.stringify({
       readyForImmutableRasterEvidence: false,
       capturedAt: snapshot.capturedAt,
+      storage,
       blockers,
       databaseImmutabilityVerified: true,
-      note: "Metadados persistidos ainda não atendem ao gate de custódia; nenhum objeto foi aceito como evidência.",
+      note: "Metadados persistidos ainda não atendem ao gate de custódia; nenhum raster foi aceito como evidência.",
     }, null, 2));
     process.exitCode = 2;
   } else {
@@ -186,14 +200,16 @@ try {
       sha256: snapshot.rasterSha256,
       bytes: Number(snapshot.rasterBytes),
     });
+    if (!hasPngSignature(bytes)) {
+      throw new Error("Integridade estrutural falhou: o artefato NDVI recuperado não possui assinatura PNG válida.");
+    }
 
     console.log(JSON.stringify({
       readyForImmutableRasterEvidence: true,
       capturedAt: snapshot.capturedAt,
       source: snapshot.source,
       providerSceneIdPresent: Boolean(snapshot.providerSceneId),
-      storage: "S3",
-      sha256: snapshot.rasterSha256,
+      storage,
       bytes: bytes.length,
       dimensions: `${snapshot.rasterWidth}x${snapshot.rasterHeight}`,
       bboxValid: true,
@@ -201,9 +217,10 @@ try {
       mosaickingOrder: snapshot.rasterMosaickingOrder,
       archivedAtPresent: true,
       objectIntegrityVerified: true,
+      pngSignatureVerified: true,
       databaseImmutabilityVerified: true,
       runtimeDeletePrivilegeRevoked: true,
-      note: "Objeto recuperado do storage durável e validado por SHA-256/bytes contra o snapshot; trigger/privilegios de imutabilidade também confirmados. Coordenadas do talhão não foram impressas.",
+      note: "Raster recuperado do storage durável e validado por SHA-256/bytes/assinatura PNG; trigger e privilégios de imutabilidade também confirmados. Coordenadas, chave e hash não foram impressos.",
     }, null, 2));
   }
 } finally {

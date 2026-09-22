@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, type LabImportIssue, type LabImportRow } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, selectPromotableLabRows, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
@@ -7,10 +7,16 @@ import { saveRequiredRawImportFile, unwrapExtractedLabContent, verifyRawImportAr
 
 async function promoteRowsToLabResults(
   client: PoolClient,
-  input: { tenantId: string; analysisId: string; importId: string; rows: LabImportRow[]; issues: LabImportIssue[] },
+  input: {
+    tenantId: string;
+    analysisId: string;
+    importId: string;
+    rows: LabImportRow[];
+    issues: LabImportIssue[];
+    sampleType: LabSampleType;
+  },
 ) {
-  const blockedLines = new Set(input.issues.filter((issue) => issue.severity === "BLOCKER" && issue.line != null).map((issue) => issue.line));
-  const promotable = input.rows.filter((row) => !blockedLines.has(row.sourceLine));
+  const promotable = selectPromotableLabRows(input.rows, input.issues);
   if (promotable.length === 0) return { promotedSamples: 0, promotedResults: 0 };
 
   const analysisResult = await client.query<{ collectionOrderId: string | null }>(
@@ -39,14 +45,18 @@ async function promoteRowsToLabResults(
     }
 
     const sampleResult = await client.query<{ id: string }>(
-      `INSERT INTO lab_samples (tenant_id, analysis_id, sample_point_id, laboratory_code)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+      `INSERT INTO lab_samples (tenant_id, analysis_id, sample_point_id, laboratory_code, sample_type)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
        ON CONFLICT (tenant_id, analysis_id, laboratory_code)
        DO UPDATE SET sample_point_id = COALESCE(EXCLUDED.sample_point_id, lab_samples.sample_point_id)
+       WHERE lab_samples.sample_type = EXCLUDED.sample_type
        RETURNING id::text`,
-      [input.tenantId, input.analysisId, samplePointId, sampleCode],
+      [input.tenantId, input.analysisId, samplePointId, sampleCode, input.sampleType],
     );
-    const labSampleId = sampleResult.rows[0].id;
+    const labSampleId = sampleResult.rows[0]?.id;
+    if (!labSampleId) {
+      throw new Error(`SAMPLE_TYPE_CONFLICT:${sampleCode}`);
+    }
     promotedSamples += 1;
 
     for (const row of sampleRows) {
@@ -62,7 +72,17 @@ async function promoteRowsToLabResults(
           row.value,
           row.unit,
           row.method,
-          JSON.stringify({ sourceLine: row.sourceLine, importId: input.importId, unitInferred: row.unitInferred, methodInferred: row.methodInferred }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            importId: input.importId,
+            unitInferred: row.unitInferred,
+            methodInferred: row.methodInferred,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
+          }),
         ],
       );
       promotedResults += 1;
@@ -81,6 +101,7 @@ export async function commitCsvImport(input: {
   fallbackMethod?: string;
   hasAgronomicContext?: boolean;
   spatialLinked?: boolean;
+  sampleType?: LabSampleType;
 }) {
   // O fluxo normal chega com recibo de proveniência assinado: PDF/foto traz o CSV extraído; CSV/XLSX
   // traz o próprio conteúdo validado. Em ambos os casos o recibo vincula tenant + original arquivado +
@@ -203,7 +224,15 @@ export async function commitCsvImport(input: {
           row.method,
           row.unitInferred,
           row.methodInferred,
-          JSON.stringify({ sourceLine: row.sourceLine, source: row.source }),
+          JSON.stringify({
+            sourceLine: row.sourceLine,
+            source: row.source,
+            protocol: row.protocol || null,
+            rawMethod: row.rawMethod || null,
+            methodDerivedFromProtocol: row.methodDerivedFromProtocol,
+            depthFromCm: row.depthFromCm ?? null,
+            depthToCm: row.depthToCm ?? null,
+          }),
         ],
       );
     }
@@ -214,7 +243,14 @@ export async function commitCsvImport(input: {
       importId,
       rows: preview.rows,
       issues: preview.issues,
+      sampleType: input.sampleType ?? "SOLO",
     });
+
+    // O arquivo-fonte pode permanecer INCONSISTENT para auditoria quando possui
+    // ocorrências locais, mas a ANÁLISE pode seguir quando ao menos uma evidência
+    // laboratorial segura foi realmente promovida. Uma linha inválida não transforma
+    // todo o conjunto válido em análise inconsistente.
+    const analysisStatus = promoted.promotedResults > 0 ? "IMPORTED" : "INCONSISTENT";
 
     await client.query(
       `UPDATE analyses
@@ -228,7 +264,7 @@ export async function commitCsvImport(input: {
       [
         input.tenantId,
         input.analysisId,
-        preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED",
+        analysisStatus,
         preview.confidence.score,
         preview.confidence.level,
         analysisSourceType,
@@ -260,9 +296,10 @@ export async function commitCsvImport(input: {
         warnings: preview.warnings,
         promotedSamples: promoted.promotedSamples,
         promotedResults: promoted.promotedResults,
+        sampleType: input.sampleType ?? "SOLO",
       },
     });
 
-    return { importId, preview, analysisStatus: preview.blockers > 0 ? "INCONSISTENT" : "IMPORTED", promoted };
+    return { importId, preview, analysisStatus, promoted };
   });
 }

@@ -9,7 +9,7 @@ export type InputComparisonStatus = "OK" | "UNDER" | "OVER" | "UNIT_MISMATCH" | 
  * A última linha promovida de cada insumo continua visível para rastreabilidade, porém uma recomendação
  * originada por IA só é comparável quando sua geração ainda é APPROVED, foi criada com o contexto atual
  * da safra, continua vinculada à interpretação determinística APPROVED mais recente e essa interpretação
- * ainda representa o laudo laboratorial corrente. Caso contrário, a UI recebe STALE_RECOMMENDATION e
+ * ainda representa o laudo, o crop profile e as regras agronômicas correntes. Caso contrário, a UI recebe STALE_RECOMMENDATION e
  * NÃO classifica a aplicação como abaixo/acima/conforme.
  */
 export async function getCurrentInputComparisonForAnalysis(tenantId: string, analysisId: string, userId?: string) {
@@ -30,7 +30,10 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
       latestInterpretationId: string | null;
       latestInterpretationStatus: string | null;
       latestInterpretationCreatedAt: string | null;
+      latestInterpretationCropProfileId: string | null;
+      currentCropProfileId: string | null;
       latestImportCommittedAt: string | null;
+      latestRuleUpdatedAt: string | null;
       appliedQuantity: number | null;
       appliedUnit: string | null;
       hasAnyApplication: boolean;
@@ -73,17 +76,21 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
               li.id::text AS "latestInterpretationId",
               li.status::text AS "latestInterpretationStatus",
               li.created_at::text AS "latestInterpretationCreatedAt",
+              li.crop_profile_id::text AS "latestInterpretationCropProfileId",
+              cs.crop_profile_id::text AS "currentCropProfileId",
               latest_import.latest_import_at::text AS "latestImportCommittedAt",
+              rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               a.total_quantity::float8 AS "appliedQuantity",
               a.unit AS "appliedUnit",
               (aa.input_type IS NOT NULL) AS "hasAnyApplication"
        FROM latest_recommendations r
        JOIN analyses an ON an.tenant_id = $1::uuid AND an.id = $2::uuid
        JOIN crop_seasons cs ON cs.tenant_id = an.tenant_id AND cs.id = an.crop_season_id
+       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
        LEFT JOIN ai_generations g
          ON g.tenant_id = $1::uuid AND g.id = r.source_generation_id AND g.kind = 'AGRONOMIC_PRESCRIPTION'
        LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at
+         SELECT i.id, i.status, i.created_at, i.crop_profile_id
          FROM interpretations i
          WHERE i.tenant_id = an.tenant_id AND i.analysis_id = an.id
          ORDER BY i.revision DESC
@@ -94,6 +101,11 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
          FROM analysis_imports ai
          WHERE ai.tenant_id = an.tenant_id AND ai.analysis_id = an.id
        ) latest_import ON true
+       LEFT JOIN LATERAL (
+         SELECT greatest(cp.updated_at, coalesce(max(cpp.updated_at), cp.updated_at)) AS latest_rule_updated_at
+         FROM crop_profile_parameters cpp
+         WHERE cpp.crop_profile_id = cp.id
+       ) rule_state ON cp.id IS NOT NULL
        LEFT JOIN applied_totals a ON a.input_type = r.input_type AND a.unit = r.unit
        LEFT JOIN any_applied aa ON aa.input_type = r.input_type
        ORDER BY r.input_type`,
@@ -110,7 +122,10 @@ export async function getCurrentInputComparisonForAnalysis(tenantId: string, ana
         latestInterpretationId: row.latestInterpretationId,
         latestInterpretationStatus: row.latestInterpretationStatus,
         latestInterpretationCreatedAt: row.latestInterpretationCreatedAt,
+        latestInterpretationCropProfileId: row.latestInterpretationCropProfileId,
+        currentCropProfileId: row.currentCropProfileId,
         latestImportCommittedAt: row.latestImportCommittedAt,
+        latestRuleUpdatedAt: row.latestRuleUpdatedAt,
       });
 
       let status: InputComparisonStatus;

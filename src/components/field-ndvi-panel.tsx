@@ -28,6 +28,14 @@ type SoilLayerResponse = {
   analysisId: string | null;
   reportId: string | null;
 };
+type NdviRuntimeReadiness = {
+  ready: boolean;
+  copernicusConfigured: boolean;
+  durableStorageConfigured: boolean;
+  storageProvider: string;
+  missing: string[];
+};
+
 type SoilMapContext = {
   collectionOrderId: string;
   collectionOrderCode: string;
@@ -103,6 +111,7 @@ export function FieldNdviPanel({
   const [quality, setQuality] = useState<NdviObservationQuality>("INDETERMINADA");
   const [temporal, setTemporal] = useState<NdviTemporalAnalysis | null>(null);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<NdviRuntimeReadiness | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRasterDate, setSelectedRasterDate] = useState("");
   const [rasterLoading, setRasterLoading] = useState(false);
@@ -118,33 +127,37 @@ export function FieldNdviPanel({
   const effectiveCollectionOrderId = collectionOrderId ?? fallbackSoilContext?.collectionOrderId ?? null;
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setRefreshNote(null);
     void (async () => {
-      const res = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store" });
-      const payload = await res.json().catch(() => ({}));
-      if (cancelled) return;
-      if (!res.ok) {
-        setError(payload.error ?? "Não foi possível carregar os dados de satélite deste talhão.");
-        setLoading(false);
-        return;
+      try {
+        const res = await fetch(`/api/fields/${fieldId}/ndvi`, { cache: "no-store", signal: controller.signal });
+        const payload = await res.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!res.ok) throw new Error(payload.error ?? "Não foi possível carregar os dados de satélite deste talhão.");
+        const nextLatest = (payload.latest ?? null) as Snapshot | null;
+        const nextHistory = (payload.history ?? []) as Snapshot[];
+        const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
+        setLatest(nextLatest);
+        setHistory(nextHistory);
+        setFieldBoundary(payload.fieldBoundary ?? null);
+        setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
+        setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
+        setQuality(payload.quality ?? "INDETERMINADA");
+        setTemporal(payload.temporal ?? null);
+        setRuntime(payload.runtime ?? null);
+        onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
+      } catch (caught) {
+        if (!controller.signal.aborted) {
+          setError(caught instanceof Error ? caught.message : "Não foi possível carregar os dados de satélite deste talhão.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-      const nextLatest = (payload.latest ?? null) as Snapshot | null;
-      const nextHistory = (payload.history ?? []) as Snapshot[];
-      const newestArchivedRaster = nextHistory.find(hasArchivedRaster) ?? null;
-      setLatest(nextLatest);
-      setHistory(nextHistory);
-      setFieldBoundary(payload.fieldBoundary ?? null);
-      setSelectedRasterDate(newestArchivedRaster?.capturedAt.slice(0, 10) ?? "");
-      setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
-      setQuality(payload.quality ?? "INDETERMINADA");
-      setTemporal(payload.temporal ?? null);
-      setLoading(false);
-      onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
     })();
-    return () => { cancelled = true; };
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldId]);
 
@@ -176,8 +189,8 @@ export function FieldNdviPanel({
         if (!bounds) throw new Error("O raster NDVI foi recebido sem envelope geográfico válido.");
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("O raster NDVI retornou em formato inesperado.");
-        objectUrl = URL.createObjectURL(blob);
         if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
         setRasterOverlay({ url: objectUrl, bounds, opacity: 0.78 });
       } catch (caught) {
         if (controller.signal.aborted) return;
@@ -275,6 +288,7 @@ export function FieldNdviPanel({
       setVariabilityNote(payload.variability?.hasSignificantVariability ? payload.variability.note : null);
       setQuality(payload.quality ?? "INDETERMINADA");
       setTemporal(payload.temporal ?? null);
+      setRuntime(payload.runtime ?? runtime);
 
       const archivedCount = Number(payload.archivedRasterCount ?? payload.importedCount ?? 0);
       const pendingCount = Number(payload.pendingArchiveCount ?? 0);
@@ -292,6 +306,8 @@ export function FieldNdviPanel({
         setRefreshNote("Série temporal atualizada.");
       }
       onZoneColor?.(dominantZoneColor(nextLatest?.zoneBreakdownPct));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível buscar a leitura de satélite. Tente novamente.");
     } finally {
       setFetching(false);
     }
@@ -335,12 +351,23 @@ export function FieldNdviPanel({
     <div className="ndvi-panel card">
       <div className="ndvi-panel-head">
         <span className="eyebrow">INTELIGÊNCIA ESPACIAL + TEMPORAL · SENTINEL-2</span>
-        <button type="button" className="button ghost small" onClick={handleFetchSatellite} disabled={fetching}>
+        <button type="button" className="button ghost small" onClick={handleFetchSatellite} disabled={fetching || runtime?.ready === false}>
           <Icon name="history" size={14} />
           {fetching ? "Buscando série…" : latest ? "Atualizar 120 dias" : "Buscar histórico"}
         </button>
       </div>
       <p className="ndvi-panel-limitation"><Icon name="shield" size={13}/>A RAIZ usa Sentinel-2 L2A, mascara nuvem/sombra e recorta a visualização no limite real do talhão. O mapa usa o raster NDVI histórico arquivado e validado por integridade; não é interpolação do laboratório e não representa produtividade.</p>
+
+      {runtime?.ready === false && (
+        <div className="ndvi-panel-error">
+          <Icon name="warning" size={14}/>
+          <span>
+            NDVI real ainda não está conectado neste ambiente.
+            {runtime.missing.length > 0 ? ` Falta configurar: ${runtime.missing.join(", ")}.` : ""}
+            {" "}Depois dessa configuração, “Buscar histórico” passa a adquirir e arquivar o raster Sentinel-2 real.
+          </span>
+        </div>
+      )}
 
       {error && <p className="ndvi-panel-error"><Icon name="warning" size={14} />{error}</p>}
       {refreshNote && <p className="ndvi-panel-meta"><Icon name="check" size={14} />{refreshNote}</p>}
