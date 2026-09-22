@@ -363,16 +363,19 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await expect(terrainButton).toHaveClass(/active/);
 
     await expect.poll(async () => {
-      const mounted3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"] .google-field-terrain-3d-canvas > *').count();
+      const ready3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"][data-3d-state="ready"]').count();
       const resolvedFallback = await layers.locator('.real-field-map[data-map-provider]').count();
-      return mounted3d + resolvedFallback;
-    }, { timeout: 35_000, message: "Relevo precisa montar 3D de verdade ou resolver um fallback topográfico" }).toBeGreaterThan(0);
+      return ready3d + resolvedFallback;
+    }, { timeout: 35_000, message: "Relevo precisa confirmar 3D saudável ou resolver um fallback topográfico" }).toBeGreaterThan(0);
 
-    const mounted3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"] .google-field-terrain-3d-canvas > *').count();
-    if (mounted3d === 0) {
+    const ready3d = await layers.locator('.google-field-terrain-3d[data-map-provider="google-3d"][data-3d-state="ready"]').count();
+    if (ready3d === 0) {
       const fallback = layers.locator('.real-field-map[data-map-provider]');
       await expect(fallback).toBeVisible();
       await expect(fallback.locator(".real-field-map-hint")).toContainText(/relevo|topográfica/i);
+    } else {
+      await expect(layers.locator('.google-field-terrain-3d[data-3d-state="ready"]')).toBeVisible();
+      await expect(layers.locator(".google-field-terrain-3d-loading")).toHaveCount(0);
     }
 
     const errorDetails = layers.locator(".simple-map-layer-error");

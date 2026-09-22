@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { spatialGeometryPositions, type SpatialGeometry } from "@/components/spatial-map-types";
 import { loadGoogleMaps, subscribeGoogleMapsAuthFailure } from "@/lib/maps/google-maps-loader";
 import { monitorGoogle3DHealth } from "@/lib/maps/google-3d-health";
@@ -52,9 +52,11 @@ export function GoogleFieldTerrain3D({
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const camera = useMemo(() => cameraFor(boundary), [boundary]);
+  const [healthState, setHealthState] = useState<"loading" | "ready">("loading");
 
   useEffect(() => {
     let cancelled = false;
+    setHealthState("loading");
     let mapElement: any = null;
     let stopHealthCheck = () => {};
     let failed = false;
@@ -92,6 +94,9 @@ export function GoogleFieldTerrain3D({
         mapElement.style.width = "100%";
         mapElement.style.height = `${height}px`;
         mapElement.style.display = "block";
+        mapElement.style.opacity = "0";
+        mapElement.style.pointerEvents = "none";
+        mapElement.style.transition = "opacity 180ms ease";
 
         for (const ring of outerRings(boundary)) {
           const polygon = new Polygon3DElement({
@@ -104,7 +109,17 @@ export function GoogleFieldTerrain3D({
           mapElement.append(polygon);
         }
 
-        stopHealthCheck = monitorGoogle3DHealth(mapElement, fail);
+        stopHealthCheck = monitorGoogle3DHealth(
+          mapElement,
+          fail,
+          15_000,
+          () => {
+            if (cancelled || failed) return;
+            mapElement.style.opacity = "1";
+            mapElement.style.pointerEvents = "auto";
+            setHealthState("ready");
+          },
+        );
         clearTimeout(loadTimeout);
         hostRef.current.replaceChildren(mapElement);
       })
@@ -123,9 +138,35 @@ export function GoogleFieldTerrain3D({
   }, [boundary, camera, height, onFailure]);
 
   return (
-    <div className="google-field-terrain-3d" data-map-provider="google-3d">
+    <div
+      className="google-field-terrain-3d"
+      data-map-provider="google-3d"
+      data-3d-state={healthState}
+      style={{ position: "relative" }}
+    >
       <div ref={hostRef} className="google-field-terrain-3d-canvas" style={{ height }} />
-      <div className="google-field-terrain-3d-note">Satélite 3D · arraste para girar e incline para enxergar o relevo</div>
+      {healthState !== "ready" && (
+        <div
+          role="status"
+          className="google-field-terrain-3d-loading"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            background: "#edf0f3",
+            zIndex: 2,
+            fontWeight: 700,
+          }}
+        >
+          Preparando relevo 3D…
+        </div>
+      )}
+      <div className="google-field-terrain-3d-note">
+        {healthState === "ready"
+          ? "Satélite 3D · arraste para girar e incline para enxergar o relevo"
+          : "Validando disponibilidade do relevo 3D…"}
+      </div>
     </div>
   );
 }
