@@ -25,7 +25,7 @@ type RasterBandMetadata = {
   nodata?: number | string | null;
 };
 
-type EarthSearchAsset = {
+export type EarthSearchAsset = {
   href?: string;
   type?: string;
   roles?: string[];
@@ -251,11 +251,34 @@ function rasterBand(asset: EarthSearchAsset) {
   return asset["raster:bands"]?.[0] ?? {};
 }
 
-function physicalValue(raw: number, asset: EarthSearchAsset) {
+export function resolveEarthSearchBandTransform(item: EarthSearchItem, asset: EarthSearchAsset) {
   const meta = rasterBand(asset);
   const scale = typeof meta.scale === "number" ? meta.scale : 1;
-  const offset = typeof meta.offset === "number" ? meta.offset : 0;
-  return raw * scale + offset;
+  const declaredOffset = typeof meta.offset === "number" ? meta.offset : 0;
+  const boaOffsetApplied = typeof item.properties?.["earthsearch:boa_offset_applied"] === "boolean"
+    ? item.properties["earthsearch:boa_offset_applied"]!
+    : null;
+
+  // Earth Search pode publicar COGs já harmonizados mesmo mantendo raster:bands.offset=-0.1.
+  // Quando o item declara boa_offset_applied=true, reaplicar o offset desloca B04/B08 pela
+  // segunda vez e pode gerar NDVI > 1. Se o flag estiver ausente/false, preservamos o offset
+  // declarado; o cálculo NDVI abaixo continua fail-closed caso o resultado saia de [-1, 1].
+  const effectiveOffset = boaOffsetApplied === true ? 0 : declaredOffset;
+  return { scale, declaredOffset, effectiveOffset, boaOffsetApplied };
+}
+
+function physicalValue(raw: number, asset: EarthSearchAsset, item: EarthSearchItem) {
+  const transform = resolveEarthSearchBandTransform(item, asset);
+  return raw * transform.scale + transform.effectiveOffset;
+}
+
+export function computeEarthSearchNdvi(red: number, nir: number) {
+  if (!Number.isFinite(red) || !Number.isFinite(nir)) return null;
+  const denominator = nir + red;
+  if (!Number.isFinite(denominator) || denominator <= 0) return null;
+  const ndvi = (nir - red) / denominator;
+  if (!Number.isFinite(ndvi) || ndvi < -1 || ndvi > 1) return null;
+  return ndvi;
 }
 
 function isNoData(raw: number, asset: EarthSearchAsset) {
@@ -317,7 +340,7 @@ async function sceneArrays(
     readCogBand(assets.nir, bbox, width, height, "bilinear"),
     readCogBand(assets.scl, bbox, width, height, "nearest"),
   ]);
-  return { assets, polygons, bbox, red, nir, scl };
+  return { item, assets, polygons, bbox, red, nir, scl };
 }
 
 function pixelPoint(
@@ -347,12 +370,9 @@ function ndviAt(
   if (!Number.isFinite(rawRed) || !Number.isFinite(rawNir)) return null;
   if (isNoData(rawRed, arrays.assets.red) || isNoData(rawNir, arrays.assets.nir)) return null;
   if (!validScl(Number(arrays.scl[index]))) return null;
-  const red = physicalValue(rawRed, arrays.assets.red);
-  const nir = physicalValue(rawNir, arrays.assets.nir);
-  const denominator = nir + red;
-  if (!Number.isFinite(red) || !Number.isFinite(nir) || Math.abs(denominator) < 1e-12) return null;
-  const ndvi = (nir - red) / denominator;
-  return Number.isFinite(ndvi) ? Math.max(-1, Math.min(1, ndvi)) : null;
+  const red = physicalValue(rawRed, arrays.assets.red, arrays.item);
+  const nir = physicalValue(rawNir, arrays.assets.nir, arrays.item);
+  return computeEarthSearchNdvi(red, nir);
 }
 
 async function searchItems(input: FetchFieldNdviInput) {
@@ -397,8 +417,10 @@ export type EarthSearchReflectanceAudit = {
   rawNdviMean: number | null;
   redScale: number;
   redOffset: number;
+  redEffectiveOffset: number;
   nirScale: number;
   nirOffset: number;
+  nirEffectiveOffset: number;
   rawRedMin: number | null;
   rawRedMax: number | null;
   rawNirMin: number | null;
@@ -465,8 +487,8 @@ export async function auditEarthSearchReflectanceQuality(
       if (!Number.isFinite(rawRed) || !Number.isFinite(rawNir)) continue;
       if (isNoData(rawRed, arrays.assets.red) || isNoData(rawNir, arrays.assets.nir)) continue;
 
-      const red = physicalValue(rawRed, arrays.assets.red);
-      const nir = physicalValue(rawNir, arrays.assets.nir);
+      const red = physicalValue(rawRed, arrays.assets.red, arrays.item);
+      const nir = physicalValue(rawNir, arrays.assets.nir, arrays.item);
       if (!Number.isFinite(red) || !Number.isFinite(nir)) continue;
 
       rawRedMin = Math.min(rawRedMin, rawRed);
@@ -515,10 +537,12 @@ export async function auditEarthSearchReflectanceQuality(
       rawNdviMin: usablePairs ? rawNdviMin : null,
       rawNdviMax: usablePairs ? rawNdviMax : null,
       rawNdviMean: usablePairs ? rawNdviSum / usablePairs : null,
-      redScale: typeof rasterBand(arrays.assets.red).scale === "number" ? rasterBand(arrays.assets.red).scale! : 1,
-      redOffset: typeof rasterBand(arrays.assets.red).offset === "number" ? rasterBand(arrays.assets.red).offset! : 0,
-      nirScale: typeof rasterBand(arrays.assets.nir).scale === "number" ? rasterBand(arrays.assets.nir).scale! : 1,
-      nirOffset: typeof rasterBand(arrays.assets.nir).offset === "number" ? rasterBand(arrays.assets.nir).offset! : 0,
+      redScale: resolveEarthSearchBandTransform(item, arrays.assets.red).scale,
+      redOffset: resolveEarthSearchBandTransform(item, arrays.assets.red).declaredOffset,
+      redEffectiveOffset: resolveEarthSearchBandTransform(item, arrays.assets.red).effectiveOffset,
+      nirScale: resolveEarthSearchBandTransform(item, arrays.assets.nir).scale,
+      nirOffset: resolveEarthSearchBandTransform(item, arrays.assets.nir).declaredOffset,
+      nirEffectiveOffset: resolveEarthSearchBandTransform(item, arrays.assets.nir).effectiveOffset,
       rawRedMin: Number.isFinite(rawRedMin) ? rawRedMin : null,
       rawRedMax: Number.isFinite(rawRedMax) ? rawRedMax : null,
       rawNirMin: Number.isFinite(rawNirMin) ? rawNirMin : null,

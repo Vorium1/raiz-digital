@@ -26,6 +26,8 @@ import {
   EARTH_SEARCH_COLLECTION,
   EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
   EARTH_SEARCH_STAC_URL,
+  computeEarthSearchNdvi,
+  resolveEarthSearchBandTransform,
   selectEarthSearchScenes,
 } from "../src/lib/satellite/earth-search-ndvi-provider.ts";
 
@@ -219,7 +221,7 @@ const archivedKey = ndviRasterObjectKey({
   capturedAt: "2026-08-12",
   sha256: archivedSha,
 });
-assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V1");
+assert.equal(NDVI_RASTER_ALGORITHM_VERSION, "RAIZ_NDVI_CATEGORICAL_V2_BOA_OFFSET_SAFE");
 assert.equal(
   archivedKey,
   `ndvi/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222/2026-08-12/${archivedSha}.png`,
@@ -298,3 +300,35 @@ try {
   if (previousNdviProvider === undefined) delete process.env.NDVI_RASTER_STORAGE_PROVIDER;
   else process.env.NDVI_RASTER_STORAGE_PROVIDER = previousNdviProvider;
 }
+
+
+// 42-46. Earth Search BOA offset: evita dupla aplicação e falha fechado fora do domínio físico.
+const harmonizedItem = {
+  id: "harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": true,
+    "s2:processing_baseline": "05.12",
+  },
+};
+const rawBoaAsset = { "raster:bands": [{ scale: 0.0001, offset: -0.1 }] };
+assert.deepEqual(resolveEarthSearchBandTransform(harmonizedItem, rawBoaAsset), {
+  scale: 0.0001,
+  declaredOffset: -0.1,
+  effectiveOffset: 0,
+  boaOffsetApplied: true,
+});
+const nonHarmonizedItem = {
+  id: "non-harmonized",
+  properties: {
+    datetime: "2026-09-08T13:00:00Z",
+    "earthsearch:boa_offset_applied": false,
+    "s2:processing_baseline": "05.12",
+  },
+};
+assert.equal(resolveEarthSearchBandTransform(nonHarmonizedItem, rawBoaAsset).effectiveOffset, -0.1);
+assert.ok(Math.abs(computeEarthSearchNdvi(0.05, 0.25) - (2 / 3)) < 1e-12);
+assert.equal(computeEarthSearchNdvi(-0.05, 0.25), null);
+assert.equal(computeEarthSearchNdvi(-0.2, 0.1), null);
+
+console.log("ndvi-engine: 46 cenários aprovados, incluindo BOA offset seguro do Earth Search");

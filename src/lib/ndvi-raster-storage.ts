@@ -12,7 +12,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * Versão explícita da visualização categórica NDVI persistida. Se as faixas/cores/evalscript mudarem,
  * deve nascer outra versão em vez de reinterpretar silenciosamente um artefato histórico existente.
  */
-export const NDVI_RASTER_ALGORITHM_VERSION = "RAIZ_NDVI_CATEGORICAL_V1" as const;
+export const NDVI_RASTER_ALGORITHM_VERSION = "RAIZ_NDVI_CATEGORICAL_V2_BOA_OFFSET_SAFE" as const;
 
 export type StoredNdviRasterArtifact = {
   key: string;

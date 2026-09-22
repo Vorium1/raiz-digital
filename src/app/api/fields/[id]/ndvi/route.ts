@@ -107,12 +107,20 @@ function rasterMatchesCurrentBoundary(snapshot: any, fieldBoundary: any) {
   return hasArchivedRaster(snapshot) && ndviRasterBboxContainsBoundary(snapshot.rasterBbox, fieldBoundary);
 }
 
+function rasterMatchesCurrentAlgorithm(snapshot: any) {
+  return hasArchivedRaster(snapshot) && snapshot.rasterAlgorithm === NDVI_RASTER_ALGORITHM_VERSION;
+}
+
+function rasterMatchesCurrentEvidence(snapshot: any, fieldBoundary: any) {
+  return rasterMatchesCurrentBoundary(snapshot, fieldBoundary) && rasterMatchesCurrentAlgorithm(snapshot);
+}
+
 function usableHistoryForBoundary(history: any[], fieldBoundary: any) {
-  return history.filter((snapshot) => !hasArchivedRaster(snapshot) || rasterMatchesCurrentBoundary(snapshot, fieldBoundary));
+  return history.filter((snapshot) => !hasArchivedRaster(snapshot) || rasterMatchesCurrentEvidence(snapshot, fieldBoundary));
 }
 
 function staleSpatialSnapshotCount(history: any[], fieldBoundary: any) {
-  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentBoundary(snapshot, fieldBoundary)).length;
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, fieldBoundary)).length;
 }
 
 /**
@@ -132,7 +140,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
 
   const usableHistory = usableHistoryForBoundary(history, fieldBoundary);
-  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentBoundary(latest, fieldBoundary)
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, fieldBoundary)
     ? (usableHistory[0] ?? null)
     : latest;
 
@@ -204,12 +212,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const existingHistory = await listNdviHistoryForField(session.tenantId, fieldId, session.userId);
   const archivedByDate = new Map(
     existingHistory
-      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && rasterMatchesCurrentBoundary(snapshot, boundary))
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && rasterMatchesCurrentEvidence(snapshot, boundary))
       .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
   );
   const staleArchivedByDate = new Map(
     existingHistory
-      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot) && !rasterMatchesCurrentBoundary(snapshot, boundary))
+      .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, boundary))
       .map((snapshot: any) => [String(snapshot.capturedAt).slice(0, 10), snapshot]),
   );
 
@@ -301,7 +309,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     listNdviHistoryForField(session.tenantId, fieldId, session.userId),
   ]);
   const usableHistory = usableHistoryForBoundary(history, boundary);
-  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentBoundary(latest, boundary)
+  const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, boundary)
     ? (usableHistory[0] ?? null)
     : latest;
 
