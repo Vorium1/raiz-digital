@@ -113,12 +113,13 @@ async function main() {
          FROM field_ndvi_snapshots n
          WHERE n.tenant_id=a.tenant_id
            AND n.field_id=f.id
-         ORDER BY n.captured_at DESC
+           AND n.raster_algorithm = $2::text
+         ORDER BY n.captured_at DESC, n.created_at DESC
          LIMIT 1
        ) n ON true
        WHERE a.code = ANY($1::text[])
        ORDER BY a.code`,
-      [analysisCodes],
+      [analysisCodes, NDVI_RASTER_ALGORITHM_VERSION],
     );
 
     assert.equal(query.rows.length, analysisCodes.length, "Homologação precisa conter exatamente as três análises Cabeda canônicas.");

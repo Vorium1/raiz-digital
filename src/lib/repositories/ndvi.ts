@@ -35,7 +35,7 @@ export async function listNdviHistoryForField(tenantId: string, fieldId: string,
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT ${SNAPSHOT_COLUMNS} FROM field_ndvi_snapshots
-       WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC LIMIT 24`,
+       WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC, created_at DESC LIMIT 24`,
       [tenantId, fieldId],
     );
     return result.rows;
@@ -46,7 +46,7 @@ export async function getLatestNdviSnapshot(tenantId: string, fieldId: string, u
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT ${SNAPSHOT_COLUMNS} FROM field_ndvi_snapshots
-       WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC LIMIT 1`,
+       WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC, created_at DESC LIMIT 1`,
       [tenantId, fieldId],
     );
     return result.rows[0] ?? null;
@@ -59,13 +59,19 @@ export async function getNdviSnapshotForDate(input: {
   capturedAt: string;
   userId?: string;
   source?: string;
+  rasterAlgorithm?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `SELECT ${SNAPSHOT_COLUMNS} FROM field_ndvi_snapshots
-       WHERE tenant_id = $1::uuid AND field_id = $2::uuid AND captured_at = $3::date AND source = $4
+       WHERE tenant_id = $1::uuid
+         AND field_id = $2::uuid
+         AND captured_at = $3::date
+         AND source = $4
+         AND ($5::text IS NULL OR raster_algorithm IS NOT DISTINCT FROM $5::text)
+       ORDER BY created_at DESC
        LIMIT 1`,
-      [input.tenantId, input.fieldId, input.capturedAt, input.source ?? "SENTINEL_2"],
+      [input.tenantId, input.fieldId, input.capturedAt, input.source ?? "SENTINEL_2", input.rasterAlgorithm ?? null],
     );
     return result.rows[0] ?? null;
   });
@@ -95,7 +101,7 @@ export async function saveNdviSnapshot(input: {
     algorithm: string;
     mosaickingOrder: string;
   };
-  replaceExistingRasterSha256?: string | null;
+  supersedesRasterSha256?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     let result;
@@ -108,17 +114,7 @@ export async function saveNdviSnapshot(input: {
             raster_algorithm, raster_mosaicking_order, raster_archived_at)
          VALUES ($1::uuid, $2::uuid, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::uuid,
                  $14, $15, $16, $17::jsonb, $18, $19, $20, $21, now())
-         ON CONFLICT (tenant_id, field_id, captured_at, source) DO UPDATE SET
-           provider_scene_id = EXCLUDED.provider_scene_id, cloud_cover_pct = EXCLUDED.cloud_cover_pct,
-           pixel_count = EXCLUDED.pixel_count, mean_ndvi = EXCLUDED.mean_ndvi, min_ndvi = EXCLUDED.min_ndvi,
-           max_ndvi = EXCLUDED.max_ndvi, stddev_ndvi = EXCLUDED.stddev_ndvi, zone_breakdown_pct = EXCLUDED.zone_breakdown_pct,
-           raster_object_key = EXCLUDED.raster_object_key, raster_sha256 = EXCLUDED.raster_sha256,
-           raster_bytes = EXCLUDED.raster_bytes, raster_bbox = EXCLUDED.raster_bbox,
-           raster_width = EXCLUDED.raster_width, raster_height = EXCLUDED.raster_height,
-           raster_algorithm = EXCLUDED.raster_algorithm, raster_mosaicking_order = EXCLUDED.raster_mosaicking_order,
-           raster_archived_at = now()
-         WHERE field_ndvi_snapshots.raster_object_key IS NULL
-            OR ($22::text IS NOT NULL AND field_ndvi_snapshots.raster_sha256 = $22::text)
+         ON CONFLICT ON CONSTRAINT field_ndvi_snapshots_version_unique DO NOTHING
          RETURNING ${SNAPSHOT_COLUMNS}`,
         [
           input.tenantId, input.fieldId, input.capturedAt, input.source, input.providerSceneId ?? null,
@@ -127,7 +123,6 @@ export async function saveNdviSnapshot(input: {
           input.rasterArtifact.key, input.rasterArtifact.sha256.toLowerCase(), input.rasterArtifact.bytes,
           JSON.stringify(input.rasterArtifact.bbox), input.rasterArtifact.width, input.rasterArtifact.height,
           input.rasterArtifact.algorithm, input.rasterArtifact.mosaickingOrder,
-          input.replaceExistingRasterSha256?.toLowerCase() ?? null,
         ],
       );
     } catch (error) {
@@ -140,9 +135,14 @@ export async function saveNdviSnapshot(input: {
     if (!persisted) {
       const existing = await client.query(
         `SELECT ${SNAPSHOT_COLUMNS} FROM field_ndvi_snapshots
-         WHERE tenant_id = $1::uuid AND field_id = $2::uuid AND captured_at = $3::date AND source = $4
+         WHERE tenant_id = $1::uuid
+           AND field_id = $2::uuid
+           AND captured_at = $3::date
+           AND source = $4
+           AND raster_algorithm IS NOT DISTINCT FROM $5::text
+         ORDER BY created_at DESC
          LIMIT 1`,
-        [input.tenantId, input.fieldId, input.capturedAt, input.source],
+        [input.tenantId, input.fieldId, input.capturedAt, input.source, input.rasterArtifact.algorithm],
       );
       persisted = existing.rows[0];
     }
@@ -157,7 +157,7 @@ export async function saveNdviSnapshot(input: {
         meanNdvi: persisted.meanNdvi,
         rasterSha256: persisted.rasterSha256,
         rasterArtifactWrittenNow: artifactWrittenNow,
-        replacedStaleRasterSha256: input.replaceExistingRasterSha256?.toLowerCase() ?? null,
+        supersedesRasterSha256: input.supersedesRasterSha256?.toLowerCase() ?? null,
       },
     });
     return persisted;

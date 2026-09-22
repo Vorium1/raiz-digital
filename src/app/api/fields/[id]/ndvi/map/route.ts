@@ -31,6 +31,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       capturedAt: requestedDate,
       userId: session.userId,
       source: "SENTINEL_2",
+      rasterAlgorithm: NDVI_RASTER_ALGORITHM_VERSION,
     }),
   ]);
   if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });

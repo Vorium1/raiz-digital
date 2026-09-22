@@ -120,6 +120,18 @@ function usableHistoryForBoundary(history: any[], fieldBoundary: any) {
 }
 
 function staleSpatialSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentBoundary(snapshot, fieldBoundary)).length;
+}
+
+function staleAlgorithmSnapshotCount(history: any[], fieldBoundary: any) {
+  return history.filter((snapshot) =>
+    hasArchivedRaster(snapshot)
+    && rasterMatchesCurrentBoundary(snapshot, fieldBoundary)
+    && !rasterMatchesCurrentAlgorithm(snapshot)
+  ).length;
+}
+
+function staleEvidenceSnapshotCount(history: any[], fieldBoundary: any) {
   return history.filter((snapshot) => hasArchivedRaster(snapshot) && !rasterMatchesCurrentEvidence(snapshot, fieldBoundary)).length;
 }
 
@@ -149,6 +161,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     history: usableHistory,
     fieldBoundary,
     staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, fieldBoundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, fieldBoundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, fieldBoundary),
     runtime: ndviRuntimeReadiness(),
     ...intelligencePayload(usableLatest, usableHistory),
   });
@@ -287,7 +301,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
           algorithm: NDVI_RASTER_ALGORITHM_VERSION,
           mosaickingOrder: runtime.mosaickingOrder,
         },
-        replaceExistingRasterSha256: staleArchivedByDate.get(scene.capturedAt)?.rasterSha256 ?? null,
+        supersedesRasterSha256: staleArchivedByDate.get(scene.capturedAt)?.rasterSha256 ?? null,
       });
     } catch (error) {
       partialFailure = {
@@ -318,6 +332,8 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     latest: usableLatest,
     history: usableHistory,
     staleSpatialSnapshotCount: staleSpatialSnapshotCount(history, boundary),
+    staleAlgorithmSnapshotCount: staleAlgorithmSnapshotCount(history, boundary),
+    staleEvidenceSnapshotCount: staleEvidenceSnapshotCount(history, boundary),
     fieldBoundary: boundary,
     importedCount: archivedRasterCount,
     archivedRasterCount,
