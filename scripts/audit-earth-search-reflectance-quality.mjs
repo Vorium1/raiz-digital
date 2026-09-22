@@ -98,6 +98,8 @@ async function main() {
         physicalRedMax: scene.physicalRedMax == null ? null : Number(scene.physicalRedMax.toFixed(6)),
         physicalNirMin: scene.physicalNirMin == null ? null : Number(scene.physicalNirMin.toFixed(6)),
         physicalNirMax: scene.physicalNirMax == null ? null : Number(scene.physicalNirMax.toFixed(6)),
+        boaOffsetApplied: scene.boaOffsetApplied,
+        processingBaseline: scene.processingBaseline,
       });
     }
 

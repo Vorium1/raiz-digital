@@ -42,6 +42,8 @@ export type EarthSearchItem = {
     "eo:cloud_cover"?: number;
     "proj:epsg"?: number;
     "proj:code"?: string;
+    "earthsearch:boa_offset_applied"?: boolean;
+    "s2:processing_baseline"?: string | number;
   };
   assets?: Record<string, EarthSearchAsset>;
 };
@@ -405,6 +407,8 @@ export type EarthSearchReflectanceAudit = {
   physicalRedMax: number | null;
   physicalNirMin: number | null;
   physicalNirMax: number | null;
+  boaOffsetApplied: boolean | null;
+  processingBaseline: string | number | null;
 };
 
 /**
@@ -523,6 +527,10 @@ export async function auditEarthSearchReflectanceQuality(
       physicalRedMax: Number.isFinite(physicalRedMax) ? physicalRedMax : null,
       physicalNirMin: Number.isFinite(physicalNirMin) ? physicalNirMin : null,
       physicalNirMax: Number.isFinite(physicalNirMax) ? physicalNirMax : null,
+      boaOffsetApplied: typeof item.properties?.["earthsearch:boa_offset_applied"] === "boolean"
+        ? item.properties["earthsearch:boa_offset_applied"]!
+        : null,
+      processingBaseline: item.properties?.["s2:processing_baseline"] ?? null,
     });
   }
 
