@@ -438,6 +438,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
                 analysisId={analysisId}
                 label="Atualizar laudo com dados atuais"
                 busyLabel="Atualizando laudo…"
+                initialCommercialPlanSnapshotId={v3?.commercialPlanSnapshot?.id ?? ""}
               />
             )}
             {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}
