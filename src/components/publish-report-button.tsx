@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { CommercialPlanPublishSelect } from "@/components/commercial-plan-publish-select";
 
-export function PublishReportButton({ interpretationId, analysisId }: { interpretationId: string; analysisId: string }) {
+export function PublishReportButton({ interpretationId, analysisId, initialCommercialPlanSnapshotId = "" }: { interpretationId: string; analysisId: string; initialCommercialPlanSnapshotId?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [commercialPlanSnapshotId, setCommercialPlanSnapshotId] = useState("");
+  const [commercialPlanSnapshotId, setCommercialPlanSnapshotId] = useState(initialCommercialPlanSnapshotId);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
   async function publish() {
