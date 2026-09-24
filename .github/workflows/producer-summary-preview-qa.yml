@@ -156,7 +156,7 @@ jobs:
         env:
           E2E_BASE_URL: ${{ steps.preview.outputs.url }}
           VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
-        run: npx playwright test e2e/producer-summary-preview.spec.ts --project=chromium
+        run: npx playwright test e2e/producer-summary-preview.spec.ts
 
       - name: Revogar sessão temporária
         if: always()
