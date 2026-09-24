@@ -84,11 +84,8 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      - name: Preparar cenário comercial E2E e publicar pelo Preview
+      - name: Preparar snapshot visual temporário na homologação
         shell: bash
-        env:
-          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
-          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -97,11 +94,7 @@ jobs:
           import pg from "pg";
 
           const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
-          const baseUrl = process.env.E2E_BASE_URL?.trim();
-          const oidc = process.env.VERCEL_TRUSTED_OIDC_TOKEN?.trim();
           if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
-          if (!baseUrl) throw new Error("E2E_BASE_URL ausente.");
-          if (!oidc) throw new Error("VERCEL_TRUSTED_OIDC_TOKEN ausente.");
 
           const pool = new pg.Pool({
             connectionString: databaseUrl,
@@ -110,14 +103,14 @@ jobs:
           const client = await pool.connect();
 
           let sessionId = "";
-          let token = "";
           let productId = "";
           let planId = "";
-          let analysisId = "";
-          let interpretationId = "";
+          let reportId = "";
           const productName = "KCl E2E 60%";
 
           try {
+            await client.query("BEGIN");
+
             const account = await client.query(
               `SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
                FROM users u
@@ -134,9 +127,12 @@ jobs:
               `SELECT i.analysis_id::text AS analysis_id,
                       i.id::text AS interpretation_id,
                       r.prescription_generation_id::text AS prescription_id,
+                      r.revision AS report_revision,
+                      r.storage_key,
                       ir.id::text AS recommendation_id,
                       ir.quantity::float8 AS target_k2o_kg_ha,
-                      f.area_ha::float8 AS area_ha
+                      f.area_ha::float8 AS area_ha,
+                      a.crop_season_id::text AS crop_season_id
                FROM reports r
                JOIN interpretations i
                  ON i.tenant_id=r.tenant_id
@@ -164,6 +160,7 @@ jobs:
                 AND ir.unit='kg/ha'
                WHERE r.tenant_id=$1::uuid
                  AND r.prescription_generation_id IS NOT NULL
+                 AND r.storage_key LIKE 'inline:v1:%'
                  AND i.status='APPROVED'
                  AND i.id = (
                    SELECT li.id
@@ -189,16 +186,25 @@ jobs:
             );
             const row = target.rows[0];
             if (!row?.analysis_id || !row?.interpretation_id || !row?.prescription_id || !row?.recommendation_id) {
-              throw new Error("Nenhuma decisão oficial corrente com K2O kg/ha foi encontrada na homologação.");
+              throw new Error("Nenhum laudo V3 inline corrente com K2O kg/ha foi encontrado na homologação.");
             }
 
-            analysisId = row.analysis_id;
-            interpretationId = row.interpretation_id;
+            const prefix = "inline:v1:";
+            const encoded = String(row.storage_key).slice(prefix.length);
+            const snapshot = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+            if (snapshot?.reportSnapshotVersion !== 3) {
+              throw new Error("O laudo E2E selecionado não usa snapshot V3.");
+            }
+            if (snapshot?.approvedPrescription?.id !== row.prescription_id) {
+              throw new Error("O snapshot E2E não corresponde à prescrição oficial corrente.");
+            }
+
+            const analysisId = row.analysis_id;
             const targetK2O = Number(row.target_k2o_kg_ha);
             const areaHa = Number(row.area_ha);
             if (!(targetK2O > 0) || !(areaHa > 0)) throw new Error("Alvo K2O/área inválidos para o E2E.");
 
-            token = randomBytes(32).toString("base64url");
+            const token = randomBytes(32).toString("base64url");
             const tokenHash = createHash("sha256").update(token).digest("hex");
             const session = await client.query(
               `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
@@ -258,14 +264,12 @@ jobs:
               `INSERT INTO commercial_plan_snapshots
                (tenant_id, analysis_id, crop_season_id, label, simulation_mode, schema_version, area_ha,
                 source_targets, product_snapshots, engine_input, engine_output, created_by)
-               SELECT $1::uuid, a.id, a.crop_season_id, 'E2E visual · plano comercial', 'SINGLE', 1, $3,
-                      $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::uuid
-               FROM analyses a
-               WHERE a.tenant_id=$1::uuid AND a.id=$2::uuid
-               RETURNING id::text`,
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'E2E visual · plano comercial','SINGLE',1,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::uuid)
+               RETURNING id::text, created_at::text`,
               [
                 user.tenant_id,
                 analysisId,
+                row.crop_season_id,
                 areaHa,
                 JSON.stringify(sourceTargets),
                 JSON.stringify(productSnapshots),
@@ -277,46 +281,74 @@ jobs:
             planId = plan.rows[0]?.id;
             if (!planId) throw new Error("Falha ao criar cenário comercial temporário.");
 
+            const frozenCommercialPlan = {
+              id: planId,
+              label: "E2E visual · plano comercial",
+              simulationMode: "SINGLE",
+              schemaVersion: 1,
+              areaHa,
+              sourceTargets,
+              productSnapshots,
+              engineInput,
+              engineOutput,
+              createdAt: plan.rows[0].created_at,
+            };
+
+            const publishedAt = new Date().toISOString();
+            const nextRevision = Number(row.report_revision) + 1;
+            const nextSnapshot = {
+              ...snapshot,
+              revision: nextRevision,
+              commercialPlanSnapshot: frozenCommercialPlan,
+              publishedAt,
+              publishedBy: user.user_id,
+            };
+            const content = JSON.stringify(nextSnapshot);
+            const digest = createHash("sha256").update(content).digest("hex");
+            const storageKey = `inline:v1:${Buffer.from(content, "utf8").toString("base64")}`;
+
+            const report = await client.query(
+              `INSERT INTO reports
+               (tenant_id, interpretation_id, prescription_generation_id, revision, storage_key, sha256, published_at, published_by)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7::timestamptz,$8::uuid)
+               RETURNING id::text`,
+              [user.tenant_id, row.interpretation_id, row.prescription_id, nextRevision, storageKey, digest, publishedAt, user.user_id],
+            );
+            reportId = report.rows[0]?.id;
+            if (!reportId) throw new Error("Falha ao criar relatório visual temporário.");
+
+            await client.query(
+              `INSERT INTO audit_events
+               (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, metadata)
+               VALUES ($1::uuid,$2::uuid,'USER','REPORT_PUBLISHED','report',$3::uuid,$4::jsonb)`,
+              [
+                user.tenant_id,
+                user.user_id,
+                reportId,
+                JSON.stringify({
+                  interpretationId: row.interpretation_id,
+                  analysisId,
+                  reportSnapshotVersion: 3,
+                  approvedPrescriptionId: row.prescription_id,
+                  commercialPlanSnapshotId: planId,
+                  e2eVisualFixture: true,
+                }),
+              ],
+            );
+
+            await client.query("COMMIT");
+
             console.log(`::add-mask::${token}`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${sessionId}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_PRODUCT_ID=${productId}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_PLAN_ID=${planId}\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_PRODUCT_NAME=${productName}\n`);
-
-            const response = await fetch(new URL(`/api/interpretations/${interpretationId}/publish-report`, baseUrl), {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "cookie": `raiz_session=${token}`,
-                "x-vercel-trusted-oidc-idp-token": oidc,
-              },
-              body: JSON.stringify({ commercialPlanSnapshotId: planId }),
-            });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(`Publish E2E falhou (${response.status}): ${body.error ?? "sem mensagem"}`);
-            }
-
-            const published = await client.query(
-              `SELECT r.id::text
-               FROM reports r
-               JOIN audit_events ae
-                 ON ae.tenant_id=r.tenant_id
-                AND ae.entity_type='report'
-                AND ae.entity_id=r.id
-                AND ae.action='REPORT_PUBLISHED'
-               WHERE r.tenant_id=$1::uuid
-                 AND r.interpretation_id=$2::uuid
-                 AND ae.metadata->>'commercialPlanSnapshotId'=$3
-               ORDER BY r.published_at DESC
-               LIMIT 1`,
-              [user.tenant_id, interpretationId, planId],
-            );
-            const reportId = published.rows[0]?.id;
-            if (!reportId) throw new Error("Relatório E2E publicado não foi localizado para limpeza.");
             appendFileSync(process.env.GITHUB_ENV, `E2E_REPORT_ID=${reportId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_PRODUCT_NAME=${productName}\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
           } finally {
             client.release();
             await pool.end();
