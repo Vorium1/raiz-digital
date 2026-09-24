@@ -10,6 +10,7 @@ import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
+import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
@@ -146,6 +147,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         areaHa: Number(context.areaHa),
         recommendations: prescription.recommendations ?? [],
       })
+    : null;
+  const commercialSummary = v3?.commercialPlanSnapshot
+    ? buildProducerCommercialPlanSummary(v3.commercialPlanSnapshot)
     : null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const engineValidated = Boolean(
@@ -356,10 +360,45 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               </div>
             )}
 
-            <div className="simple-result-producer-summary-cost">
-              <strong>Custo comercial</strong>
-              <span>Não incluído neste laudo oficial porque produto e preço não estão congelados junto com esta decisão.</span>
-            </div>
+            {commercialSummary ? (
+              <>
+                <div className="simple-result-producer-summary-note">
+                  <p>
+                    <strong>Plano comercial congelado:</strong>{" "}
+                    {commercialSummary.label || "cenário selecionado na publicação"}. Esta camada apenas converte a necessidade agronômica aprovada em produto comercial; ela não altera a dose técnica.
+                  </p>
+                </div>
+                <div className="simple-result-producer-summary-list">
+                  {commercialSummary.rows.map((row, index) => (
+                    <article key={`${row.productName}-${index}`}>
+                      <div>
+                        <strong>{row.productName}</strong>
+                        <small>
+                          Dose do produto: {row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.doseUnit}
+                          {row.pricePerTon != null
+                            ? ` · preço congelado: ${row.pricePerTon.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/t`
+                            : " · preço não cadastrado no cenário"}
+                        </small>
+                      </div>
+                      <b>Total da área: {row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.totalUnit}</b>
+                    </article>
+                  ))}
+                </div>
+                <div className="simple-result-producer-summary-cost">
+                  <strong>Custo comercial</strong>
+                  <span>
+                    {commercialSummary.hasFrozenCost
+                      ? `${commercialSummary.costPerHa!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/ha · total da área: ${commercialSummary.totalCost!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+                      : "Produto e quantidade foram congelados, mas o cenário não possuía preço suficiente para calcular custo."}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="simple-result-producer-summary-cost">
+                <strong>Custo comercial</strong>
+                <span>Não incluído neste laudo oficial porque nenhum cenário comercial foi selecionado e congelado junto com esta decisão.</span>
+              </div>
+            )}
           </section>
         )}
 
