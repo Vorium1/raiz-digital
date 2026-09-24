@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
+import { inspectOfficialCommercialPlan, type FrozenCommercialPlanSnapshot } from "@/domain/official-commercial-plan";
 import { withTenant } from "@/lib/db";
 import { saveReportSnapshot } from "@/lib/storage";
 import { writeAudit } from "@/lib/repositories/audit";
@@ -65,6 +66,8 @@ export type PremiumReportSnapshotV3 = {
   brandingSnapshot: TenantBranding;
   pointsSnapshot: FrozenSamplePoint[];
   ndviSnapshot?: FrozenNdviSnapshot | null;
+  /** Ausente em snapshots v3 antigos. Só existe quando um cenário comercial foi escolhido explicitamente no publish. */
+  commercialPlanSnapshot?: FrozenCommercialPlanSnapshot | null;
   approvedNarrative: FrozenReviewedGeneration | null;
   approvedPrescription: FrozenReviewedGeneration;
   publishedAt: string;
@@ -188,6 +191,7 @@ type ExistingDecisionPublication = {
   revision: number;
   storageKey: string;
   publishedAt: string;
+  commercialPlanSnapshotId: string | null;
 };
 
 async function getLatestDecisionPublication(
@@ -195,8 +199,19 @@ async function getLatestDecisionPublication(
   input: { tenantId: string; interpretationId: string; prescriptionId: string },
 ): Promise<ExistingDecisionPublication | null> {
   const existing = await client.query<ExistingDecisionPublication>(
-    `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.published_at::text AS "publishedAt"
+    `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.published_at::text AS "publishedAt",
+            nullif(published_event.metadata->>'commercialPlanSnapshotId', '') AS "commercialPlanSnapshotId"
      FROM reports r
+     LEFT JOIN LATERAL (
+       SELECT ae.metadata
+       FROM audit_events ae
+       WHERE ae.tenant_id=r.tenant_id
+         AND ae.entity_type='report'
+         AND ae.entity_id=r.id
+         AND ae.action='REPORT_PUBLISHED'
+       ORDER BY ae.created_at DESC
+       LIMIT 1
+     ) published_event ON true
      WHERE r.tenant_id=$1::uuid
        AND r.interpretation_id=$2::uuid
        AND r.prescription_generation_id=$3::uuid
@@ -222,7 +237,7 @@ async function getLatestDecisionPublication(
  * O snapshot no storage é imutável; se uma falha ocorrer na gravação externa, nenhum registro oficial
  * incompleto nasce em `reports`.
  */
-export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string }) {
+export async function publishPremiumFieldAnalysisReport(input: { tenantId: string; userId: string; interpretationId: string; commercialPlanSnapshotId?: string | null }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const initialState = await assertCurrentPublicationState(client, {
       tenantId: input.tenantId,
@@ -300,6 +315,66 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     const publishedContext = contextResult.rows[0];
     if (!publishedContext) throw new ReportError("Contexto da análise não encontrado.", 404);
 
+    let commercialPlanSnapshot: FrozenCommercialPlanSnapshot | null = null;
+    if (input.commercialPlanSnapshotId) {
+      const commercialResult = await client.query<FrozenCommercialPlanSnapshot>(
+        `SELECT cps.id::text,
+                cps.label,
+                cps.simulation_mode AS "simulationMode",
+                cps.schema_version AS "schemaVersion",
+                cps.area_ha::float8 AS "areaHa",
+                cps.source_targets AS "sourceTargets",
+                cps.product_snapshots AS "productSnapshots",
+                cps.engine_input AS "engineInput",
+                cps.engine_output AS "engineOutput",
+                cps.created_at::text AS "createdAt"
+         FROM commercial_plan_snapshots cps
+         WHERE cps.tenant_id=$1::uuid
+           AND cps.analysis_id=$2::uuid
+           AND cps.id=$3::uuid
+         LIMIT 1`,
+        [input.tenantId, interpretation.analysisId, input.commercialPlanSnapshotId],
+      );
+      const selectedCommercialPlan = commercialResult.rows[0];
+      if (!selectedCommercialPlan) {
+        throw new ReportError("Cenário comercial não encontrado para esta análise.", 404);
+      }
+
+      const inspection = inspectOfficialCommercialPlan(selectedCommercialPlan);
+      if (!inspection.valid) {
+        const details = inspection.violations.length ? ` ${inspection.violations.join(" ")}` : "";
+        throw new ReportError(`${inspection.reason ?? "Cenário comercial inválido para publicação."}${details}`, 409);
+      }
+      if (Math.abs(selectedCommercialPlan.areaHa - Number(publishedContext.areaHa)) > 0.0001) {
+        throw new ReportError(
+          "A área do cenário comercial não coincide com a área atual do talhão. Salve um novo cenário antes de publicar.",
+          409,
+        );
+      }
+
+      const recommendationRows = await client.query<{ id: string; sourceGenerationId: string | null }>(
+        `SELECT id::text, source_generation_id::text AS "sourceGenerationId"
+         FROM input_recommendations
+         WHERE tenant_id=$1::uuid
+           AND analysis_id=$2::uuid
+           AND id = ANY($3::uuid[])`,
+        [input.tenantId, interpretation.analysisId, inspection.recommendationIds],
+      );
+      const recommendationById = new Map(recommendationRows.rows.map((row) => [row.id, row]));
+      const staleCommercialBasis = inspection.recommendationIds.some((id) => {
+        const row = recommendationById.get(id);
+        return !row || row.sourceGenerationId !== approvedPrescription.id;
+      });
+      if (staleCommercialBasis) {
+        throw new ReportError(
+          "O cenário comercial foi salvo com uma recomendação oficial anterior. Salve um novo cenário com a conclusão técnica corrente antes de publicá-lo.",
+          409,
+        );
+      }
+
+      commercialPlanSnapshot = selectedCommercialPlan;
+    }
+
     const pointsResult = publishedContext.collectionOrderId
       ? await client.query<FrozenSamplePoint>(
           `SELECT sp.id::text, sp.code,
@@ -352,7 +427,9 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
             .filter(Number.isFinite)
         : [];
       const ndviChangedAfterPreviousReport = ndviEvidenceTimes.some((value) => value > previousPublishedAt);
-      if (!ndviChangedAfterPreviousReport) {
+      const requestedCommercialPlanSnapshotId = commercialPlanSnapshot?.id ?? null;
+      const commercialPlanChangedAfterPreviousReport = previousReport.commercialPlanSnapshotId !== requestedCommercialPlanSnapshotId;
+      if (!ndviChangedAfterPreviousReport && !commercialPlanChangedAfterPreviousReport) {
         return { ...previousReport, alreadyCurrent: true as const };
       }
     }
@@ -377,6 +454,7 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       brandingSnapshot,
       pointsSnapshot: pointsResult.rows,
       ndviSnapshot,
+      commercialPlanSnapshot,
       approvedNarrative,
       approvedPrescription,
       publishedAt,
@@ -426,6 +504,10 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
         sourceVerificationRequired: initialState.sourceVerificationRequired,
         republishedFromReportId: previousReport?.id ?? null,
         ndviEvidenceUpdatedAfterPreviousReport: Boolean(previousReport),
+        commercialPlanSnapshotId: commercialPlanSnapshot?.id ?? null,
+        commercialPlanChangedAfterPreviousReport: previousReport
+          ? previousReport.commercialPlanSnapshotId !== (commercialPlanSnapshot?.id ?? null)
+          : Boolean(commercialPlanSnapshot),
       },
     });
     return { ...report, alreadyCurrent: false as const };
