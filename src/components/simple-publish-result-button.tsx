@@ -10,15 +10,17 @@ export function SimplePublishResultButton({
   interpretationId: _interpretationId,
   label = "Gerar laudo RAIZ",
   busyLabel = "Gerando laudo…",
+  initialCommercialPlanSnapshotId = "",
 }: {
   analysisId: string;
   interpretationId?: string;
   label?: string;
   busyLabel?: string;
+  initialCommercialPlanSnapshotId?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [commercialPlanSnapshotId, setCommercialPlanSnapshotId] = useState("");
+  const [commercialPlanSnapshotId, setCommercialPlanSnapshotId] = useState(initialCommercialPlanSnapshotId);
   const [message, setMessage] = useState("");
 
   async function publish() {
