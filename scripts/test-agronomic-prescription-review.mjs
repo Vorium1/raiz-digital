@@ -121,11 +121,13 @@ assert.ok(duplicateGuardIndex >= 0 && storageWriteIndex > duplicateGuardIndex, "
 const reportPageSource = readFileSync(new URL("../src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx", import.meta.url), "utf8");
 assert.match(reportPageSource, /publishedSnapshotV3\.approvedPrescription\.id === currentPrescription\.id/);
 assert.match(reportPageSource, /sameDecisionAsPublished/);
-assert.match(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
+assert.match(reportPageSource, /publicationReadiness\?\.allowed && REVIEW_ROLES\.has\(session\.role\) && <PublishReportButton/);
+assert.match(reportPageSource, /<PublishReportButton interpretationId=\{interpretation\.id\} analysisId=\{analysisId\}\/>/);
+assert.doesNotMatch(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
 assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
 assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
 
-console.log("agronomic-prescription-review: publicação exata, imutável, concorrente-segura e republicável somente com NDVI mais novo");
+console.log("agronomic-prescription-review: publicação exata, imutável, concorrente-segura e republicável com evidência nova ou plano comercial explícito");
 
 assert.match(premiumPublicationSource, /const reportRevision = previousReport \? previousReport\.revision \+ 1 : interpretation\.revision/);
 assert.match(premiumPublicationSource, /revision: reportRevision/);
