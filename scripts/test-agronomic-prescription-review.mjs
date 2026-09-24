@@ -122,10 +122,19 @@ const reportPageSource = readFileSync(new URL("../src/app/(platform)/relatorios/
 assert.match(reportPageSource, /publishedSnapshotV3\.approvedPrescription\.id === currentPrescription\.id/);
 assert.match(reportPageSource, /sameDecisionAsPublished/);
 assert.match(reportPageSource, /publicationReadiness\?\.allowed && REVIEW_ROLES\.has\(session\.role\) && <PublishReportButton/);
-assert.match(reportPageSource, /<PublishReportButton interpretationId=\{interpretation\.id\} analysisId=\{analysisId\}\/>/);
+assert.match(reportPageSource, /<PublishReportButton interpretationId=\{interpretation\.id\} analysisId=\{analysisId\} initialCommercialPlanSnapshotId=\{publishedSnapshotV3\?\.commercialPlanSnapshot\?\.id \?\? ""\}\/>/);
 assert.doesNotMatch(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
 assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
 assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
+
+const publishButtonSource = readFileSync(new URL("../src/components/publish-report-button.tsx", import.meta.url), "utf8");
+assert.match(publishButtonSource, /useState\(initialCommercialPlanSnapshotId\)/);
+
+const simplePublishButtonSource = readFileSync(new URL("../src/components/simple-publish-result-button.tsx", import.meta.url), "utf8");
+assert.match(simplePublishButtonSource, /useState\(initialCommercialPlanSnapshotId\)/);
+
+const commercialSelectSource = readFileSync(new URL("../src/components/commercial-plan-publish-select.tsx", import.meta.url), "utf8");
+assert.match(commercialSelectSource, /Plano comercial atualmente publicado/);
 
 console.log("agronomic-prescription-review: publicação exata, imutável, concorrente-segura e republicável com evidência nova ou plano comercial explícito");
 
