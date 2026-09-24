@@ -182,7 +182,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
         <div className="report-toolbar no-print">
           <span className="report-empty-note">Entrega técnica construída com dados persistidos, regras homologadas e revisão profissional.</span>
           <div style={{ display: "flex", gap: 10 }}>
-            {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id} analysisId={analysisId}/>}
+            {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id} analysisId={analysisId} initialCommercialPlanSnapshotId={publishedSnapshotV3?.commercialPlanSnapshot?.id ?? ""}/>}
             {!(query.versao === "publicada" && integrityFailed) && <PrintButton/>}
           </div>
         </div>
