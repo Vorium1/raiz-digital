@@ -9,6 +9,7 @@ import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { humanClassification } from "@/domain/simple-ux-labels";
 import { recommendationInputLabel } from "@/domain/recommendation-display";
+import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
@@ -140,6 +141,12 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   };
   const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
+  const producerSummary = prescription
+    ? buildProducerResultSummary({
+        areaHa: Number(context.areaHa),
+        recommendations: prescription.recommendations ?? [],
+      })
+    : null;
   const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
   const engineValidated = Boolean(
     v3?.approvedPrescription.provider === "raiz-deterministic-limited"
@@ -300,6 +307,60 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         ) : (
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
+        )}
+
+        {producerSummary && (
+          <section className="simple-result-section producer-summary">
+            <div className="simple-result-section-head">
+              <span>RESUMO FINAL</span>
+              <h2>Resumo para o produtor</h2>
+              <p>
+                Para esta área de {producerSummary.areaHa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha,
+                veja abaixo somente o que já foi aprovado neste laudo.
+              </p>
+            </div>
+
+            {producerSummary.hasUniformRecommendations ? (
+              <div className="simple-result-producer-summary-list">
+                {producerSummary.rows.map((row, index) => (
+                  <article key={`${row.inputType}-${index}`}>
+                    <div>
+                      <strong>{row.label}</strong>
+                      <small>
+                        Dose aprovada: {row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.doseUnit}
+                      </small>
+                    </div>
+                    <b>
+                      {row.totalQuantity != null && row.totalUnit
+                        ? `Total da área: ${row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${row.totalUnit}`
+                        : "Usar a dose aprovada por hectare/unidade"}
+                    </b>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="simple-result-producer-summary-empty">
+                <strong>Nenhuma dose uniforme foi liberada para esta área.</strong>
+                <small>O laudo continua concluído; o RAIZ apenas evitou transformar evidência insuficiente em uma quantidade inventada.</small>
+              </div>
+            )}
+
+            {(producerSummary.showsNutrientEquivalentNote || producerSummary.showsLimeEquivalentNote) && (
+              <div className="simple-result-producer-summary-note">
+                {producerSummary.showsNutrientEquivalentNote && (
+                  <p><strong>Nutrientes:</strong> N, P₂O₅, K₂O e S são quantidades equivalentes do nutriente. Isso não é, automaticamente, o peso do fertilizante comercial.</p>
+                )}
+                {producerSummary.showsLimeEquivalentNote && (
+                  <p><strong>Calcário:</strong> PRNT 100% é uma necessidade equivalente. A quantidade do produto comercial depende do PRNT informado para o corretivo escolhido.</p>
+                )}
+              </div>
+            )}
+
+            <div className="simple-result-producer-summary-cost">
+              <strong>Custo comercial</strong>
+              <span>Não incluído neste laudo oficial porque produto e preço não estão congelados junto com esta decisão.</span>
+            </div>
+          </section>
         )}
 
         <details className="simple-result-advanced">
