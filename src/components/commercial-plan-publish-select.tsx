@@ -66,9 +66,11 @@ export function CommercialPlanPublishSelect({
     return <small role="alert" style={{ color: "#b3473e" }}>{error}</small>;
   }
 
-  if (snapshots.length === 0) {
+  if (snapshots.length === 0 && !value) {
     return <small style={{ color: "#6f7e74" }}>Sem cenário comercial salvo. O laudo continuará sem produto/preço comercial congelado.</small>;
   }
+
+  const selectedOutsideRecentList = Boolean(value && !snapshots.some((snapshot) => snapshot.id === value));
 
   return (
     <label style={{ display: "grid", gap: 5, minWidth: 260, maxWidth: 520 }}>
@@ -80,6 +82,7 @@ export function CommercialPlanPublishSelect({
         style={{ width: "100%", minHeight: 36, border: "1px solid #dbe4dc", borderRadius: 9, padding: "0 10px", background: "#fff" }}
       >
         <option value="">Sem plano comercial</option>
+        {selectedOutsideRecentList && <option value={value}>Plano comercial atualmente publicado</option>}
         {snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{optionLabel(snapshot)}</option>)}
       </select>
       <small style={{ color: "#7e8a82", lineHeight: 1.4 }}>
