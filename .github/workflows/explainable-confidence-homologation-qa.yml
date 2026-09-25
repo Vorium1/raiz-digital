@@ -98,12 +98,13 @@ jobs:
                FROM analyses a
                JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE'
                JOIN LATERAL (
-                 SELECT ai.confidence_score
+                 SELECT ai.id
                  FROM analysis_imports ai
                  WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
                  ORDER BY ai.committed_at DESC NULLS LAST, ai.created_at DESC
                  LIMIT 1
-               ) latest_import ON latest_import.confidence_score IS NOT NULL
+               ) latest_import ON true
+               WHERE a.confidence_score IS NOT NULL
                ORDER BY a.updated_at DESC
                LIMIT 1`,
             );
