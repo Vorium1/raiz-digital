@@ -186,7 +186,7 @@ export function MapboxFieldMap({
   }, [boundary, points, height, colorFor, imageOverlay, hint, boundaryFillColor, onProviderFailure]);
 
   return (
-    <div className="real-field-map mapbox-field-map" data-map-provider="mapbox" data-has-image-overlay={imageOverlay ? "true" : "false"}>
+    <div className="real-field-map mapbox-field-map" data-map-provider="mapbox" data-has-image-overlay={imageOverlay ? "true" : "false"} data-point-count={points.length}>
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">
         <span className="real-field-map-hint">{hint}</span>
