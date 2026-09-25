@@ -3,6 +3,7 @@ import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { ClassificationBadge } from "@/components/ui";
 import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
 import { buildProducerCommercialPlanSummary, type FrozenCommercialPlanSnapshot } from "@/domain/official-commercial-plan";
+import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 
 type StructuredFact = {
@@ -250,17 +251,17 @@ function firstText(item: Recommendation, keys: Array<keyof Recommendation>) {
   return null;
 }
 
-function totalForArea(quantity: number | undefined, unit: string | undefined, areaHa: number | null | undefined) {
-  if (typeof quantity !== "number" || !Number.isFinite(quantity) || typeof areaHa !== "number" || !Number.isFinite(areaHa) || areaHa <= 0 || !unit) return null;
-  const compact = unit.toLowerCase().replace(/\s+/g, "");
-  const perHa = compact.includes("/ha") || compact.includes("ha-1") || compact.includes("ha⁻¹");
-  if (!perHa) return null;
-  const baseUnit = unit
-    .replace(/\s*\/\s*ha/gi, "")
-    .replace(/\s*ha-1/gi, "")
-    .replace(/\s*ha⁻¹/gi, "")
-    .trim() || "un.";
-  return { quantity: quantity * areaHa, unit: baseUnit };
+function producerRow(item: Recommendation, areaHa: number | null) {
+  if (
+    typeof item.inputType !== "string"
+    || typeof item.quantity !== "number"
+    || !Number.isFinite(item.quantity)
+    || typeof item.unit !== "string"
+  ) return null;
+  return buildProducerResultSummary({
+    areaHa: areaHa ?? 0,
+    recommendations: [{ inputType: item.inputType, quantity: item.quantity, unit: item.unit }],
+  }).rows[0] ?? null;
 }
 
 function ReportPageHeader({ branding, page, title, code }: { branding: TenantBranding; page: number; title: string; code?: string | null }) {
@@ -386,14 +387,14 @@ export function FinalVisualReport(props: Props) {
                 <tbody>
                   {recommendations.map((item, index) => {
                     const quantity = typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : null;
-                    const total = totalForArea(quantity ?? undefined, item.unit, areaHa);
+                    const operational = producerRow(item, areaHa);
                     const timing = firstText(item, ["timing", "applicationTiming", "stage", "when", "period"]);
                     const via = firstText(item, ["via", "applicationMethod", "placement"]);
                     return (
                       <tr key={(item.inputType || "item") + "-" + index}>
                         <td><strong>{item.inputType || "Não identificado"}</strong></td>
                         <td>{quantity != null ? numberPt(quantity) + " " + (item.unit || "") : "INSUFFICIENT_EVIDENCE"}</td>
-                        <td>{total ? numberPt(total.quantity) + " " + total.unit : "—"}</td>
+                        <td>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit : "—"}</td>
                         <td>{[timing, via].filter(Boolean).join(" · ") || "Não congelado na recomendação"}</td>
                         <td>{item.rationale || "Sem justificativa textual adicional."}</td>
                       </tr>
@@ -464,12 +465,12 @@ export function FinalVisualReport(props: Props) {
             <div className="report-producer-actions">
               {recommendations.map((item, index) => {
                 const quantity = typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : null;
-                const total = totalForArea(quantity ?? undefined, item.unit, areaHa);
+                const operational = producerRow(item, areaHa);
                 return (
                   <div key={(item.inputType || "item") + index}>
-                    <span>{item.inputType || "Insumo"}</span>
+                    <span>{operational?.label || item.inputType || "Insumo"}</span>
                     <strong>{quantity != null ? numberPt(quantity) + " " + (item.unit || "") : "Sem dose sustentada"}</strong>
-                    <small>{total ? "Total do talhão: " + numberPt(total.quantity) + " " + total.unit : "Total não calculado: unidade não expressa por hectare."}</small>
+                    <small>{operational?.totalQuantity != null && operational.totalUnit ? "Total do talhão: " + numberPt(operational.totalQuantity) + " " + operational.totalUnit : "Total não calculado: unidade não expressa por hectare."}</small>
                   </div>
                 );
               })}
