@@ -6,6 +6,7 @@ import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
 import { classificationColor } from "@/lib/classification-colors";
+import { NdviTemporalComparison } from "@/components/ndvi-temporal-comparison";
 
 type Snapshot = {
   id: string;
@@ -17,6 +18,7 @@ type Snapshot = {
   maxNdvi?: number | null;
   pixelCount?: number | null;
   rasterObjectKey?: string | null;
+  rasterAlgorithm?: string | null;
   zoneBreakdownPct: Partial<Record<VigorZone, number>>;
 };
 
@@ -479,6 +481,13 @@ export function FieldNdviPanel({
             </div>
           )}
         </>
+      )}
+
+      {chartHistory.length > 0 && (
+        <NdviTemporalComparison
+          history={chartHistory}
+          onViewRaster={(date) => setSelectedRasterDate(date)}
+        />
       )}
 
       {chartHistory.length > 0 && (
