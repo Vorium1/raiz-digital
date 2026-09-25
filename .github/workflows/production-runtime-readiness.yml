@@ -1,0 +1,105 @@
+name: Production Runtime Readiness
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  deployments: read
+  id-token: write
+
+concurrency:
+  group: production-runtime-readiness
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: runtime-readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Obter token OIDC para Deployment Protection
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
+      - name: Descobrir deployment Vercel deste SHA
+        id: deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            for (let attempt = 0; attempt < 90; attempt++) {
+              const deployments = await github.rest.repos.listDeployments({
+                owner,
+                repo,
+                sha: context.sha,
+                per_page: 20,
+              });
+
+              for (const deployment of deployments.data) {
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner,
+                  repo,
+                  deployment_id: deployment.id,
+                  per_page: 20,
+                });
+
+                const ready = statuses.data.find((status) =>
+                  status.state === "success"
+                  && typeof status.environment_url === "string"
+                  && status.environment_url.startsWith("https://")
+                );
+
+                if (ready) {
+                  core.setOutput("url", ready.environment_url.replace(/\/$/, ""));
+                  core.setOutput("deployment_id", String(deployment.id));
+                  return;
+                }
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+
+            core.setFailed("Nenhum deployment Vercel SUCCESS foi encontrado para o SHA publicado em main.");
+
+      - name: Validar readiness do runtime publicado
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.url }}
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          const baseUrl = process.env.DEPLOYMENT_URL?.trim();
+          const oidc = process.env.VERCEL_TRUSTED_OIDC_TOKEN?.trim();
+          if (!baseUrl) throw new Error("DEPLOYMENT_URL ausente.");
+
+          const url = new URL("/api/health/readiness", baseUrl);
+          for (let attempt = 1; attempt <= 12; attempt++) {
+            const response = await fetch(url, {
+              headers: oidc ? { "x-vercel-trusted-oidc-idp-token": oidc } : {},
+              redirect: "follow",
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (response.status === 200 && payload?.status === "ready") {
+              console.log("production-runtime-readiness: READY");
+              process.exit(0);
+            }
+
+            if (response.status === 503 && payload?.status === "not_ready") {
+              throw new Error("Runtime de produção respondeu NOT_READY. Revise a configuração diretamente no ambiente; o endpoint não expõe detalhes.");
+            }
+
+            if (attempt === 12) {
+              throw new Error(`Readiness respondeu HTTP ${response.status} com payload inesperado.`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
+          NODE
