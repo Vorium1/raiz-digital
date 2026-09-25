@@ -1,4 +1,19 @@
-import type { LabImportConfidence, LabImportIssue } from "@/domain/lab-import";
+export type LabConfidenceLevel = "HIGH" | "ADEQUATE" | "LIMITED" | "INSUFFICIENT";
+
+export type LabConfidenceInput = {
+  score: number;
+  level: LabConfidenceLevel;
+  dimensions: Array<{ key: string; label: string; score: number; weight: number }>;
+};
+
+export type LabConfidenceIssueInput = {
+  severity: "BLOCKER" | "WARNING" | "INFO";
+  code: string;
+  message: string;
+  line?: number;
+  sampleCode?: string;
+  parameterCode?: string;
+};
 
 export type LabConfidenceDimensionExplanation = {
   key: string;
@@ -11,7 +26,7 @@ export type LabConfidenceDimensionExplanation = {
 };
 
 export type LabConfidenceIssueGroup = {
-  severity: LabImportIssue["severity"];
+  severity: LabConfidenceIssueInput["severity"];
   code: string;
   count: number;
   scope: "LOCAL" | "STRUCTURAL";
@@ -22,7 +37,7 @@ export type LabConfidenceIssueGroup = {
 
 export type LabImportConfidenceExplanation = {
   score: number;
-  level: LabImportConfidence["level"];
+  level: LabConfidenceLevel;
   levelLabel: string;
   levelMeaning: string;
   dimensions: LabConfidenceDimensionExplanation[];
@@ -34,7 +49,7 @@ export type LabImportConfidenceExplanation = {
   caveat: string;
 };
 
-const LEVEL_META: Record<LabImportConfidence["level"], { label: string; meaning: string }> = {
+const LEVEL_META: Record<LabConfidenceLevel, { label: string; meaning: string }> = {
   HIGH: { label: "Alta", meaning: "O arquivo tem evidência laboratorial forte dentro dos critérios efetivamente pontuados pelo importador." },
   ADEQUATE: { label: "Adequada", meaning: "O arquivo tem base laboratorial suficiente, mantendo os alertas explicitados para conferência." },
   LIMITED: { label: "Limitada", meaning: "Há limitações relevantes de integridade, coerência ou reconhecimento que precisam ser conferidas." },
@@ -66,7 +81,7 @@ function explanationFor(key: string, score: number) {
   }
 }
 
-function actionFor(issue: LabImportIssue) {
+function actionFor(issue: LabConfidenceIssueInput) {
   switch (issue.code) {
     case "DUPLICATE_RESULT":
       return "Conferir o resultado duplicado e manter uma única evidência válida para o mesmo ponto/parâmetro/método.";
@@ -100,8 +115,8 @@ function actionFor(issue: LabImportIssue) {
 }
 
 export function buildLabImportConfidenceExplanation(
-  confidence: LabImportConfidence,
-  issues: LabImportIssue[],
+  confidence: LabConfidenceInput,
+  issues: LabConfidenceIssueInput[],
 ): LabImportConfidenceExplanation {
   // Contexto e vínculo espacial existem no preview com peso zero. Eles são gates úteis,
   // mas não pertencem à nota do arquivo e por isso não entram nesta decomposição numérica.
