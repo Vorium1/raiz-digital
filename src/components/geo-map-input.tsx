@@ -7,10 +7,18 @@ import { Icon } from "@/components/icon";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 
+type GeoMapReferencePoint = {
+  id: string;
+  code: string;
+  latitude: number;
+  longitude: number;
+};
+
 type GeoMapInputProps = {
   value: string;
   onChange: (value: string) => void;
   referenceBoundary?: Geometry | null;
+  referencePoints?: GeoMapReferencePoint[];
   height?: number;
 };
 
@@ -40,11 +48,12 @@ function pointsToGeometry(points: [number, number][]): Geometry {
   return { type: "Polygon", coordinates: [ring] };
 }
 
-export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }: GeoMapInputProps) {
+export function GeoMapInput({ value, onChange, referenceBoundary, referencePoints = [], height = 320 }: GeoMapInputProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const shapeLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const referenceLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const referencePointsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const drawPointsRef = useRef<[number, number][]>([]);
   const drawingRef = useRef(false);
   const [drawing, setDrawing] = useState(false);
@@ -70,15 +79,42 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
 
   function renderReference(L: typeof Leaflet, map: Leaflet.Map) {
     referenceLayerRef.current?.clearLayers();
-    if (!referenceBoundary) return;
-    const rings = ringsToLatLngs(referenceBoundary);
-    if (!rings.length) return;
-    rings.forEach((ring) => {
-      L.polygon(ring, { color: "#B86F3E", weight: 1.5, dashArray: "4 4", fillOpacity: 0.05 }).addTo(referenceLayerRef.current as Leaflet.LayerGroup);
-    });
-    if (!parseGeometry(value)) {
-      const bounds = L.latLngBounds(rings.flat());
+    const fitPositions: [number, number][] = [];
+    if (referenceBoundary) {
+      const rings = ringsToLatLngs(referenceBoundary);
+      rings.forEach((ring) => {
+        L.polygon(ring, { color: "#B86F3E", weight: 1.5, dashArray: "4 4", fillOpacity: 0.05 }).addTo(referenceLayerRef.current as Leaflet.LayerGroup);
+        fitPositions.push(...ring);
+      });
+    }
+    if (!parseGeometry(value) && fitPositions.length) {
+      const bounds = L.latLngBounds(fitPositions);
       if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 17 });
+    }
+  }
+
+  function renderReferencePoints(L: typeof Leaflet, map: Leaflet.Map) {
+    referencePointsLayerRef.current?.clearLayers();
+    const validPoints = referencePoints.filter((point) =>
+      Number.isFinite(point.latitude)
+      && Number.isFinite(point.longitude)
+      && point.latitude >= -90 && point.latitude <= 90
+      && point.longitude >= -180 && point.longitude <= 180
+    );
+    for (const point of validPoints) {
+      L.circleMarker([point.latitude, point.longitude], {
+        radius: 7,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#0E8A4B",
+        fillOpacity: 1,
+      })
+        .bindTooltip(`${point.code} · ponto fixo`, { direction: "top", offset: [0, -8] })
+        .addTo(referencePointsLayerRef.current as Leaflet.LayerGroup);
+    }
+    if (!parseGeometry(value) && validPoints.length) {
+      const bounds = L.latLngBounds(validPoints.map((point) => [point.latitude, point.longitude] as [number, number]));
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [36, 36], maxZoom: 18 });
     }
   }
 
@@ -110,6 +146,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
       }).addTo(map);
       shapeLayerRef.current = L.layerGroup().addTo(map);
       referenceLayerRef.current = L.layerGroup().addTo(map);
+      referencePointsLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
 
       map.on("click", (event: Leaflet.LeafletMouseEvent) => {
@@ -125,6 +162,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
 
       renderShape(L, map);
       renderReference(L, map);
+      renderReferencePoints(L, map);
     });
 
     return () => {
@@ -149,6 +187,13 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
     void import("leaflet").then((mod) => renderReference(mod.default, map));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referenceBoundary]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    void import("leaflet").then((mod) => renderReferencePoints(mod.default, map));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referencePoints]);
 
   function centerOnCurrentLocation() {
     if (!navigator.geolocation || !mapRef.current) return;
@@ -206,6 +251,12 @@ export function GeoMapInput({ value, onChange, referenceBoundary, height = 320 }
         )}
       </div>
       <div ref={containerRef} className="geo-map-canvas" style={{ height }} />
+      {referencePoints.length > 0 && (
+        <div className="geo-map-reference-note">
+          <Icon name="location" size={13} />
+          {referencePoints.length} ponto{referencePoints.length === 1 ? "" : "s"} de coleta fixo{referencePoints.length === 1 ? "" : "s"} · desenhe o limite produtivo ao redor deles
+        </div>
+      )}
     </div>
   );
 }
