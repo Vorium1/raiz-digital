@@ -25,7 +25,7 @@ async function authenticate(page: Page) {
 async function openPublishedReport(page: Page) {
   await authenticate(page);
   await page.goto("/relatorios/talhao/" + ANALYSIS_ID + "?versao=publicada", {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
   await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
