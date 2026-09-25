@@ -1,4 +1,4 @@
-name: Explainable Confidence Homologation QA
+name: Explainable Confidence Browser QA
 
 on:
   push:
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: explainable-confidence-homologation-${{ github.ref }}
+  group: explainable-confidence-browser-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -30,12 +30,9 @@ jobs:
   visual:
     name: issue-105-browser-qa
     runs-on: ubuntu-latest
-    environment: homologation
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
-      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
-      DATABASE_SSL: require
-      DATA_MODE: database
+      DATA_MODE: demo
 
     steps:
       - uses: actions/checkout@v4
@@ -48,131 +45,17 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      - name: Build do HEAD
+      - name: Validar build do HEAD
         run: npm run build
-
-      - name: Preparar sessões temporárias e evidências reais da homologação
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { appendFileSync } from "node:fs";
-          import { createHash, randomBytes } from "node:crypto";
-          import pg from "pg";
-
-          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
-          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
-          const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
-          const client = await pool.connect();
-
-          async function activeUserForTenant(tenantId) {
-            const result = await client.query(
-              `SELECT u.id::text AS user_id
-               FROM tenant_members tm
-               JOIN users u ON u.id=tm.user_id
-               WHERE tm.tenant_id=$1::uuid AND tm.active=true
-               ORDER BY u.is_platform_curator DESC, tm.role::text, u.id
-               LIMIT 1`,
-              [tenantId],
-            );
-            return result.rows[0]?.user_id ?? null;
-          }
-
-          async function createSession(tenantId, userId, userAgent) {
-            const token = randomBytes(32).toString("base64url");
-            const tokenHash = createHash("sha256").update(token).digest("hex");
-            const result = await client.query(
-              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
-               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes',$4,NULL)
-               RETURNING id::text`,
-              [userId, tenantId, tokenHash, userAgent],
-            );
-            return { token, id: result.rows[0].id };
-          }
-
-          try {
-            await client.query("BEGIN");
-
-            const labTargetResult = await client.query(
-              `SELECT a.id::text AS analysis_id, a.tenant_id::text AS tenant_id
-               FROM analyses a
-               JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE'
-               JOIN LATERAL (
-                 SELECT ai.id
-                 FROM analysis_imports ai
-                 WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
-                 ORDER BY ai.committed_at DESC NULLS LAST, ai.created_at DESC
-                 LIMIT 1
-               ) latest_import ON true
-               WHERE a.confidence_score IS NOT NULL
-               ORDER BY a.updated_at DESC
-               LIMIT 1`,
-            );
-            const labTarget = labTargetResult.rows[0];
-            if (!labTarget?.analysis_id || !labTarget?.tenant_id) {
-              throw new Error("Nenhuma análise de homologação com confiança de laudo persistida foi encontrada.");
-            }
-
-            const interpretationTargetResult = await client.query(
-              `SELECT a.id::text AS analysis_id, a.tenant_id::text AS tenant_id
-               FROM analyses a
-               JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE'
-               JOIN LATERAL (
-                 SELECT i.structured_output
-                 FROM interpretations i
-                 WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
-                 ORDER BY i.revision DESC
-                 LIMIT 1
-               ) latest_interpretation
-                 ON jsonb_typeof(latest_interpretation.structured_output->'confidence'->'dimensions')='array'
-               WHERE jsonb_array_length(latest_interpretation.structured_output->'confidence'->'dimensions') >= 3
-               ORDER BY a.updated_at DESC
-               LIMIT 1`,
-            );
-            const interpretationTarget = interpretationTargetResult.rows[0];
-            if (!interpretationTarget?.analysis_id || !interpretationTarget?.tenant_id) {
-              throw new Error("Nenhuma análise de homologação com confiança de interpretação persistida foi encontrada.");
-            }
-
-            const labUserId = await activeUserForTenant(labTarget.tenant_id);
-            const interpretationUserId = await activeUserForTenant(interpretationTarget.tenant_id);
-            if (!labUserId || !interpretationUserId) throw new Error("Tenant de homologação sem membro ativo para o QA.");
-
-            const labSession = await createSession(labTarget.tenant_id, labUserId, "github-actions-confidence-qa-lab");
-            const interpretationSession = await createSession(
-              interpretationTarget.tenant_id,
-              interpretationUserId,
-              "github-actions-confidence-qa-interpretation",
-            );
-            await client.query("COMMIT");
-
-            console.log(`::add-mask::${labSession.token}`);
-            console.log(`::add-mask::${interpretationSession.token}`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_LAB_SESSION_TOKEN=${labSession.token}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_LAB_ANALYSIS_ID=${labTarget.analysis_id}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_INTERPRETATION_SESSION_TOKEN=${interpretationSession.token}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_INTERPRETATION_ANALYSIS_ID=${interpretationTarget.analysis_id}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_IDS=${labSession.id},${interpretationSession.id}\\n`);
-          } catch (error) {
-            await client.query("ROLLBACK").catch(() => {});
-            throw error;
-          } finally {
-            client.release();
-            await pool.end();
-          }
-          NODE
 
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Iniciar HEAD contra homologação
+      - name: Iniciar modo demonstração explicitamente rotulado
         shell: bash
-        env:
-          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
-          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
         run: |
           set -euo pipefail
-          npm start -- --hostname 127.0.0.1 > /tmp/raiz-confidence-server.log 2>&1 &
+          npm run dev -- --hostname 127.0.0.1 > /tmp/raiz-confidence-server.log 2>&1 &
           echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
           for attempt in $(seq 1 60); do
             if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
@@ -181,34 +64,18 @@ jobs:
           cat /tmp/raiz-confidence-server.log
           exit 1
 
-      - name: Rodar QA em navegador real
+      - name: Rodar QA visual desktop e mobile
         env:
           E2E_BASE_URL: http://127.0.0.1:3000
         run: npx playwright test e2e/explainable-confidence-homologation.spec.ts
 
-      - name: Revogar sessões temporárias
+      - name: Encerrar servidor local
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
           if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
-          if [ -z "${E2E_SESSION_IDS:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
-          node --input-type=module <<'NODE'
-          import pg from "pg";
-          const ids = (process.env.E2E_SESSION_IDS || "").split(",").filter(Boolean);
-          if (!ids.length) process.exit(0);
-          const pool = new pg.Pool({
-            connectionString: process.env.HOMOLOGATION_DATABASE_URL,
-            ssl: { rejectUnauthorized: false },
-          });
-          await pool.query(
-            "UPDATE user_sessions SET revoked_at=now() WHERE id=ANY($1::uuid[]) AND user_agent LIKE 'github-actions-confidence-qa-%' AND revoked_at IS NULL",
-            [ids],
-          );
-          await pool.end();
-          NODE
 
-      - name: Publicar evidências
+      - name: Publicar evidências visuais
         if: always()
         uses: actions/upload-artifact@v4
         with:
