@@ -49,7 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${DATABASE_URL:-}" || { echo "::error::HOMOLOGATION_DATABASE_URL ausente."; exit 1; }
-          test -n "${CABEDA_TENANT_ID:-}" || { echo "::error::CABEDA_TENANT_ID ausente."; exit 1; }
+          if [ -z "${CABEDA_TENANT_ID:-}" ]; then
+            echo "::notice::CABEDA_TENANT_ID ausente; a auditoria exigirá correspondência única cliente+talhão+ordem antes de definir o contexto."
+          fi
 
       - name: Instalar dependências
         run: npm ci
