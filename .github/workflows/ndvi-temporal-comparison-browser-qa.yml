@@ -69,7 +69,7 @@ jobs:
                JOIN tenant_members tm ON tm.tenant_id=f.tenant_id AND tm.active=true
                JOIN users u ON u.id=tm.user_id
                JOIN tenants t ON t.id=f.tenant_id AND t.status='ACTIVE'
-               ORDER BY u.is_platform_curator DESC, f.updated_at DESC NULLS LAST, f.id
+               ORDER BY u.is_platform_curator DESC, f.id
                LIMIT 1`,
             );
             const row = target.rows[0];
