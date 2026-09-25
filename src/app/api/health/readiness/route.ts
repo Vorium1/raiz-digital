@@ -1,4 +1,4 @@
-import { getProductionRuntimeReadiness } from "../../../../../domain/production-runtime-readiness.ts";
+import { getProductionRuntimeReadiness } from "../../../../domain/production-runtime-readiness.ts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
