@@ -1311,7 +1311,7 @@ button { color: inherit; }
 @media print{
   @page{size:A4 portrait;margin:10mm}
   .report-final-pages{display:block;max-width:none}
-  .report-a4-page{border:0;border-radius:0;box-shadow:none;break-after:page;break-inside:avoid-page;box-sizing:border-box;min-height:277mm;padding:0;page-break-after:always}
+  .report-a4-page{border:0;border-radius:0;box-shadow:none;break-after:page;break-inside:avoid-page;box-sizing:border-box;min-height:0;padding:0;page-break-after:always}
   .report-a4-page:last-child{break-after:auto;page-break-after:auto}
   .report-visual-page-header{margin-bottom:10px;padding-bottom:7px}
   .report-visual-title-row{margin-bottom:9px}
