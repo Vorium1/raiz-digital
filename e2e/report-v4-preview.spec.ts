@@ -84,6 +84,11 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     await expect(page3.locator(".report-v4-final-metrics")).toBeVisible();
     await expect(page3).toContainText(/RESUMO FINAL/i);
     await expect(page3).toContainText(/Resumo para o produtor/i);
+    if (EXPECTED_COMMERCIAL) {
+      await expect(page3.locator(".report-v4-final-commercial")).toBeVisible();
+      await expect(page3.locator(".report-v4-final-commercial-grid > div")).toHaveCount(EXPECTED_COMMERCIAL_PRODUCTS);
+      await expect(page3.locator(".report-v4-final-commercial-total")).toBeVisible();
+    }
     await expect(page3.locator(".report-v4-opinion")).toBeVisible();
     await expect(page3).toContainText(/BASE DA DECISÃO/i);
     await expect(page3.locator(".report-v4-trace-grid")).toBeVisible();
