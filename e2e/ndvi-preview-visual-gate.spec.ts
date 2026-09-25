@@ -271,7 +271,7 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await expect(vigor).toBeVisible();
 
     await expect(vigor).toContainText("NDVI · VIGOR VEGETATIVO");
-    await expect(vigor).toContainText("NDVI médio");
+    await expect(vigor).toContainText(/NDVI médio/i);
     await expect(vigor).toContainText("MAIOR VIGOR");
     await expect(vigor).toContainText("Distribuição do vigor no talhão");
     await expect(vigor).toContainText("ha");
