@@ -1,0 +1,86 @@
+name: NDVI Stage 1 Cabeda Spatial Truth QA
+
+on:
+  push:
+    branches:
+      - feature/ndvi-stage1-spatial-truth
+    paths:
+      - "src/components/spatial-map-types.ts"
+      - "src/lib/repositories/map-data.ts"
+      - "scripts/audit-cabeda-persisted-geometry.mjs"
+      - ".github/workflows/ndvi-stage1-cabeda-spatial-truth.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ndvi-stage1-cabeda-spatial-truth
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Cabeda Área ${{ matrix.area }} · read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    strategy:
+      fail-fast: false
+      matrix:
+        area: ["01", "02"]
+
+    env:
+      CABEDA_AUDIT_AREA: ${{ matrix.area }}
+      CABEDA_TENANT_ID: ${{ secrets.CABEDA_TENANT_ID }}
+      CABEDA_ACTOR_USER_ID: ${{ secrets.CABEDA_ACTOR_USER_ID }}
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar contexto
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}" || { echo "::error::HOMOLOGATION_DATABASE_URL ausente."; exit 1; }
+          test -n "${CABEDA_TENANT_ID:-}" || { echo "::error::CABEDA_TENANT_ID ausente."; exit 1; }
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditar geometria persistida sem expor coordenadas
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/audit-cabeda-persisted-geometry.mjs | tee "cabeda-area-${CABEDA_AUDIT_AREA}.json"
+
+      - name: Publicar resumo privacy-safe
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## NDVI Stage 1 · Cabeda Área ${CABEDA_AUDIT_AREA}"
+            echo
+            if [ -s "cabeda-area-${CABEDA_AUDIT_AREA}.json" ]; then
+              echo '~~~json'
+              cat "cabeda-area-${CABEDA_AUDIT_AREA}.json"
+              echo '~~~'
+            else
+              echo "Auditoria não produziu resultado."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Salvar evidência privacy-safe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndvi-stage1-cabeda-area-${{ matrix.area }}
+          path: cabeda-area-${{ matrix.area }}.json
+          if-no-files-found: warn
+          retention-days: 30
