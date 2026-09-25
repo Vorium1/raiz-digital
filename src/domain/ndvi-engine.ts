@@ -224,6 +224,7 @@ export type NdviPairwisePoint = NdviHistoryPoint & {
   id?: string | null;
   source?: string | null;
   rasterAlgorithm?: string | null;
+  rasterObjectKey?: string | null;
   zoneBreakdownPct?: ZoneBreakdownPct;
 };
 
