@@ -20,3 +20,14 @@ export function recommendationInputLabel(inputType: string | null | undefined) {
   if (!normalized) return "Insumo";
   return RECOMMENDATION_INPUT_LABELS[normalized] ?? inputType!.trim();
 }
+
+
+export function producerFacingRecommendationText(value: string | null | undefined) {
+  return (value ?? "")
+    .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/:\s*[.;]/g, ".")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
+}
