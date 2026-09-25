@@ -270,11 +270,11 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     await vigor.scrollIntoViewIfNeeded();
     await expect(vigor).toBeVisible();
 
-    await expect(vigor).toContainText("VIGOR DA ÁREA");
+    await expect(vigor).toContainText("NDVI · VIGOR VEGETATIVO");
     await expect(vigor).toContainText("NDVI médio");
     await expect(vigor).toContainText("MAIOR VIGOR");
-    await expect(vigor).toContainText("Faixas de vigor");
-    await expect(vigor).toContainText("não é uma previsão direta de produtividade");
+    await expect(vigor).toContainText("Distribuição do vigor no talhão");\n    await expect(vigor).toContainText("ha");\n    await expect(vigor).toContainText("TENDÊNCIA");
+    await expect(vigor).toContainText("NDVI não é previsão direta de sacas");
 
     const map = vigor.locator(".real-field-map");
     await expect(map).toBeVisible({ timeout: 20_000 });
