@@ -351,7 +351,7 @@ export async function getLatestAnalysisImportConfidenceDetails(
       committedAt: string | null;
     }>(
       `SELECT ai.id::text AS "importId",
-              ai.confidence_score AS "confidenceScore",
+              a.confidence_score AS "confidenceScore",
               a.confidence_level AS "confidenceLevel",
               ai.validation_issues AS "validationIssues",
               ai.blocker_count::int AS "blockerCount",
