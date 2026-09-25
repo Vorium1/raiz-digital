@@ -625,10 +625,10 @@ assert.match(publishedRecommendationDomain, /quantity \* areaHa/);
 assert.match(publishedRecommendationDashboard, /Total para/);
 assert.match(publishedRecommendationDashboard, /doseUnit/);
 
-assert.match(simpleResult, /RASTREABILIDADE/);
+assert.match(simpleResult, /BASE DA DECISÃO/);
+assert.match(simpleResult, /De onde veio este resultado/);
 assert.match(simpleResult, /Base agronômica/);
-assert.ok(simpleResult.includes('<small>Motor</small><strong>{engineValidated ? "Motor RAIZ"'));
-assert.match(simpleResult, /Versão do motor/);
+assert.match(simpleResult, /<small>Validação<\/small>/);
 
 assert.match(simplePublish, /label = "Gerar laudo RAIZ"/);
 assert.match(simplePublish, /busyLabel = "Gerando laudo…"/);
