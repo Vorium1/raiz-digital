@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
 import { Icon } from "@/components/icon";
+import { mapboxBrowserToken } from "@/lib/maps/mapbox-loader";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 
@@ -140,10 +141,26 @@ export function GeoMapInput({ value, onChange, referenceBoundary, referencePoint
       if (cancelled || !containerRef.current || mapRef.current) return;
       const L = mod.default;
       const map = L.map(containerRef.current, { attributionControl: true }).setView(DEFAULT_CENTER, 4);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
+      const mapboxToken = mapboxBrowserToken();
+      const tileLayer = mapboxToken
+        ? L.tileLayer(
+            "https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}",
+            {
+              maxZoom: 20,
+              tileSize: 256,
+              zoomOffset: 0,
+              attribution: "&copy; Mapbox &copy; OpenStreetMap",
+              accessToken: mapboxToken,
+            } as Leaflet.TileLayerOptions & { accessToken: string },
+          )
+        : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors",
+          });
+      tileLayer.addTo(map);
+      if (containerRef.current) {
+        containerRef.current.dataset.geoMapBase = mapboxToken ? "satellite" : "street-fallback";
+      }
       shapeLayerRef.current = L.layerGroup().addTo(map);
       referenceLayerRef.current = L.layerGroup().addTo(map);
       referencePointsLayerRef.current = L.layerGroup().addTo(map);
@@ -239,6 +256,7 @@ export function GeoMapInput({ value, onChange, referenceBoundary, referencePoint
         {!drawing ? (
           <>
             <button type="button" className="button tiny" onClick={startDrawing}><Icon name="location" size={14} />Desenhar no mapa</button>
+            <span className="geo-map-base-badge"><Icon name="map" size={12}/>Satélite quando disponível</span>
             <button type="button" className="button tiny secondary" disabled={locating} onClick={centerOnCurrentLocation}><Icon name="map" size={14} />{locating ? "Localizando…" : "Minha localização"}</button>
             {value.trim() && <button type="button" className="button tiny secondary" onClick={clearShape}><Icon name="close" size={14} />Limpar</button>}
           </>
