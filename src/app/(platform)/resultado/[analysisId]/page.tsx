@@ -153,6 +153,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     interpretation: structured.interpretation ?? [],
   });
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
+  const technicalOpinion = prescription?.summary?.trim() || null;
   const producerSummary = prescription
     ? buildProducerResultSummary({
         areaHa: Number(context.areaHa),
@@ -215,7 +216,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
 
         {Boolean(publishedBoundary) && (
           <section className="simple-result-map">
-            <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
+            <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={220} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
             {plannedPointCount > 0 && (
               <div className="simple-result-map-note">
                 <Icon name="location" size={14}/>
@@ -241,7 +242,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
             </div>
             {ndvi.rasterArchived && publishedBoundary && (
-              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any}/>
+              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any} height={190}/>
             )}
           </section>
         )}
@@ -262,7 +263,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             <div className="simple-result-section-head">
               <span>{(prescription.recommendations?.length ?? 0) > 0 ? "O QUE FAZER" : "CONCLUSÃO TÉCNICA"}</span>
               <h2>{(prescription.recommendations?.length ?? 0) > 0 ? (engineValidated ? "Recomendação validada pelo motor RAIZ" : "Recomendação validada") : (engineValidated ? "Conclusão validada pelo motor RAIZ" : "Conclusão técnica validada")}</h2>
-              {prescription.summary && <p>{prescription.summary}</p>}
+              <p>Doses e manejos abaixo são somente os que foram aprovados e congelados nesta decisão.</p>
             </div>
             {(prescription.recommendations?.length ?? 0) === 0 && (
               <div className="simple-result-completed-limited">
