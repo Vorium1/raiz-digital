@@ -240,7 +240,14 @@ export async function updateField(input: {
                   WHERE sp.tenant_id=$1::uuid
                     AND cs.field_id=$2::uuid
                     AND co.status <> 'CANCELED'
-                    AND NOT ST_Covers(state.boundary, sp.position)
+                    AND NOT ST_Covers(
+                      state.boundary,
+                      CASE
+                        WHEN upper(trim(coalesce(sp.gps_source,''))) IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+                          THEN sp.position
+                        ELSE coalesce(sp.observed_position, sp.position)
+                      END
+                    )
                 ), ARRAY[]::text[]) AS "outsideCodes"
          FROM state`,
         [input.tenantId, input.fieldId, nextBoundaryJson],
