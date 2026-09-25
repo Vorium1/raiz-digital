@@ -24,7 +24,7 @@ async function authenticate(page: Page) {
 
 async function openPublishedReport(page: Page) {
   await authenticate(page);
-  await page.goto(\`/relatorios/talhao/\${ANALYSIS_ID}?versao=publicada\`, {
+  await page.goto("/relatorios/talhao/" + ANALYSIS_ID + "?versao=publicada", {
     waitUntil: "networkidle",
     timeout: 60_000,
   });
