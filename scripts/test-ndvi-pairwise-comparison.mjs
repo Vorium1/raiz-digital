@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   compareNdviSnapshots,
   NDVI_TEMPORAL_CHANGE_THRESHOLD,
@@ -77,3 +78,13 @@ assert.equal(same.comparable, false);
 assert.match(same.comparabilityReason ?? "", /duas aquisições diferentes/i);
 
 console.log("ndvi pairwise comparison: ok");
+
+
+const technicalPanelSource = readFileSync("src/components/field-ndvi-panel.tsx", "utf8");
+const simpleFieldSource = readFileSync("src/components/simple-field-vigor.tsx", "utf8");
+assert.match(technicalPanelSource, /NdviTemporalComparison/, "painel técnico deve expor comparação A × B");
+assert.match(simpleFieldSource, /NdviTemporalComparison/, "visão simples do talhão deve expor comparação A × B");
+assert.match(simpleFieldSource, /selectedArchived/, "detalhes devem acompanhar o raster selecionado");
+assert.match(simpleFieldSource, /displayed\.capturedAt/, "data exibida deve ser da aquisição realmente mostrada");
+assert.match(simpleFieldSource, /onViewRaster=\{\(date\) => setRasterDate\(date\)\}/, "ações A/B devem controlar o mapa real");
+
