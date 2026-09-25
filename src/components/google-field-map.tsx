@@ -206,6 +206,7 @@ export function GoogleFieldMap({
       data-map-provider="google"
       data-map-ready={tilesReady ? "true" : "false"}
       data-has-image-overlay={imageOverlay ? "true" : "false"}
+      data-point-count={points.length}
     >
       <div style={{ position: "relative" }}>
         <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
