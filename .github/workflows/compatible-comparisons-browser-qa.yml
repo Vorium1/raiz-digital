@@ -92,8 +92,8 @@ jobs:
             await client.query("COMMIT");
 
             console.log(`::add-mask::${token}`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
           } catch (error) {
             await client.query("ROLLBACK").catch(() => {});
             throw error;
