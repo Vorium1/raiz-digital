@@ -78,13 +78,31 @@ const observedPoint = point({
 });
 assert.equal(
   pointPositionKind(observedPoint),
-  "OBSERVED",
-  "captura observada em campo deve prevalecer sobre a proveniência histórica",
+  "AUDITED_SOURCE",
+  "fonte espacial auditada pura deve permanecer autoridade mesmo se houver observed_position legado",
 );
 assert.deepEqual(
   effectivePointCoordinates(observedPoint),
+  { latitude: -28.25, longitude: -52.4 },
+  "mapas devem ignorar observed_position legado quando a fonte persistida é uma geometria real auditada",
+);
+
+const recollectedAfterAudit = point({
+  gpsSource: "SHAPEFILE_REAL_GPS_LONLAT+BROWSER_GPS",
+  latitude: -28.25,
+  longitude: -52.4,
+  observedLatitude: -28.2507777,
+  observedLongitude: -52.4008888,
+});
+assert.equal(
+  pointPositionKind(recollectedAfterAudit),
+  "OBSERVED",
+  "coleta posterior via navegador deve ser reconhecida como observação corrente",
+);
+assert.deepEqual(
+  effectivePointCoordinates(recollectedAfterAudit),
   { latitude: -28.2507777, longitude: -52.4008888 },
-  "mapas devem renderizar a posição observada, não a posição-base, quando ambas existem",
+  "coleta posterior registrada deve voltar a prevalecer sobre a posição-base",
 );
 assert.deepEqual(
   effectivePointCoordinates(point({ gpsSource: "SHAPEFILE_REAL_EPSG4326", latitude: -28.1234567, longitude: -52.7654321 })),
