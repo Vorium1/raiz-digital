@@ -346,3 +346,124 @@
   .report-v4-final-commercial-total small{font-size:3.4px}
   .report-v4-final-commercial-total strong{font-size:3.9px}
 }
+
+
+/* Report V4 — ajuste final de legibilidade física.
+   Mantém o pior caso em 3 folhas A4, mas evita microtipografia/área útil ociosa. */
+@media print{
+  .report-v4-sheet{min-height:255mm}
+
+  .simple-result-document-head{padding-bottom:9px}
+  .simple-result-hero{padding:13px 0 10px}
+  .simple-result-hero>span{font-size:8px}
+  .simple-result-hero h1{font-size:34px}
+  .simple-result-hero>p{font-size:10.5px;margin:5px 0 10px}
+  .simple-result-context{gap:7px}
+  .simple-result-context>div{padding:7px 8px}
+  .simple-result-context small{font-size:7px}
+  .simple-result-context strong{font-size:9px}
+  .simple-result-map .real-field-map-canvas,
+  .simple-result-map .leaflet-container{height:195px!important;min-height:195px!important}
+  .simple-result-map-note{font-size:7.4px;padding:6px 8px}
+
+  .simple-result-section{padding:12px 0}
+  .simple-result-section-head>span{font-size:7.4px}
+  .simple-result-section-head h2{font-size:18px}
+  .simple-result-section-head p{font-size:8.2px;line-height:1.4;margin-top:4px}
+
+  .report-v4-parameter-grid{gap:6px;margin-top:9px}
+  .report-v4-parameter-card{padding:7px 8px}
+  .report-v4-parameter-head small{font-size:6.2px}
+  .report-v4-parameter-head strong{font-size:8.5px}
+  .report-v4-parameter-head b{font-size:8.6px}
+  .report-v4-range{font-size:6px;margin-top:5px}
+  .report-v4-class-bar{height:6px;margin-top:5px}
+  .report-v4-class-legend{margin-top:5px}
+  .report-v4-class-legend span{font-size:6px}
+  .report-v4-parameter-card footer{font-size:5.8px;margin-top:5px;padding-top:4px}
+  .report-v4-parameter-note{font-size:6px;line-height:1.35;margin-top:5px}
+
+  .report-v4-action-summary{gap:5px;margin-top:8px}
+  .report-v4-action-summary>div{padding:6px 7px}
+  .report-v4-action-summary small{font-size:5.6px}
+  .report-v4-action-summary strong{font-size:7.4px;margin-top:2px}
+
+  .report-v4-recommendation-dashboard{gap:7px;margin-top:9px}
+  .report-v4-recommendation-group>header{margin-bottom:4px}
+  .report-v4-recommendation-category-dot{height:19px;width:4px}
+  .report-v4-recommendation-group>header strong{font-size:7.5px}
+  .report-v4-recommendation-group>header small{font-size:5.2px}
+  .report-v4-recommendation-group>header>b{font-size:5.2px;height:16px;min-width:16px}
+  .report-v4-recommendation-grid{gap:5px}
+  .report-v4-recommendation-card{padding:6px 7px}
+  .report-v4-recommendation-card-head strong{font-size:7.1px}
+  .report-v4-recommendation-card-head span{font-size:4.4px}
+  .report-v4-recommendation-dose{gap:4px;margin-top:5px}
+  .report-v4-recommendation-dose>div{padding:4px 5px}
+  .report-v4-recommendation-dose small{font-size:4.5px}
+  .report-v4-recommendation-dose b{font-size:6px}
+  .report-v4-recommendation-rationale{font-size:5px;line-height:1.3;margin-top:5px;padding-top:4px}
+
+  .report-v4-management{margin-top:6px;padding:6px 7px}
+  .report-v4-management>strong{font-size:6.4px}
+  .report-v4-management-grid{gap:4px;margin-top:4px}
+  .report-v4-management-grid span{font-size:5px;line-height:1.3;padding:4px 5px}
+  .report-v4-criteria-grid small{font-size:4.8px!important;line-height:1.25!important;padding:4px 5px}
+
+  .report-v4-commercial-grid{gap:5px;margin-top:6px}
+  .report-v4-commercial-grid article{padding:6px 7px}
+  .report-v4-commercial-grid strong{font-size:6.7px}
+  .report-v4-commercial-grid small,.report-v4-commercial-grid span{font-size:4.7px}
+  .report-v4-commercial-grid b{font-size:6px}
+  .report-v4-commercial-total{margin-top:5px;padding:5px 6px}
+  .report-v4-commercial-total small{font-size:4.9px}
+  .report-v4-commercial-total strong{font-size:6px}
+
+  .simple-result-section.satellite{padding:9px}
+  .simple-result-ndvi-grid{gap:6px;margin-top:7px}
+  .simple-result-ndvi-grid>div{padding:7px}
+  .simple-result-ndvi-grid small{font-size:6.2px}
+  .simple-result-ndvi-grid strong{font-size:8.5px}
+  .simple-result-ndvi-map .real-field-map-canvas,
+  .simple-result-ndvi-map .leaflet-container{height:170px!important;min-height:170px!important}
+
+  .report-v4-final-overview{padding-top:10px}
+  .report-v4-final-metrics{gap:5px;margin-top:8px}
+  .report-v4-final-metrics>div{padding:6px 7px}
+  .report-v4-final-metrics small{font-size:5.2px}
+  .report-v4-final-metrics strong{font-size:7.5px}
+
+  .report-v4-sheet-three .simple-result-producer-summary-list{gap:6px;margin-top:8px}
+  .simple-result-producer-summary-list article{padding:8px 9px}
+  .simple-result-producer-summary-list strong{font-size:9px}
+  .simple-result-producer-summary-list small{font-size:6.8px;line-height:1.3}
+  .simple-result-producer-summary-list b{font-size:8.4px}
+  .simple-result-producer-summary-note{margin-top:7px;padding:7px 9px}
+  .simple-result-producer-summary-note p{font-size:6.5px;line-height:1.35}
+
+  .report-v4-final-commercial{margin-top:5px;padding:6px 7px}
+  .report-v4-final-commercial-head strong{font-size:6px}
+  .report-v4-final-commercial-head small{font-size:4.4px}
+  .report-v4-final-commercial-head>span{font-size:4.1px;padding:2px 5px}
+  .report-v4-final-commercial-grid{gap:4px;margin-top:4px}
+  .report-v4-final-commercial-grid>div{padding:4px 5px}
+  .report-v4-final-commercial-grid strong{font-size:5px}
+  .report-v4-final-commercial-grid span{font-size:4.2px}
+  .report-v4-final-commercial-grid b{font-size:4.5px}
+  .report-v4-final-commercial-total{margin-top:4px;padding-top:4px}
+  .report-v4-final-commercial-total small{font-size:4.2px}
+  .report-v4-final-commercial-total strong{font-size:4.8px}
+
+  .report-v4-opinion>p{font-size:8px;line-height:1.45;margin-top:7px;padding:7px 9px}
+  .report-v4-trace-grid{gap:5px;margin-top:6px}
+  .report-v4-trace-grid>div{padding:5px 6px}
+  .report-v4-trace-grid small{font-size:4.8px}
+  .report-v4-trace-grid strong{font-size:6px}
+  .report-v4-signature-missing{max-width:260px;padding-top:6px}
+  .report-v4-signature-missing strong{font-size:6.4px}
+  .report-v4-signature-missing small{font-size:4.8px}
+  .simple-result-signature{padding:12px 0}
+  .simple-result-footer{padding-top:9px}
+  .simple-result-footer>div:first-child>span{font-size:8px}
+  .simple-result-footer>div:first-child>small{font-size:6.2px}
+}
