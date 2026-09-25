@@ -1,3 +1,5 @@
+> **ARQUIVO HISTÓRICO:** este documento preserva a evolução detalhada iniciada em 2026-09-01 e contém checkpoints que já foram superados. Para o estado operacional atual, use [CURRENT_STATE.md](./CURRENT_STATE.md). Não execute migrations, releases ou tarefas antigas apenas porque aparecem abaixo sem antes conferir GitHub/CI/banco atuais.
+
 # Estado do Projeto — RAIZ Digital
 
 Data do handoff: 2026-09-01
