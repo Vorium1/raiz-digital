@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, isSpreadsheetFileName, selectPromotableLabRows, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
+import { buildLabImportPreview, buildLabImportPreviewFromXlsxBase64, calculateLabImportConfidence, isSpreadsheetFileName, selectPromotableLabRows, type LabImportIssue, type LabImportRow, type LabSampleType } from "@/domain/lab-import";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { refreshAnalysisSourceHumanVerified } from "@/lib/repositories/source-verification";
@@ -301,5 +301,117 @@ export async function commitCsvImport(input: {
     });
 
     return { importId, preview, analysisStatus, promoted };
+  });
+}
+
+
+function normalizePersistedIssues(value: unknown): LabImportIssue[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (!["BLOCKER", "WARNING", "INFO"].includes(String(row.severity))) return [];
+    if (typeof row.code !== "string" || typeof row.message !== "string") return [];
+    return [{
+      severity: row.severity as LabImportIssue["severity"],
+      code: row.code,
+      message: row.message,
+      line: typeof row.line === "number" ? row.line : undefined,
+      sampleCode: typeof row.sampleCode === "string" ? row.sampleCode : undefined,
+      parameterCode: typeof row.parameterCode === "string" ? row.parameterCode : undefined,
+    }];
+  });
+}
+
+/**
+ * Explica o score do laudo a partir da última importação persistida.
+ *
+ * O score/nível exibidos continuam sendo os valores gravados na análise. As dimensões ponderadas
+ * são reconstruídas a partir das linhas e validation_issues da mesma importação usando exatamente
+ * o calculador do importador. Contexto agronômico e vínculo espacial têm peso zero no score do
+ * arquivo e, portanto, não são reconstruídos como 0/100 aqui.
+ *
+ * Se uma importação histórica não puder reproduzir o score persistido com a regra atual, a função
+ * preserva o score original e marca a decomposição como indisponível em vez de inventar componentes.
+ */
+export async function getLatestAnalysisImportConfidenceDetails(
+  tenantId: string,
+  analysisId: string,
+  userId?: string,
+) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const importResult = await client.query<{
+      importId: string;
+      confidenceScore: number | string | null;
+      confidenceLevel: "HIGH" | "ADEQUATE" | "LIMITED" | "INSUFFICIENT" | null;
+      validationIssues: unknown;
+      blockerCount: number;
+      warningCount: number;
+      fileName: string;
+      committedAt: string | null;
+    }>(
+      `SELECT ai.id::text AS "importId",
+              ai.confidence_score AS "confidenceScore",
+              a.confidence_level AS "confidenceLevel",
+              ai.validation_issues AS "validationIssues",
+              ai.blocker_count::int AS "blockerCount",
+              ai.warning_count::int AS "warningCount",
+              ai.file_name AS "fileName",
+              ai.committed_at::text AS "committedAt"
+       FROM analysis_imports ai
+       JOIN analyses a ON a.tenant_id=ai.tenant_id AND a.id=ai.analysis_id
+       WHERE ai.tenant_id=$1::uuid AND ai.analysis_id=$2::uuid
+       ORDER BY ai.committed_at DESC NULLS LAST, ai.created_at DESC
+       LIMIT 1`,
+      [tenantId, analysisId],
+    );
+    const latest = importResult.rows[0];
+    if (!latest || latest.confidenceScore == null) return null;
+
+    const rowsResult = await client.query<{
+      parameterCode: string;
+      unit: string;
+      method: string;
+      unitInferred: boolean;
+      methodInferred: boolean;
+    }>(
+      `SELECT parameter_code AS "parameterCode",
+              unit,
+              analytical_method AS method,
+              unit_inferred AS "unitInferred",
+              method_inferred AS "methodInferred"
+       FROM analysis_import_rows
+       WHERE tenant_id=$1::uuid AND import_id=$2::uuid
+       ORDER BY source_line, sample_code, parameter_code`,
+      [tenantId, latest.importId],
+    );
+
+    const issues = normalizePersistedIssues(latest.validationIssues);
+    const reconstructed = calculateLabImportConfidence(rowsResult.rows, issues, {});
+    const persistedScore = Number(latest.confidenceScore);
+    const persistedLevel = latest.confidenceLevel ?? (
+      persistedScore >= 90 ? "HIGH"
+        : persistedScore >= 75 ? "ADEQUATE"
+          : persistedScore >= 50 ? "LIMITED"
+            : "INSUFFICIENT"
+    );
+    const reconstructionMatchesStoredScore = Number.isFinite(persistedScore) && reconstructed.score === Math.round(persistedScore);
+
+    return {
+      importId: latest.importId,
+      fileName: latest.fileName,
+      committedAt: latest.committedAt,
+      confidence: {
+        score: persistedScore,
+        level: persistedLevel,
+        dimensions: reconstructionMatchesStoredScore
+          ? reconstructed.dimensions.filter((dimension) => dimension.weight > 0)
+          : [],
+      },
+      issues,
+      blockerCount: latest.blockerCount,
+      warningCount: latest.warningCount,
+      reconstructionMatchesStoredScore,
+    };
   });
 }
