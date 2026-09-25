@@ -113,6 +113,9 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const displayFacts: StructuredFact[] = viewingPublished ? (snapshotOutput?.facts ?? []) : results;
   const displayInterpretation: StructuredInterpretation[] = viewingPublished ? (snapshotOutput?.interpretation ?? []) : (liveStructured?.interpretation ?? []);
   const displayConfidence = viewingPublished ? snapshotOutput?.confidence : liveStructured?.confidence;
+  const publishedTechnicalBase = viewingPublished && snapshotOutput?.trace
+    ? [snapshotOutput.trace.cropProfileCode, snapshotOutput.trace.cropProfileVersion].filter(Boolean).join(" · ") || null
+    : null;
   const displayPoints: DisplayPoint[] = viewingPublished
     ? (publishedSnapshotV3?.pointsSnapshot ?? [])
     : points;
@@ -258,7 +261,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           generatedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}
           interpretationRevision={viewingPublished ? (publishedSnapshotV3?.revision ?? publishedSnapshotV2?.revision ?? publishedReport?.interpretationRevision ?? null) : interpretation?.revision ?? null}
           responsibleName={viewingPublished ? displayPrescription?.reviewedByName ?? null : interpretation?.approvedByName || interpretation?.reviewedByName || null}
-          technicalBase={interpretation?.cropProfileName ?? null}
+          technicalBase={viewingPublished ? publishedTechnicalBase : interpretation?.cropProfileName ?? null}
           publishedByName={viewingPublished ? publishedInfo?.report.publishedByName ?? null : null}
           publishedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : null}
           publishedHashPrefix={viewingPublished ? publishedInfo?.report.sha256.slice(0, 12) ?? null : null}
