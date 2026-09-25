@@ -1,0 +1,183 @@
+name: Explainable Confidence Homologation QA
+
+on:
+  push:
+    branches:
+      - "feature/explainable-technical-confidence"
+    paths:
+      - ".github/workflows/explainable-confidence-homologation-qa.yml"
+      - "e2e/explainable-confidence-homologation.spec.ts"
+      - "src/domain/lab-import.ts"
+      - "src/domain/lab-import-confidence-explanation.ts"
+      - "src/domain/technical-confidence-explanation.ts"
+      - "src/lib/repositories/imports.ts"
+      - "src/components/lab-import-confidence-explainer.tsx"
+      - "src/components/lab-import-confidence-explainer.module.css"
+      - "src/components/technical-confidence-explainer.tsx"
+      - "src/components/technical-confidence-explainer.module.css"
+      - "src/components/agronomic-intelligence-panel.tsx"
+      - "src/app/(platform)/analises/**"
+  workflow_dispatch:
+
+concurrency:
+  group: explainable-confidence-homologation-\${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: issue-105-browser-qa
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 25
+    env:
+      HOMOLOGATION_DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      DATA_MODE: database
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do HEAD
+        run: npm run build
+
+      - name: Preparar sessão temporária e análise real da homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+          const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            const account = await client.query(
+              \`SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
+               FROM users u
+               JOIN tenant_members tm ON tm.user_id=u.id AND tm.active=true
+               JOIN tenants t ON t.id=tm.tenant_id AND t.status='ACTIVE'
+               WHERE u.email='admin@raiz.local'::citext
+               ORDER BY u.is_platform_curator DESC, tm.tenant_id
+               LIMIT 1\`,
+            );
+            const user = account.rows[0];
+            if (!user?.user_id || !user?.tenant_id) throw new Error("Conta E2E ativa não encontrada.");
+
+            const target = await client.query(
+              \`SELECT a.id::text AS analysis_id
+               FROM analyses a
+               JOIN LATERAL (
+                 SELECT ai.id, ai.confidence_score
+                 FROM analysis_imports ai
+                 WHERE ai.tenant_id=a.tenant_id AND ai.analysis_id=a.id
+                 ORDER BY ai.committed_at DESC NULLS LAST, ai.created_at DESC
+                 LIMIT 1
+               ) latest_import ON latest_import.confidence_score IS NOT NULL
+               JOIN LATERAL (
+                 SELECT i.structured_output
+                 FROM interpretations i
+                 WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
+                 ORDER BY i.revision DESC
+                 LIMIT 1
+               ) latest_interpretation
+                 ON latest_interpretation.structured_output->'confidence'->'dimensions' IS NOT NULL
+               WHERE a.tenant_id=$1::uuid
+                 AND jsonb_array_length(latest_interpretation.structured_output->'confidence'->'dimensions') >= 3
+               ORDER BY a.updated_at DESC
+               LIMIT 1\`,
+              [user.tenant_id],
+            );
+            const analysisId = target.rows[0]?.analysis_id;
+            if (!analysisId) throw new Error("Nenhuma análise de homologação com os dois scores foi encontrada.");
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              \`INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-confidence-qa',NULL)
+               RETURNING id::text\`,
+              [user.user_id, user.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(\`::add-mask::\${token}\`);
+            appendFileSync(process.env.GITHUB_ENV, \`E2E_SESSION_TOKEN=\${token}\\n\`);
+            appendFileSync(process.env.GITHUB_ENV, \`E2E_SESSION_ID=\${session.rows[0].id}\\n\`);
+            appendFileSync(process.env.GITHUB_ENV, \`E2E_ANALYSIS_ID=\${analysisId}\\n\`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Iniciar HEAD contra homologação
+        shell: bash
+        env:
+          APP_DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          npm start -- --hostname 127.0.0.1 > /tmp/raiz-confidence-server.log 2>&1 &
+          echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/raiz-confidence-server.log
+          exit 1
+
+      - name: Rodar QA em navegador real
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/explainable-confidence-homologation.spec.ts
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "\${E2E_SERVER_PID:-}" ]; then kill "\${E2E_SERVER_PID}" 2>/dev/null || true; fi
+          if [ -z "\${E2E_SESSION_ID:-}" ] || [ -z "\${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({
+            connectionString: process.env.HOMOLOGATION_DATABASE_URL,
+            ssl: { rejectUnauthorized: false },
+          });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-confidence-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: explainable-confidence-\${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
