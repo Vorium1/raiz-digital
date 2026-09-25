@@ -1,0 +1,423 @@
+name: Official Commercial Plan Preview QA
+
+on:
+  push:
+    branches:
+      - "feature/official-commercial-plan"
+    paths:
+      - ".github/workflows/official-commercial-plan-preview-qa.yml"
+      - "e2e/official-commercial-plan-preview.spec.ts"
+      - "src/domain/official-commercial-plan.ts"
+      - "src/components/commercial-plan-publish-select.tsx"
+      - "src/components/publish-report-button.tsx"
+      - "src/components/simple-publish-result-button.tsx"
+      - "src/app/(platform)/resultado/**"
+      - "src/app/(platform)/relatorios/talhao/**"
+      - "src/app/api/interpretations/**/publish-report/route.ts"
+      - "src/lib/repositories/premium-report-publication.ts"
+  workflow_dispatch:
+
+concurrency:
+  group: official-commercial-plan-preview-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: read
+  id-token: write
+
+jobs:
+  visual:
+    name: issue-93-preview
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 25
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Obter token OIDC para Deployment Protection
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
+      - name: Descobrir Preview Vercel deste SHA
+        id: preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            for (let attempt = 0; attempt < 60; attempt++) {
+              const deployments = await github.rest.repos.listDeployments({
+                owner, repo, sha: context.sha, per_page: 20,
+              });
+              for (const deployment of deployments.data) {
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner, repo, deployment_id: deployment.id, per_page: 20,
+                });
+                const ready = statuses.data.find((status) =>
+                  status.state === "success"
+                  && typeof status.environment_url === "string"
+                  && status.environment_url.startsWith("https://")
+                );
+                if (ready) {
+                  core.setOutput("url", ready.environment_url);
+                  return;
+                }
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            core.setFailed("Nenhum environment_url de Preview ficou pronto para o SHA atual.");
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Preparar snapshot visual temporário na homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+
+          const pool = new pg.Pool({
+            connectionString: databaseUrl,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          const client = await pool.connect();
+
+          let sessionId = "";
+          let productId = "";
+          let planId = "";
+          let reportId = "";
+          const productName = "KCl E2E 60%";
+
+          try {
+            await client.query("BEGIN");
+
+            const account = await client.query(
+              `SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
+               FROM users u
+               JOIN tenant_members tm ON tm.user_id=u.id AND tm.active=true
+               JOIN tenants t ON t.id=tm.tenant_id AND t.status='ACTIVE'
+               WHERE u.email='admin@raiz.local'::citext
+               ORDER BY u.is_platform_curator DESC, tm.tenant_id
+               LIMIT 1`,
+            );
+            const user = account.rows[0];
+            if (!user?.user_id || !user?.tenant_id) throw new Error("Conta E2E ativa não encontrada.");
+
+            const target = await client.query(
+              `SELECT i.analysis_id::text AS analysis_id,
+                      i.id::text AS interpretation_id,
+                      r.prescription_generation_id::text AS prescription_id,
+                      r.revision AS report_revision,
+                      r.storage_key,
+                      ir.id::text AS recommendation_id,
+                      ir.quantity::float8 AS target_k2o_kg_ha,
+                      f.area_ha::float8 AS area_ha,
+                      a.crop_season_id::text AS crop_season_id
+               FROM reports r
+               JOIN interpretations i
+                 ON i.tenant_id=r.tenant_id
+                AND i.id=r.interpretation_id
+               JOIN ai_generations g
+                 ON g.tenant_id=r.tenant_id
+                AND g.id=r.prescription_generation_id
+                AND g.interpretation_id=i.id
+                AND g.kind='AGRONOMIC_PRESCRIPTION'
+                AND g.status='APPROVED'
+               JOIN analyses a
+                 ON a.tenant_id=i.tenant_id
+                AND a.id=i.analysis_id
+               JOIN crop_seasons cs
+                 ON cs.tenant_id=a.tenant_id
+                AND cs.id=a.crop_season_id
+               JOIN fields f
+                 ON f.tenant_id=cs.tenant_id
+                AND f.id=cs.field_id
+               JOIN input_recommendations ir
+                 ON ir.tenant_id=i.tenant_id
+                AND ir.analysis_id=i.analysis_id
+                AND ir.source_generation_id=g.id
+                AND ir.input_type='K2O'
+                AND ir.unit='kg/ha'
+               WHERE r.tenant_id=$1::uuid
+                 AND r.prescription_generation_id IS NOT NULL
+                 AND r.storage_key LIKE 'inline:v1:%'
+                 AND i.status='APPROVED'
+                 AND i.id = (
+                   SELECT li.id
+                   FROM interpretations li
+                   WHERE li.tenant_id=i.tenant_id
+                     AND li.analysis_id=i.analysis_id
+                   ORDER BY li.revision DESC
+                   LIMIT 1
+                 )
+                 AND g.id = (
+                   SELECT lg.id
+                   FROM ai_generations lg
+                   WHERE lg.tenant_id=i.tenant_id
+                     AND lg.analysis_id=i.analysis_id
+                     AND lg.interpretation_id=i.id
+                     AND lg.kind='AGRONOMIC_PRESCRIPTION'
+                   ORDER BY lg.created_at DESC
+                   LIMIT 1
+                 )
+               ORDER BY r.published_at DESC
+               LIMIT 1`,
+              [user.tenant_id],
+            );
+            const row = target.rows[0];
+            if (!row?.analysis_id || !row?.interpretation_id || !row?.prescription_id || !row?.recommendation_id) {
+              throw new Error("Nenhum laudo V3 inline corrente com K2O kg/ha foi encontrado na homologação.");
+            }
+
+            const prefix = "inline:v1:";
+            const encoded = String(row.storage_key).slice(prefix.length);
+            const snapshot = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+            if (snapshot?.reportSnapshotVersion !== 3) {
+              throw new Error("O laudo E2E selecionado não usa snapshot V3.");
+            }
+            if (snapshot?.approvedPrescription?.id !== row.prescription_id) {
+              throw new Error("O snapshot E2E não corresponde à prescrição oficial corrente.");
+            }
+
+            const analysisId = row.analysis_id;
+            const targetK2O = Number(row.target_k2o_kg_ha);
+            const areaHa = Number(row.area_ha);
+            if (!(targetK2O > 0) || !(areaHa > 0)) throw new Error("Alvo K2O/área inválidos para o E2E.");
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-commercial-plan-qa',NULL)
+               RETURNING id::text`,
+              [user.user_id, user.tenant_id, tokenHash],
+            );
+            sessionId = session.rows[0].id;
+
+            const code = `E2E-KCL-${Date.now()}`;
+            const product = await client.query(
+              `INSERT INTO commercial_input_products
+               (tenant_id, code, name, kind, guarantees_percent, price_per_ton, active, created_by, updated_by)
+               VALUES ($1::uuid,$2,$3,'FERTILIZER',$4::jsonb,2500,true,$5::uuid,$5::uuid)
+               RETURNING id::text, updated_at::text`,
+              [user.tenant_id, code, productName, JSON.stringify({ K2O: 60 }), user.user_id],
+            );
+            productId = product.rows[0].id;
+
+            const rateKgPerHa = targetK2O / 0.60;
+            const totalProductTon = rateKgPerHa * areaHa / 1000;
+            const costPerHa = rateKgPerHa / 1000 * 2500;
+            const totalCost = costPerHa * areaHa;
+
+            const sourceTargets = [{
+              recommendationId: row.recommendation_id,
+              inputType: "K2O",
+              recommendedQuantity: targetK2O,
+              recommendedUnit: "kg/ha",
+              sourceGenerationId: row.prescription_id,
+              recommendationCurrent: true,
+            }];
+            const productSnapshots = [{
+              id: productId,
+              code,
+              name: productName,
+              kind: "FERTILIZER",
+              guaranteesPercent: { K2O: 60 },
+              prntPercent: null,
+              pricePerTon: 2500,
+              minRateKgPerHa: null,
+              maxRateKgPerHa: null,
+              active: true,
+              updatedAt: product.rows[0].updated_at,
+            }];
+            const engineInput = { mode: "SINGLE", productId, driverNutrient: "K2O" };
+            const engineOutput = {
+              rateKgPerHa,
+              totalProductTon,
+              costPerHa,
+              totalCost,
+              constraintsSatisfied: true,
+              constraintViolations: [],
+            };
+
+            const plan = await client.query(
+              `INSERT INTO commercial_plan_snapshots
+               (tenant_id, analysis_id, crop_season_id, label, simulation_mode, schema_version, area_ha,
+                source_targets, product_snapshots, engine_input, engine_output, created_by)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'E2E visual · plano comercial','SINGLE',1,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::uuid)
+               RETURNING id::text, created_at::text`,
+              [
+                user.tenant_id,
+                analysisId,
+                row.crop_season_id,
+                areaHa,
+                JSON.stringify(sourceTargets),
+                JSON.stringify(productSnapshots),
+                JSON.stringify(engineInput),
+                JSON.stringify(engineOutput),
+                user.user_id,
+              ],
+            );
+            planId = plan.rows[0]?.id;
+            if (!planId) throw new Error("Falha ao criar cenário comercial temporário.");
+
+            const frozenCommercialPlan = {
+              id: planId,
+              label: "E2E visual · plano comercial",
+              simulationMode: "SINGLE",
+              schemaVersion: 1,
+              areaHa,
+              sourceTargets,
+              productSnapshots,
+              engineInput,
+              engineOutput,
+              createdAt: plan.rows[0].created_at,
+            };
+
+            const publishedAt = new Date().toISOString();
+            const nextRevision = Number(row.report_revision) + 1;
+            const nextSnapshot = {
+              ...snapshot,
+              revision: nextRevision,
+              commercialPlanSnapshot: frozenCommercialPlan,
+              publishedAt,
+              publishedBy: user.user_id,
+            };
+            const content = JSON.stringify(nextSnapshot);
+            const digest = createHash("sha256").update(content).digest("hex");
+            const storageKey = `inline:v1:${Buffer.from(content, "utf8").toString("base64")}`;
+
+            const report = await client.query(
+              `INSERT INTO reports
+               (tenant_id, interpretation_id, prescription_generation_id, revision, storage_key, sha256, published_at, published_by)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7::timestamptz,$8::uuid)
+               RETURNING id::text`,
+              [user.tenant_id, row.interpretation_id, row.prescription_id, nextRevision, storageKey, digest, publishedAt, user.user_id],
+            );
+            reportId = report.rows[0]?.id;
+            if (!reportId) throw new Error("Falha ao criar relatório visual temporário.");
+
+            await client.query(
+              `INSERT INTO audit_events
+               (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, metadata)
+               VALUES ($1::uuid,$2::uuid,'USER','REPORT_PUBLISHED','report',$3::uuid,$4::jsonb)`,
+              [
+                user.tenant_id,
+                user.user_id,
+                reportId,
+                JSON.stringify({
+                  interpretationId: row.interpretation_id,
+                  analysisId,
+                  reportSnapshotVersion: 3,
+                  approvedPrescriptionId: row.prescription_id,
+                  commercialPlanSnapshotId: planId,
+                  e2eVisualFixture: true,
+                }),
+              ],
+            );
+
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${sessionId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_PRODUCT_ID=${productId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_PLAN_ID=${planId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_REPORT_ID=${reportId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_PRODUCT_NAME=${productName}\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar gate visual do plano comercial oficial
+        env:
+          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: npx playwright test e2e/official-commercial-plan-preview.spec.ts
+
+      - name: Limpar registros temporários da homologação
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({
+            connectionString: process.env.HOMOLOGATION_DATABASE_URL,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            const reportId = process.env.E2E_REPORT_ID?.trim();
+            const planId = process.env.E2E_PLAN_ID?.trim();
+            const productId = process.env.E2E_PRODUCT_ID?.trim();
+            const sessionId = process.env.E2E_SESSION_ID?.trim();
+
+            if (reportId) {
+              await client.query(
+                "DELETE FROM audit_events WHERE entity_type='report' AND entity_id=$1::uuid",
+                [reportId],
+              );
+              await client.query("DELETE FROM reports WHERE id=$1::uuid", [reportId]);
+            }
+            if (planId) {
+              await client.query("DELETE FROM commercial_plan_snapshots WHERE id=$1::uuid", [planId]);
+            }
+            if (productId) {
+              await client.query("DELETE FROM commercial_input_products WHERE id=$1::uuid", [productId]);
+            }
+            if (sessionId) {
+              await client.query(
+                "DELETE FROM user_sessions WHERE id=$1::uuid AND user_agent='github-actions-commercial-plan-qa'",
+                [sessionId],
+              );
+            }
+            await client.query("COMMIT");
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-commercial-plan-preview-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14

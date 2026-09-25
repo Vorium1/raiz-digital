@@ -23,7 +23,7 @@ const allowedRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
  * Relatórios antigos nunca são reescritos. Se a base técnica mudar, uma nova chamada cria
  * uma nova decisão/versionamento oficial.
  */
-export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!allowedRoles.has(session.role)) {
@@ -31,6 +31,19 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   }
 
   const { id: analysisId } = await context.params;
+
+  let commercialPlanSnapshotId: string | null = null;
+  try {
+    const body = await request.json().catch(() => ({})) as { commercialPlanSnapshotId?: unknown };
+    if (body.commercialPlanSnapshotId != null && typeof body.commercialPlanSnapshotId !== "string") {
+      return Response.json({ error: "Identificador do cenário comercial inválido." }, { status: 400 });
+    }
+    commercialPlanSnapshotId = typeof body.commercialPlanSnapshotId === "string" && body.commercialPlanSnapshotId.trim()
+      ? body.commercialPlanSnapshotId.trim()
+      : null;
+  } catch {
+    commercialPlanSnapshotId = null;
+  }
 
   try {
     let evidence = await getAnalysisEvidenceState({
@@ -118,6 +131,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       tenantId: session.tenantId,
       userId: session.userId,
       interpretationId: interpretation.id,
+      commercialPlanSnapshotId,
     });
 
     return Response.json({
