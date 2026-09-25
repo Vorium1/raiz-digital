@@ -1,0 +1,87 @@
+name: Explainable Confidence Browser QA
+
+on:
+  push:
+    branches:
+      - "feature/explainable-technical-confidence"
+    paths:
+      - ".github/workflows/explainable-confidence-homologation-qa.yml"
+      - "e2e/explainable-confidence-homologation.spec.ts"
+      - "scripts/test-lab-import-confidence-explanation.mjs"
+      - "scripts/test-technical-confidence-explanation.mjs"
+      - "src/domain/lab-import.ts"
+      - "src/domain/lab-import-confidence-explanation.ts"
+      - "src/domain/technical-confidence-explanation.ts"
+      - "src/lib/repositories/imports.ts"
+      - "src/components/lab-import-confidence-explainer.tsx"
+      - "src/components/lab-import-confidence-explainer.module.css"
+      - "src/components/technical-confidence-explainer.tsx"
+      - "src/components/technical-confidence-explainer.module.css"
+      - "src/components/agronomic-intelligence-panel.tsx"
+      - "src/app/(platform)/analises/**"
+  workflow_dispatch:
+
+concurrency:
+  group: explainable-confidence-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: issue-105-browser-qa
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATA_MODE: demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Validar build do HEAD
+        run: npm run build
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Iniciar modo demonstração explicitamente rotulado
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --hostname 127.0.0.1 > /tmp/raiz-confidence-server.log 2>&1 &
+          echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/raiz-confidence-server.log
+          exit 1
+
+      - name: Rodar QA visual desktop e mobile
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/explainable-confidence-homologation.spec.ts
+
+      - name: Encerrar servidor local
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
+
+      - name: Publicar evidências visuais
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: explainable-confidence-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
