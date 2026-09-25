@@ -443,6 +443,64 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     });
   });
 
+  test("Talhão Cabeda: editor manual mantém pontos GPS fixos visíveis", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page);
+
+    const target = await page.evaluate(async () => {
+      const [contextResponse, ordersResponse] = await Promise.all([
+        fetch("/api/context", { cache: "no-store" }),
+        fetch("/api/collection-orders", { cache: "no-store" }),
+      ]);
+      const context = await contextResponse.json().catch(() => ({}));
+      const ordersPayload = await ordersResponse.json().catch(() => ({}));
+      const orders = (ordersPayload.orders ?? []).filter((order: any) =>
+        /^CO-CABEDA-0[12]$/.test(String(order.code ?? ""))
+        && order.status !== "CANCELED"
+        && Array.isArray(order.points)
+        && order.points.length > 0
+      );
+      const preferred = orders[0];
+      if (!preferred) return null;
+      const field = (context.fields ?? []).find((item: any) => item.id === preferred.fieldId);
+      if (!field) return null;
+      const unique = new Set<string>();
+      for (const order of (ordersPayload.orders ?? [])) {
+        if (order.fieldId !== field.id || order.status === "CANCELED") continue;
+        for (const point of order.points ?? []) unique.add(String(point.id));
+      }
+      return { fieldId: field.id, fieldName: field.name, pointCount: unique.size };
+    });
+
+    expect(target, "Homologação precisa ter Área 01/02 Cabeda com pontos para validar o editor de contorno.").toBeTruthy();
+    if (!target) throw new Error("Alvo Cabeda ausente no editor de contorno.");
+
+    await page.goto("/coletas", { waitUntil: "networkidle" });
+    const fieldsDetails = page.locator("#talhoes");
+    await expect(fieldsDetails).toBeVisible();
+    await fieldsDetails.evaluate((element) => { (element as HTMLDetailsElement).open = true; });
+
+    const editButton = page.getByRole("button", { name: `Editar ${target.fieldName}` });
+    await expect(editButton).toBeVisible();
+    await editButton.click();
+
+    const editor = page.locator(".field-boundary-edit-row");
+    await expect(editor).toBeVisible();
+    await expect(editor.locator(".geo-map-canvas")).toBeVisible();
+    await expect(editor.locator(".geo-map-reference-note")).toContainText(String(target.pointCount));
+    await expect(editor.locator(".geo-map-reference-note")).toContainText(/ponto.*de coleta fixo/i);
+    await expect(editor).toContainText(/desenhe o limite produtivo ao redor deles/i);
+    await expect(editor).toContainText(/não salva se algum ponto ativo ficar fora/i);
+
+    await assertNoHorizontalOverflow(page);
+    await ensureVisualEvidenceDir();
+    await editor.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "cabeda-boundary-editor-fixed-points.png") });
+    await test.info().attach("cabeda-boundary-editor-fixed-points", {
+      body: await editor.screenshot(),
+      contentType: "image/png",
+    });
+  });
+
   test("Relevo: abre 3D quando disponível ou cai de forma limpa para topografia", async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await login(page);
