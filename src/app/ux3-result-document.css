@@ -489,7 +489,7 @@
    Recupera altura reduzindo espaço em branco, não o tamanho do texto. */
 @page{size:A4 portrait;margin:7mm}
 @media print{
-  .report-v4-sheet{min-height:0}
+  .report-v4-sheet{min-height:900px}
   .simple-result-document-head{padding-bottom:7px}
   .simple-result-hero{padding:10px 0 8px}
   .simple-result-hero>p{margin:4px 0 8px}
