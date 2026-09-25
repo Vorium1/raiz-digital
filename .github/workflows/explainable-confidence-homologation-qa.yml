@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/explainable-confidence-homologation-qa.yml"
       - "e2e/explainable-confidence-homologation.spec.ts"
+      - "scripts/test-lab-import-confidence-explanation.mjs"
+      - "scripts/test-technical-confidence-explanation.mjs"
       - "src/domain/lab-import.ts"
       - "src/domain/lab-import-confidence-explanation.ts"
       - "src/domain/technical-confidence-explanation.ts"
