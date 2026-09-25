@@ -406,9 +406,10 @@ assert.match(technicalPrescription, /Para calcular a dose quantitativa de P\/K d
 assert.doesNotMatch(technicalPrescription, /P\/K quantitativo permanece bloqueado até fechar os campos abaixo/);
 assert.match(technicalPrescription, /dose não calculada/);
 assert.match(simpleAnalysis, /currentCrop \|\| \(analysis as any\)\.nextCrop/);
-assert.match(simpleResult, /summarizeSimpleInterpretation/);
-assert.doesNotMatch(simpleResult, /summarizeSimpleInterpretation\(structured\.interpretation \?\? \[\]\)\.slice\(0,\s*6\)/);
-assert.match(simpleResult, /Como está a área/);
+assert.match(simpleResult, /buildPublishedParameterDashboard/);
+assert.match(simpleResult, /PublishedParameterDashboard/);
+assert.doesNotMatch(simpleResult, /parameterDashboardRows\.slice/);
+assert.match(simpleResult, /DIAGNÓSTICO DO SOLO/);
 assert.match(simpleResult, /context\.currentCrop \|\| context\.nextCrop \|\| context\.cropProfileName/);
 assert.match(simpleResult, /<ReportSignature branding=\{branding\}\/>/);
 assert.ok(simpleResult.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);"));
