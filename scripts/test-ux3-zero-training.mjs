@@ -57,6 +57,8 @@ const yieldOutlook = read("src/components/simple-field-yield-outlook.tsx");
 const simpleRecommendationContext = read("src/components/simple-recommendation-context.tsx");
 const nitrogenPanel = read("src/components/nitrogen-recommendation-panel.tsx");
 const recommendationDisplay = read("src/domain/recommendation-display.ts");
+const publishedRecommendationDomain = read("src/domain/published-recommendation-dashboard.ts");
+const publishedRecommendationDashboard = read("src/components/published-recommendation-dashboard.tsx");
 const yieldGoalPresets = read("src/domain/yield-goal-presets.ts");
 const analysisContextIntake = read("src/components/analysis-context-intake.tsx");
 const analysisContextDomain = read("src/domain/analysis-context.ts");
@@ -618,9 +620,10 @@ assert.match(resultsPreparation, /Atualizar laudo/);
 assert.doesNotMatch(attentionPage, /Revisões para você/);
 assert.doesNotMatch(attentionPage, /href="\/revisar"/);
 
-assert.match(simpleResult, /recommendationTotalForArea/);
-assert.match(simpleResult, /Total para/);
-assert.match(simpleResult, /kg\/ha/);
+assert.match(publishedRecommendationDomain, /function totalForArea/);
+assert.match(publishedRecommendationDomain, /quantity \* areaHa/);
+assert.match(publishedRecommendationDashboard, /Total para/);
+assert.match(publishedRecommendationDashboard, /doseUnit/);
 
 assert.match(simpleResult, /RASTREABILIDADE/);
 assert.match(simpleResult, /Base agronômica/);
