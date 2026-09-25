@@ -13,7 +13,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = await request.json() as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) return Response.json({ error: "Nome do talhão é obrigatório." }, { status: 400 });
-    const updated = await updateField({ tenantId: session.tenantId, userId: session.userId, fieldId: id, name });
+    const boundary = body.boundary == null
+      ? undefined
+      : typeof body.boundary === "object" && new Set(["Polygon", "MultiPolygon"]).has(String((body.boundary as { type?: unknown }).type))
+        ? body.boundary as object
+        : null;
+    if (boundary === null) return Response.json({ error: "Limite do talhão precisa ser GeoJSON Polygon ou MultiPolygon." }, { status: 400 });
+    const updated = await updateField({ tenantId: session.tenantId, userId: session.userId, fieldId: id, name, boundary });
     return Response.json({ field: updated });
   } catch (error) {
     if (error instanceof CatalogError) return Response.json({ error: error.message }, { status: error.status });
