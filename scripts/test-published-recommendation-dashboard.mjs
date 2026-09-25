@@ -39,6 +39,10 @@ assert.equal(
   producerFacingRecommendationText("Dose definida por RULE_ENGINE_INTERNAL. Aplicar conforme aprovado."),
   "Dose definida por. Aplicar conforme aprovado.",
 );
+assert.equal(
+  producerFacingRecommendationText("Dose exata do motor determinístico PK-SOJA-RS-SC-2.0, classe Alto. Premissas automáticas rastreadas=3_T_HA."),
+  "Dose definida pela regra agronômica aprovada, classe Alto.",
+);
 
 const ignored = buildPublishedRecommendationDashboard({
   areaHa: 10,
