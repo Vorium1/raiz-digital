@@ -443,6 +443,8 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     });
   });
 
+  // Este gate exige Google Satellite de propósito: o operador precisa distinguir lavoura, mata,
+  // estrada e borda produtiva antes de redesenhar o contorno; mapa vetorial não comprova isso.
   test("Talhão Cabeda: editor manual mantém pontos GPS fixos visíveis", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await login(page);
