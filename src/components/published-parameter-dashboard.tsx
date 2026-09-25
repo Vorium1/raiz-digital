@@ -13,6 +13,8 @@ const PARAMETER_LABEL: Record<string, string> = {
   MO: "Matéria orgânica",
   CTC: "CTC",
   CTC_PH7: "CTC pH 7",
+  CLAY: "Argila",
+  SMP: "Índice SMP",
   S: "Enxofre",
   B: "Boro",
   ZN: "Zinco",
