@@ -1,0 +1,166 @@
+name: Soil Satellite Evidence Browser QA
+
+on:
+  push:
+    branches:
+      - "feature/soil-satellite-evidence-context"
+    paths:
+      - ".github/workflows/soil-satellite-evidence-browser-qa.yml"
+      - "e2e/soil-satellite-evidence-context.spec.ts"
+      - "scripts/test-soil-satellite-evidence-context.mjs"
+      - "src/domain/ndvi-engine.ts"
+      - "src/components/soil-satellite-evidence-context.tsx"
+      - "src/components/soil-satellite-evidence-context.module.css"
+      - "src/components/field-ndvi-panel.tsx"
+  workflow_dispatch:
+
+concurrency:
+  group: soil-satellite-evidence-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: issue-110-browser-qa
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 25
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      DATA_MODE: database
+      NEXT_PUBLIC_RAIZ_MAP_PROVIDER: leaflet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do HEAD
+        run: npm run build
+
+      - name: Preparar sessão temporária para análise real de homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+          const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            const target = await client.query(
+              `SELECT a.id::text AS analysis_id,
+                      cs.field_id::text AS field_id,
+                      a.tenant_id::text AS tenant_id,
+                      member.user_id::text AS user_id
+               FROM analyses a
+               JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
+               JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE'
+               JOIN LATERAL (
+                 SELECT tm.user_id
+                 FROM tenant_members tm
+                 JOIN users u ON u.id=tm.user_id
+                 WHERE tm.tenant_id=a.tenant_id AND tm.active=true
+                 ORDER BY u.is_platform_curator DESC, tm.role::text, tm.user_id
+                 LIMIT 1
+               ) member ON true
+               WHERE EXISTS (
+                 SELECT 1 FROM interpretations i
+                 WHERE i.tenant_id=a.tenant_id AND i.analysis_id=a.id
+               )
+               ORDER BY a.created_at DESC
+               LIMIT 1`,
+            );
+            const row = target.rows[0];
+            if (!row?.analysis_id || !row?.field_id || !row?.tenant_id || !row?.user_id) {
+              throw new Error("Nenhuma análise com interpretação e talhão acessível foi encontrada na homologação.");
+            }
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-soil-satellite-qa',NULL)
+               RETURNING id::text`,
+              [row.user_id, row.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${row.analysis_id}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_FIELD_ID=${row.field_id}\\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Iniciar HEAD contra homologação
+        shell: bash
+        env:
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          npm start -- --hostname 127.0.0.1 > /tmp/raiz-soil-satellite.log 2>&1 &
+          echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/raiz-soil-satellite.log
+          exit 1
+
+      - name: Rodar QA desktop e mobile
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/soil-satellite-evidence-context.spec.ts
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
+          if [ -z "${E2E_SESSION_ID:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({ connectionString: process.env.HOMOLOGATION_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-soil-satellite-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soil-satellite-evidence-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
