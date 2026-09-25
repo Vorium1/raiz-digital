@@ -1,80 +1,143 @@
 # Arquitetura — RAIZ Digital
 
+Estado de referência: **2026-09-25**. Para SHAs, gates e releases correntes, consulte `docs/CURRENT_STATE.md`.
+
 ## Direção
 
-O MVP usa um **monólito modular em Next.js + TypeScript**. A decisão continua sendo operar com baixo custo e pouca complexidade, sem sacrificar isolamento de dados ou rastreabilidade.
+O RAIZ Digital usa um **monólito modular em Next.js + TypeScript**, com PostgreSQL/PostGIS como fonte oficial. A arquitetura prioriza baixo custo, isolamento multiempresa, rastreabilidade e reversibilidade.
 
 ```mermaid
 flowchart TB
   UI[Next.js · Web] --> API[Route Handlers · servidor]
   API --> AUTH[Sessão + RBAC]
-  AUTH --> DOMAIN[Domínio / validações]
+  AUTH --> DOMAIN[Domínio determinístico]
   DOMAIN --> DB[(PostgreSQL + PostGIS)]
+  DOMAIN --> REPORTS[Snapshots / laudos oficiais]
   DOMAIN --> ADAPTERS[Adaptadores externos]
-  ADAPTERS --> EXT[IA · E-mail · Mercado Pago · S3]
+  ADAPTERS --> EXT[IA narrativa · mapas · satélite · e-mail · pagamentos · storage]
 ```
 
 ## Banco e tenancy
 
-- Driver selecionado: `pg`, sem ORM obrigatório.
-- Toda operação de negócio usa `withTenant()`.
-- A transação executa `set_config('app.tenant_id', ..., true)` e `set_config('app.user_id', ..., true)` antes de acessar dados operacionais.
-- RLS permanece como segunda barreira, além da autorização da aplicação.
-- Funções `SECURITY DEFINER` são usadas apenas para descobrir memberships no momento em que ainda não existe tenant de sessão.
-- PostGIS é a fonte oficial para limites e pontos; talhão é armazenado como `MultiPolygon,4326`.
-- Área de talhão criada pela API é calculada pelo próprio PostGIS em hectares.
+- Driver: `pg`, sem ORM obrigatório.
+- Operações de negócio usam contexto de tenant/usuário.
+- RLS continua como barreira de isolamento adicional à autorização da aplicação.
+- Runtime deve usar papel restrito sem `BYPASSRLS`; papel administrativo é reservado a migrations/administração.
+- PostGIS é a fonte para geometrias e cálculos espaciais.
+- O repositório possui 42 migrations versionadas.
+- Antes de qualquer migration em produção, confirmar ledger, backup/PITR e autorização explícita.
 
-## Autenticação
+## Autenticação e autorização
 
-A 0.4 usa autenticação self-hosted simples:
+- sessão opaca persistida;
+- token bruto apenas no cookie `HttpOnly`;
+- SHA-256 do token no banco;
+- Argon2 para senha;
+- 2FA/TOTP e códigos de backup;
+- recuperação de senha;
+- memberships multiempresa;
+- RBAC server-side;
+- trilha de auditoria.
 
-1. usuário localizado por e-mail;
-2. senha verificada com Argon2;
-3. membership ativa resolvida no banco;
-4. se houver múltiplas empresas, o login exige seleção de tenant;
-5. servidor gera token aleatório de 32 bytes;
-6. somente SHA-256 do token é persistido em `user_sessions`;
-7. token bruto fica em cookie `HttpOnly`, `SameSite=Lax`, `Secure` em produção;
-8. sessão expirada/revogada não acessa o tenant.
+Esses itens não devem ser reimplementados como “pendência do MVP”; já fazem parte da base atual.
 
-2FA, recuperação de senha, rotação avançada e convites ainda são pendências obrigatórias antes de produção.
+## Operação agronômica
 
-## Persistência implementada
-
+Persistência real para:
 - clientes;
 - propriedades;
-- talhões GeoJSON/PostGIS;
-- safras;
-- análises;
-- sessões;
-- importações laboratoriais normalizadas;
-- auditoria de criações/importações.
+- talhões;
+- safras/culturas;
+- laboratórios;
+- ordens/pontos de coleta;
+- análises/importações;
+- resultados laboratoriais normalizados;
+- interpretações;
+- prescrições;
+- recomendações de insumo;
+- snapshots comerciais;
+- relatórios oficiais;
+- NDVI/raster e metadados associados;
+- auditoria.
 
 ## Entrada laboratorial
 
-O CSV é validado uma primeira vez para prévia e **revalidado no servidor no momento do commit**. A aplicação não confia no preview enviado pelo navegador. Importações com bloqueios podem ser registradas como `INCONSISTENT`, mantendo as linhas que provocaram o conflito para futura conferência.
+CSV e XLSX passam pelo mesmo núcleo de validação. O servidor revalida os dados antes do commit. Proveniência, método, unidade e vínculo com análise/amostra devem permanecer rastreáveis.
 
-## Separação demo × real
-
-`DATA_MODE=demo` existe somente para revisão visual. `DATA_MODE=database` usa dados reais e telas ainda não conectadas exibem estado vazio/pendente em vez de valores inventados.
+PDF/OCR não deve ser tratado como disponível sem implementação e conferência humana adequadas.
 
 ## Motor agronômico
 
-A arquitetura original permanece:
+- regras e cálculos oficiais são determinísticos;
+- rule sets/evidências são versionados;
+- IA pode auxiliar narrativa e interface, mas não inventa ou substitui a decisão agronômica;
+- ausência de dado opcional reduz profundidade, não bloqueia conclusões independentes já suportadas;
+- quando uma conclusão específica não é suportada, falhar fechado naquele ponto, não no relatório inteiro.
 
-- cálculos e classificações determinísticas em rule sets versionados;
-- IA somente para narrativa e assistência;
-- memória de cálculo e fontes rastreáveis;
-- revisão profissional antes de publicação;
-- nenhum parecer é mostrado no modo real enquanto não houver interpretação registrada.
+## Prescrição e revisão
 
-## Próximos blocos
+A arquitetura possui fluxo executável de interpretação/prescrição com revisão e aprovação. Recomendações oficiais são ligadas à geração aprovada e o laudo congela o estado publicado.
 
-1. interface de cadastro de propriedade/talhão com desenho/importação GeoJSON;
-2. ordem de coleta + GPS/GeoJSON/KML/GPX;
-3. adaptadores XLSX/PDF de laboratório;
-4. primeiro rule set homologado com casos conhecidos;
-5. revisão, aprovação e versionamento de interpretação;
-6. relatório PDF e storage S3;
-7. 2FA, recuperação de senha e convite de usuários;
-8. homologação do Mercado Pago e jobs assíncronos.
+A republicação é versionada e imutável. Mudanças relevantes de evidência ou de plano comercial podem gerar nova revisão oficial.
+
+## Plano comercial
+
+A camada comercial é separada da necessidade agronômica:
+
+1. motor agronômico define necessidade técnica;
+2. usuário escolhe explicitamente cenário/produto comercial;
+3. motor comercial converte garantias/PRNT/preço em quantidade/custo;
+4. publish valida que o cenário pertence à análise e à prescrição corrente;
+5. o laudo oficial congela o cenário;
+6. preço/custo só aparecem quando efetivamente congelados.
+
+Nunca escolher marca/produto automaticamente nessa camada.
+
+## Mapas e satélite
+
+- mapas de talhão, fertilidade e pontos;
+- satélite no fluxo de mapas;
+- NDVI versionado;
+- custódia de raster;
+- fallback de providers onde aplicável;
+- mobile deve evitar overflow e cargas desnecessárias.
+
+A fonte/algoritmo do raster precisa continuar rastreável por snapshot.
+
+## Relatórios oficiais
+
+O relatório oficial usa snapshot imutável e deve:
+- preservar a decisão aprovada;
+- mostrar resumo técnico;
+- mostrar resumo simples para o produtor;
+- calcular total da área apenas quando a unidade permite cálculo exato;
+- distinguir nutriente equivalente de massa de produto;
+- incluir produto/preço/custo somente quando o plano comercial foi explicitamente congelado.
+
+## Demo × real
+
+`DATA_MODE=demo` serve apenas para experiência visual demonstrativa.
+
+`DATA_MODE=database` nunca pode preencher lacunas com números, diagnósticos ou recomendações fictícias.
+
+## Fluxo de entrega
+
+- feature branch → `develop`;
+- CI + Preview + QA;
+- autorização explícita para integração relevante;
+- PR `develop → main`;
+- Production Promotion Guard + CI;
+- autorização explícita;
+- merge em `main`;
+- validação pós-release.
+
+O histórico de commits entre `main` e `develop` pode divergir pelos merge commits de release; avaliar sempre o diff real de arquivos.
+
+## Limites
+
+Não assumir que:
+- uma URL de Preview é a URL canônica de produção;
+- status Vercel sozinho comprova smoke HTTP autenticado;
+- um dado ausente pode ser inferido;
+- uma branch de banco pode ser alterada sem autorização;
+- uma migration antiga precisa ser reexecutada apenas porque aparece em documentação histórica.
