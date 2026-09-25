@@ -427,12 +427,37 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               </div>
             )}
 
-            <div className="simple-result-producer-summary-cost">
-              <strong>Produto/custo comercial</strong>
-              <span>{commercialSummary
-                ? "O cenário comercial congelado está detalhado na página de recomendação e manejo."
-                : "Nenhum cenário comercial foi congelado junto com esta decisão."}</span>
-            </div>
+            {commercialSummary ? (
+              <div className="report-v4-final-commercial">
+                <div className="report-v4-final-commercial-head">
+                  <div>
+                    <strong>Produto comercial congelado</strong>
+                    <small>Quantidade de produto, separada da necessidade agronômica acima.</small>
+                  </div>
+                  {commercialSummary.label && <span>{commercialSummary.label}</span>}
+                </div>
+                <div className="report-v4-final-commercial-grid">
+                  {commercialSummary.rows.map((row, index) => (
+                    <div key={`${row.productName}-${index}`}>
+                      <strong>{row.productName}</strong>
+                      <span>{row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.doseUnit}</span>
+                      <b>{row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.totalUnit} no talhão</b>
+                    </div>
+                  ))}
+                </div>
+                <div className="report-v4-final-commercial-total">
+                  <small>Custo do cenário</small>
+                  <strong>{commercialSummary.hasFrozenCost
+                    ? `${commercialSummary.costPerHa!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/ha · ${commercialSummary.totalCost!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} no talhão`
+                    : "Custo indisponível sem preço suficiente congelado."}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className="simple-result-producer-summary-cost">
+                <strong>Produto/custo comercial</strong>
+                <span>Nenhum cenário comercial foi congelado junto com esta decisão.</span>
+              </div>
+            )}
           </section>
         )}
 
