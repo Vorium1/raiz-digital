@@ -116,3 +116,23 @@ assert.match(repositorySource, /array_agg\(DISTINCT jsonb_build_object/);
 assert.doesNotMatch(repositorySource, /Profundidades sem sobreposição/);
 
 console.log("comparison compatibility: ok");
+
+
+const explorerSource = readFileSync("src/components/comparison-explorer.tsx", "utf8");
+const historyPageSource = readFileSync("src/app/(platform)/historico/page.tsx", "utf8");
+const historyExplorerSource = readFileSync("src/components/historical-comparison-explorer.tsx", "utf8");
+const comparisonRouteSource = readFileSync("src/app/api/comparisons/route.ts", "utf8");
+
+assert.doesNotMatch(explorerSource, /comparison-diff-up|comparison-diff-down/);
+assert.match(explorerSource, /Delta = lado B − lado A/);
+assert.match(explorerSource, /não significa melhora ou piora agronômica/);
+assert.match(explorerSource, /comparison-measurement-context/);
+assert.match(historyPageSource, /HistoricalComparisonExplorer/);
+assert.doesNotMatch(historyPageSource, /Histórico aguardando dados comparáveis/);
+assert.match(historyExplorerSource, /mesmo talhão/);
+assert.match(historyExplorerSource, /não estabelecem tendência, causa ou resposta a manejo/);
+assert.match(repositorySource, /Evolução temporal só compara análises do mesmo talhão/);
+assert.match(repositorySource, /Selecione duas coletas distintas/);
+assert.match(repositorySource, /exactPointLayoutMatch/);
+assert.match(repositorySource, /malha de pontos não é idêntica/);
+assert.match(comparisonRouteSource, /mode === "history"/);
