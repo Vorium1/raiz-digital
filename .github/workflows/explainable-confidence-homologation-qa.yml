@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: explainable-confidence-homologation-\${{ github.ref }}
+  group: explainable-confidence-homologation-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
     environment: homologation
     timeout-minutes: 25
     env:
-      HOMOLOGATION_DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
       DATABASE_SSL: require
       DATA_MODE: database
 
@@ -68,19 +68,19 @@ jobs:
           try {
             await client.query("BEGIN");
             const account = await client.query(
-              \`SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
+              `SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
                FROM users u
                JOIN tenant_members tm ON tm.user_id=u.id AND tm.active=true
                JOIN tenants t ON t.id=tm.tenant_id AND t.status='ACTIVE'
                WHERE u.email='admin@raiz.local'::citext
                ORDER BY u.is_platform_curator DESC, tm.tenant_id
-               LIMIT 1\`,
+               LIMIT 1`,
             );
             const user = account.rows[0];
             if (!user?.user_id || !user?.tenant_id) throw new Error("Conta E2E ativa não encontrada.");
 
             const target = await client.query(
-              \`SELECT a.id::text AS analysis_id
+              `SELECT a.id::text AS analysis_id
                FROM analyses a
                JOIN LATERAL (
                  SELECT ai.id, ai.confidence_score
@@ -100,7 +100,7 @@ jobs:
                WHERE a.tenant_id=$1::uuid
                  AND jsonb_array_length(latest_interpretation.structured_output->'confidence'->'dimensions') >= 3
                ORDER BY a.updated_at DESC
-               LIMIT 1\`,
+               LIMIT 1`,
               [user.tenant_id],
             );
             const analysisId = target.rows[0]?.analysis_id;
@@ -109,17 +109,17 @@ jobs:
             const token = randomBytes(32).toString("base64url");
             const tokenHash = createHash("sha256").update(token).digest("hex");
             const session = await client.query(
-              \`INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
                VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-confidence-qa',NULL)
-               RETURNING id::text\`,
+               RETURNING id::text`,
               [user.user_id, user.tenant_id, tokenHash],
             );
             await client.query("COMMIT");
 
-            console.log(\`::add-mask::\${token}\`);
-            appendFileSync(process.env.GITHUB_ENV, \`E2E_SESSION_TOKEN=\${token}\\n\`);
-            appendFileSync(process.env.GITHUB_ENV, \`E2E_SESSION_ID=\${session.rows[0].id}\\n\`);
-            appendFileSync(process.env.GITHUB_ENV, \`E2E_ANALYSIS_ID=\${analysisId}\\n\`);
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\\n`);
           } catch (error) {
             await client.query("ROLLBACK").catch(() => {});
             throw error;
@@ -135,8 +135,8 @@ jobs:
       - name: Iniciar HEAD contra homologação
         shell: bash
         env:
-          APP_DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
-          DATABASE_URL: \${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
         run: |
           set -euo pipefail
           npm start -- --hostname 127.0.0.1 > /tmp/raiz-confidence-server.log 2>&1 &
@@ -158,8 +158,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "\${E2E_SERVER_PID:-}" ]; then kill "\${E2E_SERVER_PID}" 2>/dev/null || true; fi
-          if [ -z "\${E2E_SESSION_ID:-}" ] || [ -z "\${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
+          if [ -z "${E2E_SESSION_ID:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
           node --input-type=module <<'NODE'
           import pg from "pg";
           const pool = new pg.Pool({
@@ -177,7 +177,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: explainable-confidence-\${{ github.sha }}
+          name: explainable-confidence-${{ github.sha }}
           path: test-results
           if-no-files-found: warn
           retention-days: 14
