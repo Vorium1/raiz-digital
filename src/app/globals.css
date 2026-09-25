@@ -1041,7 +1041,7 @@ button { color: inherit; }
 /* ========================================================= */
 /* Vigor vegetativo por satélite (NDVI)                        */
 /* ========================================================= */
-.ndvi-panel { margin-top:16px; padding:18px 20px; }
+.ndvi-panel { margin-top:16px; min-width:0; padding:18px 20px; }
 .ndvi-panel-head { align-items:center; display:flex; gap:10px; justify-content:space-between; margin-bottom:10px; }
 .ndvi-panel-meta { align-items:center; color:var(--muted); display:flex; font-size:10px; gap:6px; margin:0 0 10px; }
 .ndvi-panel-error { align-items:center; color:var(--danger); display:flex; font-size:10px; gap:6px; margin:0; }
@@ -1094,13 +1094,18 @@ button { color: inherit; }
 .field-overview-evidence-subnav { display:flex; gap:6px; }
 .field-overview-evidence-subnav button { background:var(--surface); border:1px solid var(--line); border-radius:20px; color:var(--muted); cursor:pointer; font-size:9.5px; font-weight:700; padding:7px 14px; }
 .field-overview-evidence-subnav button.active { background:var(--teal); border-color:var(--teal); color:#04211c; }
-.field-overview-parameter-toolbar { align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:10px; display:flex; flex-wrap:wrap; gap:12px; padding:12px 16px; }
+.field-overview-parameter-toolbar { align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:10px; display:flex; flex-wrap:wrap; gap:12px; min-width:0; padding:12px 16px; }
 .field-overview-parameter-toolbar label { align-items:center; display:flex; gap:8px; }
 .field-overview-parameter-toolbar label span { color:var(--muted); font-size:9px; font-weight:700; }
 .field-overview-parameter-toolbar select { background:var(--paper); border:1px solid var(--line); border-radius:8px; height:32px; padding:0 10px; }
 .field-overview-depth-context { align-items:center; color:var(--muted); display:flex; font-size:9px; gap:6px; }
 .field-overview-parameter-toolbar .button.small { margin-left:auto; }
-@media(max-width:640px) { .field-overview-parameter-toolbar .button.small { margin-left:0; } }
+@media(max-width:640px) {
+  .field-overview-parameter-toolbar .button.small { margin-left:0; }
+  .field-overview-parameter-toolbar label { align-items:flex-start; flex-direction:column; min-width:0; width:100%; }
+  .field-overview-parameter-toolbar select { max-width:100%; min-width:0; width:100%; }
+  .field-overview-depth-context { max-width:100%; overflow-wrap:anywhere; }
+}
 
 .field-overview-distribution-stats { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); padding:16px 20px; }
 .field-overview-distribution-stats dt { color:var(--muted); font-size:8px; letter-spacing:.03em; text-transform:uppercase; }
@@ -1176,7 +1181,7 @@ button { color: inherit; }
 /* ========================================================= */
 .detail-columns-secondary { margin-top:18px; }
 .cockpit { display:grid; gap:20px; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); margin-top:18px; }
-.cockpit-region { display:flex; flex-direction:column; gap:12px; }
+.cockpit-region { display:flex; flex-direction:column; gap:12px; min-width:0; }
 .cockpit-evidence { background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:16px; }
 .cockpit-technical { display:flex; flex-direction:column; gap:16px; }
 .cockpit-parameter-select { align-items:center; display:flex; gap:8px; }
