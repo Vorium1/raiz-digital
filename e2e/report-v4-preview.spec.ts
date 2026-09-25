@@ -59,9 +59,14 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     expect(await page2.locator(".report-v4-recommendation-card").count(), "Página 2 precisa ter cards práticos das recomendações aprovadas.").toBeGreaterThan(0);
     await expect(page2).toContainText(/CONVERSÃO OPERACIONAL/i);
     await expect(page2.locator(".report-v4-commercial")).toBeVisible();
+    await expect(page3).toContainText(/FECHAMENTO DO TALHÃO/i);
+    await expect(page3.locator(".report-v4-final-metrics")).toBeVisible();
     await expect(page3).toContainText(/RESUMO FINAL/i);
     await expect(page3).toContainText(/Resumo para o produtor/i);
     await expect(page3.locator(".report-v4-opinion")).toBeVisible();
+    await expect(page3).toContainText(/BASE DA DECISÃO/i);
+    await expect(page3.locator(".report-v4-trace-grid")).toBeVisible();
+    await expect(page3).toContainText(/De onde veio este resultado/i);
 
     await assertNoHorizontalOverflow(page);
     await mkdir(EVIDENCE_DIR, { recursive: true });
