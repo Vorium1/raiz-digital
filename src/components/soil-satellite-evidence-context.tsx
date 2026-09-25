@@ -64,7 +64,7 @@ export function SoilSatelliteEvidenceContext({
     : "INDETERMINADA";
 
   return (
-    <section className={styles.card} aria-label="Contexto auditável Solo × Satélite">
+    <section className={styles.card} data-testid="soil-satellite-evidence-context" aria-label="Contexto auditável Solo × Satélite">
       <div className={styles.heading}>
         <div>
           <span className={styles.eyebrow}>EVIDÊNCIA CRUZADA · SOLO × SATÉLITE</span>
