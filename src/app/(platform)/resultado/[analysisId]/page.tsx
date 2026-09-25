@@ -5,13 +5,13 @@ import { PrintButton } from "@/components/print-button";
 import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
 import { RealFieldMap } from "@/components/real-field-map";
 import { PublishedNdviMap } from "@/components/published-ndvi-map";
+import { PublishedParameterDashboard } from "@/components/published-parameter-dashboard";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
-import { humanClassification } from "@/domain/simple-ux-labels";
 import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
-import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
+import { buildPublishedParameterDashboard } from "@/domain/published-result-dashboard";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -133,6 +133,14 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   }
 
   const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as {
+    facts?: Array<{
+      sampleCode: string;
+      parameterCode: string;
+      value: number;
+      unit: string;
+      method?: string | null;
+      source?: string | null;
+    }>;
     interpretation?: Finding[];
     trace?: {
       cropProfileCode?: string;
@@ -140,7 +148,10 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
       generatedAt?: string;
     };
   };
-  const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []);
+  const parameterDashboardRows = buildPublishedParameterDashboard({
+    facts: structured.facts ?? [],
+    interpretation: structured.interpretation ?? [],
+  });
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
   const producerSummary = prescription
     ? buildProducerResultSummary({
@@ -235,32 +246,14 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
-        {findingSummaries.length > 0 && (
-          <section className="simple-result-section">
+        {parameterDashboardRows.length > 0 && (
+          <section className="simple-result-section report-v4-diagnosis">
             <div className="simple-result-section-head">
-              <span>O QUE ENCONTRAMOS</span>
-              <h2>Como está a área</h2>
-              <p>Resumo por parâmetro da decisão publicada. Não é interpolação nem mapa de fertilidade.</p>
+              <span>DIAGNÓSTICO DO SOLO</span>
+              <h2>O que a análise mostrou</h2>
+              <p>Valores laboratoriais e interpretação por parâmetro. Cada card usa somente evidência congelada nesta versão oficial.</p>
             </div>
-            <div className="simple-result-findings">
-              {findingSummaries.map((summary) => {
-                const headline = summary.uniformClassification
-                  ? humanClassification(summary.uniformClassification)
-                  : summary.predominantClassification
-                    ? `Predomina ${humanClassification(summary.predominantClassification)}`
-                    : "Varia entre os pontos";
-                const breakdown = summary.classificationCounts
-                  .map((item) => `${item.count} ${humanClassification(item.classification).toLowerCase()}`)
-                  .join(" · ");
-                return (
-                  <div key={summary.parameterCode}>
-                    <span>{parameterLabel(summary.parameterCode)}</span>
-                    <strong>{headline}</strong>
-                    <small>{breakdown}</small>
-                  </div>
-                );
-              })}
-            </div>
+            <PublishedParameterDashboard rows={parameterDashboardRows}/>
           </section>
         )}
 
