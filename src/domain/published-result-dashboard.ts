@@ -8,8 +8,8 @@ export type PublishedResultFact = {
 };
 
 export type PublishedResultInterpretation = {
-  sampleCode: string;
-  parameterCode: string;
+  sampleCode?: string | null;
+  parameterCode?: string | null;
   interpretable: boolean;
   classification?: string | null;
   reason?: string | null;
