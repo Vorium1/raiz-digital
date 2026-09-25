@@ -6,6 +6,8 @@ import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { RealFieldMap } from "@/components/real-field-map";
 import { FieldYieldHistoryManager } from "@/components/field-yield-history-manager";
+import { effectivePointCoordinates } from "@/components/spatial-map-types";
+import type { BoundaryReferencePoint } from "@/domain/field-boundary";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 type ContextData = {
@@ -98,6 +100,8 @@ export function FieldOperationsManager() {
 
   const [editingFieldId, setEditingFieldId] = useState("");
   const [editFieldName, setEditFieldName] = useState("");
+  const [editFieldBoundary, setEditFieldBoundary] = useState("");
+  const [editFieldCoverage, setEditFieldCoverage] = useState<{ inside: number; total: number; outside: number; valid: boolean } | null>(null);
 
   const [editingSeasonId, setEditingSeasonId] = useState("");
   const [editSeasonLabel, setEditSeasonLabel] = useState("");
@@ -128,6 +132,24 @@ export function FieldOperationsManager() {
   const selectedField = context.fields.find((field)=>field.id === seasonFieldId);
   const selectedSeason = context.seasons.find((season)=>season.id === orderSeasonId);
   const progress = selectedOrder?.plannedPoints ? Math.round(selectedOrder.collectedPoints / selectedOrder.plannedPoints * 100) : 0;
+
+  const editFieldReferencePoints = useMemo<BoundaryReferencePoint[]>(() => {
+    if (!editingFieldId) return [];
+    const unique = new Map<string, BoundaryReferencePoint>();
+    for (const order of orders) {
+      if (order.fieldId !== editingFieldId) continue;
+      for (const point of order.points) {
+        const effective = effectivePointCoordinates(point);
+        unique.set(point.id, {
+          id: point.id,
+          code: point.code,
+          latitude: effective.latitude,
+          longitude: effective.longitude,
+        });
+      }
+    }
+    return [...unique.values()];
+  }, [editingFieldId, orders]);
 
   async function loadAll(preferOrderId?: string) {
     setLoading(true);
@@ -265,14 +287,25 @@ export function FieldOperationsManager() {
   }
 
   function startEditField(field: ContextData["fields"][number]) {
-    setEditingFieldId(field.id); setEditFieldName(field.name);
+    setEditingFieldId(field.id);
+    setEditFieldName(field.name);
+    setEditFieldBoundary(JSON.stringify(field.boundary));
+    setEditFieldCoverage(null);
   }
 
   async function saveField(id: string) {
     setBusy(`field-save-${id}`); setMessage(null);
     try {
-      await patchJson(`/api/fields/${id}`, { name: editFieldName });
-      setEditingFieldId(""); setMessage({ tone:"success", text:"Talhão atualizado." });
+      const boundary = geoJsonObject(editFieldBoundary);
+      if (!boundary) throw new Error("O talhão exige um contorno produtivo válido.");
+      if (editFieldCoverage && !editFieldCoverage.valid) {
+        throw new Error(`Revise o contorno: ${editFieldCoverage.outside} ponto(s) GPS ainda estão fora da área produtiva.`);
+      }
+      await patchJson(`/api/fields/${id}`, { name: editFieldName, boundary });
+      setEditingFieldId("");
+      setEditFieldBoundary("");
+      setEditFieldCoverage(null);
+      setMessage({ tone:"success", text:"Talhão atualizado sem alterar as coordenadas dos pontos de coleta." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar talhão." }); }
     finally { setBusy(""); }
@@ -443,12 +476,34 @@ export function FieldOperationsManager() {
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "field" || !fieldPropertyId || !fieldName || !fieldBoundary.trim()} onClick={()=>void createField()}>{busy === "field" ? "Validando…" : "Validar e cadastrar talhão"}</button></div>
           {context.fields.length > 0 && <div className="field-ops-wide field-ops-list">
             {context.fields.map((field)=>editingFieldId === field.id ? (
-              <div key={field.id} className="field-ops-list-row editing">
-                <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
-                <span className="field-ops-list-actions">
-                  <button className="button tiny" disabled={busy === `field-save-${field.id}`} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/></button>
-                  <button className="icon-button" onClick={()=>setEditingFieldId("")}><Icon name="close" size={13}/></button>
-                </span>
+              <div key={field.id} className="field-ops-list-row editing field-boundary-edit">
+                <div className="field-boundary-edit-head">
+                  <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
+                  <span className="field-ops-list-actions">
+                    <button
+                      className="button tiny"
+                      disabled={busy === `field-save-${field.id}` || !editFieldBoundary.trim() || Boolean(editFieldCoverage && !editFieldCoverage.valid)}
+                      onClick={()=>void saveField(field.id)}
+                    ><Icon name="check" size={13}/>Salvar contorno</button>
+                    <button
+                      className="icon-button"
+                      onClick={()=>{setEditingFieldId("");setEditFieldBoundary("");setEditFieldCoverage(null);}}
+                    ><Icon name="close" size={13}/></button>
+                  </span>
+                </div>
+                <GeoMapInput
+                  value={editFieldBoundary}
+                  onChange={setEditFieldBoundary}
+                  referenceBoundary={context.properties.find((property)=>property.id === field.propertyId)?.boundary ?? null}
+                  previousBoundary={field.boundary}
+                  referencePoints={editFieldReferencePoints}
+                  requireAllReferencePointsInside
+                  onValidationChange={setEditFieldCoverage}
+                  height={360}
+                />
+                <small className="field-boundary-edit-note">
+                  Os pontos amarelos são coordenadas GPS fixas. Redesenhar o talhão altera somente o contorno e a área calculada; nenhum ponto é movido.
+                </small>
               </div>
             ) : (
               <div key={field.id} className="field-ops-list-row">
