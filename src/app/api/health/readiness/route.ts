@@ -1,4 +1,4 @@
-import { evaluateProductionReadiness, type ProductionReadinessResult } from "../../../../domain/production-readiness";
+import { evaluateProductionReadiness, type ProductionReadinessResult } from "../../../../domain/production-readiness.ts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
