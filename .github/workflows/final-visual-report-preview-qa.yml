@@ -1,0 +1,189 @@
+name: Final Visual Report Preview QA
+
+on:
+  push:
+    branches:
+      - "feature/report-final-visual-2-3-pages"
+    paths:
+      - ".github/workflows/final-visual-report-preview-qa.yml"
+      - "e2e/final-visual-report-preview.spec.ts"
+      - "src/components/report-final-visual.tsx"
+      - "src/app/(platform)/relatorios/talhao/**"
+      - "src/app/globals.css"
+      - "src/domain/producer-result-summary.ts"
+      - "src/domain/official-commercial-plan.ts"
+  workflow_dispatch:
+
+concurrency:
+  group: final-visual-report-preview-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: read
+  id-token: write
+
+jobs:
+  visual:
+    name: issue-103-preview
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 20
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Obter token OIDC para Deployment Protection
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
+      - name: Descobrir Preview Vercel deste SHA
+        id: preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            for (let attempt = 0; attempt < 60; attempt++) {
+              const deployments = await github.rest.repos.listDeployments({
+                owner, repo, sha: context.sha, per_page: 20,
+              });
+              for (const deployment of deployments.data) {
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner, repo, deployment_id: deployment.id, per_page: 20,
+                });
+                const ready = statuses.data.find((status) =>
+                  status.state === "success"
+                  && typeof status.environment_url === "string"
+                  && status.environment_url.startsWith("https://")
+                );
+                if (ready) {
+                  core.setOutput("url", ready.environment_url);
+                  return;
+                }
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            core.setFailed("Nenhum environment_url de Preview ficou pronto para o SHA atual.");
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Preparar sessão temporária para laudo publicado da homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+
+          const pool = new pg.Pool({
+            connectionString: databaseUrl,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            const account = await client.query(
+              `SELECT u.id::text AS user_id, tm.tenant_id::text AS tenant_id
+               FROM users u
+               JOIN tenant_members tm ON tm.user_id=u.id AND tm.active=true
+               JOIN tenants t ON t.id=tm.tenant_id AND t.status='ACTIVE'
+               WHERE u.email='admin@raiz.local'::citext
+               ORDER BY u.is_platform_curator DESC, tm.tenant_id
+               LIMIT 1`,
+            );
+            const user = account.rows[0];
+            if (!user?.user_id || !user?.tenant_id) throw new Error("Conta E2E ativa não encontrada.");
+
+            const target = await client.query(
+              `SELECT i.analysis_id::text AS analysis_id
+               FROM reports r
+               JOIN interpretations i
+                 ON i.tenant_id=r.tenant_id
+                AND i.id=r.interpretation_id
+               WHERE r.tenant_id=$1::uuid
+                 AND r.prescription_generation_id IS NOT NULL
+               ORDER BY r.published_at DESC
+               LIMIT 1`,
+              [user.tenant_id],
+            );
+            const analysisId = target.rows[0]?.analysis_id;
+            if (!analysisId) throw new Error("Nenhum laudo oficial V3 com prescrição congelada encontrado.");
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-final-visual-report-qa',NULL)
+               RETURNING id::text`,
+              [user.user_id, user.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar gate visual do relatório final
+        env:
+          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: npx playwright test e2e/final-visual-report-preview.spec.ts
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${E2E_SESSION_ID:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({
+            connectionString: process.env.HOMOLOGATION_DATABASE_URL,
+            ssl: process.env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+          });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-final-visual-report-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-visual-report-preview-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
