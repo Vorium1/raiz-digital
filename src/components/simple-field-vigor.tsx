@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { RealFieldMap, type MapImageOverlay, type MapLegendEntry } from "@/components/real-field-map";
+import { NdviTemporalComparison } from "@/components/ndvi-temporal-comparison";
 import type { VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 
@@ -14,6 +15,8 @@ type Snapshot = {
   maxNdvi?: number | null;
   cloudCoverPct: number | null;
   rasterObjectKey?: string | null;
+  source?: string | null;
+  rasterAlgorithm?: string | null;
   zoneBreakdownPct?: Partial<Record<VigorZone, number>>;
 };
 
@@ -74,7 +77,14 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
   const [rasterAttempt, setRasterAttempt] = useState(0);
 
   const archived = useMemo(() => history.find(hasRaster) ?? null, [history]);
-  const dominant = useMemo(() => dominantZone(archived?.zoneBreakdownPct), [archived]);
+  const selectedArchived = useMemo(
+    () => rasterDate
+      ? history.find((snapshot) => hasRaster(snapshot) && snapshot.capturedAt.slice(0, 10) === rasterDate) ?? null
+      : null,
+    [history, rasterDate],
+  );
+  const displayed = selectedArchived ?? archived;
+  const dominant = useMemo(() => dominantZone(displayed?.zoneBreakdownPct), [displayed]);
   const vigorLegend = useMemo<MapLegendEntry[]>(
     () => ZONE_ORDER.map((zone) => ({ label: VIGOR_ZONE_LABELS[zone], color: ZONE_COLOR[zone] })),
     [],
@@ -187,23 +197,23 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
 
       {loading ? (
         <div className="simple-field-vigor-loading"><Icon name="clock" size={18}/> Buscando a leitura mais recente…</div>
-      ) : archived && boundary ? (
+      ) : displayed && boundary ? (
         <>
           <div className="simple-field-vigor-meta">
-            <strong>{formatDate(archived.capturedAt)}</strong>
+            <strong>{formatDate(displayed.capturedAt)}</strong>
             <span>Sentinel-2 · leitura real da área</span>
-            {archived.cloudCoverPct != null && <span>{Math.round(archived.cloudCoverPct)}% sem pixel válido</span>}
+            {displayed.cloudCoverPct != null && <span>{Math.round(displayed.cloudCoverPct)}% sem pixel válido</span>}
           </div>
 
           <div className="simple-field-vigor-summary">
             <div>
               <span>MÉDIA DO TALHÃO</span>
-              <strong>{archived.meanNdvi.toFixed(2)}</strong>
+              <strong>{displayed.meanNdvi.toFixed(2)}</strong>
               <small>NDVI médio</small>
             </div>
             <div>
               <span>MAIOR VIGOR</span>
-              <strong>{archived.maxNdvi != null ? archived.maxNdvi.toFixed(2) : "—"}</strong>
+              <strong>{displayed.maxNdvi != null ? displayed.maxNdvi.toFixed(2) : "—"}</strong>
               <small>maior NDVI observado</small>
             </div>
             <div>
@@ -220,13 +230,13 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
             </div>
             <div className="simple-field-vigor-zone-bar" aria-label="Distribuição das faixas de vigor">
               {ZONE_ORDER.map((zone) => {
-                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
+                const pct = displayed.zoneBreakdownPct?.[zone] ?? 0;
                 return pct > 0 ? <span key={zone} style={{ width: `${pct}%`, background: ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${pct.toFixed(1)}%`} /> : null;
               })}
             </div>
             <div className="simple-field-vigor-zone-list">
               {ZONE_ORDER.map((zone) => {
-                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
+                const pct = displayed.zoneBreakdownPct?.[zone] ?? 0;
                 if (pct <= 0) return null;
                 return (
                   <span key={zone}>
@@ -239,6 +249,11 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
             </div>
           </div>
 
+          <NdviTemporalComparison
+            history={history}
+            onViewRaster={(date) => setRasterDate(date)}
+          />
+
           {rasterError ? (
             <div role="alert" className="simple-field-vigor-empty">
               <strong>Não foi possível abrir a imagem de satélite.</strong>
@@ -250,7 +265,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
               boundary={boundary}
               points={[]}
               height={390}
-              hint={`Mapa de vigor · ${formatDate(archived.capturedAt)}`}
+              hint={`Mapa de vigor · ${formatDate(displayed.capturedAt)}`}
               imageOverlay={overlay}
               legend={vigorLegend}
             />

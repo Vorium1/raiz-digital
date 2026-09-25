@@ -116,7 +116,7 @@ export type NdviTemporalAnalysis = {
   note: string;
 };
 
-const TEMPORAL_CHANGE_THRESHOLD = 0.12;
+export const NDVI_TEMPORAL_CHANGE_THRESHOLD = 0.12;
 const MIN_BASELINE_POINTS = 3;
 const MAX_BASELINE_POINTS = 5;
 
@@ -172,17 +172,17 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
   const baselineMedian = prior.length >= MIN_BASELINE_POINTS ? median(prior.map((point) => point.meanNdvi)) : null;
   const deltaFromPrevious = previous ? round3(latest.meanNdvi - previous.meanNdvi) : null;
   const deltaFromBaseline = baselineMedian == null ? null : round3(latest.meanNdvi - baselineMedian);
-  const rawRelevantChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= TEMPORAL_CHANGE_THRESHOLD;
+  const rawRelevantChange = deltaFromBaseline != null && Math.abs(deltaFromBaseline) >= NDVI_TEMPORAL_CHANGE_THRESHOLD;
   const hasRelevantTemporalChange = isComparableQuality(latestQuality) && rawRelevantChange;
 
   let direction: NdviTemporalDirection = "SEM_BASELINE";
   if (deltaFromBaseline != null) {
-    if (deltaFromBaseline >= TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
-    else if (deltaFromBaseline <= -TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
+    if (deltaFromBaseline >= NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
+    else if (deltaFromBaseline <= -NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
     else direction = "ESTAVEL";
   } else if (deltaFromPrevious != null) {
-    if (deltaFromPrevious >= TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
-    else if (deltaFromPrevious <= -TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
+    if (deltaFromPrevious >= NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
+    else if (deltaFromPrevious <= -NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
     else direction = "ESTAVEL";
   }
 
@@ -215,6 +215,137 @@ export function analyzeNdviTemporalHistory(history: NdviHistoryPoint[]): NdviTem
     deltaFromBaseline,
     baselineCount: prior.length,
     hasRelevantTemporalChange,
+    note,
+  };
+}
+
+
+export type NdviPairwisePoint = NdviHistoryPoint & {
+  id?: string | null;
+  source?: string | null;
+  rasterAlgorithm?: string | null;
+  rasterObjectKey?: string | null;
+  zoneBreakdownPct?: ZoneBreakdownPct;
+};
+
+export type NdviPairwiseDirection = "ALTA" | "QUEDA" | "ESTAVEL" | "NAO_COMPARAVEL";
+
+export type NdviPairwiseComparison = {
+  earlier: NdviPairwisePoint;
+  later: NdviPairwisePoint;
+  inputOrderReversed: boolean;
+  daysBetween: number;
+  deltaMeanNdvi: number;
+  direction: NdviPairwiseDirection;
+  hasRelevantTemporalChange: boolean;
+  comparable: boolean;
+  earlierQuality: NdviObservationQuality;
+  laterQuality: NdviObservationQuality;
+  comparabilityReason: string | null;
+  lowVigorDeltaPct: number | null;
+  highVigorDeltaPct: number | null;
+  note: string;
+};
+
+function sumZonePct(breakdown: ZoneBreakdownPct | undefined, zones: VigorZone[]): number | null {
+  if (!breakdown) return null;
+  return round3(zones.reduce((total, zone) => total + (breakdown[zone] ?? 0), 0));
+}
+
+function parseCapturedAt(value: string): number | null {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+/**
+ * Compara duas aquisições REAIS escolhidas pelo usuário.
+ *
+ * A ordem cronológica é normalizada antes do cálculo. Uma comparação só produz direção operacional
+ * quando as duas leituras têm qualidade alta/moderada e, quando declarados em ambos os snapshots,
+ * fonte e versão do algoritmo são compatíveis. Leituras não comparáveis continuam visíveis para
+ * inspeção, mas não recebem sinal acionável.
+ *
+ * O mesmo limiar operacional de 0,12 usado na série temporal é reutilizado. Ele NÃO é limiar
+ * agronômico, não conhece fenologia e não autoriza inferência causal ou prescrição.
+ */
+export function compareNdviSnapshots(a: NdviPairwisePoint, b: NdviPairwisePoint): NdviPairwiseComparison {
+  const aTime = parseCapturedAt(a.capturedAt);
+  const bTime = parseCapturedAt(b.capturedAt);
+  const aValid = aTime != null && Number.isFinite(a.meanNdvi);
+  const bValid = bTime != null && Number.isFinite(b.meanNdvi);
+
+  const ordered = aTime != null && bTime != null && aTime > bTime
+    ? { earlier: b, later: a, earlierTime: bTime, laterTime: aTime, reversed: true }
+    : { earlier: a, later: b, earlierTime: aTime, laterTime: bTime, reversed: false };
+
+  const earlierQuality = classifyNdviObservationQuality(ordered.earlier);
+  const laterQuality = classifyNdviObservationQuality(ordered.later);
+  const sameAcquisition = Boolean(
+    (a.id && b.id && a.id === b.id)
+    || (a.capturedAt === b.capturedAt && a.source === b.source && a.rasterAlgorithm === b.rasterAlgorithm),
+  );
+  const sourceMismatch = Boolean(a.source && b.source && a.source !== b.source);
+  const algorithmMismatch = Boolean(a.rasterAlgorithm && b.rasterAlgorithm && a.rasterAlgorithm !== b.rasterAlgorithm);
+  const qualityComparable = isComparableQuality(earlierQuality) && isComparableQuality(laterQuality);
+
+  let comparabilityReason: string | null = null;
+  if (!aValid || !bValid) {
+    comparabilityReason = "Uma das aquisições não possui data/NDVI médio válido.";
+  } else if (sameAcquisition) {
+    comparabilityReason = "Selecione duas aquisições diferentes para calcular evolução.";
+  } else if (sourceMismatch) {
+    comparabilityReason = "As aquisições usam fontes diferentes; a RAIZ preserva a inspeção, mas não classifica a variação.";
+  } else if (algorithmMismatch) {
+    comparabilityReason = "As aquisições usam versões diferentes do algoritmo NDVI; a RAIZ não classifica a variação entre versões.";
+  } else if (!qualityComparable) {
+    const labels = [NDVI_QUALITY_LABELS[earlierQuality], NDVI_QUALITY_LABELS[laterQuality]].join(" × ");
+    comparabilityReason = `A qualidade das duas aquisições não sustenta um sinal temporal acionável (${labels}).`;
+  }
+
+  const comparable = comparabilityReason == null;
+  const deltaMeanNdvi = round3(ordered.later.meanNdvi - ordered.earlier.meanNdvi);
+  const hasRelevantTemporalChange = comparable && Math.abs(deltaMeanNdvi) >= NDVI_TEMPORAL_CHANGE_THRESHOLD;
+  let direction: NdviPairwiseDirection = "NAO_COMPARAVEL";
+  if (comparable) {
+    if (deltaMeanNdvi >= NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "ALTA";
+    else if (deltaMeanNdvi <= -NDVI_TEMPORAL_CHANGE_THRESHOLD) direction = "QUEDA";
+    else direction = "ESTAVEL";
+  }
+
+  const lowEarlier = sumZonePct(ordered.earlier.zoneBreakdownPct, ["SEM_VEGETACAO", "BAIXO"]);
+  const lowLater = sumZonePct(ordered.later.zoneBreakdownPct, ["SEM_VEGETACAO", "BAIXO"]);
+  const highEarlier = sumZonePct(ordered.earlier.zoneBreakdownPct, ["ALTO", "MUITO_ALTO"]);
+  const highLater = sumZonePct(ordered.later.zoneBreakdownPct, ["ALTO", "MUITO_ALTO"]);
+  const lowVigorDeltaPct = lowEarlier == null || lowLater == null ? null : round3(lowLater - lowEarlier);
+  const highVigorDeltaPct = highEarlier == null || highLater == null ? null : round3(highLater - highEarlier);
+  const daysBetween = ordered.earlierTime == null || ordered.laterTime == null
+    ? 0
+    : Math.max(0, Math.round((ordered.laterTime - ordered.earlierTime) / 86_400_000));
+
+  let note: string;
+  if (!comparable) {
+    note = `${comparabilityReason} As duas imagens podem ser inspecionadas, mas esta comparação não deve ser usada para concluir tendência.`;
+  } else if (hasRelevantTemporalChange) {
+    const movement = direction === "ALTA" ? "aumento" : "queda";
+    note = `Houve ${movement} de ${Math.abs(deltaMeanNdvi).toFixed(2)} ponto de NDVI entre as aquisições, acima do limiar operacional de ${NDVI_TEMPORAL_CHANGE_THRESHOLD.toFixed(2)}. É um sinal para investigação, não uma causa agronômica: estágio da cultura, manejo, clima e demais evidências precisam ser conferidos.`;
+  } else {
+    note = `A diferença de ${Math.abs(deltaMeanNdvi).toFixed(2)} ponto de NDVI ficou abaixo do limiar operacional de ${NDVI_TEMPORAL_CHANGE_THRESHOLD.toFixed(2)}. A RAIZ classifica o par como estável para triagem temporal; isso não significa ausência de mudança agronômica.`;
+  }
+
+  return {
+    earlier: ordered.earlier,
+    later: ordered.later,
+    inputOrderReversed: ordered.reversed,
+    daysBetween,
+    deltaMeanNdvi,
+    direction,
+    hasRelevantTemporalChange,
+    comparable,
+    earlierQuality,
+    laterQuality,
+    comparabilityReason,
+    lowVigorDeltaPct,
+    highVigorDeltaPct,
     note,
   };
 }
