@@ -54,6 +54,11 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     await expect(page1).toContainText(/DIAGNÓSTICO DO SOLO/i);
     expect(await page1.locator(".report-v4-parameter-card").count(), "Página 1 precisa ter gráficos/cards dos parâmetros congelados.").toBeGreaterThan(0);
     await expect(page2).toContainText(/O QUE FAZER|CONCLUSÃO TÉCNICA/i);
+    await expect(page2.locator(".report-v4-action-summary")).toBeVisible();
+    await expect(page2.locator(".report-v4-recommendation-dashboard")).toBeVisible();
+    expect(await page2.locator(".report-v4-recommendation-card").count(), "Página 2 precisa ter cards práticos das recomendações aprovadas.").toBeGreaterThan(0);
+    await expect(page2).toContainText(/CONVERSÃO OPERACIONAL/i);
+    await expect(page2.locator(".report-v4-commercial")).toBeVisible();
     await expect(page3).toContainText(/RESUMO FINAL/i);
     await expect(page3).toContainText(/Resumo para o produtor/i);
     await expect(page3.locator(".report-v4-opinion")).toBeVisible();
