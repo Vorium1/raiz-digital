@@ -139,6 +139,11 @@ jobs:
                      0
                    )::int AS management_count,
                    nullif(published_event.metadata->>'commercialPlanSnapshotId','') IS NOT NULL AS has_commercial_plan,
+                   r.id::text AS report_id,
+                   r.interpretation_id::text AS interpretation_id,
+                   r.prescription_generation_id::text AS prescription_generation_id,
+                   r.revision::int AS report_revision,
+                   r.storage_key,
                    r.published_at
                FROM reports r
                JOIN interpretations i
@@ -180,6 +185,110 @@ jobs:
               `report-v4-richest-candidate: recommendations=${recommendationCount}; management=${managementCount}; commercial=${hasCommercialPlan ? "yes" : "no"}`,
             );
 
+            // Fixture visual temporário: clona um snapshot oficial real para provar que a Página 2
+            // suporta um caso pesado (3 blocos, 8 recomendações, manejo e plano comercial) sem
+            // alterar o laudo original. O registro é apagado no cleanup do workflow.
+            const inlinePrefix = "inline:v1:";
+            if (!String(selected.storage_key ?? "").startsWith(inlinePrefix)) {
+              throw new Error("O laudo-base do fixture visual precisa usar storage inline.");
+            }
+            const originalSnapshot = JSON.parse(
+              Buffer.from(String(selected.storage_key).slice(inlinePrefix.length), "base64").toString("utf8"),
+            );
+            if (Number(originalSnapshot?.reportSnapshotVersion) !== 3) {
+              throw new Error("O laudo-base do fixture visual precisa ser snapshot V3.");
+            }
+
+            const fixtureRecommendations = [
+              { inputType: "CALCARIO_PRNT100", quantity: 2.2, unit: "t/ha", rationale: "Correção de acidez conforme a necessidade aprovada para o solo." },
+              { inputType: "GESSO", quantity: 0.7, unit: "t/ha", rationale: "Condicionamento subsuperficial aprovado para esta decisão." },
+              { inputType: "N", quantity: 40, unit: "kg/ha", rationale: "Dose de nitrogênio aprovada para o manejo informado." },
+              { inputType: "P2O5", quantity: 80, unit: "kg/ha", rationale: "Reposição fosfatada conforme meta e interpretação aprovadas." },
+              { inputType: "K2O", quantity: 75, unit: "kg/ha", rationale: "Reposição potássica definida pela regra agronômica aprovada." },
+              { inputType: "S", quantity: 15, unit: "kg/ha", rationale: "Enxofre liberado conforme a evidência técnica congelada." },
+              { inputType: "B", quantity: 1.0, unit: "kg/ha", rationale: "Boro aprovado com dose explícita e rastreável." },
+              { inputType: "ZN", quantity: 2.5, unit: "kg/ha", rationale: "Zinco aprovado com base no diagnóstico congelado." },
+            ];
+            const fixtureManagement = [
+              "Distribuir o corretivo de forma uniforme na área produtiva.",
+              "Aplicar os fertilizantes conforme a janela de manejo definida para a cultura.",
+              "Registrar a aplicação realizada para comparação com a recomendação oficial.",
+            ];
+            const fixtureMissing = [
+              "A escolha do produto comercial não altera a necessidade agronômica congelada.",
+              "As doses exibidas pertencem a este cenário oficial e não devem ser extrapoladas para outro talhão.",
+            ];
+
+            const fixtureAreaHa = Number(originalSnapshot?.publishedContext?.areaHa ?? 2);
+            const productARate = 154;
+            const productBRate = 125;
+            const productATotalTon = productARate * fixtureAreaHa / 1000;
+            const productBTotalTon = productBRate * fixtureAreaHa / 1000;
+            const productAPrice = 4200;
+            const productBPrice = 2600;
+            const costPerHa = productARate / 1000 * productAPrice + productBRate / 1000 * productBPrice;
+            const totalCost = costPerHa * fixtureAreaHa;
+
+            originalSnapshot.approvedPrescription.responsePayload = {
+              ...(originalSnapshot.approvedPrescription.responsePayload ?? {}),
+              prescription: {
+                ...(originalSnapshot.approvedPrescription.responsePayload?.prescription ?? {}),
+                summary: "O diagnóstico sustenta correção do solo, adubação principal e micronutrientes nas doses aprovadas. O manejo deve seguir as condições registradas neste laudo.",
+                recommendations: fixtureRecommendations,
+                managementPractices: fixtureManagement,
+                missingInformation: fixtureMissing,
+              },
+            };
+            originalSnapshot.commercialPlanSnapshot = {
+              id: "00000000-0000-4000-8000-0000000000aa",
+              label: "Cenário visual completo de homologação",
+              simulationMode: "PK_PAIR",
+              schemaVersion: 1,
+              areaHa: fixtureAreaHa,
+              sourceTargets: [
+                { recommendationId: "00000000-0000-4000-8000-0000000000a1" },
+                { recommendationId: "00000000-0000-4000-8000-0000000000a2" },
+              ],
+              productSnapshots: [
+                { code: "QA-P", name: "Fertilizante fosfatado · QA visual", pricePerTon: productAPrice },
+                { code: "QA-K", name: "Fertilizante potássico · QA visual", pricePerTon: productBPrice },
+              ],
+              engineInput: { fixture: true },
+              engineOutput: {
+                productA: { rateKgPerHa: productARate, totalProductTon: productATotalTon, constraintsSatisfied: true, constraintViolations: [] },
+                productB: { rateKgPerHa: productBRate, totalProductTon: productBTotalTon, constraintsSatisfied: true, constraintViolations: [] },
+                costPerHa,
+                totalCost,
+              },
+              createdAt: new Date().toISOString(),
+            };
+            originalSnapshot.revision = Number(selected.report_revision) + 1000;
+            originalSnapshot.publishedAt = new Date().toISOString();
+
+            const fixtureContent = JSON.stringify(originalSnapshot);
+            const fixtureSha = createHash("sha256").update(fixtureContent).digest("hex");
+            const fixtureStorageKey = inlinePrefix + Buffer.from(fixtureContent, "utf8").toString("base64");
+            const tempReport = await client.query(
+              `INSERT INTO reports (
+                   tenant_id, interpretation_id, prescription_generation_id, revision,
+                   storage_key, sha256, published_at, published_by
+                 )
+                 VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,now()+interval '1 second',$7::uuid)
+                 RETURNING id::text`,
+              [
+                user.tenant_id,
+                selected.interpretation_id,
+                selected.prescription_generation_id,
+                Number(selected.report_revision) + 1000,
+                fixtureStorageKey,
+                fixtureSha,
+                user.user_id,
+              ],
+            );
+            const tempReportId = tempReport.rows[0]?.id;
+            if (!tempReportId) throw new Error("Não foi possível criar o report temporário do QA rico.");
+            console.log("report-v4-rich-fixture: recommendations=8; groups=3; management=3; commercial=yes; products=2");
+
             const token = randomBytes(32).toString("base64url");
             const tokenHash = createHash("sha256").update(token).digest("hex");
             const session = await client.query(
@@ -194,9 +303,12 @@ jobs:
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_RECOMMENDATION_COUNT=${recommendationCount}\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_MANAGEMENT_COUNT=${managementCount}\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_COMMERCIAL=${hasCommercialPlan ? "1" : "0"}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_RECOMMENDATION_COUNT=8\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_RECOMMENDATION_GROUPS=3\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_MANAGEMENT_COUNT=3\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_COMMERCIAL=1\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_COMMERCIAL_PRODUCTS=2\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_TEMP_REPORT_ID=${tempReportId}\n`);
           } catch (error) {
             await client.query("ROLLBACK").catch(() => {});
             throw error;
@@ -231,6 +343,12 @@ jobs:
             "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-report-v4-qa' AND revoked_at IS NULL",
             [process.env.E2E_SESSION_ID],
           );
+          if (process.env.E2E_TEMP_REPORT_ID) {
+            await pool.query(
+              "DELETE FROM reports WHERE id=$1::uuid AND revision >= 1000",
+              [process.env.E2E_TEMP_REPORT_ID],
+            );
+          }
           await pool.end();
           NODE
 
