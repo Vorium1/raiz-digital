@@ -32,10 +32,12 @@ export function PublishedNdviMap({
   fieldId,
   capturedAt,
   boundary,
+  height = 300,
 }: {
   fieldId: string;
   capturedAt: string;
   boundary: SpatialGeometry;
+  height?: number;
 }) {
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -97,7 +99,7 @@ export function PublishedNdviMap({
       <RealFieldMap
         boundary={boundary}
         points={[]}
-        height={300}
+        height={height}
         legend={VIGOR_LEGEND}
         hint="Raster NDVI arquivado e verificado · mesma data congelada no laudo"
         imageOverlay={overlay}
