@@ -24,10 +24,14 @@ export function recommendationInputLabel(inputType: string | null | undefined) {
 
 export function producerFacingRecommendationText(value: string | null | undefined) {
   return (value ?? "")
-    .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, "")
+    .replace(/Dose exata do motor determinístico/gi, "Dose definida pela regra agronômica aprovada")
+    .replace(/Premissas automáticas rastreadas[^.;]*(?:[.;]|$)/gi, "")
+    .replace(/\b[A-Z][A-Z0-9]*(?:(?:_|-)[A-Z0-9.]+)+\b/g, "")
     .replace(/\s+([,.;:])/g, "$1")
     .replace(/:\s*[.;]/g, ".")
+    .replace(/,\s*,/g, ",")
     .replace(/\s{2,}/g, " ")
     .replace(/\s+\./g, ".")
+    .replace(/\s+,/g, ",")
     .trim();
 }
