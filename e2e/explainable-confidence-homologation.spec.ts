@@ -21,7 +21,7 @@ async function openAnalysis(page: Page) {
     secure: baseUrl.protocol === "https:",
     sameSite: "Lax",
   }]);
-  await page.goto(\`/analises/\${ANALYSIS_ID}\`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto(`/analises/${ANALYSIS_ID}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
   const details = page.locator("details.ux2-technical-details");
   await expect(details).toBeVisible();
