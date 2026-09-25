@@ -1204,3 +1204,26 @@ button { color: inherit; }
 .cockpit-validation-list dd { font-size:10.5px; font-weight:700; margin:3px 0 0; }
 @media(max-width:1100px) { .cockpit { grid-template-columns:minmax(0,1fr); } .cockpit-evidence { order:1; } .cockpit-technical { order:2; } }
 @media(max-width:640px) { .cockpit-validation-list { grid-template-columns:1fr; } }
+
+
+/* Editor seguro do contorno produtivo: pontos GPS permanecem fixos e visíveis. */
+.field-boundary-edit{align-items:stretch!important;display:grid!important;gap:10px!important;grid-template-columns:1fr!important;padding:12px 2px!important}
+.field-boundary-edit-head{align-items:center;display:flex;gap:10px;justify-content:space-between}
+.field-boundary-edit-head>input{max-width:420px}
+.field-boundary-edit-note{color:var(--muted);font-size:8px;line-height:1.5;margin:0!important}
+.geo-map-point-coverage{align-items:center;border-bottom:1px solid var(--line);display:flex;gap:8px;padding:8px 10px}
+.geo-map-point-coverage.ok{background:#13271e;color:#bde7d8}
+.geo-map-point-coverage.warning{background:#2b2112;color:#efd7a8}
+.geo-map-point-coverage span,.geo-map-point-coverage strong,.geo-map-point-coverage small{display:block}
+.geo-map-point-coverage strong{font-size:8px}
+.geo-map-point-coverage small{font-size:7px;line-height:1.4;margin-top:2px}
+.geo-map-provider-note{background:#201d14;border-bottom:1px solid var(--line);color:#d7c9a4;font-size:7px;line-height:1.4;padding:6px 10px}
+
+@media(max-width:760px){
+  .field-boundary-edit-head{align-items:stretch;flex-direction:column}
+  .field-boundary-edit-head>input{max-width:none;min-width:100%!important}
+  .field-boundary-edit-head .field-ops-list-actions{justify-content:flex-end;width:100%}
+  .field-boundary-edit .geo-map-toolbar{align-items:stretch}
+  .field-boundary-edit .geo-map-toolbar .button{justify-content:center}
+  .field-boundary-edit .geo-map-canvas{min-height:340px}
+}
