@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { getProductionRuntimeReadiness } from "../src/app/api/health/readiness/route.ts";
+import { getProductionRuntimeReadiness } from "../src/domain/production-runtime-readiness.ts";
 
 const safeEnv = {
   DATA_MODE: "database",
