@@ -98,6 +98,7 @@ type ParameterSummary = {
   value: string;
   method: string;
   classification: string | null;
+  auxiliary: boolean;
   pendingCode: "INSUFFICIENT_EVIDENCE" | "REQUIRES_AGRONOMIST_REVIEW" | null;
   pendingReason: string | null;
   sampleCount: number;
@@ -151,6 +152,7 @@ function parameterSummaries(facts: StructuredFact[], rows: StructuredInterpretat
     const nonInterpretable = parameterRows.some((row) => !row.interpretable);
     const pendingReasons = unique(parameterRows.filter((row) => !row.interpretable).map((row) => row.reason));
     const pendingReason = pendingReasons.length ? pendingReasons.join(" · ") : null;
+    const auxiliary = Boolean(pendingReason && /dado auxiliar|insumo\/contexto|não é um alvo|nao e um alvo|não se aplica|nao se aplica/i.test(pendingReason));
     const requiresReview = Boolean(pendingReason && /agronom|revis|valid/i.test(pendingReason));
 
     return {
@@ -158,7 +160,8 @@ function parameterSummaries(facts: StructuredFact[], rows: StructuredInterpretat
       value,
       method: methods.length === 1 ? methods[0] : methods.length > 1 ? "Métodos múltiplos" : "Método não informado",
       classification: labels.length === 1 ? labels[0] : labels.length > 1 ? "Variável: " + labels.join(" · ") : null,
-      pendingCode: nonInterpretable ? (requiresReview ? "REQUIRES_AGRONOMIST_REVIEW" : "INSUFFICIENT_EVIDENCE") : null,
+      auxiliary,
+      pendingCode: nonInterpretable && !auxiliary ? (requiresReview ? "REQUIRES_AGRONOMIST_REVIEW" : "INSUFFICIENT_EVIDENCE") : null,
       pendingReason,
       sampleCount: new Set(parameterFacts.map((fact) => fact.sampleCode)).size,
     };
@@ -350,7 +353,7 @@ export function FinalVisualReport(props: Props) {
                 <div className={"report-parameter-card " + (item.pendingCode ? "pending" : "")} key={item.code}>
                   <div className="report-parameter-head"><strong>{item.code}</strong><small>{item.sampleCount || "—"} ponto(s)</small></div>
                   <b>{item.value}</b>
-                  <span>{item.classification ? <ClassificationBadge label={item.classification} /> : item.pendingCode || "Sem faixa homologada"}</span>
+                  <span>{item.classification ? <ClassificationBadge label={item.classification} /> : item.pendingCode || (item.auxiliary ? "Dado auxiliar" : "Sem faixa homologada")}</span>
                   {item.classification && item.pendingCode && <small className="report-parameter-warning">{item.pendingCode}</small>}
                   <small>{item.method}</small>
                   {item.pendingReason && <em title={item.pendingReason}>{item.pendingReason}</em>}
@@ -492,7 +495,7 @@ export function FinalVisualReport(props: Props) {
             {pending.length > 0 && (
               <div className="report-pending-compact">
                 <strong>Pontos sem evidência suficiente</strong>
-                {pending.map((item) => <span key={item.code}><b>{item.code}</b> · {item.pendingCode}{item.pendingReason ? " — " + item.pendingReason : ""}</span>)}
+                {pending.map((item) => <span key={item.code}><b>{item.code}</b> · {item.pendingCode}</span>)}
               </div>
             )}
           </section>
@@ -508,7 +511,7 @@ export function FinalVisualReport(props: Props) {
             <div><span>Gerado/publicado em</span><strong>{props.publishedAt || props.generatedAt}</strong></div>
             <div><span>Integridade</span><strong>{props.viewingPublished ? "Hash verificado" + (props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : "") : "Ainda não publicado"}</strong></div>
           </div>
-          {sourceLabels.length > 0 && <p className="report-source-line"><strong>Base técnica citada:</strong> {sourceLabels.join("; ")}</p>}
+          {sourceLabels.length > 0 && <p className="report-source-line"><strong>Fontes técnicas congeladas:</strong> {sourceLabels.length} fonte(s) registrada(s) no snapshot oficial.</p>}
           {props.viewingPublished && props.publishedByName && <p className="report-source-line"><strong>Publicado por:</strong> {props.publishedByName}</p>}
         </section>
 
