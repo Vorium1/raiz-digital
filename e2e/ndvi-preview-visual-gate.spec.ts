@@ -486,7 +486,10 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
 
     const editor = page.locator(".field-boundary-edit-row");
     await expect(editor).toBeVisible();
-    await expect(editor.locator(".geo-map-canvas")).toBeVisible();
+    const geoCanvas = editor.locator(".geo-map-canvas");
+    await expect(geoCanvas).toBeVisible();
+    await expect(geoCanvas).toHaveAttribute("data-geo-map-base", "satellite", { timeout: 20_000 });
+    await expect(editor).toContainText(/Satélite quando disponível/i);
     await expect(editor.locator(".geo-map-reference-note")).toContainText(String(target.pointCount));
     await expect(editor.locator(".geo-map-reference-note")).toContainText(/ponto.*de coleta fixo/i);
     await expect(editor).toContainText(/desenhe o limite produtivo ao redor deles/i);
