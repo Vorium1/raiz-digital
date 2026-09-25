@@ -70,7 +70,7 @@ function measurementContext(
  * (unidade/método/tipo de amostra/profundidade incompatíveis) -- as evidências individuais continuam
  * visíveis mesmo assim, nunca escondidas.
  */
-function ParameterComparisonTable({ rows, labelA, labelB }: { rows: ParameterComparisonRow[]; labelA: string; labelB: string }) {
+export function ParameterComparisonTable({ rows, labelA, labelB }: { rows: ParameterComparisonRow[]; labelA: string; labelB: string }) {
   const comparableRows = useMemo(() => rows.filter((r) => r.comparable && r.absoluteDifference != null).sort((a, b) => Math.abs(b.absoluteDifference!) - Math.abs(a.absoluteDifference!)), [rows]);
 
   if (rows.length === 0) return <p className="report-empty-note" style={{ padding: 16 }}>Nenhum resultado laboratorial em comum pra comparar ainda.</p>;
