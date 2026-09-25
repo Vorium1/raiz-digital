@@ -340,6 +340,106 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
     });
   });
 
+  test("Mapas · Cabeda: pontos de solo aparecem sobre o raster NDVI real", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page);
+
+    const target = await page.evaluate(async () => {
+      const ordersResponse = await fetch("/api/collection-orders", { cache: "no-store" });
+      const ordersPayload = await ordersResponse.json().catch(() => ({}));
+      const orders = (ordersPayload.orders ?? []).filter((order: any) => /^CO-CABEDA-0[123]$/.test(String(order.code ?? "")));
+      const preferredCodes = ["P", "K", "PH", "MO", "CA", "MG"];
+      const diagnostics: any[] = [];
+
+      for (const order of orders) {
+        const baseLayerResponse = await fetch(`/api/collection-orders/${order.id}/map-layer`, { cache: "no-store" });
+        const baseLayer = await baseLayerResponse.json().catch(() => ({}));
+        const parameter = preferredCodes.find((code) => (baseLayer.availableParameters ?? []).includes(code))
+          ?? baseLayer.availableParameters?.[0]
+          ?? null;
+
+        const ndviResponse = await fetch(`/api/fields/${order.fieldId}/ndvi`, { cache: "no-store" });
+        const ndvi = await ndviResponse.json().catch(() => ({}));
+        const archived = (ndvi.history ?? []).find((snapshot: any) => Boolean(snapshot.rasterObjectKey));
+
+        if (!baseLayerResponse.ok || !ndviResponse.ok || !parameter || !archived?.capturedAt) {
+          diagnostics.push({
+            code: order.code,
+            fieldId: order.fieldId,
+            layerStatus: baseLayerResponse.status,
+            ndviStatus: ndviResponse.status,
+            parameter,
+            archived: Boolean(archived?.capturedAt),
+          });
+          continue;
+        }
+
+        const parameterLayerResponse = await fetch(
+          `/api/collection-orders/${order.id}/map-layer?parameter=${encodeURIComponent(parameter)}`,
+          { cache: "no-store" },
+        );
+        const parameterLayer = await parameterLayerResponse.json().catch(() => ({}));
+        const pointCount = Array.isArray(parameterLayer.points) ? parameterLayer.points.length : 0;
+        if (!parameterLayerResponse.ok || pointCount === 0) {
+          diagnostics.push({
+            code: order.code,
+            fieldId: order.fieldId,
+            parameter,
+            parameterLayerStatus: parameterLayerResponse.status,
+            pointCount,
+          });
+          continue;
+        }
+
+        return {
+          orderId: String(order.id),
+          orderCode: String(order.code),
+          fieldId: String(order.fieldId),
+          parameter: String(parameter),
+          pointCount,
+          rasterDate: String(archived.capturedAt).slice(0, 10),
+          diagnostics,
+        };
+      }
+
+      return { diagnostics };
+    });
+
+    expect(
+      target.orderId,
+      `Nenhuma ordem Cabeda com parâmetro de solo + raster NDVI arquivado ficou disponível. Diagnóstico: ${JSON.stringify(target.diagnostics)}`,
+    ).toBeTruthy();
+
+    await page.goto(
+      `/mapas?ordem=${encodeURIComponent(target.orderId)}&parametro=${encodeURIComponent(target.parameter)}&satelite=1`,
+      { waitUntil: "networkidle" },
+    );
+
+    const explorer = page.locator(".map-explorer-main");
+    await expect(explorer).toBeVisible();
+    await expect(explorer.locator(".map-explorer-satellite-toggle input")).toBeChecked();
+
+    const map = explorer.locator(".real-field-map");
+    await expect(map).toBeVisible({ timeout: 20_000 });
+    await expect(map).toHaveAttribute("data-has-image-overlay", "true", { timeout: 20_000 });
+    await expect(map).toHaveAttribute("data-point-count", String(target.pointCount));
+
+    const rasterError = explorer.locator(".ndvi-panel-error", { hasText: "Raster espacial indisponível" });
+    await expect(rasterError).toHaveCount(0);
+
+    await expect(explorer).toContainText(`Camada: ${target.parameter}`);
+    await expect(explorer).toContainText(/zonas de vigor NDVI/i);
+
+    await assertNoHorizontalOverflow(page);
+
+    await ensureVisualEvidenceDir();
+    await explorer.screenshot({ path: join(VISUAL_EVIDENCE_DIR, "cabeda-solo-ndvi-spatial.png") });
+    await test.info().attach("cabeda-solo-ndvi-spatial", {
+      body: await explorer.screenshot(),
+      contentType: "image/png",
+    });
+  });
+
   test("Relevo: abre 3D quando disponível ou cai de forma limpa para topografia", async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await login(page);
