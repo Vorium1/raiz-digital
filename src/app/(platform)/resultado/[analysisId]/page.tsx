@@ -90,6 +90,17 @@ function formatSnapshotDate(value: string) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
+function producerFacingText(value: string) {
+  return value
+    .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/:\s*[.;]/g, ".")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
+}
+
+
 function isV2(value: unknown): value is ReportSnapshotV2 {
   return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 2);
 }
@@ -267,7 +278,6 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
                     <article key={`${item.inputType}-${index}`}>
                       <div>
                         <strong>{recommendationInputLabel(item.inputType)}</strong>
-                        {item.rationale && <small>{item.rationale}</small>}
                         {areaTotal && (
                           <small>
                             Total para {Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha:{" "}
@@ -285,7 +295,18 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
             )}
             {(prescription.missingInformation?.length ?? 0) > 0 && (
-              <div className="simple-result-limitation"><Icon name="shield" size={17}/><span><strong>Critérios preservados pelo motor</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
+              <div className="simple-result-limitation">
+                <Icon name="shield" size={17}/>
+                <span>
+                  <strong>Critérios preservados</strong>
+                  <small>
+                    {prescription.missingInformation!
+                      .map(producerFacingText)
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                </span>
+              </div>
             )}
           </section>
         ) : (
