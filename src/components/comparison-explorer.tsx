@@ -29,6 +29,7 @@ type ParameterComparisonRow = {
   comparable: boolean;
   incompatibilityReasons: string[];
   absoluteDifference: number | null;
+  direction: "INCREASE" | "DECREASE" | "NO_CHANGE" | "NOT_COMPARABLE";
   isPercentUnit: boolean;
 };
 
@@ -51,6 +52,17 @@ function formatDifference(row: ParameterComparisonRow) {
   return `${sign}${row.absoluteDifference.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${suffix}`.trim();
 }
 
+function measurementContext(
+  methods: string[],
+  sampleTypes: string[],
+  depth: { from: number; to: number } | null,
+) {
+  const method = methods.length === 1 ? methods[0] : methods.length > 1 ? `${methods.length} métodos` : "método não informado";
+  const sample = sampleTypes.length === 1 ? sampleTypes[0] : sampleTypes.length > 1 ? `${sampleTypes.length} tipos de amostra` : "tipo não informado";
+  const depthLabel = depth ? `${depth.from}–${depth.to} cm` : "profundidade não única";
+  return `${method} · ${sample} · ${depthLabel}`;
+}
+
 /**
  * Tabela de comparação por parâmetro (Fase 2, Bloco E): valor observado de cada lado, diferença
  * absoluta (nunca percentual sobre base inválida -- pH sempre em unidades de pH, "%" sempre em pontos
@@ -65,7 +77,12 @@ function ParameterComparisonTable({ rows, labelA, labelB }: { rows: ParameterCom
 
   return (
     <>
-      {comparableRows.length > 0 && <DifferenceChart rows={comparableRows} />}
+      {comparableRows.length > 0 && (
+        <>
+          <p className="comparison-delta-note"><Icon name="shield" size={12}/>Delta = lado B − lado A. O sinal mostra somente direção numérica; não significa melhora ou piora agronômica.</p>
+          <DifferenceChart rows={comparableRows} />
+        </>
+      )}
       <div className="comparison-table-wrap">
         <table className="report-table comparison-table">
           <thead><tr><th>Parâmetro</th><th>{labelA}</th><th>{labelB}</th><th>Diferença</th><th>Comparabilidade</th></tr></thead>
@@ -73,9 +90,9 @@ function ParameterComparisonTable({ rows, labelA, labelB }: { rows: ParameterCom
             {rows.map((row) => (
               <tr key={row.parameterCode} className={row.comparable ? "" : "comparison-row-incompatible"}>
                 <td><strong>{row.parameterCode}</strong></td>
-                <td>{formatValue(row.avgA, row.unitA)}{row.nA > 1 ? ` (n=${row.nA})` : ""}{row.classificationA && <ClassificationBadge label={row.classificationA} />}</td>
-                <td>{formatValue(row.avgB, row.unitB)}{row.nB > 1 ? ` (n=${row.nB})` : ""}{row.classificationB && <ClassificationBadge label={row.classificationB} />}</td>
-                <td className={row.comparable && row.absoluteDifference != null ? (row.absoluteDifference > 0 ? "comparison-diff-up" : row.absoluteDifference < 0 ? "comparison-diff-down" : "") : ""}>{row.comparable ? formatDifference(row) : "—"}</td>
+                <td><span className="comparison-value">{formatValue(row.avgA, row.unitA)}{row.nA > 1 ? ` (n=${row.nA})` : ""}</span>{row.classificationA && <ClassificationBadge label={row.classificationA} />}<small className="comparison-measurement-context">{measurementContext(row.methodsA, row.sampleTypesA, row.depthA)}</small></td>
+                <td><span className="comparison-value">{formatValue(row.avgB, row.unitB)}{row.nB > 1 ? ` (n=${row.nB})` : ""}</span>{row.classificationB && <ClassificationBadge label={row.classificationB} />}<small className="comparison-measurement-context">{measurementContext(row.methodsB, row.sampleTypesB, row.depthB)}</small></td>
+                <td className={row.comparable && row.absoluteDifference != null ? "comparison-diff-neutral" : ""}>{row.comparable ? formatDifference(row) : "—"}</td>
                 <td>
                   {row.comparable
                     ? <span className="comparison-compatible"><Icon name="check" size={12}/>Comparável</span>
@@ -108,7 +125,7 @@ function DifferenceChart({ rows }: { rows: ParameterComparisonRow[] }) {
   const trackWidth = width / 2 - 90;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="comparison-chart" role="img" aria-label="Diferença absoluta por parâmetro entre os dois lados">
+    <svg viewBox={`0 0 ${width} ${height}`} className="comparison-chart" role="img" aria-label="Delta numérico B menos A por parâmetro; sinal não representa melhora ou piora">
       <line x1={midX} y1={0} x2={midX} y2={height} stroke="var(--line, #333)" strokeWidth={1} />
       {rows.map((row, i) => {
         const diff = row.absoluteDifference ?? 0;
@@ -118,7 +135,7 @@ function DifferenceChart({ rows }: { rows: ParameterComparisonRow[] }) {
         return (
           <g key={row.parameterCode}>
             <text x={midX - trackWidth - 6} y={y + 12} fontSize={9} fill="var(--muted, #93a19b)" textAnchor="start">{row.parameterCode}</text>
-            <rect x={positive ? midX : midX - barWidth} y={y} width={barWidth} height={14} rx={3} fill={positive ? "#29966f" : "#d9655a"} />
+            <rect x={positive ? midX : midX - barWidth} y={y} width={barWidth} height={14} rx={3} fill="var(--muted, #7a877f)" />
             <text x={positive ? midX + barWidth + 6 : midX - barWidth - 6} y={y + 11} fontSize={8.5} fill="var(--ink, #eef1ef)" textAnchor={positive ? "start" : "end"}>{formatDifference(row)}</text>
           </g>
         );
