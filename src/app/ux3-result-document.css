@@ -467,3 +467,19 @@
   .simple-result-footer>div:first-child>span{font-size:8px}
   .simple-result-footer>div:first-child>small{font-size:6.2px}
 }
+
+
+/* Report V4 — geometria física A4.
+   O PDF tem largura <820px; estas regras impedem que breakpoints de mobile
+   empilhem cards que, no papel, precisam permanecer em grade compacta. */
+@media print{
+  .report-v4-action-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .report-v4-recommendation-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .report-v4-management-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-v4-commercial-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .simple-result-ndvi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .report-v4-final-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .report-v4-sheet-three .simple-result-producer-summary-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-v4-final-commercial-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-v4-trace-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
