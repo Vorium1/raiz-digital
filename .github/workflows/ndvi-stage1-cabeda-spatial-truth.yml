@@ -9,6 +9,7 @@ on:
       - "src/lib/repositories/map-data.ts"
       - "scripts/audit-cabeda-persisted-geometry.mjs"
       - "scripts/audit-cabeda-ndvi-map-selection.mjs"
+      - "scripts/audit-cabeda-coordinate-chain.mjs"
       - ".github/workflows/ndvi-stage1-cabeda-spatial-truth.yml"
   workflow_dispatch:
 
@@ -101,6 +102,12 @@ jobs:
           set -euo pipefail
           node --experimental-strip-types scripts/audit-cabeda-persisted-geometry.mjs | tee "cabeda-area-${CABEDA_AUDIT_AREA}.json"
 
+      - name: Auditar cadeia exata da coordenada importada → banco
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/audit-cabeda-coordinate-chain.mjs | tee "cabeda-coordinate-chain-${CABEDA_AUDIT_AREA}.json"
+
       - name: Publicar resumo privacy-safe
         if: always()
         shell: bash
@@ -122,6 +129,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ndvi-stage1-cabeda-area-${{ matrix.area }}
-          path: cabeda-area-${{ matrix.area }}.json
+          path: |
+            cabeda-area-${{ matrix.area }}.json
+            cabeda-coordinate-chain-${{ matrix.area }}.json
           if-no-files-found: warn
           retention-days: 30
