@@ -467,7 +467,14 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         </section>
 
         <section className="simple-result-signature">
-          <ReportSignature branding={branding}/>
+          {branding.responsibleName ? (
+            <ReportSignature branding={branding}/>
+          ) : (
+            <div className="report-v4-signature-missing">
+              <strong>Responsável técnico</strong>
+              <small>Não informado no snapshot oficial desta publicação.</small>
+            </div>
+          )}
         </section>
 
         <footer className="simple-result-footer">
