@@ -67,6 +67,9 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     await expect(page3).toContainText(/BASE DA DECISÃO/i);
     await expect(page3.locator(".report-v4-trace-grid")).toBeVisible();
     await expect(page3).toContainText(/De onde veio este resultado/i);
+    await expect(page3.locator(".simple-result-signature")).toBeVisible();
+    const signatureContent = await page3.locator(".simple-result-signature").innerText();
+    expect(signatureContent.trim().length, "Página 3 não pode terminar com bloco de assinatura vazio.").toBeGreaterThan(0);
 
     await assertNoHorizontalOverflow(page);
     await mkdir(EVIDENCE_DIR, { recursive: true });
@@ -97,6 +100,13 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     }));
     expect(["page", "always"]).toContain(breaks[0].breakAfter === "auto" ? breaks[0].pageBreakAfter : breaks[0].breakAfter);
     expect(["page", "always"]).toContain(breaks[1].breakAfter === "auto" ? breaks[1].pageBreakAfter : breaks[1].breakAfter);
+
+    const sheetHeights = await sheets.evaluateAll((elements) =>
+      elements.map((element) => Math.ceil(element.getBoundingClientRect().height)),
+    );
+    for (const [index, height] of sheetHeights.entries()) {
+      expect(height, `Folha ${index + 1} precisa caber no viewport A4 de QA sem criar uma folha extra.`).toBeLessThanOrEqual(1754);
+    }
 
     await mkdir(EVIDENCE_DIR, { recursive: true });
     await page.screenshot({ path: join(EVIDENCE_DIR, "report-v4-print-full.png"), fullPage: true });
