@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { AgronomicIntelligencePanel } from "@/components/agronomic-intelligence-panel";
 import { LabImportConfidenceExplainer } from "@/components/lab-import-confidence-explainer";
+import { TechnicalConfidenceExplainer } from "@/components/technical-confidence-explainer";
 import { AssistantEntryButton } from "@/components/assistant-entry-button";
 import { DecisionReadinessCard } from "@/components/decision-readiness-card";
 import { InputApplicationsManager } from "@/components/input-applications-manager";
@@ -23,6 +24,38 @@ import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-u
 
 const RUN_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
+
+const DEMO_LAB_CONFIDENCE = {
+  score: 88,
+  level: "ADEQUATE" as const,
+  dimensions: [
+    { key: "completeness", label: "Integridade laboratorial", score: 100, weight: 35 },
+    { key: "laboratory", label: "Coerência laboratorial", score: 80, weight: 35 },
+    { key: "ruleCompatibility", label: "Compatibilidade de regra", score: 83, weight: 30 },
+  ],
+};
+const DEMO_LAB_ISSUES = [{
+  severity: "WARNING" as const,
+  code: "METHOD_INFERRED",
+  message: "Exemplo visual: um método analítico foi preenchido a partir do contexto demonstrativo.",
+  line: 4,
+  sampleCode: "P1",
+  parameterCode: "P",
+}];
+const DEMO_INTERPRETATION_CONFIDENCE = {
+  score: 88,
+  level: "ADEQUATE",
+  dimensions: [
+    { key: "completeness", label: "Completude", score: 100, weight: 0.5 },
+    { key: "context", label: "Contexto agronômico", score: 80, weight: 0.3 },
+    { key: "ruleCompatibility", label: "Compatibilidade de regra", score: 70, weight: 0.2 },
+  ],
+};
+const DEMO_CONFIDENCE_INTERPRETATION = [
+  { parameterCode: "P", classificationRole: "TARGET" as const, interpretable: true },
+  { parameterCode: "K", classificationRole: "TARGET" as const, interpretable: true },
+  { parameterCode: "CLAY", classificationRole: "AUXILIARY" as const, interpretable: false, code: "NOT_CLASSIFICATION_TARGET", reason: "Dado auxiliar demonstrativo." },
+];
 
 export default async function AnalysisDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -81,7 +114,9 @@ function DemoAnalysisDetail({ analysis }: { analysis: (typeof analyses)[number] 
   return <><Topbar eyebrow="Análises · demonstração" title={analysis.id}><button className="button secondary"><Icon name="file" size={16}/>Prévia do relatório</button></Topbar><div className="content-wrap detail-page"><div className="demo-banner"><Icon name="warning" size={14}/><span>Exemplo visual. Diagnóstico, regras, profissional e recomendações desta tela não representam dados reais.</span></div>
     <div className="detail-header"><div><div className="breadcrumb"><Link href="/analises">Análises</Link><Icon name="chevron" size={13}/><span>{analysis.id}</span></div><h2>{analysis.client}</h2><p>{analysis.area} · Safra 2026/27 · Soja → Milho</p></div><StatusBadge tone={analysis.statusTone}>{analysis.status}</StatusBadge></div>
     <div className="detail-columns"><div><section className="card interpretation-card"><div className="card-header"><div><span className="eyebrow">INTELIGÊNCIA AGRONÔMICA · EXEMPLO</span><h2>Núcleo técnico da análise</h2></div>{showFullExample && <div className="confidence"><b>{demoInterpretation.confidence.score}</b><span>Confiabilidade<br/><strong>{demoInterpretation.confidence.level}</strong></span></div>}</div><div className="interpretation-body">
-        {showFullExample ? <div className="agro-panel"><div className="agro-summary-row"><div className="agro-stat"><span>Status</span><strong>Aprovada</strong></div><div className="agro-stat"><span>Confiabilidade</span><strong>{demoInterpretation.confidence.score}/100</strong><small>{demoInterpretation.confidence.level}</small></div><div className="agro-stat"><span>Base técnica</span><strong>{demoInterpretation.cropProfileCode}</strong><small>v{demoInterpretation.cropProfileVersion}</small></div><div className="agro-stat"><span>Revisão</span><strong>#{demoInterpretation.revision}</strong><small>{new Date(demoInterpretation.createdAt).toLocaleString("pt-BR")}</small></div></div><div className="agro-table-wrap"><table className="agro-table"><thead><tr><th>Ponto</th><th>Parâmetro</th><th>Resultado</th><th>Classificação</th></tr></thead><tbody>{demoInterpretation.rows.map((row, index) => <tr key={index}><td>{row.sampleCode}</td><td>{row.parameterCode}</td><td>{row.value} {row.unit}</td><td><ClassificationBadge label={row.classification}/></td></tr>)}</tbody></table></div><section className="narrative-panel"><div className="narrative-panel-head"><div><span className="eyebrow">SÍNTESE ASSISTIDA POR IA · EXEMPLO</span><h3>Explicação em linguagem simples</h3></div><StatusBadge tone="success">Aprovada</StatusBadge></div><div className="narrative-provider-note"><Icon name="shield" size={13}/>Gerado por motor de texto local (sem custo) — reformata os fatos já calculados, não é um modelo de linguagem real ainda.</div><p className="narrative-summary">{demoNarrative.summary}</p><div className="narrative-block"><h4>Observações</h4><ul>{demoNarrative.observations.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block attention"><h4><Icon name="warning" size={12}/> Pontos de atenção</h4><ul>{demoNarrative.attentionPoints.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block"><h4>Tendências</h4><ul>{demoNarrative.trends.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block muted"><h4>Fontes técnicas</h4><ul>{demoNarrative.technicalReferences.map((item, i) => <li key={i}>{item}</li>)}</ul></div></section></div> : <div className="pending-engine"><Icon name="sparkles" size={24}/><div><h3>Interface de parecer e aprovação</h3><p>Esta análise ({analysis.status.toLowerCase()}) ainda não chegou nessa etapa nesta demonstração. Veja <Link href="/analises/AN-2026-0148">AN-2026-0148 · Fazenda Horizonte</Link> para o exemplo completo, do laudo à síntese aprovada.</p></div></div>}
+        {showFullExample ? <div className="agro-panel">
+        <LabImportConfidenceExplainer confidence={DEMO_LAB_CONFIDENCE} issues={DEMO_LAB_ISSUES} reconstructionMatchesStoredScore={true} fileName="laudo-exemplo-demonstrativo.csv"/>
+        <TechnicalConfidenceExplainer confidence={DEMO_INTERPRETATION_CONFIDENCE} interpretation={DEMO_CONFIDENCE_INTERPRETATION}/><div className="agro-summary-row"><div className="agro-stat"><span>Status</span><strong>Aprovada</strong></div><div className="agro-stat"><span>Confiabilidade</span><strong>{demoInterpretation.confidence.score}/100</strong><small>{demoInterpretation.confidence.level}</small></div><div className="agro-stat"><span>Base técnica</span><strong>{demoInterpretation.cropProfileCode}</strong><small>v{demoInterpretation.cropProfileVersion}</small></div><div className="agro-stat"><span>Revisão</span><strong>#{demoInterpretation.revision}</strong><small>{new Date(demoInterpretation.createdAt).toLocaleString("pt-BR")}</small></div></div><div className="agro-table-wrap"><table className="agro-table"><thead><tr><th>Ponto</th><th>Parâmetro</th><th>Resultado</th><th>Classificação</th></tr></thead><tbody>{demoInterpretation.rows.map((row, index) => <tr key={index}><td>{row.sampleCode}</td><td>{row.parameterCode}</td><td>{row.value} {row.unit}</td><td><ClassificationBadge label={row.classification}/></td></tr>)}</tbody></table></div><section className="narrative-panel"><div className="narrative-panel-head"><div><span className="eyebrow">SÍNTESE ASSISTIDA POR IA · EXEMPLO</span><h3>Explicação em linguagem simples</h3></div><StatusBadge tone="success">Aprovada</StatusBadge></div><div className="narrative-provider-note"><Icon name="shield" size={13}/>Gerado por motor de texto local (sem custo) — reformata os fatos já calculados, não é um modelo de linguagem real ainda.</div><p className="narrative-summary">{demoNarrative.summary}</p><div className="narrative-block"><h4>Observações</h4><ul>{demoNarrative.observations.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block attention"><h4><Icon name="warning" size={12}/> Pontos de atenção</h4><ul>{demoNarrative.attentionPoints.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block"><h4>Tendências</h4><ul>{demoNarrative.trends.map((item, i) => <li key={i}>{item}</li>)}</ul></div><div className="narrative-block muted"><h4>Fontes técnicas</h4><ul>{demoNarrative.technicalReferences.map((item, i) => <li key={i}>{item}</li>)}</ul></div></section></div> : <div className="pending-engine"><Icon name="sparkles" size={24}/><div><h3>Interface de parecer e aprovação</h3><p>Esta análise ({analysis.status.toLowerCase()}) ainda não chegou nessa etapa nesta demonstração. Veja <Link href="/analises/AN-2026-0148">AN-2026-0148 · Fazenda Horizonte</Link> para o exemplo completo, do laudo à síntese aprovada.</p></div></div>}
       </div></section></div><aside className="review-sidebar"><section className="card trace-card"><div className="card-header"><div><span className="eyebrow">RASTREABILIDADE</span><h2>Registro de exemplo</h2></div></div><dl className="detail-list"><div><dt>ID</dt><dd>{analysis.id}</dd></div><div><dt>Origem do laudo</dt><dd>Importação CSV (exemplo)</dd></div><div><dt>Amostras normalizadas</dt><dd>6</dd></div></dl></section></aside></div>
   </div></>;
 }
