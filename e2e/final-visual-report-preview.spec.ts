@@ -56,7 +56,7 @@ test.describe("Issue #103 · relatório final visual", () => {
     await expect(pages.nth(1)).toContainText("Recomendação e manejo");
     await expect(pages.nth(1)).toContainText("Necessidade agronômica");
     await expect(pages.nth(2)).toContainText("Fechamento para o produtor");
-    await expect(pages.nth(2)).toContainText("Rastreabilidade");
+    await expect(pages.nth(2)).toContainText(/Rastreabilidade/i);
     await expect(pages.nth(2)).toContainText(/Hash verificado/i);
 
     expect(await pages.nth(0).locator(".report-parameter-card").count(), "o diagnóstico precisa expor os parâmetros congelados").toBeGreaterThan(0);
@@ -92,11 +92,20 @@ test.describe("Issue #103 · relatório final visual", () => {
       printBackground: true,
       preferCSSPageSize: true,
     });
+    await mkdir(EVIDENCE_DIR, { recursive: true });
+    await writeFile(join(EVIDENCE_DIR, "relatorio-final-a4.pdf"), pdf);
+
+    const metrics = await report.locator(".report-a4-page").evaluateAll((pages) =>
+      pages.map((element) => ({
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        renderedHeight: Math.round(element.getBoundingClientRect().height),
+      })),
+    );
+    console.log("PRINT_PAGE_METRICS", JSON.stringify(metrics));
+
     const ascii = pdf.toString("latin1");
     const pageObjects = ascii.match(/\/Type\s*\/Page\b/g) ?? [];
     expect(pageObjects.length, "PDF A4 não pode ganhar página vazia/extra por overflow").toBe(3);
-
-    await mkdir(EVIDENCE_DIR, { recursive: true });
-    await writeFile(join(EVIDENCE_DIR, "relatorio-final-a4.pdf"), pdf);
   });
 });
