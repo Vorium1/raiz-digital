@@ -1,96 +1,22 @@
 import type { PoolClient } from "pg";
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
+import { buildParameterComparisonRows, type ComparisonMeasurementAggregate, type ParameterComparisonRow } from "@/domain/comparison-compatibility";
 import { withTenant } from "@/lib/db";
 
-/**
- * Fase 2, Bloco E: comparativos que mostram a diferença de verdade -- valor observado de cada lado,
- * diferença absoluta, classificação quando disponível, e sinalização explícita de incompatibilidade
- * (unidade, método analítico, tipo de amostra, profundidade) em vez de parear valores como se fossem o
- * mesmo tipo de medida só porque têm o mesmo código de parâmetro.
- */
-export type ParameterComparisonRow = {
-  parameterCode: string;
-  unitA: string | null;
-  unitB: string | null;
-  methodsA: string[];
-  methodsB: string[];
-  sampleTypesA: string[];
-  sampleTypesB: string[];
-  depthA: { from: number; to: number } | null;
-  depthB: { from: number; to: number } | null;
-  nA: number;
-  nB: number;
-  avgA: number | null;
-  avgB: number | null;
-  classificationA: string | null;
-  classificationB: string | null;
-  comparable: boolean;
-  incompatibilityReasons: string[];
-  absoluteDifference: number | null;
-  isPercentUnit: boolean;
-};
-
-type AggregateRow = { parameterCode: string; n: number; avg: number; units: string[]; methods: string[]; sampleTypes: string[]; depthFrom: number | null; depthTo: number | null };
-
-function buildComparisonRows(
-  aggA: Map<string, AggregateRow>,
-  aggB: Map<string, AggregateRow>,
-  classA: Map<string, string>,
-  classB: Map<string, string>,
-): ParameterComparisonRow[] {
-  const codes = new Set([...aggA.keys(), ...aggB.keys()]);
-  const rows: ParameterComparisonRow[] = [];
-  for (const code of codes) {
-    const A = aggA.get(code) ?? null;
-    const B = aggB.get(code) ?? null;
-    const unitsA = A?.units ?? [];
-    const unitsB = B?.units ?? [];
-    const methodsA = A?.methods ?? [];
-    const methodsB = B?.methods ?? [];
-    const sampleTypesA = A?.sampleTypes ?? [];
-    const sampleTypesB = B?.sampleTypes ?? [];
-    const unitA = unitsA[0] ?? null;
-    const unitB = unitsB[0] ?? null;
-
-    const reasons: string[] = [];
-    if (!A) reasons.push("Sem resultado deste parâmetro no lado A.");
-    if (!B) reasons.push("Sem resultado deste parâmetro no lado B.");
-    if (A && B) {
-      if (unitsA.length > 1 || unitsB.length > 1) reasons.push("Mais de uma unidade registrada para este parâmetro em um dos lados -- revisão de cadastro necessária antes de comparar.");
-      else if (unitA !== unitB) reasons.push(`Unidades diferentes (${unitA ?? "—"} vs. ${unitB ?? "—"}).`);
-      if (!methodsA.some((m) => methodsB.includes(m))) reasons.push("Nenhum método analítico em comum entre os dois lados.");
-      if (!sampleTypesA.some((s) => sampleTypesB.includes(s))) reasons.push(`Tipos de amostra diferentes (${sampleTypesA.join("/")} vs. ${sampleTypesB.join("/")}).`);
-      if (A.depthFrom != null && A.depthTo != null && B.depthFrom != null && B.depthTo != null) {
-        const overlap = A.depthFrom < B.depthTo && B.depthFrom < A.depthTo;
-        if (!overlap) reasons.push(`Profundidades sem sobreposição (${A.depthFrom}–${A.depthTo}cm vs. ${B.depthFrom}–${B.depthTo}cm).`);
-      }
-    }
-    const comparable = reasons.length === 0;
-
-    rows.push({
-      parameterCode: code,
-      unitA, unitB, methodsA, methodsB, sampleTypesA, sampleTypesB,
-      depthA: A && A.depthFrom != null && A.depthTo != null ? { from: A.depthFrom, to: A.depthTo } : null,
-      depthB: B && B.depthFrom != null && B.depthTo != null ? { from: B.depthFrom, to: B.depthTo } : null,
-      nA: A?.n ?? 0, nB: B?.n ?? 0,
-      avgA: A?.avg ?? null, avgB: B?.avg ?? null,
-      classificationA: classA.get(code) ?? null, classificationB: classB.get(code) ?? null,
-      comparable,
-      incompatibilityReasons: reasons,
-      absoluteDifference: comparable && A && B ? B.avg - A.avg : null,
-      isPercentUnit: unitA === "%" || unitB === "%",
-    });
-  }
-  return rows.sort((a, b) => a.parameterCode.localeCompare(b.parameterCode));
-}
-
+/** Comparações usam o domínio puro de compatibilidade; este repositório só resolve escopo/dados reais. */
+export type { ParameterComparisonRow } from "@/domain/comparison-compatibility";
 
 function classificationsFromStructuredOutput(structuredOutput: any): Map<string, string> {
-  const map = new Map<string, string>();
+  const byParameter = new Map<string, Set<string>>();
   for (const item of structuredOutput?.interpretation ?? []) {
-    if (item.interpretable && item.classification && !map.has(item.parameterCode)) {
-      map.set(item.parameterCode, item.classification);
-    }
+    if (!item.interpretable || !item.classification) continue;
+    const classes = byParameter.get(item.parameterCode) ?? new Set<string>();
+    classes.add(String(item.classification));
+    byParameter.set(item.parameterCode, classes);
+  }
+  const map = new Map<string, string>();
+  for (const [parameterCode, classes] of byParameter) {
+    if (classes.size === 1) map.set(parameterCode, [...classes][0]);
   }
   return map;
 }
@@ -103,6 +29,12 @@ async function latestAnalysisForField(client: PoolClient, tenantId: string, fiel
      FROM analyses a
      JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
      WHERE a.tenant_id = $1::uuid AND cs.field_id = $2::uuid
+       AND EXISTS (
+         SELECT 1
+         FROM lab_samples ls
+         JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+         WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id AND lr.numeric_value IS NOT NULL
+       )
      ORDER BY a.created_at DESC, a.id DESC
      LIMIT 1`,
     [tenantId, fieldId],
@@ -115,6 +47,12 @@ async function latestAnalysisForSeason(client: PoolClient, tenantId: string, sea
     `SELECT a.id::text, a.collection_order_id::text AS "collectionOrderId"
      FROM analyses a
      WHERE a.tenant_id = $1::uuid AND a.crop_season_id = $2::uuid
+       AND EXISTS (
+         SELECT 1
+         FROM lab_samples ls
+         JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+         WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id AND lr.numeric_value IS NOT NULL
+       )
      ORDER BY a.created_at DESC, a.id DESC
      LIMIT 1`,
     [tenantId, seasonId],
@@ -122,14 +60,18 @@ async function latestAnalysisForSeason(client: PoolClient, tenantId: string, sea
   return result.rows[0] ?? null;
 }
 
-async function aggregateParametersByAnalysis(client: PoolClient, tenantId: string, analysisId: string | null): Promise<Map<string, AggregateRow>> {
+async function aggregateParametersByAnalysis(client: PoolClient, tenantId: string, analysisId: string | null): Promise<Map<string, ComparisonMeasurementAggregate>> {
   if (!analysisId) return new Map();
   const result = await client.query(
     `SELECT lr.parameter_code AS "parameterCode", count(*)::int AS n, avg(lr.numeric_value)::float8 AS avg,
             array_remove(array_agg(DISTINCT lr.unit), NULL) AS units,
             array_remove(array_agg(DISTINCT lr.analytical_method), NULL) AS methods,
             array_remove(array_agg(DISTINCT ls.sample_type), NULL) AS "sampleTypes",
-            min(sp.depth_from_cm)::float8 AS "depthFrom", max(sp.depth_to_cm)::float8 AS "depthTo"
+            coalesce(
+              array_agg(DISTINCT jsonb_build_object('from', sp.depth_from_cm::float8, 'to', sp.depth_to_cm::float8))
+                FILTER (WHERE sp.depth_from_cm IS NOT NULL AND sp.depth_to_cm IS NOT NULL),
+              ARRAY[]::jsonb[]
+            ) AS depths
      FROM lab_samples ls
      JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
      LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
@@ -137,7 +79,7 @@ async function aggregateParametersByAnalysis(client: PoolClient, tenantId: strin
      GROUP BY lr.parameter_code`,
     [tenantId, analysisId],
   );
-  return new Map(result.rows.map((row: AggregateRow) => [row.parameterCode, row]));
+  return new Map(result.rows.map((row: ComparisonMeasurementAggregate) => [row.parameterCode, row]));
 }
 
 async function currentApprovedInterpretationOutput(client: PoolClient, tenantId: string, analysisId: string | null): Promise<any | null> {
@@ -216,7 +158,7 @@ export async function compareFields(tenantId: string, fieldIdA: string, fieldIdB
       currentApprovedClassificationsForAnalysis(client, tenantId, analysisA?.id ?? null),
       currentApprovedClassificationsForAnalysis(client, tenantId, analysisB?.id ?? null),
     ]);
-    const rows = buildComparisonRows(aggA, aggB, classA, classB);
+    const rows = buildParameterComparisonRows(aggA, aggB, classA, classB);
     return {
       labelA: fieldA?.name ?? "—",
       labelB: fieldB?.name ?? "—",
@@ -249,7 +191,7 @@ export async function compareSeasons(tenantId: string, seasonIdA: string, season
       currentApprovedClassificationsForAnalysis(client, tenantId, analysisA?.id ?? null),
       currentApprovedClassificationsForAnalysis(client, tenantId, analysisB?.id ?? null),
     ]);
-    const rows = buildComparisonRows(aggA, aggB, classA, classB);
+    const rows = buildParameterComparisonRows(aggA, aggB, classA, classB);
     return {
       labelA: seasonA ? seasonA.fieldName + " · " + seasonA.label : "—",
       labelB: seasonB ? seasonB.fieldName + " · " + seasonB.label : "—",
@@ -314,15 +256,15 @@ export async function comparePoints(tenantId: string, pointIdA: string, pointIdB
       pointClassifications(pointA.analysisId, pointA.code),
       pointClassifications(pointB.analysisId, pointB.code),
     ]);
-    const aggA = new Map<string, AggregateRow>(resultsA.map((row: any) => [row.parameterCode, {
+    const aggA = new Map<string, ComparisonMeasurementAggregate>(resultsA.map((row: any) => [row.parameterCode, {
       parameterCode: row.parameterCode, n: 1, avg: row.value, units: [row.unit].filter(Boolean), methods: [row.method].filter(Boolean),
-      sampleTypes: [row.sampleType].filter(Boolean), depthFrom: row.depthFromCm, depthTo: row.depthToCm,
+      sampleTypes: [row.sampleType].filter(Boolean), depths: row.depthFromCm != null && row.depthToCm != null ? [{ from: row.depthFromCm, to: row.depthToCm }] : [],
     }]));
-    const aggB = new Map<string, AggregateRow>(resultsB.map((row: any) => [row.parameterCode, {
+    const aggB = new Map<string, ComparisonMeasurementAggregate>(resultsB.map((row: any) => [row.parameterCode, {
       parameterCode: row.parameterCode, n: 1, avg: row.value, units: [row.unit].filter(Boolean), methods: [row.method].filter(Boolean),
-      sampleTypes: [row.sampleType].filter(Boolean), depthFrom: row.depthFromCm, depthTo: row.depthToCm,
+      sampleTypes: [row.sampleType].filter(Boolean), depths: row.depthFromCm != null && row.depthToCm != null ? [{ from: row.depthFromCm, to: row.depthToCm }] : [],
     }]));
-    const rows = buildComparisonRows(aggA, aggB, classA, classB);
+    const rows = buildParameterComparisonRows(aggA, aggB, classA, classB);
     return { pointA, pointB, rows };
   });
 }
