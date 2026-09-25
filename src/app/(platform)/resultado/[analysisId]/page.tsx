@@ -196,6 +196,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
       <div className="simple-result-back no-print"><Link href="/resultados"><Icon name="arrow" size={15}/> Resultados</Link></div>
 
       <article className="simple-result-document">
+        <section className="report-v4-sheet report-v4-sheet-one" data-report-page="1">
         <header className="simple-result-document-head">
           <ReportBrand branding={branding}/>
           <div className="simple-result-published"><Icon name="check" size={15}/><span><strong>Resultado oficial</strong><small>{new Date(published.report.publishedAt).toLocaleDateString("pt-BR")}</small></span></div>
@@ -228,25 +229,6 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
-        {ndvi && (
-          <section className="simple-result-section satellite">
-            <div className="simple-result-section-head">
-              <span>SATÉLITE</span>
-              <h2>Vigor da área</h2>
-              <p>Leitura NDVI congelada junto com esta decisão. A RAIZ não transforma esse índice em recomendação por si só.</p>
-            </div>
-            <div className="simple-result-ndvi-grid">
-              <div><small>Data da leitura</small><strong>{formatSnapshotDate(ndvi.capturedAt)}</strong></div>
-              <div><small>NDVI médio</small><strong>{ndvi.meanNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
-              <div><small>Faixa observada</small><strong>{ndvi.minNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–{ndvi.maxNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
-              <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
-            </div>
-            {ndvi.rasterArchived && publishedBoundary && (
-              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any} height={190}/>
-            )}
-          </section>
-        )}
-
         {parameterDashboardRows.length > 0 && (
           <section className="simple-result-section report-v4-diagnosis">
             <div className="simple-result-section-head">
@@ -258,6 +240,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
+        </section>
+
+        <section className="report-v4-sheet report-v4-sheet-two" data-report-page="2">
         {prescription ? (
           <section className="simple-result-section recommendation">
             <div className="simple-result-section-head">
@@ -307,6 +292,28 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
         )}
 
+        {ndvi && (
+          <section className="simple-result-section satellite">
+            <div className="simple-result-section-head">
+              <span>SATÉLITE</span>
+              <h2>Vigor da área</h2>
+              <p>Leitura NDVI congelada junto com esta decisão. A RAIZ não transforma esse índice em recomendação por si só.</p>
+            </div>
+            <div className="simple-result-ndvi-grid">
+              <div><small>Data da leitura</small><strong>{formatSnapshotDate(ndvi.capturedAt)}</strong></div>
+              <div><small>NDVI médio</small><strong>{ndvi.meanNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div><small>Faixa observada</small><strong>{ndvi.minNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–{ndvi.maxNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
+            </div>
+            {ndvi.rasterArchived && publishedBoundary && (
+              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any} height={190}/>
+            )}
+          </section>
+        )}
+
+        </section>
+
+        <section className="report-v4-sheet report-v4-sheet-three" data-report-page="3">
         {producerSummary && (
           <section className="simple-result-section producer-summary">
             <div className="simple-result-section-head">
@@ -396,6 +403,16 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
+        {technicalOpinion && (
+          <section className="simple-result-section report-v4-opinion">
+            <div className="simple-result-section-head">
+              <span>PARECER TÉCNICO</span>
+              <h2>Conclusão</h2>
+            </div>
+            <p>{technicalOpinion}</p>
+          </section>
+        )}
+
         <details className="simple-result-advanced">
           <summary><Icon name="shield" size={15}/> Como o RAIZ chegou a este resultado</summary>
           <section className="simple-result-section traceability">
@@ -438,6 +455,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
             {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}
           </div>
         </footer>
+        </section>
       </article>
     </div>
   );
