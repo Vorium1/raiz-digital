@@ -150,7 +150,7 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         areaHa: Number(context.areaHa),
       })
     : [];
-  const technicalOpinion = prescription?.summary?.trim() || null;
+  const technicalOpinion = producerFacingText(prescription?.summary?.trim() || "") || null;
   const producerSummary = prescription
     ? buildProducerResultSummary({
         areaHa: Number(context.areaHa),
@@ -187,6 +187,9 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     labResultCount: 0,
   }));
   const plannedPointCount = publishedPoints.filter((point) => pointPositionKind(point) === "PLANNED").length;
+  const laboratoryMethodCount = new Set(parameterDashboardRows.flatMap((row) => row.methods)).size;
+  const officialRevision = v3?.revision ?? published.report.revision;
+  const approvedActionCount = producerSummary?.rows.length ?? 0;
 
   return (
     <div className="simple-result-page">
@@ -363,6 +366,20 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         </section>
 
         <section className="report-v4-sheet report-v4-sheet-three" data-report-page="3">
+        <section className="simple-result-section report-v4-final-overview">
+          <div className="simple-result-section-head">
+            <span>FECHAMENTO DO TALHÃO</span>
+            <h2>Visão final desta decisão</h2>
+            <p>Resumo direto do que entrou no laudo oficial e do que foi efetivamente liberado.</p>
+          </div>
+          <div className="report-v4-final-metrics">
+            <div><small>Área</small><strong>{Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
+            <div><small>Pontos considerados</small><strong>{publishedPoints.length || "—"}</strong></div>
+            <div><small>Indicadores do solo</small><strong>{parameterDashboardRows.length}</strong></div>
+            <div><small>Ações aprovadas</small><strong>{approvedActionCount}</strong></div>
+          </div>
+        </section>
+
         {producerSummary && (
           <section className="simple-result-section producer-summary">
             <div className="simple-result-section-head">
@@ -429,28 +446,25 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         )}
 
-        <details className="simple-result-advanced">
-          <summary><Icon name="shield" size={15}/> Como o RAIZ chegou a este resultado</summary>
-          <section className="simple-result-section traceability">
-            <div className="simple-result-section-head">
-              <span>RASTREABILIDADE</span>
-              <h2>Base técnica desta decisão</h2>
-              <p>A versão oficial guarda a base agronômica e o motor usados neste resultado.</p>
+        <section className="simple-result-section report-v4-trace">
+          <div className="simple-result-section-head">
+            <span>BASE DA DECISÃO</span>
+            <h2>De onde veio este resultado</h2>
+            <p>O laudo combina o que foi medido no laboratório, o contexto congelado e as regras agronômicas versionadas usadas na publicação.</p>
+          </div>
+          <div className="report-v4-trace-grid">
+            <div><small>Versão oficial</small><strong>Rev. {officialRevision}</strong></div>
+            <div><small>Métodos laboratoriais</small><strong>{laboratoryMethodCount || "Não informado"}</strong></div>
+            <div>
+              <small>Base agronômica</small>
+              <strong>
+                {structured.trace?.cropProfileCode ?? context.currentCrop ?? context.cropProfileName ?? "Perfil corrente"}
+                {structured.trace?.cropProfileVersion ? ` · v${structured.trace.cropProfileVersion}` : ""}
+              </strong>
             </div>
-            <div className="simple-result-ndvi-grid">
-              <div><small>Versão</small><strong>Rev. {v3?.revision ?? published.report.revision}</strong></div>
-              <div>
-                <small>Base agronômica</small>
-                <strong>
-                  {structured.trace?.cropProfileCode ?? context.currentCrop ?? context.cropProfileName ?? "Perfil corrente"}
-                  {structured.trace?.cropProfileVersion ? ` · v${structured.trace.cropProfileVersion}` : ""}
-                </strong>
-              </div>
-              <div><small>Motor</small><strong>{engineValidated ? "Motor RAIZ" : (v3?.approvedPrescription.model ?? "Motor registrado")}</strong></div>
-              <div><small>Versão do motor</small><strong>{v3?.approvedPrescription.promptVersion ?? "Snapshot publicado"}</strong></div>
-            </div>
-          </section>
-        </details>
+            <div><small>Validação</small><strong>{validationLabel || "Snapshot oficial"}</strong></div>
+          </div>
+        </section>
 
         <section className="simple-result-signature">
           <ReportSignature branding={branding}/>
