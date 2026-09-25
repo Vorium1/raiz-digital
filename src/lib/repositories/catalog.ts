@@ -182,17 +182,125 @@ export async function deleteProperty(input: { tenantId: string; userId: string; 
   });
 }
 
-export async function updateField(input: { tenantId: string; userId: string; fieldId: string; name: string }) {
+export async function updateField(input: {
+  tenantId: string;
+  userId: string;
+  fieldId: string;
+  name: string;
+  boundary?: object | null;
+}) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
-    const result = await client.query(
-      `UPDATE fields SET name = $3
+    const beforeResult = await client.query<{
+      id: string;
+      name: string;
+      areaHa: number;
+      propertyId: string;
+    }>(
+      `SELECT id::text, name, area_ha::float8 AS "areaHa", property_id::text AS "propertyId"
+       FROM fields
        WHERE tenant_id = $1::uuid AND id = $2::uuid
+       FOR UPDATE`,
+      [input.tenantId, input.fieldId],
+    );
+    const before = beforeResult.rows[0];
+    if (!before) throw new CatalogError("Talhão não encontrado.", 404);
+
+    if (!input.boundary) {
+      const result = await client.query(
+        `UPDATE fields SET name = $3
+         WHERE tenant_id = $1::uuid AND id = $2::uuid
+         RETURNING id::text, property_id::text AS "propertyId", name, area_ha::float8 AS "areaHa", ST_AsGeoJSON(boundary)::json AS boundary`,
+        [input.tenantId, input.fieldId, input.name],
+      );
+      const updated = result.rows[0];
+      await writeAudit(client, {
+        tenantId: input.tenantId,
+        userId: input.userId,
+        action: "FIELD_UPDATED",
+        entityType: "field",
+        entityId: updated.id,
+        metadata: { name: updated.name },
+      });
+      return updated;
+    }
+
+    const boundaryJson = JSON.stringify(input.boundary);
+    const validation = await client.query<{
+      valid: boolean;
+      empty: boolean;
+      areaHa: number;
+      insideProperty: boolean;
+      pointCount: number;
+      outsidePointCount: number;
+    }>(
+      `WITH geom AS (
+         SELECT ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($3),4326))::geometry(MultiPolygon,4326) AS boundary
+       ), field_context AS (
+         SELECT f.property_id, p.boundary AS property_boundary
+         FROM fields f
+         JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id
+         WHERE f.tenant_id=$1::uuid AND f.id=$2::uuid
+       ), effective_points AS (
+         SELECT CASE
+           WHEN upper(trim(coalesce(sp.gps_source,''))) IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+             THEN sp.position
+           ELSE coalesce(sp.observed_position, sp.position)
+         END AS position
+         FROM crop_seasons cs
+         JOIN collection_orders co ON co.tenant_id=cs.tenant_id AND co.crop_season_id=cs.id
+         JOIN sample_points sp ON sp.tenant_id=co.tenant_id AND sp.collection_order_id=co.id
+         WHERE cs.tenant_id=$1::uuid AND cs.field_id=$2::uuid
+       )
+       SELECT
+         ST_IsValid(g.boundary) AS valid,
+         ST_IsEmpty(g.boundary) AS empty,
+         (ST_Area(g.boundary::geography)/10000.0)::float8 AS "areaHa",
+         (fc.property_boundary IS NULL OR ST_Covers(fc.property_boundary,g.boundary)) AS "insideProperty",
+         (SELECT count(*)::int FROM effective_points) AS "pointCount",
+         (SELECT count(*)::int FROM effective_points ep WHERE NOT ST_Covers(g.boundary,ep.position)) AS "outsidePointCount"
+       FROM geom g CROSS JOIN field_context fc`,
+      [input.tenantId, input.fieldId, boundaryJson],
+    );
+    const checked = validation.rows[0];
+    if (!checked || !checked.valid || checked.empty || Number(checked.areaHa) <= 0) {
+      throw new CatalogError("O novo contorno do talhão é inválido ou vazio.", 422);
+    }
+    if (!checked.insideProperty) {
+      throw new CatalogError("O novo contorno do talhão ultrapassa o limite cadastrado da propriedade.", 422);
+    }
+    if (Number(checked.outsidePointCount) > 0) {
+      throw new CatalogError(
+        `Contorno não salvo: ${checked.outsidePointCount} de ${checked.pointCount} ponto(s) de coleta ficariam fora da área produtiva. Os pontos GPS foram preservados; revise somente o desenho do talhão.`,
+        422,
+      );
+    }
+
+    const result = await client.query(
+      `UPDATE fields
+       SET name=$3,
+           boundary=ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($4),4326))::geometry(MultiPolygon,4326),
+           area_ha=(ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($4),4326)::geography)/10000.0)::numeric(12,4)
+       WHERE tenant_id=$1::uuid AND id=$2::uuid
        RETURNING id::text, property_id::text AS "propertyId", name, area_ha::float8 AS "areaHa", ST_AsGeoJSON(boundary)::json AS boundary`,
-      [input.tenantId, input.fieldId, input.name],
+      [input.tenantId, input.fieldId, input.name, boundaryJson],
     );
     const updated = result.rows[0];
     if (!updated) throw new CatalogError("Talhão não encontrado.", 404);
-    await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "FIELD_UPDATED", entityType: "field", entityId: updated.id, metadata: { name: updated.name } });
+
+    await writeAudit(client, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "FIELD_BOUNDARY_UPDATED",
+      entityType: "field",
+      entityId: updated.id,
+      metadata: {
+        name: updated.name,
+        previousAreaHa: before.areaHa,
+        areaHa: updated.areaHa,
+        preservedPointCount: checked.pointCount,
+        pointsMoved: false,
+      },
+    });
     return updated;
   });
 }
