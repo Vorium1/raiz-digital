@@ -90,6 +90,16 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
  * mostra a captura GPS do mesmo ponto.
  */
 export function effectivePointCoordinates(point: MapPoint): { latitude: number; longitude: number } {
+  const source = (point.gpsSource ?? "").trim().toUpperCase();
+
+  // Para fontes espaciais auditadas, `position` é a autoridade persistida. Isso evita que um
+  // `observed_position` legado (gravado antes da importação real) volte a deslocar o ponto no mapa.
+  // Uma coleta posterior real via navegador deixa de ter fonte "pura" SHAPEFILE_REAL_* porque o
+  // fluxo de campo acrescenta +BROWSER_GPS; nesse caso a observação corrente volta a prevalecer.
+  if (AUDITED_REAL_SOURCES.has(source)) {
+    return { latitude: point.latitude, longitude: point.longitude };
+  }
+
   if (point.observedLatitude != null && point.observedLongitude != null) {
     return { latitude: point.observedLatitude, longitude: point.observedLongitude };
   }
@@ -104,9 +114,9 @@ export function effectivePointCoordinates(point: MapPoint): { latitude: number; 
  * auditor de proveniência; prefixos/sufixos arbitrários não promovem a coordenada a evidência auditada.
  */
 export function pointPositionKind(point: MapPoint): PointPositionKind {
-  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   const source = (point.gpsSource ?? "").trim().toUpperCase();
   if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
+  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   return "PLANNED";
 }
 export const MAP_NEUTRAL_COLOR = "#9AA79F";
