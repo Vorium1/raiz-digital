@@ -409,6 +409,9 @@ test.describe("Issue #84 · QA visual NDVI no Preview hospedado", () => {
       target.orderId,
       `Nenhuma ordem Cabeda com parâmetro de solo + raster NDVI arquivado ficou disponível. Diagnóstico: ${JSON.stringify(target.diagnostics)}`,
     ).toBeTruthy();
+    if (!target.orderId || !target.parameter) {
+      throw new Error(`Alvo Cabeda incompleto no QA visual: ${JSON.stringify(target)}`);
+    }
 
     await page.goto(
       `/mapas?ordem=${encodeURIComponent(target.orderId)}&parametro=${encodeURIComponent(target.parameter)}&satelite=1`,
