@@ -269,6 +269,210 @@ export async function comparePoints(tenantId: string, pointIdA: string, pointIdB
   });
 }
 
+
+export type HistoricalComparisonCandidate = {
+  id: string;
+  code: string;
+  fieldId: string;
+  fieldName: string;
+  seasonLabel: string;
+  collectionOrderId: string;
+  collectionOrderCode: string;
+  createdAt: string;
+  firstCollectedAt: string | null;
+  lastCollectedAt: string | null;
+  evidenceAt: string;
+  evidenceDateSource: "COLLECTION" | "ANALYSIS_CREATED_AT";
+};
+
+type HistoricalAnalysisScope = HistoricalComparisonCandidate;
+
+async function historicalAnalysisScopesForField(
+  client: PoolClient,
+  tenantId: string,
+  fieldId: string,
+  limit = 12,
+): Promise<HistoricalAnalysisScope[]> {
+  const result = await client.query(
+    `WITH per_collection AS (
+       SELECT DISTINCT ON (a.collection_order_id)
+              a.id::text,
+              a.code,
+              cs.field_id::text AS "fieldId",
+              f.name AS "fieldName",
+              cs.season_label AS "seasonLabel",
+              a.collection_order_id::text AS "collectionOrderId",
+              co.code AS "collectionOrderCode",
+              a.created_at::text AS "createdAt",
+              point_dates.first_collected_at::text AS "firstCollectedAt",
+              point_dates.last_collected_at::text AS "lastCollectedAt",
+              coalesce(point_dates.last_collected_at, a.created_at)::text AS "evidenceAt",
+              CASE WHEN point_dates.last_collected_at IS NULL THEN 'ANALYSIS_CREATED_AT' ELSE 'COLLECTION' END AS "evidenceDateSource"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN collection_orders co ON co.tenant_id = a.tenant_id AND co.id = a.collection_order_id
+       LEFT JOIN LATERAL (
+         SELECT min(sp.collected_at) AS first_collected_at, max(sp.collected_at) AS last_collected_at
+         FROM sample_points sp
+         WHERE sp.tenant_id = a.tenant_id AND sp.collection_order_id = a.collection_order_id
+       ) point_dates ON true
+       WHERE a.tenant_id = $1::uuid
+         AND cs.field_id = $2::uuid
+         AND a.collection_order_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1
+           FROM lab_samples ls
+           JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+           WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id AND lr.numeric_value IS NOT NULL
+         )
+       ORDER BY a.collection_order_id, a.created_at DESC, a.id DESC
+     )
+     SELECT *
+     FROM per_collection
+     ORDER BY "evidenceAt" DESC, id DESC
+     LIMIT $3`,
+    [tenantId, fieldId, limit],
+  );
+  return result.rows as HistoricalAnalysisScope[];
+}
+
+export async function listFieldHistoricalComparisonCandidates(
+  tenantId: string,
+  fieldId: string,
+  userId?: string,
+): Promise<{ field: { id: string; name: string } | null; analyses: HistoricalComparisonCandidate[] }> {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const fieldResult = await client.query(
+      `SELECT id::text, name FROM fields WHERE tenant_id = $1::uuid AND id = $2::uuid LIMIT 1`,
+      [tenantId, fieldId],
+    );
+    const field = fieldResult.rows[0] ?? null;
+    if (!field) return { field: null, analyses: [] };
+    const analyses = await historicalAnalysisScopesForField(client, tenantId, fieldId);
+    return { field, analyses };
+  });
+}
+
+async function historicalAnalysisScopeById(
+  client: PoolClient,
+  tenantId: string,
+  analysisId: string,
+): Promise<HistoricalAnalysisScope | null> {
+  const result = await client.query(
+    `SELECT a.id::text,
+            a.code,
+            cs.field_id::text AS "fieldId",
+            f.name AS "fieldName",
+            cs.season_label AS "seasonLabel",
+            a.collection_order_id::text AS "collectionOrderId",
+            co.code AS "collectionOrderCode",
+            a.created_at::text AS "createdAt",
+            point_dates.first_collected_at::text AS "firstCollectedAt",
+            point_dates.last_collected_at::text AS "lastCollectedAt",
+            coalesce(point_dates.last_collected_at, a.created_at)::text AS "evidenceAt",
+            CASE WHEN point_dates.last_collected_at IS NULL THEN 'ANALYSIS_CREATED_AT' ELSE 'COLLECTION' END AS "evidenceDateSource"
+     FROM analyses a
+     JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+     JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+     JOIN collection_orders co ON co.tenant_id = a.tenant_id AND co.id = a.collection_order_id
+     LEFT JOIN LATERAL (
+       SELECT min(sp.collected_at) AS first_collected_at, max(sp.collected_at) AS last_collected_at
+       FROM sample_points sp
+       WHERE sp.tenant_id = a.tenant_id AND sp.collection_order_id = a.collection_order_id
+     ) point_dates ON true
+     WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
+       AND EXISTS (
+         SELECT 1
+         FROM lab_samples ls
+         JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+         WHERE ls.tenant_id = a.tenant_id AND ls.analysis_id = a.id AND lr.numeric_value IS NOT NULL
+       )
+     LIMIT 1`,
+    [tenantId, analysisId],
+  );
+  return (result.rows[0] as HistoricalAnalysisScope | undefined) ?? null;
+}
+
+async function effectivePointLayout(
+  client: PoolClient,
+  tenantId: string,
+  collectionOrderId: string,
+): Promise<Array<{ latitude: number; longitude: number }>> {
+  const result = await client.query(
+    `SELECT ST_Y(COALESCE(sp.observed_position, sp.position))::float8 AS latitude,
+            ST_X(COALESCE(sp.observed_position, sp.position))::float8 AS longitude
+     FROM sample_points sp
+     WHERE sp.tenant_id = $1::uuid AND sp.collection_order_id = $2::uuid
+       AND COALESCE(sp.observed_position, sp.position) IS NOT NULL
+     ORDER BY ST_Y(COALESCE(sp.observed_position, sp.position)),
+              ST_X(COALESCE(sp.observed_position, sp.position)),
+              sp.id`,
+    [tenantId, collectionOrderId],
+  );
+  return result.rows;
+}
+
+function evidenceTime(scope: HistoricalAnalysisScope): number {
+  const value = new Date(scope.evidenceAt).getTime();
+  return Number.isFinite(value) ? value : new Date(scope.createdAt).getTime();
+}
+
+export async function compareFieldHistoricalAnalyses(
+  tenantId: string,
+  analysisIdA: string,
+  analysisIdB: string,
+  userId?: string,
+) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const [inputA, inputB] = await Promise.all([
+      historicalAnalysisScopeById(client, tenantId, analysisIdA),
+      historicalAnalysisScopeById(client, tenantId, analysisIdB),
+    ]);
+    if (!inputA || !inputB) throw new Error("Uma das análises históricas não possui evidência laboratorial comparável.");
+    if (inputA.fieldId !== inputB.fieldId) {
+      throw new Error("Evolução temporal só compara análises do mesmo talhão.");
+    }
+    if (inputA.collectionOrderId === inputB.collectionOrderId) {
+      throw new Error("Selecione duas coletas distintas; revisões da mesma coleta não representam evolução temporal.");
+    }
+
+    const [earlier, later] = evidenceTime(inputA) <= evidenceTime(inputB) ? [inputA, inputB] : [inputB, inputA];
+    const inputOrderReversed = earlier.id !== inputA.id;
+
+    const [aggA, aggB, classA, classB, pointsA, pointsB] = await Promise.all([
+      aggregateParametersByAnalysis(client, tenantId, earlier.id),
+      aggregateParametersByAnalysis(client, tenantId, later.id),
+      currentApprovedClassificationsForAnalysis(client, tenantId, earlier.id),
+      currentApprovedClassificationsForAnalysis(client, tenantId, later.id),
+      effectivePointLayout(client, tenantId, earlier.collectionOrderId),
+      effectivePointLayout(client, tenantId, later.collectionOrderId),
+    ]);
+    const rows = buildParameterComparisonRows(aggA, aggB, classA, classB);
+    const exactPointLayoutMatch = pointsA.length === pointsB.length
+      && pointsA.every((point, index) => point.latitude === pointsB[index]?.latitude && point.longitude === pointsB[index]?.longitude);
+
+    return {
+      field: { id: earlier.fieldId, name: earlier.fieldName },
+      labelA: `${earlier.code} · ${earlier.seasonLabel}`,
+      labelB: `${later.code} · ${later.seasonLabel}`,
+      analysisA: earlier,
+      analysisB: later,
+      inputOrderReversed,
+      rows,
+      spatialContext: {
+        sameField: true,
+        pointCountA: pointsA.length,
+        pointCountB: pointsB.length,
+        exactPointLayoutMatch,
+        note: exactPointLayoutMatch
+          ? "As duas coletas usam as mesmas coordenadas efetivas de pontos. O delta agregado continua descritivo e não atribui causa."
+          : "As duas coletas pertencem ao mesmo talhão, mas a malha de pontos não é idêntica. O delta é uma comparação agregada do talhão, não uma evolução ponto a ponto.",
+      },
+    };
+  });
+}
+
 export async function compareProperties(tenantId: string, propertyIdA: string, propertyIdB: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     async function summary(propertyId: string) {
