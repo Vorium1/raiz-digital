@@ -62,7 +62,9 @@ function hasRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot 
 
 function compactZoneLabel(zone: VigorZone) {
   if (zone === "SEM_VEGETACAO") return "Solo exposto / sem vegetação";
-  return VIGOR_ZONE_LABELS[zone].replace("Vigor ", "");
+  const label = VIGOR_ZONE_LABELS[zone];
+  if (typeof label === "string" && label.trim()) return label.replace("Vigor ", "");
+  return zone.replaceAll("_", " ").toLocaleLowerCase("pt-BR");
 }
 
 function temporalLabel(temporal: NdviTemporalAnalysis | null) {
