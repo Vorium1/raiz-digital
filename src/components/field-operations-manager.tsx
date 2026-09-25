@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { RealFieldMap } from "@/components/real-field-map";
+import { effectivePointCoordinates } from "@/components/spatial-map-types";
 import { FieldYieldHistoryManager } from "@/components/field-yield-history-manager";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
@@ -98,6 +99,7 @@ export function FieldOperationsManager() {
 
   const [editingFieldId, setEditingFieldId] = useState("");
   const [editFieldName, setEditFieldName] = useState("");
+  const [editFieldBoundary, setEditFieldBoundary] = useState("");
 
   const [editingSeasonId, setEditingSeasonId] = useState("");
   const [editSeasonLabel, setEditSeasonLabel] = useState("");
@@ -126,6 +128,18 @@ export function FieldOperationsManager() {
 
   const selectedOrder = orders.find((order)=>order.id === selectedOrderId) ?? orders[0] ?? null;
   const selectedField = context.fields.find((field)=>field.id === seasonFieldId);
+  const editFieldReferencePoints = useMemo(() => {
+    if (!editingFieldId) return [];
+    const byId = new Map<string, { id: string; code: string; latitude: number; longitude: number }>();
+    for (const order of orders) {
+      if (order.fieldId !== editingFieldId || order.status === "CANCELED") continue;
+      for (const point of order.points) {
+        const effective = effectivePointCoordinates({ ...point, sequence: point.sequence ?? null });
+        byId.set(point.id, { id: point.id, code: point.code, latitude: effective.latitude, longitude: effective.longitude });
+      }
+    }
+    return [...byId.values()];
+  }, [editingFieldId, orders]);
   const selectedSeason = context.seasons.find((season)=>season.id === orderSeasonId);
   const progress = selectedOrder?.plannedPoints ? Math.round(selectedOrder.collectedPoints / selectedOrder.plannedPoints * 100) : 0;
 
@@ -265,14 +279,20 @@ export function FieldOperationsManager() {
   }
 
   function startEditField(field: ContextData["fields"][number]) {
-    setEditingFieldId(field.id); setEditFieldName(field.name);
+    setEditingFieldId(field.id);
+    setEditFieldName(field.name);
+    setEditFieldBoundary(JSON.stringify(field.boundary));
   }
 
   async function saveField(id: string) {
     setBusy(`field-save-${id}`); setMessage(null);
     try {
-      await patchJson(`/api/fields/${id}`, { name: editFieldName });
-      setEditingFieldId(""); setMessage({ tone:"success", text:"Talhão atualizado." });
+      const boundary = geoJsonObject(editFieldBoundary);
+      if (!boundary) throw new Error("O contorno produtivo do talhão é obrigatório.");
+      await patchJson(`/api/fields/${id}`, { name: editFieldName, boundary });
+      setEditingFieldId("");
+      setEditFieldBoundary("");
+      setMessage({ tone:"success", text:"Talhão atualizado. Pontos GPS permaneceram fixos e dentro da área produtiva." });
       await loadAll();
     } catch (error) { setMessage({ tone:"danger", text:error instanceof Error ? error.message : "Falha ao editar talhão." }); }
     finally { setBusy(""); }
@@ -443,12 +463,27 @@ export function FieldOperationsManager() {
           <div className="field-ops-wide form-submit"><button className="button secondary" disabled={busy === "field" || !fieldPropertyId || !fieldName || !fieldBoundary.trim()} onClick={()=>void createField()}>{busy === "field" ? "Validando…" : "Validar e cadastrar talhão"}</button></div>
           {context.fields.length > 0 && <div className="field-ops-wide field-ops-list">
             {context.fields.map((field)=>editingFieldId === field.id ? (
-              <div key={field.id} className="field-ops-list-row editing">
-                <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
-                <span className="field-ops-list-actions">
-                  <button className="button tiny" disabled={busy === `field-save-${field.id}`} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/></button>
-                  <button className="icon-button" onClick={()=>setEditingFieldId("")}><Icon name="close" size={13}/></button>
-                </span>
+              <div key={field.id} className="field-ops-list-row editing field-boundary-edit-row">
+                <div className="field-boundary-edit-head">
+                  <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
+                  <span className="field-ops-list-actions">
+                    <button className="button tiny" disabled={busy === `field-save-${field.id}` || !editFieldBoundary.trim()} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/>Salvar limite</button>
+                    <button className="icon-button" onClick={()=>{ setEditingFieldId(""); setEditFieldBoundary(""); }}><Icon name="close" size={13}/></button>
+                  </span>
+                </div>
+                <div className="field-boundary-edit-map">
+                  <GeoMapInput
+                    value={editFieldBoundary}
+                    onChange={setEditFieldBoundary}
+                    referenceBoundary={context.properties.find((property)=>property.id === field.propertyId)?.boundary ?? null}
+                    referencePoints={editFieldReferencePoints}
+                    height={340}
+                  />
+                  <small>
+                    Os pontos verdes são coordenadas fixas de coleta. O desenho altera somente o limite produtivo do talhão.
+                    O RAIZ não salva se algum ponto ativo ficar fora do novo contorno e recalcula os hectares pelo polígono.
+                  </small>
+                </div>
               </div>
             ) : (
               <div key={field.id} className="field-ops-list-row">
