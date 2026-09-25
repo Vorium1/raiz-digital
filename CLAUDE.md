@@ -4,25 +4,36 @@ Leia este arquivo **antes de alterar qualquer código**.
 
 ## Missão
 
-Continuar a RAIZ Digital a partir do estado real recebido. **Não recomeçar o projeto, não trocar a stack, não redesenhar o produto e não substituir componentes funcionais por preferência pessoal.**
+Continuar a RAIZ Digital a partir do estado real atual. **Não recomeçar o projeto, não trocar a stack, não redesenhar o produto e não substituir componentes funcionais por preferência pessoal.**
 
 A RAIZ Digital é uma plataforma multiempresa de inteligência agronômica: **“Do solo à decisão, com precisão.”**
 
-## Fonte de verdade do handoff
+## Fonte de verdade
 
-1. `docs/MASTER_HANDOFF_CLAUDE.md`
-2. `docs/PROJECT_STATE.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/MOTOR_AGRONOMICO.md`
-5. `docs/ROADMAP_PRODUCT.md`
-6. `docs/V0.5_INTERRUPTED.md`
-7. `docs/brand/Guia_de_Marca_Raiz_Digital.pdf`
+Leia nesta ordem:
 
-## Baseline e snapshot atual
+1. `docs/CURRENT_STATE.md` — snapshot operacional atual;
+2. este `CLAUDE.md`;
+3. `docs/ARCHITECTURE.md`;
+4. `docs/MOTOR_AGRONOMICO.md`;
+5. `docs/ROADMAP_PRODUCT.md`;
+6. `docs/PROJECT_STATE.md` — histórico, não checklist atual;
+7. documentação técnica específica da feature em questão.
 
-- **Última baseline consolidada:** MVP 0.4.
-- **Snapshot recebido:** início da 0.5, interrompido durante o módulo de operações de campo.
-- A 0.5 **não está homologada**. O código novo deve ser auditado e testado antes de ser considerado concluído.
+Não use instruções antigas de bootstrap ou release como se ainda fossem pendências. Confirme o estado atual no GitHub/CI/banco antes de agir.
+
+## Baseline atual
+
+O snapshot antigo “MVP 0.4 / início da 0.5” é histórico.
+
+No snapshot de 2026-09-25:
+- `main` está em produção;
+- `develop` é desenvolvimento/homologação;
+- o repositório contém 42 migrations;
+- as releases recentes do resumo do produtor e do plano comercial já foram publicadas;
+- `main` e `develop` podem divergir em histórico por commits de merge mesmo quando o diff de arquivos é zero.
+
+Consulte `docs/CURRENT_STATE.md` para os SHAs e gates registrados nesta data.
 
 ## Stack que deve ser preservada
 
@@ -34,9 +45,9 @@ A RAIZ Digital é uma plataforma multiempresa de inteligência agronômica: **�
 - Argon2 para senha.
 - RLS + `tenant_id` + RBAC.
 - GeoJSON/WGS84 como intercâmbio geoespacial.
-- Docker para ambiente local.
+- GitHub Actions + Vercel no fluxo atual de release.
 
-Não introduza microserviços, Redis, Firebase, Supabase, Lovable ou serviços pagos apenas por conveniência. Se algum componente adicional for realmente necessário, documente primeiro o motivo e prefira solução gratuita/self-hosted/substituível.
+Não introduza microserviços, Redis, Firebase, Lovable ou serviços pagos apenas por conveniência. Não troque o provedor de PostgreSQL nem outras peças de infraestrutura por preferência pessoal. Se algo adicional for necessário, documente o motivo e prefira solução simples, barata, aberta e reversível.
 
 ## Regras de produto inegociáveis
 
@@ -47,34 +58,43 @@ Não introduza microserviços, Redis, Firebase, Supabase, Lovable ou serviços p
 - Método analítico, unidade, profundidade, cultura, região e origem do dado devem ser rastreáveis.
 - Toda entidade operacional deve respeitar isolamento multiempresa.
 - Nunca exponha segredo no frontend ou no repositório.
-- Não enfraqueça RLS para “fazer funcionar”.
+- Não enfraqueça RLS, gates de publicação ou validações fail-closed para “fazer funcionar”.
 - Não marque tarefa como concluída sem teste verificável.
+- Ausência de contexto opcional pode reduzir precisão, mas não deve impedir conclusões que já são suportadas pelos dados disponíveis.
+- Nunca invente dose, custo, produto, preço, GPS, NDVI, produtividade ou evidência científica.
 
-## Primeira tarefa obrigatória
+## Regra de produção
 
-Antes de desenvolver mais funcionalidade:
+Sem autorização explícita, **não**:
+- fazer merge em `main`;
+- promover/deployar produção;
+- executar migration de produção;
+- escrever ou apagar dados de produção;
+- executar operação destrutiva no banco.
 
-1. inventarie o repositório e leia todos os documentos acima;
-2. instale dependências;
-3. execute testes existentes;
-4. execute `typecheck` e `build`;
-5. suba PostgreSQL/PostGIS com Docker;
-6. execute migrations 001–004 e seed;
-7. valide login real;
-8. valide RLS com **dois tenants** e usuários distintos;
-9. valide o fluxo 0.5 já iniciado (ordem de coleta, grid, importação de pontos, coleta GPS);
-10. corrija o que falhar sem reescrever o que já estiver correto.
+Abrir issue, criar branch/PR, revisar código, rodar CI, validar Preview e produzir documentação são ações seguras quando não alteram produção.
 
-Somente depois disso avance a 0.5.
+## Primeira tarefa de qualquer retomada
+
+1. leia `docs/CURRENT_STATE.md`;
+2. confira issues e PRs abertos;
+3. confirme HEAD de `main` e `develop`;
+4. compare o diff real entre as branches;
+5. confira os checks/CI atuais;
+6. identifique o próximo gap real antes de escrever código.
+
+Não rerode migrations históricas, seeds, restores ou releases só porque documentos antigos mencionam esses passos.
 
 ## Forma de trabalhar
 
 - Faça commits pequenos e rastreáveis.
 - Não use grandes refactors sem necessidade comprovada.
 - Preserve APIs públicas existentes quando possível.
-- Atualize `docs/PROJECT_STATE.md` ao final de cada bloco relevante.
+- Atualize `docs/CURRENT_STATE.md` quando um release ou mudança estrutural tornar o snapshot obsoleto.
+- Preserve `docs/PROJECT_STATE.md` como histórico detalhado.
 - Registre limitações reais; não maquie status.
 - Em decisões técnicas ambíguas, escolha a alternativa mais simples, barata, aberta e reversível.
+- Antes de release, confira o diff `main → develop` por arquivos, porque o histórico pode divergir apenas por merges.
 
 ## Definition of Done
 
@@ -86,20 +106,15 @@ Uma funcionalidade só está concluída quando houver, conforme aplicável:
 - validação de entrada;
 - estados de erro/vazio/carregamento;
 - UX desktop e mobile;
+- impressão quando afetar laudo;
 - teste automatizado ou E2E compatível com o risco;
 - build aprovado;
 - documentação de handoff atualizada.
 
 ## GitHub target
 
-O repositório oficial deve ser `Vorium1/raiz-digital`, branch `main`. O remote local já está configurado para esse destino. Se ainda não existir remotamente, continue os commits localmente e não publique em outro repositório.
+Repositório oficial: `Vorium1/raiz-digital`.
 
-<!-- BEGIN:nextjs-agent-rules -->
-
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+- `main` = produção;
+- `develop` = desenvolvimento/homologação;
+- feature branches devem preferencialmente nascer de `develop`.
