@@ -213,6 +213,39 @@ test.describe("Item 6 · contexto Solo × Satélite", () => {
     const overflow = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth;
       const delta = document.documentElement.scrollWidth - viewportWidth;
+      const hasClippingAncestor = (element: HTMLElement) => {
+        let parent = element.parentElement;
+        while (parent && parent !== document.body) {
+          const style = getComputedStyle(parent);
+          const overflowX = style.overflowX;
+          if (overflowX === "hidden" || overflowX === "clip" || overflowX === "auto" || overflowX === "scroll") {
+            return true;
+          }
+          parent = parent.parentElement;
+        }
+        return false;
+      };
+      const unclippedOffenders = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id,
+            className: typeof element.className === "string" ? element.className : "",
+            text: (element.textContent ?? "").trim().slice(0, 100),
+            left: Math.round(rect.left * 10) / 10,
+            right: Math.round(rect.right * 10) / 10,
+            width: Math.round(rect.width * 10) / 10,
+            display: style.display,
+            position: style.position,
+            overflowX: style.overflowX,
+            clippedByAncestor: hasClippingAncestor(element),
+          };
+        })
+        .filter((item) => item.right > viewportWidth + 1 && !item.clippedByAncestor)
+        .sort((a, b) => b.right - a.right)
+        .slice(0, 30);
       const offenders = Array.from(document.querySelectorAll<HTMLElement>("body *"))
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -231,7 +264,7 @@ test.describe("Item 6 · contexto Solo × Satélite", () => {
         .filter((item) => item.right > viewportWidth + 1 || item.left < -1 || item.scrollWidth > item.clientWidth + 1)
         .sort((a, b) => Math.max(b.right - viewportWidth, b.scrollWidth - b.clientWidth) - Math.max(a.right - viewportWidth, a.scrollWidth - a.clientWidth))
         .slice(0, 20);
-      return { delta, viewportWidth, pageScrollWidth: document.documentElement.scrollWidth, offenders };
+      return { delta, viewportWidth, pageScrollWidth: document.documentElement.scrollWidth, unclippedOffenders, offenders };
     });
     console.log("MOBILE_OVERFLOW_DIAGNOSTICS", JSON.stringify(overflow));
     expect(overflow.delta).toBeLessThanOrEqual(1);
