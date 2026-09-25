@@ -8,6 +8,7 @@ on:
       - "src/components/spatial-map-types.ts"
       - "src/lib/repositories/map-data.ts"
       - "scripts/audit-cabeda-persisted-geometry.mjs"
+      - "scripts/audit-cabeda-ndvi-map-selection.mjs"
       - ".github/workflows/ndvi-stage1-cabeda-spatial-truth.yml"
   workflow_dispatch:
 
@@ -19,6 +20,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  selection:
+    name: Cabeda NDVI map selection · read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: homologation
+    env:
+      DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validar banco de homologação
+        run: test -n "${DATABASE_URL:-}"
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditar ordem que o painel NDVI seleciona
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/audit-cabeda-ndvi-map-selection.mjs | tee cabeda-ndvi-map-selection.json
+
+      - name: Publicar evidência privacy-safe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndvi-stage1-cabeda-map-selection
+          path: cabeda-ndvi-map-selection.json
+          if-no-files-found: warn
+          retention-days: 30
+
   audit:
     name: Cabeda Área ${{ matrix.area }} · read-only
     runs-on: ubuntu-latest
