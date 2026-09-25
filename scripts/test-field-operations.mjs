@@ -77,6 +77,21 @@ assert.match(
   "editor deve identificar visualmente que os pontos não são arrastáveis",
 );
 assert.match(
+  geoMapInputSource,
+  /loadGoogleMaps/,
+  "editor produtivo deve reutilizar o Google Maps configurado no RAIZ",
+);
+assert.match(
+  geoMapInputSource,
+  /MapTypeId\?\.SATELLITE/,
+  "Google deve abrir o editor na imagem de satélite",
+);
+assert.match(
+  geoMapInputSource,
+  /data.*geoMapBase|dataset\.geoMapBase/,
+  "editor deve declarar a base efetivamente ativa para o QA visual",
+);
+assert.match(
   fieldManagerSource,
   /Pontos GPS permaneceram fixos e dentro da área produtiva/,
   "UX precisa confirmar a política espacial após salvar",
