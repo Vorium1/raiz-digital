@@ -95,7 +95,7 @@ export function SimpleFieldOverview({
         <Link href={actionHref} className="simple-field-primary-action"><Icon name={stateIcon} size={19}/><span><strong>{stateTitle}</strong><small>{actionLabel}</small></span><Icon name="chevron" size={16}/></Link>
       </header>
 
-      <SimpleFieldVigor fieldId={field.id}/>
+      <SimpleFieldVigor fieldId={field.id} areaHa={field.areaHa}/>
 
       <SimpleFieldMapLayers
         fieldId={field.id}
