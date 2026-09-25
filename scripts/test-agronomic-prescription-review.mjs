@@ -124,8 +124,10 @@ assert.match(reportPageSource, /sameDecisionAsPublished/);
 assert.match(reportPageSource, /publicationReadiness\?\.allowed && REVIEW_ROLES\.has\(session\.role\) && <PublishReportButton/);
 assert.match(reportPageSource, /<PublishReportButton interpretationId=\{interpretation\.id\} analysisId=\{analysisId\} initialCommercialPlanSnapshotId=\{publishedSnapshotV3\?\.commercialPlanSnapshot\?\.id \?\? ""\}\/>/);
 assert.doesNotMatch(reportPageSource, /!sameDecisionAsPublished && <PublishReportButton/);
-assert.match(reportPageSource, /reportPublished=\{viewingPublished \|\| sameDecisionAsPublished\}/);
-assert.doesNotMatch(reportPageSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
+const finalVisualReportSource = readFileSync(new URL("../src/components/report-final-visual.tsx", import.meta.url), "utf8");
+assert.match(reportPageSource, /currentStatusLabel=\{meta\.label\}/);
+assert.match(finalVisualReportSource, /props\.viewingPublished \? "Publicado" : props\.currentStatusLabel/);
+assert.doesNotMatch(reportPageSource + finalVisualReportSource, /reportPublished=\{Boolean\(publishedReport\)\}/);
 
 const publishButtonSource = readFileSync(new URL("../src/components/publish-report-button.tsx", import.meta.url), "utf8");
 assert.match(publishButtonSource, /useState\(initialCommercialPlanSnapshotId\)/);
