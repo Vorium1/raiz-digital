@@ -1216,3 +1216,6 @@ button { color: inherit; }
   .field-boundary-edit-head{align-items:stretch;flex-direction:column}
   .field-boundary-edit-head .field-ops-list-actions{justify-content:flex-end}
 }
+
+.geo-map-base-badge{align-items:center;background:#183327;border:1px solid #2f5c47;border-radius:999px;color:#bfe7d2;display:inline-flex;font-size:7.5px;font-weight:700;gap:5px;padding:5px 8px}
+.geo-map-base-badge svg{color:#6bd294}
