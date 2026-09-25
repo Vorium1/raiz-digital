@@ -296,7 +296,7 @@ assert.match(fieldVigor, /method:\s*"POST"/);
 assert.match(fieldVigor, /const refreshed = await refreshSatellite\(\{ automatic: true \}\)/);
 assert.match(fieldVigor, /if \(!refreshed\) sessionStorage\.removeItem\(key\)/);
 assert.match(fieldVigor, /imageOverlay=\{overlay\}/);
-assert.match(fieldVigor, /opacity:\s*0\.62/);
+assert.match(fieldVigor, /opacity:\\s*0\\.74/);\nassert.match(fieldVigor, /Distribuição do vigor no talhão/);\nassert.match(fieldVigor, /areaHa \* pct \/ 100/);\nassert.match(fieldVigor, /TENDÊNCIA/);
 assert.match(fieldVigor, /overlay \? \(/);
 assert.match(realFieldMap, /IntersectionObserver/);
 assert.match(realFieldMap, /rootMargin:\s*"420px 0px"/);
