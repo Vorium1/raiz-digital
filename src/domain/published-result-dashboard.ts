@@ -10,7 +10,7 @@ export type PublishedResultFact = {
 export type PublishedResultInterpretation = {
   sampleCode?: string | null;
   parameterCode?: string | null;
-  interpretable: boolean;
+  interpretable?: boolean | null;
   classification?: string | null;
   reason?: string | null;
   classificationRole?: "TARGET" | "AUXILIARY" | null;
