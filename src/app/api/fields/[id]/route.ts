@@ -3,6 +3,12 @@ import { CatalogError, deleteField, updateField } from "@/lib/repositories/catal
 
 const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
+function validBoundary(value: unknown): object | null {
+  if (!value || typeof value !== "object") return null;
+  const type = (value as { type?: unknown }).type;
+  return type === "Polygon" || type === "MultiPolygon" ? value as object : null;
+}
+
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
@@ -13,7 +19,18 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = await request.json() as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) return Response.json({ error: "Nome do talhão é obrigatório." }, { status: 400 });
-    const updated = await updateField({ tenantId: session.tenantId, userId: session.userId, fieldId: id, name });
+    const boundaryProvided = Object.prototype.hasOwnProperty.call(body, "boundary");
+    const boundary = boundaryProvided ? validBoundary(body.boundary) : null;
+    if (boundaryProvided && !boundary) {
+      return Response.json({ error: "O limite do talhão precisa ser um GeoJSON Polygon ou MultiPolygon válido." }, { status: 400 });
+    }
+    const updated = await updateField({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      fieldId: id,
+      name,
+      boundary: boundaryProvided ? boundary : undefined,
+    });
     return Response.json({ field: updated });
   } catch (error) {
     if (error instanceof CatalogError) return Response.json({ error: error.message }, { status: error.status });
