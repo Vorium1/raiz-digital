@@ -6,12 +6,14 @@ import { SimplePublishResultButton } from "@/components/simple-publish-result-bu
 import { RealFieldMap } from "@/components/real-field-map";
 import { PublishedNdviMap } from "@/components/published-ndvi-map";
 import { PublishedParameterDashboard } from "@/components/published-parameter-dashboard";
+import { PublishedRecommendationDashboard } from "@/components/published-recommendation-dashboard";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
 import { buildPublishedParameterDashboard } from "@/domain/published-result-dashboard";
+import { buildPublishedRecommendationDashboard } from "@/domain/published-recommendation-dashboard";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -59,27 +61,6 @@ function parameterLabel(code: string | undefined) {
   return PARAMETER_LABEL[code.toUpperCase()] ?? code;
 }
 
-function recommendationTotalForArea(
-  recommendation: { inputType: string; quantity: number; unit: string },
-  areaHa: number,
-) {
-  const normalizedUnit = recommendation.unit.trim().toLowerCase();
-  if (normalizedUnit === "kg/ha") {
-    return {
-      quantity: recommendation.quantity * areaHa,
-      unit: "kg",
-      label: recommendationInputLabel(recommendation.inputType),
-    };
-  }
-  if (normalizedUnit === "t/ha" || normalizedUnit === "ton/ha") {
-    return {
-      quantity: recommendation.quantity * areaHa,
-      unit: "t",
-      label: recommendation.inputType,
-    };
-  }
-  return null;
-}
 
 function isV3(value: unknown): value is PremiumReportSnapshotV3 {
   return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 3);
@@ -164,6 +145,12 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     interpretation: structured.interpretation ?? [],
   });
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
+  const recommendationGroups = prescription
+    ? buildPublishedRecommendationDashboard({
+        recommendations: prescription.recommendations ?? [],
+        areaHa: Number(context.areaHa),
+      })
+    : [];
   const technicalOpinion = prescription?.summary?.trim() || null;
   const producerSummary = prescription
     ? buildProducerResultSummary({
@@ -271,40 +258,41 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               </div>
             )}
             {(prescription.recommendations?.length ?? 0) > 0 && (
-              <div className="simple-result-recommendations">
-                {prescription.recommendations!.map((item, index) => {
-                  const areaTotal = recommendationTotalForArea(item, Number(context.areaHa));
-                  return (
-                    <article key={`${item.inputType}-${index}`}>
-                      <div>
-                        <strong>{recommendationInputLabel(item.inputType)}</strong>
-                        {areaTotal && (
-                          <small>
-                            Total para {Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha:{" "}
-                            {areaTotal.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {areaTotal.unit} de {areaTotal.label}
-                          </small>
-                        )}
-                      </div>
-                      <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
-                    </article>
-                  );
-                })}
-              </div>
+              <>
+                <div className="report-v4-action-summary">
+                  <div><small>Área</small><strong>{Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
+                  <div><small>Recomendações aprovadas</small><strong>{prescription.recommendations!.length}</strong></div>
+                  <div><small>Blocos de manejo</small><strong>{recommendationGroups.length}</strong></div>
+                  <div><small>Plano comercial</small><strong>{commercialSummary ? "Congelado" : "Não selecionado"}</strong></div>
+                </div>
+                <PublishedRecommendationDashboard
+                  groups={recommendationGroups}
+                  areaHa={Number(context.areaHa)}
+                />
+              </>
             )}
             {(prescription.managementPractices?.length ?? 0) > 0 && (
-              <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
+              <div className="report-v4-management">
+                <strong>Manejo aprovado</strong>
+                <div className="report-v4-management-grid">
+                  {prescription.managementPractices!
+                    .map(producerFacingText)
+                    .filter(Boolean)
+                    .map((item, index) => <span key={index}>{item}</span>)}
+                </div>
+              </div>
             )}
             {(prescription.missingInformation?.length ?? 0) > 0 && (
               <div className="simple-result-limitation">
                 <Icon name="shield" size={17}/>
                 <span>
                   <strong>Critérios preservados</strong>
-                  <small>
+                  <div className="report-v4-criteria-grid">
                     {prescription.missingInformation!
                       .map(producerFacingText)
                       .filter(Boolean)
-                      .join(" · ")}
-                  </small>
+                      .map((item, index) => <small key={index}>{item}</small>)}
+                  </div>
                 </span>
               </div>
             )}
@@ -312,6 +300,47 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         ) : (
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
         )}
+
+        <section className="simple-result-section report-v4-commercial">
+          <div className="simple-result-section-head">
+            <span>CONVERSÃO OPERACIONAL</span>
+            <h2>Produto e custo</h2>
+            <p>A necessidade agronômica só vira produto comercial quando um cenário foi escolhido e congelado junto com o laudo.</p>
+          </div>
+          {commercialSummary ? (
+            <>
+              <div className="report-v4-commercial-grid">
+                {commercialSummary.rows.map((row, index) => (
+                  <article key={`${row.productName}-${index}`}>
+                    <div>
+                      <strong>{row.productName}</strong>
+                      <small>Dose do produto</small>
+                      <b>{row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.doseUnit}</b>
+                    </div>
+                    <div>
+                      <small>Total do talhão</small>
+                      <b>{row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.totalUnit}</b>
+                      <span>{row.pricePerTon != null
+                        ? `${row.pricePerTon.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/t`
+                        : "Preço não congelado"}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="report-v4-commercial-total">
+                <small>Custo do cenário</small>
+                <strong>{commercialSummary.hasFrozenCost
+                  ? `${commercialSummary.costPerHa!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/ha · ${commercialSummary.totalCost!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} no talhão`
+                  : "Produto e quantidade congelados; custo indisponível sem preço suficiente."}</strong>
+              </div>
+            </>
+          ) : (
+            <div className="report-v4-commercial-empty">
+              <strong>Sem produto comercial congelado</strong>
+              <small>O laudo mantém a necessidade agronômica aprovada sem inventar formulação, quantidade de produto ou custo.</small>
+            </div>
+          )}
+        </section>
 
         {ndvi && (
           <section className="simple-result-section satellite">
@@ -382,45 +411,12 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
               </div>
             )}
 
-            {commercialSummary ? (
-              <>
-                <div className="simple-result-producer-summary-note">
-                  <p>
-                    <strong>Plano comercial congelado:</strong>{" "}
-                    {commercialSummary.label || "cenário selecionado na publicação"}. Esta camada apenas converte a necessidade agronômica aprovada em produto comercial; ela não altera a dose técnica.
-                  </p>
-                </div>
-                <div className="simple-result-producer-summary-list">
-                  {commercialSummary.rows.map((row, index) => (
-                    <article key={`${row.productName}-${index}`}>
-                      <div>
-                        <strong>{row.productName}</strong>
-                        <small>
-                          Dose do produto: {row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.doseUnit}
-                          {row.pricePerTon != null
-                            ? ` · preço congelado: ${row.pricePerTon.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/t`
-                            : " · preço não cadastrado no cenário"}
-                        </small>
-                      </div>
-                      <b>Total da área: {row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.totalUnit}</b>
-                    </article>
-                  ))}
-                </div>
-                <div className="simple-result-producer-summary-cost">
-                  <strong>Custo comercial</strong>
-                  <span>
-                    {commercialSummary.hasFrozenCost
-                      ? `${commercialSummary.costPerHa!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/ha · total da área: ${commercialSummary.totalCost!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-                      : "Produto e quantidade foram congelados, mas o cenário não possuía preço suficiente para calcular custo."}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="simple-result-producer-summary-cost">
-                <strong>Custo comercial</strong>
-                <span>Não incluído neste laudo oficial porque nenhum cenário comercial foi selecionado e congelado junto com esta decisão.</span>
-              </div>
-            )}
+            <div className="simple-result-producer-summary-cost">
+              <strong>Produto/custo comercial</strong>
+              <span>{commercialSummary
+                ? "O cenário comercial congelado está detalhado na página de recomendação e manejo."
+                : "Nenhum cenário comercial foi congelado junto com esta decisão."}</span>
+            </div>
           </section>
         )}
 
