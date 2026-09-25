@@ -8,6 +8,7 @@ import { AgronomicNarrativePanel } from "@/components/agronomic-narrative-panel"
 import { AgronomicPrescriptionPanel } from "@/components/agronomic-prescription-panel";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
 import { FieldNdviPanel } from "@/components/field-ndvi-panel";
+import { TechnicalConfidenceExplainer } from "@/components/technical-confidence-explainer";
 import { interpretationStatusMeta } from "@/domain/interpretation-status";
 import { computeParameterPredominance } from "@/domain/parameter-predominance";
 import { classificationColor } from "@/lib/classification-colors";
@@ -283,9 +284,15 @@ export function AgronomicIntelligencePanel({
         <section className="cockpit-category">
           <h3><span className="cockpit-category-number">2</span>Interpretação</h3>
           <div className="agro-summary-row">
-            {latest.structuredOutput?.confidence && <div className="agro-stat"><span>Confiabilidade da interpretação</span><strong>{latest.structuredOutput.confidence.score}/100</strong><small>{latest.structuredOutput.confidence.level}</small></div>}
+            
             <div className="agro-stat"><span>Base técnica</span><strong>{latest.structuredOutput?.trace.cropProfileCode ?? "—"}</strong><small>{latest.structuredOutput?.trace.cropProfileVersion ? `v${latest.structuredOutput.trace.cropProfileVersion}` : "sem cultura vinculada"}</small></div>
           </div>
+          {latest.structuredOutput?.confidence && (
+            <TechnicalConfidenceExplainer
+              confidence={latest.structuredOutput.confidence}
+              interpretation={interpretation}
+            />
+          )}
           {(classifiedResultCount + pendingResultCount + auxiliaryResultCount) > 0 && (
             <>
               <div className={`agro-message ${classifiedResultCount === 0 && targetTotalCount > 0 ? "danger" : classifiedResultCount < targetTotalCount ? "waiting" : "success"}`}>
