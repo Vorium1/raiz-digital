@@ -7,6 +7,7 @@ import { Icon } from "@/components/icon";
 import {
   MAP_NEUTRAL_COLOR as NEUTRAL,
   effectivePointCoordinates,
+  pointLatLngCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
   type FieldMapProps,
@@ -85,8 +86,8 @@ export function LeafletFieldMap({
       const palette = current.colorFor ? current.colorFor(point) : defaultColor(point);
       const positionKind = pointPositionKind(point);
       const trustedPosition = isMeasuredOrAudited(positionKind);
-      const effective = effectivePointCoordinates(point);
-      const marker = L.circleMarker([effective.latitude, effective.longitude], {
+      const [latitude, longitude] = pointLatLngCoordinates(point);
+      const marker = L.circleMarker([latitude, longitude], {
         radius: trustedPosition ? 7 : 6,
         color: palette.stroke,
         fillColor: palette.fill,
@@ -96,7 +97,7 @@ export function LeafletFieldMap({
       }).addTo(pointsLayer);
       marker.on("click", () => onSelectRef.current(point));
       marker.bindTooltip(`${point.code} · ${positionDescription(point)}`, { direction: "top", offset: [0, -8] });
-      bounds.push([effective.latitude, effective.longitude]);
+      bounds.push([latitude, longitude]);
     });
 
     if (bounds.length) {
@@ -170,7 +171,7 @@ export function LeafletFieldMap({
   const selectedCoordinates = selectedPoint ? effectivePointCoordinates(selectedPoint) : null;
 
   return (
-    <div className="real-field-map" data-map-provider="leaflet" data-has-image-overlay={imageOverlay ? "true" : "false"}>
+    <div className="real-field-map" data-map-provider="leaflet" data-has-image-overlay={imageOverlay ? "true" : "false"} data-point-count={points.length}>
       {providerNote && <p className="ndvi-panel-limitation"><Icon name="warning" size={13}/>{providerNote}</p>}
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">

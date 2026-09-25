@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icon";
 import {
   effectivePointCoordinates,
+  pointGeoJsonCoordinates,
+  pointLatLngCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
   type FieldMapProps,
@@ -105,11 +107,10 @@ export function GoogleFieldMap({
           features: [
             { type: "Feature", properties: { kind: "boundary" }, geometry: boundary },
             ...points.map((point) => {
-              const effective = effectivePointCoordinates(point);
               return {
                 type: "Feature",
                 properties: { kind: "point", pointId: point.id },
-                geometry: { type: "Point", coordinates: [effective.longitude, effective.latitude] },
+                geometry: { type: "Point", coordinates: pointGeoJsonCoordinates(point) },
               };
             }),
           ],
@@ -166,8 +167,8 @@ export function GoogleFieldMap({
         const bounds = new maps.LatLngBounds();
         for (const [longitude, latitude] of positions) bounds.extend({ lat: latitude, lng: longitude });
         for (const point of points) {
-          const effective = effectivePointCoordinates(point);
-          bounds.extend({ lat: effective.latitude, lng: effective.longitude });
+          const [latitude, longitude] = pointLatLngCoordinates(point);
+          bounds.extend({ lat: latitude, lng: longitude });
         }
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds, 28);
@@ -206,6 +207,7 @@ export function GoogleFieldMap({
       data-map-provider="google"
       data-map-ready={tilesReady ? "true" : "false"}
       data-has-image-overlay={imageOverlay ? "true" : "false"}
+      data-point-count={points.length}
     >
       <div style={{ position: "relative" }}>
         <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />

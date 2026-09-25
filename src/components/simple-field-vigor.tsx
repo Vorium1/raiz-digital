@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { RealFieldMap, type MapImageOverlay, type MapLegendEntry } from "@/components/real-field-map";
-import type { VigorZone } from "@/domain/ndvi-engine";
+import type { NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 
 type Snapshot = {
@@ -42,7 +42,6 @@ function dominantZone(breakdown: Partial<Record<VigorZone, number>> | undefined)
   return best && bestPct >= 0 ? { zone: best, pct: bestPct } : null;
 }
 
-
 function formatDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
@@ -61,11 +60,27 @@ function hasRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot 
   return Boolean(snapshot?.rasterObjectKey);
 }
 
-export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
+function compactZoneLabel(zone: VigorZone) {
+  if (zone === "SEM_VEGETACAO") return "Solo exposto / sem vegetação";
+  const label = VIGOR_ZONE_LABELS[zone];
+  if (typeof label === "string" && label.trim()) return label.replace("Vigor ", "");
+  return zone.replaceAll("_", " ").toLocaleLowerCase("pt-BR");
+}
+
+function temporalLabel(temporal: NdviTemporalAnalysis | null) {
+  if (!temporal) return { label: "Sem comparação", detail: "Histórico insuficiente" };
+  if (temporal.direction === "ALTA") return { label: "Vigor em alta", detail: temporal.note };
+  if (temporal.direction === "QUEDA") return { label: "Vigor em queda", detail: temporal.note };
+  if (temporal.direction === "ESTAVEL") return { label: "Vigor estável", detail: temporal.note };
+  return { label: "Sem comparação", detail: temporal.note };
+}
+
+export function SimpleFieldVigor({ fieldId, areaHa }: { fieldId: string; areaHa: number }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [latest, setLatest] = useState<Snapshot | null>(null);
   const [history, setHistory] = useState<Snapshot[]>([]);
+  const [temporal, setTemporal] = useState<NdviTemporalAnalysis | null>(null);
   const [boundary, setBoundary] = useState<Geometry | null>(null);
   const [rasterDate, setRasterDate] = useState("");
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
@@ -73,8 +88,17 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
   const [rasterError, setRasterError] = useState("");
   const [rasterAttempt, setRasterAttempt] = useState(0);
 
-  const archived = useMemo(() => history.find(hasRaster) ?? null, [history]);
-  const dominant = useMemo(() => dominantZone(archived?.zoneBreakdownPct), [archived]);
+  const archivedHistory = useMemo(
+    () => history.filter(hasRaster).sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime()),
+    [history],
+  );
+  const archived = archivedHistory[0] ?? null;
+  const selected = useMemo(
+    () => archivedHistory.find((snapshot) => snapshot.capturedAt.slice(0, 10) === rasterDate) ?? archived,
+    [archivedHistory, rasterDate, archived],
+  );
+  const dominant = useMemo(() => dominantZone(selected?.zoneBreakdownPct), [selected]);
+  const trend = useMemo(() => temporalLabel(temporal), [temporal]);
   const vigorLegend = useMemo<MapLegendEntry[]>(
     () => ZONE_ORDER.map((zone) => ({ label: VIGOR_ZONE_LABELS[zone], color: ZONE_COLOR[zone] })),
     [],
@@ -86,8 +110,12 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
     const newestRaster = nextHistory.find(hasRaster) ?? null;
     setHistory(nextHistory);
     setLatest(nextLatest);
+    setTemporal((payload.temporal ?? null) as NdviTemporalAnalysis | null);
     setBoundary(payload.fieldBoundary ?? null);
-    setRasterDate(newestRaster?.capturedAt.slice(0, 10) ?? "");
+    setRasterDate((current) => {
+      if (current && nextHistory.some((snapshot) => hasRaster(snapshot) && snapshot.capturedAt.slice(0, 10) === current)) return current;
+      return newestRaster?.capturedAt.slice(0, 10) ?? "";
+    });
   }
 
   async function refreshSatellite({ automatic = false }: { automatic?: boolean } = {}) {
@@ -159,7 +187,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
         if (!blob.type.includes("image/png")) throw new Error("Formato inesperado da imagem NDVI.");
         if (controller.signal.aborted) return;
         objectUrl = URL.createObjectURL(blob);
-        setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
+        setOverlay({ url: objectUrl, bounds, opacity: 0.74 });
       } catch (caught) {
         if (!controller.signal.aborted) setRasterError(caught instanceof Error ? caught.message : "Não foi possível abrir o mapa de vigor.");
       }
@@ -175,9 +203,9 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
     <section className="simple-field-vigor">
       <div className="simple-field-vigor-head">
         <div>
-          <span>VIGOR DA ÁREA</span>
-          <h2>Imagem de satélite</h2>
-          <p>Leitura real Sentinel-2 dentro do limite deste talhão.</p>
+          <span>NDVI · VIGOR VEGETATIVO</span>
+          <h2>Leitura do talhão por satélite</h2>
+          <p>Sentinel-2 real, recortado no limite cadastrado desta área.</p>
         </div>
         <button type="button" onClick={() => void refreshSatellite()} disabled={refreshing}>
           <Icon name="history" size={14}/>
@@ -187,56 +215,87 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
 
       {loading ? (
         <div className="simple-field-vigor-loading"><Icon name="clock" size={18}/> Buscando a leitura mais recente…</div>
-      ) : archived && boundary ? (
+      ) : selected && boundary ? (
         <>
           <div className="simple-field-vigor-meta">
-            <strong>{formatDate(archived.capturedAt)}</strong>
+            <strong>{formatDate(selected.capturedAt)}</strong>
             <span>Sentinel-2 · leitura real da área</span>
-            {archived.cloudCoverPct != null && <span>{Math.round(archived.cloudCoverPct)}% sem pixel válido</span>}
+            {selected.cloudCoverPct != null && <span>{Math.round(selected.cloudCoverPct)}% sem pixel válido</span>}
           </div>
+
+          {archivedHistory.length > 1 && (
+            <div className="simple-field-vigor-timeline" aria-label="Histórico de aquisições NDVI">
+              {archivedHistory.slice(0, 8).map((snapshot) => {
+                const date = snapshot.capturedAt.slice(0, 10);
+                const active = date === rasterDate;
+                return (
+                  <button key={snapshot.id} type="button" className={active ? "active" : ""} onClick={() => setRasterDate(date)}>
+                    <span>{formatDate(snapshot.capturedAt)}</span>
+                    <strong>{snapshot.meanNdvi.toFixed(2)}</strong>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="simple-field-vigor-summary">
             <div>
-              <span>MÉDIA DO TALHÃO</span>
-              <strong>{archived.meanNdvi.toFixed(2)}</strong>
-              <small>NDVI médio</small>
+              <span>NDVI MÉDIO</span>
+              <strong>{selected.meanNdvi.toFixed(2)}</strong>
+              <small>média desta aquisição</small>
             </div>
             <div>
               <span>MAIOR VIGOR</span>
-              <strong>{archived.maxNdvi != null ? archived.maxNdvi.toFixed(2) : "—"}</strong>
+              <strong>{selected.maxNdvi != null ? selected.maxNdvi.toFixed(2) : "—"}</strong>
               <small>maior NDVI observado</small>
             </div>
             <div>
               <span>FAIXA DOMINANTE</span>
-              <strong>{dominant ? VIGOR_ZONE_LABELS[dominant.zone].replace("Vigor ", "") : "—"}</strong>
-              <small>{dominant ? `${dominant.pct.toFixed(1)}% da área` : "sem distribuição disponível"}</small>
+              <strong>{dominant ? compactZoneLabel(dominant.zone) : "—"}</strong>
+              <small>{dominant ? `${dominant.pct.toFixed(1)}% · ~${(areaHa * dominant.pct / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha` : "sem distribuição disponível"}</small>
+            </div>
+            <div>
+              <span>TENDÊNCIA</span>
+              <strong>{trend.label}</strong>
+              <small>{temporal?.deltaFromPrevious != null ? `${temporal.deltaFromPrevious >= 0 ? "+" : ""}${temporal.deltaFromPrevious.toFixed(2)} vs. leitura comparável anterior` : "aguardando histórico comparável"}</small>
             </div>
           </div>
 
           <div className="simple-field-vigor-zones">
             <div className="simple-field-vigor-zones-head">
-              <strong>Faixas de vigor</strong>
-              <small>Quanto da área aparece em cada faixa no satélite</small>
+              <strong>Distribuição do vigor no talhão</strong>
+              <small>% da área e hectares aproximados por faixa</small>
             </div>
             <div className="simple-field-vigor-zone-bar" aria-label="Distribuição das faixas de vigor">
               {ZONE_ORDER.map((zone) => {
-                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
+                const pct = selected.zoneBreakdownPct?.[zone] ?? 0;
                 return pct > 0 ? <span key={zone} style={{ width: `${pct}%`, background: ZONE_COLOR[zone] }} title={`${VIGOR_ZONE_LABELS[zone]}: ${pct.toFixed(1)}%`} /> : null;
               })}
             </div>
-            <div className="simple-field-vigor-zone-list">
+            <div className="simple-field-vigor-zone-grid">
               {ZONE_ORDER.map((zone) => {
-                const pct = archived.zoneBreakdownPct?.[zone] ?? 0;
-                if (pct <= 0) return null;
+                const pct = selected.zoneBreakdownPct?.[zone] ?? 0;
+                const hectares = areaHa > 0 ? areaHa * pct / 100 : null;
                 return (
-                  <span key={zone}>
+                  <div key={zone} className={pct > 0 ? "" : "muted"}>
                     <i style={{ background: ZONE_COLOR[zone] }} />
-                    <b>{VIGOR_ZONE_LABELS[zone].replace("Vigor ", "")}</b>
-                    <em>{pct.toFixed(1)}%</em>
-                  </span>
+                    <span>
+                      <b>{compactZoneLabel(zone)}</b>
+                      <small>{hectares != null ? `~${hectares.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha` : "—"}</small>
+                    </span>
+                    <strong>{pct.toFixed(1)}%</strong>
+                  </div>
                 );
               })}
             </div>
+          </div>
+
+          <div className="simple-field-vigor-map-head">
+            <div>
+              <span>MAPA NDVI</span>
+              <strong>Onde o vigor muda dentro da área</strong>
+            </div>
+            <small>{formatDate(selected.capturedAt)}</small>
           </div>
 
           {rasterError ? (
@@ -249,8 +308,8 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
             <RealFieldMap
               boundary={boundary}
               points={[]}
-              height={390}
-              hint={`Mapa de vigor · ${formatDate(archived.capturedAt)}`}
+              height={430}
+              hint={`NDVI · ${formatDate(selected.capturedAt)} · limite do talhão em destaque`}
               imageOverlay={overlay}
               legend={vigorLegend}
             />
@@ -263,9 +322,19 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
               </div>
             </div>
           )}
-          <p className="simple-field-vigor-note">
-            O ponto mais alto acima é o maior <strong>NDVI</strong> observado, um indicador de vigor da vegetação. Ele não é uma previsão direta de produtividade em sacas.
-          </p>
+
+          <div className="simple-field-vigor-explainer">
+            <div>
+              <strong>Como ler</strong>
+              <p>As cores mostram diferenças de vigor vegetativo dentro do limite cadastrado. A área em hectares é uma aproximação obtida pela participação de pixels válidos em cada faixa.</p>
+            </div>
+            <div>
+              <strong>O que não significa</strong>
+              <p>NDVI não é previsão direta de sacas, nem identifica sozinho deficiência, doença ou causa de baixo vigor. Solo, cultura, estágio, clima e manejo precisam ser avaliados em conjunto.</p>
+            </div>
+          </div>
+
+          {temporal?.note && <p className="simple-field-vigor-note"><strong>Comparação temporal:</strong> {temporal.note}</p>}
         </>
       ) : (
         <div className="simple-field-vigor-empty">

@@ -113,8 +113,8 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
 
     const pointsResult = await client.query(
       `SELECT sp.id::text, sp.code, sp.sequence,
-              ST_Y(COALESCE(sp.observed_position, sp.position))::float8 AS latitude,
-              ST_X(COALESCE(sp.observed_position, sp.position))::float8 AS longitude,
+              ST_Y(sp.position)::float8 AS latitude,
+              ST_X(sp.position)::float8 AS longitude,
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position) END AS "observedLatitude",
               CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position) END AS "observedLongitude",
               sp.depth_from_cm::float8 AS "depthFromCm", sp.depth_to_cm::float8 AS "depthToCm",

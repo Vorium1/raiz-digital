@@ -36,7 +36,6 @@ const clientName = process.env.CABEDA_AUDIT_CLIENT_NAME?.trim() || "Rafael Cabed
 const areaTolerancePct = Number(process.env.CABEDA_AREA_TOLERANCE_PCT ?? "5");
 
 if (!databaseUrl) throw new Error("DATABASE_URL é obrigatório.");
-if (!tenantId) throw new Error("CABEDA_TENANT_ID é obrigatório; a auditoria nunca escolhe tenant implicitamente.");
 if (!Number.isFinite(areaTolerancePct) || areaTolerancePct <= 0 || areaTolerancePct > 100) {
   throw new Error("CABEDA_AREA_TOLERANCE_PCT inválido.");
 }
@@ -76,6 +75,8 @@ function privacySafeResult(audit, raw) {
       srid4326: raw.points.srid4326Count,
       acceptedRealGpsSource: raw.points.acceptedGpsSourceCount,
       spatiallyCoherent: raw.points.spatiallyCoherentCount,
+      observedPositionCount: raw.points.observedPositionCount,
+      observedOutsideBoundaryCount: raw.points.observedOutsideBoundaryCount,
       gpsSources: raw.points.gpsSources,
     },
     auditTrail: {
@@ -83,7 +84,9 @@ function privacySafeResult(audit, raw) {
       boundaryImportEvents: raw.audit.validBoundaryImportEvents,
     },
     note: audit.ready
-      ? "Proveniência geométrica persistida atende ao gate de evidência real. Isso NÃO libera taxa variável sozinho; suporte amostral e política espacial continuam separados."
+      ? raw.points.observedOutsideBoundaryCount > 0
+        ? "A posição-base auditada atende ao gate, mas existem observed_position legados fora do contorno. Eles não podem substituir a geometria real importada no mapa sem uma coleta posterior explicitamente registrada."
+        : "Proveniência geométrica persistida atende ao gate de evidência real. Isso NÃO libera taxa variável sozinho; suporte amostral e política espacial continuam separados."
       : "Proveniência persistida não atende ao gate. Taxa variável deve permanecer bloqueada.",
   };
 }
@@ -91,7 +94,30 @@ function privacySafeResult(audit, raw) {
 await client.connect();
 try {
   await client.query("BEGIN TRANSACTION READ ONLY");
-  await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+
+  let resolvedTenantId = tenantId;
+  if (!resolvedTenantId) {
+    const tenantCandidates = await client.query(
+      `SELECT DISTINCT c.tenant_id::text AS id
+       FROM clients c
+       JOIN properties p ON p.tenant_id=c.tenant_id AND p.client_id=c.id
+       JOIN fields f ON f.tenant_id=p.tenant_id AND f.property_id=p.id
+       JOIN crop_seasons cs ON cs.tenant_id=f.tenant_id AND cs.field_id=f.id
+       JOIN collection_orders co ON co.tenant_id=cs.tenant_id AND co.crop_season_id=cs.id
+       WHERE c.name=$1 AND f.name=$2 AND co.code=$3
+       LIMIT 2`,
+      [clientName, config.fieldName, config.orderCode],
+    );
+    if (tenantCandidates.rows.length === 0) {
+      throw new Error(`Nenhum tenant contém o conjunto Cabeda esperado para ${config.fieldName}/${config.orderCode}.`);
+    }
+    if (tenantCandidates.rows.length > 1) {
+      throw new Error(`Mais de um tenant contém o conjunto Cabeda esperado; informe CABEDA_TENANT_ID explicitamente.`);
+    }
+    resolvedTenantId = tenantCandidates.rows[0].id;
+  }
+
+  await client.query("SELECT set_config('app.tenant_id', $1, true)", [resolvedTenantId]);
   if (actorUserId) await client.query("SELECT set_config('app.user_id', $1, true)", [actorUserId]);
 
   const fields = await client.query(
@@ -106,7 +132,7 @@ try {
      WHERE f.tenant_id=$1::uuid AND c.name=$2 AND f.name=$3
      ORDER BY f.created_at DESC
      LIMIT 2`,
-    [tenantId, clientName, config.fieldName],
+    [resolvedTenantId, clientName, config.fieldName],
   );
   if (fields.rows.length === 0) throw new Error(`Talhão ${config.fieldName} de ${clientName} não encontrado no tenant informado.`);
   if (fields.rows.length > 1) throw new Error(`Existem múltiplos talhões ${config.fieldName} para ${clientName}; a auditoria não escolhe automaticamente um alvo ambíguo.`);
@@ -119,7 +145,7 @@ try {
      WHERE co.tenant_id=$1::uuid AND cs.field_id=$2::uuid AND co.code=$3
      ORDER BY co.created_at DESC
      LIMIT 2`,
-    [tenantId, field.id, config.orderCode],
+    [resolvedTenantId, field.id, config.orderCode],
   );
   if (orders.rows.length === 0) throw new Error(`Ordem ${config.orderCode} não encontrada para ${config.fieldName}.`);
   if (orders.rows.length > 1) throw new Error(`Há mais de uma ordem ${config.orderCode}; a auditoria não escolhe automaticamente uma ordem ambígua.`);
@@ -139,11 +165,20 @@ try {
                   OR ST_DWithin(f.boundary::geography, sp.position::geography, 5)
                 )
             )::int AS "spatiallyCoherentCount",
+            COUNT(*) FILTER (WHERE sp.observed_position IS NOT NULL)::int AS "observedPositionCount",
+            COUNT(*) FILTER (
+              WHERE sp.observed_position IS NOT NULL
+                AND f.boundary IS NOT NULL
+                AND NOT (
+                  ST_Covers(f.boundary, sp.observed_position)
+                  OR ST_DWithin(f.boundary::geography, sp.observed_position::geography, 5)
+                )
+            )::int AS "observedOutsideBoundaryCount",
             COALESCE(array_agg(DISTINCT coalesce(sp.gps_source,'NULL')), ARRAY[]::text[]) AS "gpsSources"
      FROM sample_points sp
      JOIN fields f ON f.tenant_id=sp.tenant_id AND f.id=$2::uuid
      WHERE sp.tenant_id=$1::uuid AND sp.collection_order_id=$3::uuid`,
-    [tenantId, field.id, orderId, [...ACCEPTED_REAL_GPS_SOURCES]],
+    [resolvedTenantId, field.id, orderId, [...ACCEPTED_REAL_GPS_SOURCES]],
   );
   const points = pointStats.rows[0];
 
@@ -175,7 +210,7 @@ try {
            WHERE sp.tenant_id=$1::uuid AND sp.collection_order_id=$3::uuid
          )
        )`,
-    [tenantId, field.id, orderId],
+    [resolvedTenantId, field.id, orderId],
   );
   const auditRow = auditStats.rows[0];
 
@@ -196,6 +231,8 @@ try {
       srid4326Count: Number(points.srid4326Count),
       acceptedGpsSourceCount: Number(points.acceptedGpsSourceCount),
       spatiallyCoherentCount: Number(points.spatiallyCoherentCount),
+      observedPositionCount: Number(points.observedPositionCount),
+      observedOutsideBoundaryCount: Number(points.observedOutsideBoundaryCount),
       gpsSources: points.gpsSources ?? [],
     },
     audit: {

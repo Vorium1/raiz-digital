@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  assertValidGeographicCoordinate,
   effectivePointCoordinates,
+  pointGeoJsonCoordinates,
+  pointLatLngCoordinates,
   pointPositionKind,
   spatialGeometryPositions,
 } from "../src/components/spatial-map-types.ts";
@@ -78,18 +81,64 @@ const observedPoint = point({
 });
 assert.equal(
   pointPositionKind(observedPoint),
-  "OBSERVED",
-  "captura observada em campo deve prevalecer sobre a proveniência histórica",
+  "AUDITED_SOURCE",
+  "fonte espacial auditada pura deve permanecer autoridade mesmo se houver observed_position legado",
 );
 assert.deepEqual(
   effectivePointCoordinates(observedPoint),
+  { latitude: -28.25, longitude: -52.4 },
+  "mapas devem ignorar observed_position legado quando a fonte persistida é uma geometria real auditada",
+);
+
+const recollectedAfterAudit = point({
+  gpsSource: "SHAPEFILE_REAL_GPS_LONLAT+BROWSER_GPS",
+  latitude: -28.25,
+  longitude: -52.4,
+  observedLatitude: -28.2507777,
+  observedLongitude: -52.4008888,
+});
+assert.equal(
+  pointPositionKind(recollectedAfterAudit),
+  "OBSERVED",
+  "coleta posterior via navegador deve ser reconhecida como observação corrente",
+);
+assert.deepEqual(
+  effectivePointCoordinates(recollectedAfterAudit),
   { latitude: -28.2507777, longitude: -52.4008888 },
-  "mapas devem renderizar a posição observada, não a posição-base, quando ambas existem",
+  "coleta posterior registrada deve voltar a prevalecer sobre a posição-base",
 );
 assert.deepEqual(
   effectivePointCoordinates(point({ gpsSource: "SHAPEFILE_REAL_EPSG4326", latitude: -28.1234567, longitude: -52.7654321 })),
   { latitude: -28.1234567, longitude: -52.7654321 },
   "fonte real auditada sem observed_position deve renderizar a posição importada preservada",
+);
+
+
+const exactPoint = point({
+  gpsSource: "SHAPEFILE_REAL_EPSG4326",
+  latitude: -28.123456789,
+  longitude: -52.765432198,
+});
+assert.deepEqual(
+  pointGeoJsonCoordinates(exactPoint),
+  [-52.765432198, -28.123456789],
+  "GeoJSON/Google Data/Mapbox devem preservar exatamente [longitude, latitude] sem arredondamento",
+);
+assert.deepEqual(
+  pointLatLngCoordinates(exactPoint),
+  [-28.123456789, -52.765432198],
+  "Leaflet/Google LatLng devem preservar exatamente [latitude, longitude] sem arredondamento",
+);
+assert.doesNotThrow(() => assertValidGeographicCoordinate(-28.123456789, -52.765432198));
+assert.throws(
+  () => assertValidGeographicCoordinate(-128, -52),
+  /latitude fora/,
+  "latitude inválida deve falhar fechado em vez de desenhar ponto em posição incorreta",
+);
+assert.throws(
+  () => assertValidGeographicCoordinate(-28, -252),
+  /longitude fora/,
+  "longitude inválida deve falhar fechado em vez de desenhar ponto em posição incorreta",
 );
 
 const geometry = {
@@ -191,6 +240,20 @@ assert.doesNotMatch(
   /max-age\s*=\s*31536000|immutable/i,
   "imutabilidade do artefato não pode tornar imutável a autorização de acesso no navegador",
 );
+
+
+const mapDataSource = readFileSync(new URL("../src/lib/repositories/map-data.ts", import.meta.url), "utf8");
+const mapboxFieldMapSource = readFileSync(new URL("../src/components/mapbox-field-map.tsx", import.meta.url), "utf8");
+const leafletFieldMapSource = readFileSync(new URL("../src/components/leaflet-field-map.tsx", import.meta.url), "utf8");
+assert.match(
+  mapDataSource,
+  /ST_Y\(sp\.position\)::float8 AS latitude[\s\S]*ST_X\(sp\.position\)::float8 AS longitude/,
+  "API deve extrair latitude de Y e longitude de X sem COALESCE ou troca de eixo",
+);
+assert.match(googleFieldMapSource, /pointGeoJsonCoordinates\(point\)/, "Google deve usar conversão canônica [lng,lat]");
+assert.match(googleFieldMapSource, /pointLatLngCoordinates\(point\)/, "Google bounds deve usar conversão canônica [lat,lng]");
+assert.match(mapboxFieldMapSource, /pointGeoJsonCoordinates\(point\)/, "Mapbox deve usar conversão canônica [lng,lat]");
+assert.match(leafletFieldMapSource, /pointLatLngCoordinates\(point\)/, "Leaflet deve usar conversão canônica [lat,lng]");
 
 assert.match(googleFieldMapSource, /data-map-ready=/, "GoogleFieldMap deve expor readiness de tiles ao QA/runtime");
 assert.match(googleFieldMapSource, /"tilesloaded"/, "GoogleFieldMap só pode declarar mapa pronto após tilesloaded");

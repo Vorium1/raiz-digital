@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import {
-  effectivePointCoordinates,
+  pointGeoJsonCoordinates,
   spatialGeometryPositions,
   type FieldMapProps,
 } from "@/components/spatial-map-types";
@@ -110,13 +110,13 @@ export function MapboxFieldMap({
 
           if (points.length) {
             const features = points.map((point) => {
-              const effective = effectivePointCoordinates(point);
+              const coordinates = pointGeoJsonCoordinates(point);
               const palette = colorFor
                 ? colorFor(point)
                 : { stroke: defaultColor(Boolean(point.collectedAt)), fill: defaultColor(Boolean(point.collectedAt)), fillOpacity: 0.9 };
               return {
                 type: "Feature",
-                geometry: { type: "Point", coordinates: [effective.longitude, effective.latitude] },
+                geometry: { type: "Point", coordinates },
                 properties: {
                   id: point.id,
                   code: point.code,
@@ -160,10 +160,7 @@ export function MapboxFieldMap({
 
           const all = [
             ...positions,
-            ...points.map((point) => {
-              const effective = effectivePointCoordinates(point);
-              return [effective.longitude, effective.latitude] as [number, number];
-            }),
+            ...points.map((point) => pointGeoJsonCoordinates(point)),
           ];
           if (all.length) {
             const xs = all.map(([x]) => x);
@@ -186,7 +183,7 @@ export function MapboxFieldMap({
   }, [boundary, points, height, colorFor, imageOverlay, hint, boundaryFillColor, onProviderFailure]);
 
   return (
-    <div className="real-field-map mapbox-field-map" data-map-provider="mapbox" data-has-image-overlay={imageOverlay ? "true" : "false"}>
+    <div className="real-field-map mapbox-field-map" data-map-provider="mapbox" data-has-image-overlay={imageOverlay ? "true" : "false"} data-point-count={points.length}>
       <div ref={containerRef} className="real-field-map-canvas" style={{ height }} />
       <div className="real-field-map-legend">
         <span className="real-field-map-hint">{hint}</span>
