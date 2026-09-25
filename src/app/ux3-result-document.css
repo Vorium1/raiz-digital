@@ -483,3 +483,56 @@
   .report-v4-final-commercial-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .report-v4-trace-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
+
+
+/* Report V4 — fechamento A4 sem microtipografia.
+   Recupera altura reduzindo espaço em branco, não o tamanho do texto. */
+@page{size:A4 portrait;margin:7mm}
+@media print{
+  .report-v4-sheet{min-height:0}
+  .simple-result-document-head{padding-bottom:7px}
+  .simple-result-hero{padding:10px 0 8px}
+  .simple-result-hero>p{margin:4px 0 8px}
+  .simple-result-context>div{padding:6px 7px}
+  .simple-result-map .real-field-map-canvas,
+  .simple-result-map .leaflet-container{height:185px!important;min-height:185px!important}
+  .simple-result-map-note{padding:5px 7px}
+  .simple-result-section{padding:10px 0}
+  .simple-result-section-head p{margin-top:3px}
+
+  .report-v4-parameter-grid{gap:5px;margin-top:7px}
+  .report-v4-parameter-card{padding:6px 7px}
+  .report-v4-range,.report-v4-class-bar,.report-v4-class-legend{margin-top:4px}
+  .report-v4-parameter-card footer{margin-top:4px;padding-top:3px}
+  .report-v4-parameter-note{margin-top:4px}
+
+  .report-v4-action-summary{margin-top:6px}
+  .report-v4-action-summary>div{padding:5px 6px}
+  .report-v4-recommendation-dashboard{gap:5px;margin-top:7px}
+  .report-v4-recommendation-group>header{margin-bottom:3px}
+  .report-v4-recommendation-card{padding:5px 6px}
+  .report-v4-recommendation-dose{margin-top:4px}
+  .report-v4-recommendation-rationale{margin-top:4px;padding-top:3px}
+  .report-v4-management{margin-top:5px;padding:5px 6px}
+  .report-v4-management-grid{margin-top:3px}
+  .report-v4-criteria-grid small{padding:3px 4px}
+  .report-v4-commercial-grid{margin-top:5px}
+  .report-v4-commercial-grid article{padding:5px 6px}
+  .report-v4-commercial-total{margin-top:4px;padding:4px 5px}
+  .simple-result-section.satellite{margin-top:4px;padding:7px}
+  .simple-result-ndvi-grid{margin-top:5px}
+  .simple-result-ndvi-grid>div{padding:6px}
+
+  .report-v4-final-overview{padding-top:8px}
+  .report-v4-final-metrics{margin-top:6px}
+  .report-v4-final-metrics>div{padding:5px 6px}
+  .report-v4-sheet-three .simple-result-producer-summary-list{gap:5px;margin-top:6px}
+  .simple-result-producer-summary-list article{padding:6px 7px}
+  .simple-result-producer-summary-note{margin-top:5px;padding:5px 7px}
+  .report-v4-final-commercial{margin-top:4px;padding:5px 6px}
+  .report-v4-opinion>p{margin-top:5px;padding:6px 8px}
+  .report-v4-trace-grid{margin-top:5px}
+  .report-v4-trace-grid>div{padding:4px 5px}
+  .simple-result-signature{padding:8px 0}
+  .simple-result-footer{padding-top:6px}
+}
