@@ -826,7 +826,7 @@ button { color: inherit; }
 .comparison-side-maps{display:grid;gap:16px;grid-template-columns:1fr 1fr;margin-top:16px}
 @media(max-width:760px){.comparison-side-maps{grid-template-columns:1fr}.comparison-table-wrap{margin:12px 12px 0}.comparison-chart{margin:14px 12px 0;width:calc(100% - 24px)}}
 @media print{
-  .sidebar,.topbar,.mobile-bottom-nav,.mobile-menu-backdrop,.no-print{display:none!important}
+  .sidebar,.topbar,.mobile-bottom-nav,.mobile-menu-backdrop,.skip-link,.no-print{display:none!important}
   .main-content{margin-left:0!important}
   body{background:white}
   .content-wrap{padding:0}
