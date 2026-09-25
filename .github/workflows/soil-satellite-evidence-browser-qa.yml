@@ -12,6 +12,7 @@ on:
       - "src/components/soil-satellite-evidence-context.tsx"
       - "src/components/soil-satellite-evidence-context.module.css"
       - "src/components/field-ndvi-panel.tsx"
+      - "src/app/globals.css"
   workflow_dispatch:
 
 concurrency:
