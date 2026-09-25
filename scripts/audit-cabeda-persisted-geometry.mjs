@@ -76,6 +76,8 @@ function privacySafeResult(audit, raw) {
       srid4326: raw.points.srid4326Count,
       acceptedRealGpsSource: raw.points.acceptedGpsSourceCount,
       spatiallyCoherent: raw.points.spatiallyCoherentCount,
+      observedPositionCount: raw.points.observedPositionCount,
+      observedOutsideBoundaryCount: raw.points.observedOutsideBoundaryCount,
       gpsSources: raw.points.gpsSources,
     },
     auditTrail: {
@@ -83,7 +85,9 @@ function privacySafeResult(audit, raw) {
       boundaryImportEvents: raw.audit.validBoundaryImportEvents,
     },
     note: audit.ready
-      ? "Proveniência geométrica persistida atende ao gate de evidência real. Isso NÃO libera taxa variável sozinho; suporte amostral e política espacial continuam separados."
+      ? raw.points.observedOutsideBoundaryCount > 0
+        ? "A posição-base auditada atende ao gate, mas existem observed_position legados fora do contorno. Eles não podem substituir a geometria real importada no mapa sem uma coleta posterior explicitamente registrada."
+        : "Proveniência geométrica persistida atende ao gate de evidência real. Isso NÃO libera taxa variável sozinho; suporte amostral e política espacial continuam separados."
       : "Proveniência persistida não atende ao gate. Taxa variável deve permanecer bloqueada.",
   };
 }
@@ -139,6 +143,15 @@ try {
                   OR ST_DWithin(f.boundary::geography, sp.position::geography, 5)
                 )
             )::int AS "spatiallyCoherentCount",
+            COUNT(*) FILTER (WHERE sp.observed_position IS NOT NULL)::int AS "observedPositionCount",
+            COUNT(*) FILTER (
+              WHERE sp.observed_position IS NOT NULL
+                AND f.boundary IS NOT NULL
+                AND NOT (
+                  ST_Covers(f.boundary, sp.observed_position)
+                  OR ST_DWithin(f.boundary::geography, sp.observed_position::geography, 5)
+                )
+            )::int AS "observedOutsideBoundaryCount",
             COALESCE(array_agg(DISTINCT coalesce(sp.gps_source,'NULL')), ARRAY[]::text[]) AS "gpsSources"
      FROM sample_points sp
      JOIN fields f ON f.tenant_id=sp.tenant_id AND f.id=$2::uuid
@@ -196,6 +209,8 @@ try {
       srid4326Count: Number(points.srid4326Count),
       acceptedGpsSourceCount: Number(points.acceptedGpsSourceCount),
       spatiallyCoherentCount: Number(points.spatiallyCoherentCount),
+      observedPositionCount: Number(points.observedPositionCount),
+      observedOutsideBoundaryCount: Number(points.observedOutsideBoundaryCount),
       gpsSources: points.gpsSources ?? [],
     },
     audit: {
