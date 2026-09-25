@@ -146,12 +146,13 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
       preferCSSPageSize: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
+    await writeFile(join(EVIDENCE_DIR, "report-v4-3-pages.pdf"), pdf);
     const pdfText = pdf.toString("latin1");
     const physicalPageCount = pdfText.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+    console.log(`report-v4-physical-pages: ${physicalPageCount}`);
     expect(
       physicalPageCount,
       `PDF físico precisa ter exatamente 3 páginas; recebido: ${physicalPageCount}.`,
     ).toBe(3);
-    await writeFile(join(EVIDENCE_DIR, "report-v4-3-pages.pdf"), pdf);
   });
 });
