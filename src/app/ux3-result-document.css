@@ -260,3 +260,41 @@
   .report-v4-commercial-empty strong{font-size:5.5px}
   .report-v4-commercial-empty small{font-size:4.2px;line-height:1.25}
 }
+
+
+/* Report V4 — Página 3: fechamento visual e base da decisão. */
+.report-v4-final-overview{background:#f7faf5}
+.report-v4-final-metrics{display:grid;gap:8px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
+.report-v4-final-metrics>div{background:#fff;border:1px solid #dfe8dc;border-radius:11px;padding:10px 11px}
+.report-v4-final-metrics small,.report-v4-final-metrics strong{display:block}
+.report-v4-final-metrics small{color:#839087;font-size:6.8px;font-weight:750}
+.report-v4-final-metrics strong{color:#244b30;font-size:11px;margin-top:3px}
+
+.report-v4-trace{background:#fbfcfa}
+.report-v4-trace-grid{display:grid;gap:7px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:11px}
+.report-v4-trace-grid>div{background:#fff;border:1px solid #e2e8df;border-radius:10px;padding:8px 9px}
+.report-v4-trace-grid small,.report-v4-trace-grid strong{display:block}
+.report-v4-trace-grid small{color:#89948d;font-size:6.2px}
+.report-v4-trace-grid strong{color:#37533f;font-size:8px;line-height:1.25;margin-top:3px;overflow-wrap:anywhere}
+
+.report-v4-sheet-three .simple-result-producer-summary-cost{background:#f8faf7;border-top:0;border-radius:9px;margin-top:8px;padding:7px 9px}
+.report-v4-sheet-three .simple-result-producer-summary-cost strong{color:#3d5a46}
+.report-v4-sheet-three .simple-result-signature{background:#fff}
+.report-v4-sheet-three .simple-result-footer{background:#fbfcfa}
+
+@media(max-width:820px){
+  .report-v4-final-metrics,.report-v4-trace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media print{
+  .report-v4-final-overview{padding-top:8px}
+  .report-v4-final-metrics{gap:4px;margin-top:6px}
+  .report-v4-final-metrics>div{border-radius:6px;padding:5px 6px}
+  .report-v4-final-metrics small{font-size:4.5px}
+  .report-v4-final-metrics strong{font-size:6.5px;margin-top:1px}
+  .report-v4-trace-grid{gap:4px;margin-top:5px}
+  .report-v4-trace-grid>div{border-radius:5px;padding:4px 5px}
+  .report-v4-trace-grid small{font-size:4px}
+  .report-v4-trace-grid strong{font-size:5px;margin-top:1px}
+  .report-v4-sheet-three .simple-result-producer-summary-cost{border-radius:5px;margin-top:4px;padding:4px 5px}
+}
