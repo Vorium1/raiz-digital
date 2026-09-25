@@ -480,10 +480,21 @@
   .simple-field-vigor-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .simple-field-vigor-summary > div { padding: 10px 11px; }
   .simple-field-vigor-summary strong { font-size: 19px; overflow-wrap: anywhere; }
-  .simple-field-vigor-zone-grid { grid-template-columns: 1fr; }
-  .simple-field-vigor-zone-grid > div { grid-template-columns: 8px minmax(0,1fr) 48px; }
+  .simple-field-vigor-zone-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .simple-field-vigor-zone-grid > div { grid-template-columns: 7px minmax(0,1fr) auto; padding:7px 8px; }
   .simple-field-vigor-zone-grid i { height: 22px; }
   .simple-field-vigor-explainer { grid-template-columns: 1fr; }
   .simple-field-vigor .real-field-map { min-height: 330px; }
+
+  .simple-field-vigor .real-field-map-canvas,
+  .simple-field-vigor .leaflet-container { height: 340px !important; min-height: 340px !important; }
+  .simple-field-vigor .real-field-map-legend {
+    display:grid;
+    font-size:8px;
+    gap:5px 10px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    padding:7px 9px;
+  }
+  .simple-field-vigor .real-field-map-legend span { min-width:0; }
   .simple-field-vigor-map-head { align-items: flex-start; }
 }
