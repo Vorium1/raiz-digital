@@ -9,7 +9,6 @@ import { PublishedParameterDashboard } from "@/components/published-parameter-da
 import { PublishedRecommendationDashboard } from "@/components/published-recommendation-dashboard";
 import { pointPositionKind } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
-import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
 import { buildPublishedParameterDashboard } from "@/domain/published-result-dashboard";
