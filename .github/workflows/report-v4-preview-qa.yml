@@ -116,25 +116,69 @@ jobs:
             if (!user?.user_id || !user?.tenant_id) throw new Error("Conta E2E ativa não encontrada.");
 
             const target = await client.query(
-              `SELECT i.analysis_id::text AS analysis_id
+              `SELECT
+                   i.analysis_id::text AS analysis_id,
+                   coalesce(
+                     jsonb_array_length(
+                       CASE
+                         WHEN jsonb_typeof(g.response_payload->'prescription'->'recommendations')='array'
+                           THEN g.response_payload->'prescription'->'recommendations'
+                         ELSE '[]'::jsonb
+                       END
+                     ),
+                     0
+                   )::int AS recommendation_count,
+                   coalesce(
+                     jsonb_array_length(
+                       CASE
+                         WHEN jsonb_typeof(g.response_payload->'prescription'->'managementPractices')='array'
+                           THEN g.response_payload->'prescription'->'managementPractices'
+                         ELSE '[]'::jsonb
+                       END
+                     ),
+                     0
+                   )::int AS management_count,
+                   nullif(published_event.metadata->>'commercialPlanSnapshotId','') IS NOT NULL AS has_commercial_plan,
+                   r.published_at
                FROM reports r
                JOIN interpretations i
                  ON i.tenant_id=r.tenant_id
                 AND i.id=r.interpretation_id
+               JOIN ai_generations g
+                 ON g.tenant_id=r.tenant_id
+                AND g.id=r.prescription_generation_id
+               LEFT JOIN LATERAL (
+                 SELECT ae.metadata
+                 FROM audit_events ae
+                 WHERE ae.tenant_id=r.tenant_id
+                   AND ae.entity_type='report'
+                   AND ae.entity_id=r.id
+                   AND ae.action='REPORT_PUBLISHED'
+                 ORDER BY ae.created_at DESC
+                 LIMIT 1
+               ) published_event ON true
                WHERE r.tenant_id=$1::uuid
                  AND r.prescription_generation_id IS NOT NULL
                  AND r.storage_key LIKE 'inline:v1:%'
-               ORDER BY r.published_at DESC
-               LIMIT 1`,
+               ORDER BY
+                 recommendation_count DESC,
+                 management_count DESC,
+                 has_commercial_plan DESC,
+                 r.published_at DESC
+               LIMIT 10`,
               [user.tenant_id],
             );
             const candidates = target.rows;
-            let analysisId = "";
-            for (const candidate of candidates) {
-              analysisId = candidate.analysis_id;
-              if (analysisId) break;
-            }
+            const selected = candidates.find((candidate) => candidate.analysis_id) ?? null;
+            const analysisId = selected?.analysis_id ?? "";
             if (!analysisId) throw new Error("Nenhum laudo oficial V3 inline com prescrição congelada encontrado.");
+
+            const recommendationCount = Number(selected.recommendation_count ?? 0);
+            const managementCount = Number(selected.management_count ?? 0);
+            const hasCommercialPlan = Boolean(selected.has_commercial_plan);
+            console.log(
+              `report-v4-richest-candidate: recommendations=${recommendationCount}; management=${managementCount}; commercial=${hasCommercialPlan ? "yes" : "no"}`,
+            );
 
             const token = randomBytes(32).toString("base64url");
             const tokenHash = createHash("sha256").update(token).digest("hex");
@@ -150,6 +194,9 @@ jobs:
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
             appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${analysisId}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_RECOMMENDATION_COUNT=${recommendationCount}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_MANAGEMENT_COUNT=${managementCount}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_EXPECTED_COMMERCIAL=${hasCommercialPlan ? "1" : "0"}\n`);
           } catch (error) {
             await client.query("ROLLBACK").catch(() => {});
             throw error;
