@@ -8,6 +8,7 @@ import { RealFieldMap } from "@/components/real-field-map";
 import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { PremiumDecisionSummary } from "@/components/premium-decision-summary";
+import { FinalVisualReport } from "@/components/report-final-visual";
 import { StatusBadge, ClassificationBadge } from "@/components/ui";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
@@ -240,214 +241,29 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="check" size={12}/> A decisão técnica atual (interpretação #{interpretation?.revision} + recomendação aprovada corrente) é a mesma que foi congelada em {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")} por {publishedReport.publishedByName ?? "—"}. Para consultar a entrega oficial e verificar sua integridade, use "Versão publicada".</span></div>
         )}
 
-        <article className="report-doc">
-          <header className="report-header">
-            <ReportBrand branding={displayBranding} />
-            <div className="report-header-meta">
-              <span>Gerado em</span><strong>{viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}</strong>
-              <span style={{ marginTop: 6 }}>Código</span><strong>{contextUnavailable ? "—" : displayContext.code}</strong>
-              <span style={{ marginTop: 6 }}>Situação</span><strong>{viewingPublished ? "Publicado (snapshot imutável)" : !publishedReport ? "Rascunho" : sameDecisionAsPublished ? "Rascunho (decisão igual à publicada)" : "Rascunho (decisão atual difere da publicada)"}</strong>
-            </div>
-          </header>
-
-          <h1 className="report-title">Relatório Técnico de Decisão Agronômica</h1>
-          <p className="report-subtitle">{contextUnavailable ? "Contexto não capturado neste snapshot (formato anterior)" : `${displayContext.clientName} · ${displayContext.propertyName} · ${displayContext.fieldName}`}</p>
-
-          <div className="report-meta-grid">
-            {contextUnavailable ? (
-              <div className="report-empty-note" style={{ gridColumn: "1/-1" }}>Este snapshot publicado é de um formato legado. Contexto e marca não foram capturados naquele formato e, por isso, não são preenchidos com informação atual como se fossem imutáveis.</div>
-            ) : (
-              <>
-                <div><span>Cliente</span><strong>{displayContext.clientName}</strong></div>
-                <div><span>Propriedade</span><strong>{displayContext.propertyName}</strong></div>
-                <div><span>Talhão</span><strong>{displayContext.fieldName} · {Number(displayContext.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
-                <div><span>Safra / cultura</span><strong>{displayContext.seasonLabel} · {displayContext.currentCrop || "não informada"}</strong></div>
-                <div><span>Cultivar</span><strong>{displayContext.cultivar || "—"}</strong></div>
-                <div><span>Sistema de cultivo</span><strong>{displayContext.managementSystem || "—"}</strong></div>
-                <div><span>Textura do solo</span><strong>{displayContext.soilTexture || "—"}</strong></div>
-                <div><span>Meta produtiva</span><strong>{displayContext.yieldGoal != null ? `${displayContext.yieldGoal} ${displayContext.yieldGoalUnit ?? ""}` : "—"}</strong></div>
-                <div><span>Laboratório</span><strong>{displayContext.laboratoryName || "Não identificado"}</strong></div>
-                <div><span>Período</span><strong>{new Date(displayContext.createdAt).toLocaleDateString("pt-BR")} – {new Date(displayContext.updatedAt).toLocaleDateString("pt-BR")}</strong></div>
-                <div><span>Status</span><strong>{viewingPublished ? <StatusBadge tone="success">Publicado</StatusBadge> : <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>}</strong></div>
-                <div><span>Confiabilidade do laudo</span><strong>{displayContext.confidenceScore != null ? `${Math.round(Number(displayContext.confidenceScore))}/100 (${displayContext.confidenceLevel})` : "—"}</strong></div>
-              </>
-            )}
-            {displayConfidence && <div><span>Confiabilidade da interpretação{viewingPublished ? " (no publish)" : ""}</span><strong>{displayConfidence.score}/100 ({displayConfidence.level})</strong></div>}
-          </div>
-
-          <PremiumDecisionSummary
-            rows={displayInterpretation}
-            sampleCount={reportSampleCount}
-            interpretationStatus={viewingPublished ? "APPROVED" : interpretationCurrent ? interpretation?.status ?? null : null}
-            prescriptionStatus={displayPrescription?.status ?? null}
-            reportPublished={viewingPublished || sameDecisionAsPublished}
-            viewingPublished={viewingPublished}
-            confidence={displayConfidence ?? null}
-            narrativeSummary={displayNarrative?.responsePayload?.narrative?.summary ?? null}
-            prescriptionSummary={displayPrescription?.responsePayload?.prescription?.summary ?? null}
-            managementPractices={displayPrescription?.responsePayload?.prescription?.managementPractices ?? []}
-            missingInformation={displayPrescription?.responsePayload?.prescription?.missingInformation ?? []}
-          />
-
-          {viewingPublished && !isPremiumPublishedSnapshot ? (
-            <section className="report-section">
-              <h2>Pontos de amostragem <span className="report-empty-note">(não faziam parte deste formato de snapshot publicado — ver versão atual)</span></h2>
-            </section>
-          ) : (
-            <section className="report-section">
-              <h2>Pontos de amostragem ({reportMapPoints.length} — {collectedCount} coletados)</h2>
-              {reportMapPoints.length ? (
-                <>
-                  <p className="report-empty-note" style={{ marginBottom: 8 }}>
-                    Origem espacial: {observedPointCount} observada(s) · {auditedPointCount} importada(s) de fonte auditada · {plannedPointCount} planejada(s)/estimada(s).
-                  </p>
-                  <div className="report-table-wrap"><table className="report-table">
-                    <thead><tr><th>Código</th><th>Coordenada usada</th><th>Profundidade</th><th>Origem espacial</th><th>Status</th></tr></thead>
-                    <tbody>{reportMapPoints.map((point) => {
-                      const effective = effectivePointCoordinates(point);
-                      return (
-                        <tr key={point.id}><td>{point.code}</td><td>{effective.latitude.toFixed(6)}, {effective.longitude.toFixed(6)}</td><td>{point.depthFromCm}–{point.depthToCm} cm</td><td>{pointProvenanceLabel(point)}</td><td>{point.collectedAt ? "Coletado" : "Pendente"}</td></tr>
-                      );
-                    })}</tbody>
-                  </table></div>
-                </>
-              ) : <p className="report-empty-note">Nenhum ponto vinculado a esta análise.</p>}
-            </section>
-          )}
-
-          {reportMapPoints.length > 0 && displayBoundary && (
-            <section className="report-section no-print">
-              <h2>Mapa do talhão e pontos <span className="report-empty-note">({viewingPublished ? "geometria congelada na entrega; " : ""}posição observada prevalece quando existe; coordenadas constam na tabela acima)</span></h2>
-              <RealFieldMap boundary={displayBoundary} points={reportMapPoints} height={340}/>
-            </section>
-          )}
-
-          <section className="report-section">
-            <h2>Resultados laboratoriais{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
-            {displayFacts.length ? (
-              <div className="report-table-wrap"><table className="report-table">
-                <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Valor</th><th>Unidade</th><th>Método</th></tr></thead>
-                <tbody>{displayFacts.map((result: any, index: number) => (
-                  <tr key={index}><td>{result.sampleCode}</td><td>{result.parameterCode}</td><td>{result.value}</td><td>{result.unit}</td><td>{result.method}</td></tr>
-                ))}</tbody>
-              </table></div>
-            ) : <p className="report-empty-note">Nenhum resultado laboratorial {viewingPublished ? "estava presente no snapshot publicado" : "persistido ainda para esta análise"}.</p>}
-          </section>
-
-          <section className="report-section">
-            <h2>Classificações homologadas{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
-            {displayInterpretation.length ? (
-              <div className="report-table-wrap"><table className="report-table">
-                <thead><tr><th>Ponto</th><th>Parâmetro</th><th>Classificação</th></tr></thead>
-                <tbody>{displayInterpretation.map((item, index) => (
-                  <tr key={index}><td>{item.sampleCode}</td><td>{item.parameterCode}</td><td>{item.interpretable && item.classification ? <ClassificationBadge label={item.classification}/> : <em>Não interpretável</em>}</td></tr>
-                ))}</tbody>
-              </table></div>
-            ) : <p className="report-empty-note">Nenhuma interpretação calculada ainda — sem recomendação ou classificação inventada.</p>}
-          </section>
-
-          {viewingPublished && !isPremiumPublishedSnapshot ? (
-            <>
-              <section className="report-section"><h2>Síntese técnica RAIZ <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
-              <section className="report-section"><h2>Recomendação Assistida RAIZ <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
-              <section className="report-section"><h2>Aderência: recomendado × aplicado <span className="report-empty-note">(não fazia parte deste formato de snapshot publicado)</span></h2></section>
-            </>
-          ) : (
-            <>
-              {displayNarrative && (
-                <section className="report-section narrative-report-section">
-                  <h2>Síntese técnica RAIZ</h2>
-                  <p className="report-empty-note" style={{ marginBottom: 10 }}>
-                    A RAIZ organiza os fatos calculados e a classificação homologada em linguagem técnica legível. {displayNarrative.status === "APPROVED" ? "Síntese aprovada por revisão profissional." : "Síntese ainda sujeita à revisão profissional; não é conclusão definitiva."}
-                  </p>
-                  <p style={{ fontSize: 12, fontWeight: 600 }}>{displayNarrative.responsePayload.narrative.summary}</p>
-                  {displayNarrative.responsePayload.narrative.observations.length > 0 && <ul style={{ fontSize: 11, paddingLeft: 18 }}>{displayNarrative.responsePayload.narrative.observations.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>}
-                </section>
-              )}
-
-              {displayPrescription && (
-                <section className="report-section narrative-report-section">
-                  <h2>Recomendação Assistida RAIZ</h2>
-                  <p className="report-empty-note" style={{ marginBottom: 10 }}>
-                    Gerada a partir das evidências disponíveis e da interpretação aprovada. {displayPrescription.status === "APPROVED" ? "Aprovada pelo responsável técnico — recomendação oficial." : "Ainda em fluxo de revisão profissional — não é recomendação oficial."}
-                  </p>
-                  <p style={{ fontSize: 12, fontWeight: 600 }}>{displayPrescription.responsePayload.prescription.summary}</p>
-                  {displayPrescription.responsePayload.prescription.diagnosis.length > 0 && (
-                    <div className="report-table-wrap"><table className="report-table">
-                      <thead><tr><th>Parâmetro</th><th>Resultado</th><th>Interpretação</th><th>Justificativa</th></tr></thead>
-                      <tbody>{displayPrescription.responsePayload.prescription.diagnosis.map((item: any, index: number) => (
-                        <tr key={index}><td>{item.parameterCode}</td><td>{item.value} {item.unit}</td><td>{item.interpretation}</td><td style={{ fontSize: 10 }}>{item.rationale}</td></tr>
-                      ))}</tbody>
-                    </table></div>
-                  )}
-                  {displayPrescription.responsePayload.prescription.recommendations.length > 0 ? (
-                    <div className="report-table-wrap" style={{ marginTop: 12 }}><table className="report-table">
-                      <thead><tr><th>Insumo</th><th>Dose</th><th>Justificativa</th></tr></thead>
-                      <tbody>{displayPrescription.responsePayload.prescription.recommendations.map((item: any, index: number) => (
-                        <tr key={index}><td>{item.inputType}</td><td>{item.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {item.unit}</td><td style={{ fontSize: 10 }}>{item.rationale}</td></tr>
-                      ))}</tbody>
-                    </table></div>
-                  ) : (
-                    <div className="agro-message danger" style={{ marginTop: 12 }}><Icon name="shield" size={13}/><span><strong>Sem dose inventada.</strong> As evidências disponíveis não sustentaram uma dose numérica nesta geração; a lacuna foi preservada para revisão técnica.</span></div>
-                  )}
-                  {displayPrescription.responsePayload.prescription.managementPractices.length > 0 && (
-                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Práticas de manejo priorizadas</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{displayPrescription.responsePayload.prescription.managementPractices.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
-                  )}
-                  {displayPrescription.responsePayload.prescription.missingInformation.length > 0 && (
-                    <div style={{ marginTop: 12 }}><strong style={{ fontSize: 10 }}>Critérios e limites desta recomendação</strong><ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>{displayPrescription.responsePayload.prescription.missingInformation.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul></div>
-                  )}
-                  {displayPrescription.responsePayload.prescription.sources.length > 0 && (
-                    <p className="report-empty-note" style={{ marginTop: 10 }}>Base técnica: {displayPrescription.responsePayload.prescription.sources.map((source: any) => `${source.title}${source.institution ? ` — ${source.institution}` : ""}`).join("; ")}</p>
-                  )}
-                </section>
-              )}
-
-              {!viewingPublished && comparison.length > 0 && (
-                <section className="report-section">
-                  <h2>Aderência: recomendado × aplicado</h2>
-                  <div className="report-table-wrap"><table className="report-table">
-                    <thead><tr><th>Insumo</th><th>Recomendado</th><th>Aplicado</th><th>Situação</th></tr></thead>
-                    <tbody>{comparison.map((row: any) => (
-                      <tr key={row.inputType}>
-                        <td>{row.inputType}</td>
-                        <td>{row.recommendedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.recommendedUnit}</td>
-                        <td>{row.appliedQuantity != null ? `${row.appliedQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${row.appliedUnit}` : row.hasAnyApplication ? "Em outra unidade" : "—"}</td>
-                        <td>{{ OK: "Conforme recomendado", UNDER: "Abaixo do recomendado", OVER: "Acima do recomendado", UNIT_MISMATCH: "Unidade diferente", NOT_APPLIED: "Ainda não aplicado", STALE_RECOMMENDATION: "Recomendação histórica — não comparar" }[row.status as string]}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table></div>
-                </section>
-              )}
-              {viewingPublished && <section className="report-section"><h2>Aderência: recomendado × aplicado <span className="report-empty-note">(não é congelada no snapshot v3; consulte a versão atual para acompanhar execução posterior à recomendação)</span></h2></section>}
-            </>
-          )}
-
-          {displayInterpretation.some((item) => !item.interpretable) && (
-            <section className="report-section">
-              <h2>Pendências técnicas{viewingPublished ? " (do snapshot publicado)" : ""}</h2>
-              <ul className="report-pendencies">
-                {Array.from(new Set(displayInterpretation.filter((item) => !item.interpretable).map((item) => item.reason))).map((reason, index) => <li key={index}><Icon name="warning" size={12}/> {reason}</li>)}
-              </ul>
-            </section>
-          )}
-
-          <div className="report-signature">
-            {viewingPublished ? (
-              <>
-                <div><span>Situação</span>Publicado (snapshot imutável)</div>
-                <div><span>Publicado por</span>{publishedInfo?.report.publishedByName || "—"}</div>
-                <div><span>Publicado em</span>{new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR")}</div>
-              </>
-            ) : (
-              <>
-                <div><span>Status de revisão</span>{!interpretation ? "Sem interpretação registrada" : !interpretationCurrent ? "Revisão histórica — recálculo necessário" : interpretation.status === "APPROVED" ? "Aprovada" : "Aguardando validação técnica"}</div>
-                <div><span>Responsável técnico</span>{interpretation?.approvedByName || interpretation?.reviewedByName || "—"}</div>
-                <div><span>Base técnica</span>{interpretation?.cropProfileName || "—"}</div>
-              </>
-            )}
-          </div>
-          <ReportSignature branding={displayBranding} />
-        </article>
+        <FinalVisualReport
+          context={contextUnavailable ? {} : displayContext}
+          branding={displayBranding}
+          facts={displayFacts}
+          interpretationRows={displayInterpretation}
+          points={reportMapPoints}
+          boundary={displayBoundary}
+          narrativeSummary={displayNarrative?.responsePayload?.narrative?.summary ?? null}
+          prescription={displayPrescription?.responsePayload?.prescription ?? null}
+          interpretationStatus={viewingPublished ? "APPROVED" : interpretationCurrent ? interpretation?.status ?? null : null}
+          prescriptionStatus={displayPrescription?.status ?? null}
+          confidence={displayConfidence ?? null}
+          viewingPublished={viewingPublished}
+          currentStatusLabel={meta.label}
+          generatedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}
+          interpretationRevision={viewingPublished ? (publishedSnapshotV3?.revision ?? publishedSnapshotV2?.revision ?? publishedReport?.interpretationRevision ?? null) : interpretation?.revision ?? null}
+          responsibleName={viewingPublished ? displayPrescription?.reviewedByName ?? null : interpretation?.approvedByName || interpretation?.reviewedByName || null}
+          technicalBase={interpretation?.cropProfileName ?? null}
+          publishedByName={viewingPublished ? publishedInfo?.report.publishedByName ?? null : null}
+          publishedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : null}
+          publishedHashPrefix={viewingPublished ? publishedInfo?.report.sha256.slice(0, 12) ?? null : null}
+          commercialPlanSnapshot={viewingPublished ? publishedSnapshotV3?.commercialPlanSnapshot ?? null : null}
+        />
       </div>
     </>
   );
