@@ -116,7 +116,7 @@ export type NdviTemporalAnalysis = {
   note: string;
 };
 
-export const NDVI_NDVI_TEMPORAL_CHANGE_THRESHOLD = 0.12;
+export const NDVI_TEMPORAL_CHANGE_THRESHOLD = 0.12;
 const MIN_BASELINE_POINTS = 3;
 const MAX_BASELINE_POINTS = 5;
 
