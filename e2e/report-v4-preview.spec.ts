@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const SESSION_TOKEN = process.env.E2E_SESSION_TOKEN?.trim() ?? "";
@@ -136,5 +136,19 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
 
     await mkdir(EVIDENCE_DIR, { recursive: true });
     await page.screenshot({ path: join(EVIDENCE_DIR, "report-v4-print-full.png"), fullPage: true });
+
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+    const pdfText = pdf.toString("latin1");
+    const physicalPageCount = pdfText.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+    expect(
+      physicalPageCount,
+      `PDF físico precisa ter exatamente 3 páginas; recebido: ${physicalPageCount}.`,
+    ).toBe(3);
+    await writeFile(join(EVIDENCE_DIR, "report-v4-3-pages.pdf"), pdf);
   });
 });
