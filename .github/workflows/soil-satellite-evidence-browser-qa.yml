@@ -63,6 +63,10 @@ jobs:
 
           try {
             await client.query("BEGIN");
+            // Revoga qualquer sessão temporária residual de execução anterior deste QA.
+            await client.query(
+              "UPDATE user_sessions SET revoked_at=now() WHERE user_agent='github-actions-soil-satellite-qa' AND revoked_at IS NULL",
+            );
             const target = await client.query(
               `SELECT a.id::text AS analysis_id,
                       cs.field_id::text AS field_id,
@@ -102,10 +106,10 @@ jobs:
             await client.query("COMMIT");
 
             console.log(`::add-mask::${token}`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${row.analysis_id}\\n`);
-            appendFileSync(process.env.GITHUB_ENV, `E2E_FIELD_ID=${row.field_id}\\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ANALYSIS_ID=${row.analysis_id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_FIELD_ID=${row.field_id}\n`);
           } catch (error) {
             await client.query("ROLLBACK").catch(() => {});
             throw error;
