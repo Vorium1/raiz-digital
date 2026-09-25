@@ -1,0 +1,25 @@
+.shell{display:flex;flex-direction:column;gap:16px}
+.toolbar{align-items:flex-end;display:grid;gap:12px;grid-template-columns:minmax(220px,.55fr) minmax(0,1fr)}
+.toolbar label,.pickers label{display:grid;gap:5px;min-width:0}
+.toolbar label span,.pickers label span{color:var(--muted);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.toolbar select,.pickers select{background:var(--surface);border:1px solid var(--line);border-radius:9px;height:40px;max-width:100%;min-width:0;padding:0 10px;width:100%}
+.rule,.spatialOk,.spatialNote,.orderNote{align-items:flex-start;border-radius:10px;display:flex;font-size:10px;gap:7px;line-height:1.5;margin:0;padding:10px 12px}
+.rule{background:var(--surface-2);color:var(--muted)}
+.rule svg,.spatialOk svg,.spatialNote svg,.orderNote svg{flex-shrink:0;margin-top:1px}
+.pickers{align-items:end;display:grid;gap:10px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+.empty{align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:96px;padding:20px;text-align:center}
+.empty strong,.empty small{flex-basis:100%}
+.result{display:flex;flex-direction:column;gap:14px;min-width:0}
+.evidenceCards{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+.evidenceCards article{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;gap:4px;padding:13px}
+.evidenceCards span{color:var(--muted);font-size:8px;font-weight:800;text-transform:uppercase}
+.evidenceCards strong{font-size:13px}
+.evidenceCards small,.evidenceCards em{color:var(--muted);font-size:9px;font-style:normal;line-height:1.4}
+.spatialOk{background:color-mix(in srgb,var(--teal) 10%,var(--surface));color:var(--ink)}
+.spatialNote,.orderNote{background:#241e12;color:#e2cfb4}
+.footerNote{color:var(--muted);font-size:9px;line-height:1.55;margin:0}
+@media(max-width:700px){
+  .toolbar,.evidenceCards{grid-template-columns:1fr}
+  .pickers{align-items:stretch;grid-template-columns:1fr}
+  .pickers>svg{justify-self:center;transform:rotate(90deg)}
+}
