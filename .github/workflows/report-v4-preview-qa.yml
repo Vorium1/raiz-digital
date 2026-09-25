@@ -58,7 +58,22 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            for (let attempt = 0; attempt < 60; attempt++) {
+            for (let attempt = 0; attempt < 24; attempt++) {
+              const combined = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo, ref: context.sha,
+              });
+              const vercel = combined.data.statuses.find((status) => status.context === "Vercel");
+              if (
+                vercel?.state === "failure"
+                && typeof vercel.target_url === "string"
+                && vercel.target_url.includes("build-rate-limit")
+              ) {
+                core.notice("Vercel está rate-limited neste SHA; QA seguirá com build local.");
+                core.setOutput("available", "false");
+                core.setOutput("reason", "vercel-build-rate-limit");
+                return;
+              }
+
               const deployments = await github.rest.repos.listDeployments({
                 owner, repo, sha: context.sha, per_page: 20,
               });
@@ -73,15 +88,32 @@ jobs:
                 );
                 if (ready) {
                   core.setOutput("url", ready.environment_url);
+                  core.setOutput("available", "true");
+                  core.setOutput("reason", "vercel-preview");
                   return;
                 }
               }
               await new Promise((resolve) => setTimeout(resolve, 5000));
             }
-            core.setFailed("Nenhum environment_url de Preview ficou pronto para o SHA atual.");
+
+            core.notice("Preview Vercel não ficou disponível a tempo; QA seguirá com build local.");
+            core.setOutput("available", "false");
+            core.setOutput("reason", "preview-unavailable");
 
       - name: Instalar dependências
         run: npm ci
+
+      - name: Build local de fallback quando não houver Preview
+        if: steps.preview.outputs.available != 'true'
+        env:
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_SSL: require
+          DATA_MODE: database
+          APP_URL: http://127.0.0.1:3000
+          REPORT_STORAGE_PROVIDER: inline
+          RAIZ_ASSISTANT_MODE: local
+        run: npm run build
 
       - name: Preparar sessão temporária e laudo oficial da homologação
         shell: bash
@@ -318,14 +350,50 @@ jobs:
           }
           NODE
 
+      - name: Iniciar app local de fallback
+        if: steps.preview.outputs.available != 'true'
+        env:
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_SSL: require
+          DATA_MODE: database
+          APP_URL: http://127.0.0.1:3000
+          REPORT_STORAGE_PROVIDER: inline
+          RAIZ_ASSISTANT_MODE: local
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup npm run start -- -H 127.0.0.1 -p 3000 > /tmp/report-v4-local.log 2>&1 &
+          echo $! > /tmp/report-v4-local.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/login >/dev/null; then
+              echo "report-v4-local: ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/report-v4-local.log || true
+          echo "::error::Build local não ficou pronto para o QA."
+          exit 1
+
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Rodar gate visual do relatório V4
         env:
-          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
-          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
-        run: npx playwright test e2e/report-v4-preview.spec.ts
+          E2E_BASE_URL: ${{ steps.preview.outputs.available == 'true' && steps.preview.outputs.url || 'http://127.0.0.1:3000' }}
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.preview.outputs.available == 'true' && steps.oidc.outputs.token || '' }}
+        run: |
+          echo "report-v4-qa-target: ${{ steps.preview.outputs.reason }}"
+          npx playwright test e2e/report-v4-preview.spec.ts
+
+      - name: Parar app local de fallback
+        if: always() && steps.preview.outputs.available != 'true'
+        shell: bash
+        run: |
+          if [ -f /tmp/report-v4-local.pid ]; then
+            kill "$(cat /tmp/report-v4-local.pid)" 2>/dev/null || true
+          fi
 
       - name: Revogar sessão temporária
         if: always()
