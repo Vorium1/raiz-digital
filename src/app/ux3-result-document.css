@@ -298,3 +298,16 @@
   .report-v4-trace-grid strong{font-size:5px;margin-top:1px}
   .report-v4-sheet-three .simple-result-producer-summary-cost{border-radius:5px;margin-top:4px;padding:4px 5px}
 }
+
+
+.report-v4-signature-missing{border-top:1px solid #dfe7dc;max-width:320px;padding-top:9px}
+.report-v4-signature-missing strong,.report-v4-signature-missing small{display:block}
+.report-v4-signature-missing strong{color:#3d5946;font-size:9px}
+.report-v4-signature-missing small{color:#849087;font-size:6.5px;margin-top:2px}
+
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  .report-v4-signature-missing{max-width:240px;padding-top:5px}
+  .report-v4-signature-missing strong{font-size:5.5px}
+  .report-v4-signature-missing small{font-size:4.2px}
+}
