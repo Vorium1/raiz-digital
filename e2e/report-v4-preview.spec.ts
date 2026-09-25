@@ -16,13 +16,14 @@ if (!ANALYSIS_ID) throw new Error("E2E_ANALYSIS_ID é obrigatório.");
 
 async function authenticate(page: Page) {
   const baseUrl = new URL(process.env.E2E_BASE_URL ?? "");
+  const localHttp = baseUrl.protocol === "http:" && ["127.0.0.1", "localhost"].includes(baseUrl.hostname);
   await page.context().addCookies([{
     name: "raiz_session",
     value: SESSION_TOKEN,
     domain: baseUrl.hostname,
     path: "/",
     httpOnly: true,
-    secure: true,
+    secure: !localHttp,
     sameSite: "Lax",
   }]);
 }
