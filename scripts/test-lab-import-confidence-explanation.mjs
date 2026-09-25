@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { calculateLabImportConfidence } from "../src/domain/lab-import.ts";
 import { buildLabImportConfidenceExplanation } from "../src/domain/lab-import-confidence-explanation.ts";
 
@@ -46,3 +47,11 @@ assert.equal(structuralExplanation.structuralBlockers, 1);
 assert.equal(structuralExplanation.issueGroups[0].scope, "STRUCTURAL");
 
 console.log("lab import confidence explanation: ok");
+
+const analysisPageSource = readFileSync("src/app/(platform)/analises/[id]/page.tsx", "utf8");
+const importsRepositorySource = readFileSync("src/lib/repositories/imports.ts", "utf8");
+assert.match(analysisPageSource, /getLatestAnalysisImportConfidenceDetails/, "a tela real deve buscar o detalhe do score persistido");
+assert.match(analysisPageSource, /LabImportConfidenceExplainer/, "a tela real deve renderizar o explainer do laudo quando houver score");
+assert.match(importsRepositorySource, /a\.confidence_score AS "confidenceScore"/, "a autoridade da nota deve ser a mesma armazenada em analyses");
+assert.match(importsRepositorySource, /reconstructionMatchesStoredScore/, "decomposição histórica deve permanecer fail-closed");
+
