@@ -148,6 +148,7 @@ function parameterSummaries(facts: StructuredFact[], rows: StructuredInterpretat
     }
 
     const labels = unique(parameterRows.filter((row) => row.interpretable).map((row) => row.classification));
+    const nonInterpretable = parameterRows.some((row) => !row.interpretable);
     const pendingReasons = unique(parameterRows.filter((row) => !row.interpretable).map((row) => row.reason));
     const pendingReason = pendingReasons.length ? pendingReasons.join(" · ") : null;
     const requiresReview = Boolean(pendingReason && /agronom|revis|valid/i.test(pendingReason));
@@ -157,7 +158,7 @@ function parameterSummaries(facts: StructuredFact[], rows: StructuredInterpretat
       value,
       method: methods.length === 1 ? methods[0] : methods.length > 1 ? "Métodos múltiplos" : "Método não informado",
       classification: labels.length === 1 ? labels[0] : labels.length > 1 ? "Variável: " + labels.join(" · ") : null,
-      pendingCode: pendingReasons.length ? (requiresReview ? "REQUIRES_AGRONOMIST_REVIEW" : "INSUFFICIENT_EVIDENCE") : null,
+      pendingCode: nonInterpretable ? (requiresReview ? "REQUIRES_AGRONOMIST_REVIEW" : "INSUFFICIENT_EVIDENCE") : null,
       pendingReason,
       sampleCount: new Set(parameterFacts.map((fact) => fact.sampleCode)).size,
     };
@@ -350,6 +351,7 @@ export function FinalVisualReport(props: Props) {
                   <div className="report-parameter-head"><strong>{item.code}</strong><small>{item.sampleCount || "—"} ponto(s)</small></div>
                   <b>{item.value}</b>
                   <span>{item.classification ? <ClassificationBadge label={item.classification} /> : item.pendingCode || "Sem faixa homologada"}</span>
+                  {item.classification && item.pendingCode && <small className="report-parameter-warning">{item.pendingCode}</small>}
                   <small>{item.method}</small>
                   {item.pendingReason && <em title={item.pendingReason}>{item.pendingReason}</em>}
                 </div>
@@ -392,7 +394,7 @@ export function FinalVisualReport(props: Props) {
                     const via = firstText(item, ["via", "applicationMethod", "placement"]);
                     return (
                       <tr key={(item.inputType || "item") + "-" + index}>
-                        <td><strong>{item.inputType || "Não identificado"}</strong></td>
+                        <td><strong>{operational?.label || item.inputType || "Não identificado"}</strong></td>
                         <td>{quantity != null ? numberPt(quantity) + " " + (item.unit || "") : "INSUFFICIENT_EVIDENCE"}</td>
                         <td>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit : "—"}</td>
                         <td>{[timing, via].filter(Boolean).join(" · ") || "Não congelado na recomendação"}</td>
