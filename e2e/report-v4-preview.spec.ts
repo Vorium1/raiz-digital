@@ -119,6 +119,7 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     await page.emulateMedia({ media: "print" });
     const sheets = document.locator(".report-v4-sheet");
     await expect(sheets).toHaveCount(3);
+    await expect(page.locator(".skip-link")).toBeHidden();
 
     const breaks = await sheets.evaluateAll((elements) => elements.map((element) => {
       const style = getComputedStyle(element);
@@ -131,6 +132,7 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
       elements.map((element) => Math.ceil(element.getBoundingClientRect().height)),
     );
     for (const [index, height] of sheetHeights.entries()) {
+      expect(height, `Folha ${index + 1} precisa usar uma área vertical legível do A4.`).toBeGreaterThanOrEqual(900);
       expect(height, `Folha ${index + 1} precisa caber no viewport A4 de QA sem criar uma folha extra.`).toBeLessThanOrEqual(1754);
     }
 
