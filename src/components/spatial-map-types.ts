@@ -89,6 +89,18 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
  * Centralizar esta escolha impede que uma tela mostre o ponto planejado enquanto outra
  * mostra a captura GPS do mesmo ponto.
  */
+export function assertValidGeographicCoordinate(latitude: number, longitude: number) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error("Coordenada geográfica inválida: latitude/longitude precisam ser números finitos.");
+  }
+  if (latitude < -90 || latitude > 90) {
+    throw new Error("Coordenada geográfica inválida: latitude fora de -90..90.");
+  }
+  if (longitude < -180 || longitude > 180) {
+    throw new Error("Coordenada geográfica inválida: longitude fora de -180..180.");
+  }
+}
+
 export function effectivePointCoordinates(point: MapPoint): { latitude: number; longitude: number } {
   const source = (point.gpsSource ?? "").trim().toUpperCase();
 
@@ -96,14 +108,26 @@ export function effectivePointCoordinates(point: MapPoint): { latitude: number; 
   // `observed_position` legado (gravado antes da importação real) volte a deslocar o ponto no mapa.
   // Uma coleta posterior real via navegador deixa de ter fonte "pura" SHAPEFILE_REAL_* porque o
   // fluxo de campo acrescenta +BROWSER_GPS; nesse caso a observação corrente volta a prevalecer.
-  if (AUDITED_REAL_SOURCES.has(source)) {
-    return { latitude: point.latitude, longitude: point.longitude };
-  }
+  const effective = AUDITED_REAL_SOURCES.has(source)
+    ? { latitude: point.latitude, longitude: point.longitude }
+    : point.observedLatitude != null && point.observedLongitude != null
+      ? { latitude: point.observedLatitude, longitude: point.observedLongitude }
+      : { latitude: point.latitude, longitude: point.longitude };
 
-  if (point.observedLatitude != null && point.observedLongitude != null) {
-    return { latitude: point.observedLatitude, longitude: point.observedLongitude };
-  }
-  return { latitude: point.latitude, longitude: point.longitude };
+  assertValidGeographicCoordinate(effective.latitude, effective.longitude);
+  return effective;
+}
+
+/** GeoJSON/Google Data/Mapbox usam ordem [longitude, latitude]. Sem arredondamento. */
+export function pointGeoJsonCoordinates(point: MapPoint): [number, number] {
+  const effective = effectivePointCoordinates(point);
+  return [effective.longitude, effective.latitude];
+}
+
+/** Leaflet/Google LatLng usam ordem [latitude, longitude]. Sem arredondamento. */
+export function pointLatLngCoordinates(point: MapPoint): [number, number] {
+  const effective = effectivePointCoordinates(point);
+  return [effective.latitude, effective.longitude];
 }
 
 /**
