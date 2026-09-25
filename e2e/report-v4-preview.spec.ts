@@ -4,6 +4,11 @@ import { join } from "node:path";
 
 const SESSION_TOKEN = process.env.E2E_SESSION_TOKEN?.trim() ?? "";
 const ANALYSIS_ID = process.env.E2E_ANALYSIS_ID?.trim() ?? "";
+const EXPECTED_RECOMMENDATION_COUNT = Number(process.env.E2E_EXPECTED_RECOMMENDATION_COUNT ?? "0");
+const EXPECTED_RECOMMENDATION_GROUPS = Number(process.env.E2E_EXPECTED_RECOMMENDATION_GROUPS ?? "0");
+const EXPECTED_MANAGEMENT_COUNT = Number(process.env.E2E_EXPECTED_MANAGEMENT_COUNT ?? "0");
+const EXPECTED_COMMERCIAL = process.env.E2E_EXPECTED_COMMERCIAL === "1";
+const EXPECTED_COMMERCIAL_PRODUCTS = Number(process.env.E2E_EXPECTED_COMMERCIAL_PRODUCTS ?? "0");
 const EVIDENCE_DIR = join(process.cwd(), "test-results", "report-v4-evidence");
 
 if (!SESSION_TOKEN) throw new Error("E2E_SESSION_TOKEN é obrigatório.");
@@ -56,9 +61,25 @@ test.describe("Item 2 · relatório publicado em 2–3 páginas visuais", () => 
     await expect(page2).toContainText(/O QUE FAZER|CONCLUSÃO TÉCNICA/i);
     await expect(page2.locator(".report-v4-action-summary")).toBeVisible();
     await expect(page2.locator(".report-v4-recommendation-dashboard")).toBeVisible();
-    expect(await page2.locator(".report-v4-recommendation-card").count(), "Página 2 precisa ter cards práticos das recomendações aprovadas.").toBeGreaterThan(0);
+    const recommendationCards = await page2.locator(".report-v4-recommendation-card").count();
+    expect(recommendationCards, "Página 2 precisa ter cards práticos das recomendações aprovadas.").toBeGreaterThan(0);
+    if (EXPECTED_RECOMMENDATION_COUNT > 0) {
+      expect(recommendationCards, "Fixture rico precisa renderizar todas as recomendações congeladas.").toBe(EXPECTED_RECOMMENDATION_COUNT);
+    }
+    if (EXPECTED_RECOMMENDATION_GROUPS > 0) {
+      await expect(page2.locator(".report-v4-recommendation-group")).toHaveCount(EXPECTED_RECOMMENDATION_GROUPS);
+    }
+    if (EXPECTED_MANAGEMENT_COUNT > 0) {
+      await expect(page2.locator(".report-v4-management-grid > span")).toHaveCount(EXPECTED_MANAGEMENT_COUNT);
+    }
     await expect(page2).toContainText(/CONVERSÃO OPERACIONAL/i);
     await expect(page2.locator(".report-v4-commercial")).toBeVisible();
+    if (EXPECTED_COMMERCIAL) {
+      await expect(page2.locator(".report-v4-commercial-grid")).toBeVisible();
+      await expect(page2.locator(".report-v4-commercial-grid > article")).toHaveCount(EXPECTED_COMMERCIAL_PRODUCTS);
+      await expect(page2.locator(".report-v4-commercial-total")).toBeVisible();
+      await expect(page2.locator(".report-v4-commercial-empty")).toHaveCount(0);
+    }
     await expect(page3).toContainText(/FECHAMENTO DO TALHÃO/i);
     await expect(page3.locator(".report-v4-final-metrics")).toBeVisible();
     await expect(page3).toContainText(/RESUMO FINAL/i);
