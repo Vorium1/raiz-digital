@@ -158,7 +158,13 @@ export function AssistantRaizWidget() {
     }
   }
 
-  const suggestions = (screenContext && CONTEXTUAL_SUGGESTIONS[screenContext.type]) || DEFAULT_SUGGESTIONS;
+  const baseSuggestions = (screenContext && CONTEXTUAL_SUGGESTIONS[screenContext.type]) || DEFAULT_SUGGESTIONS;
+  const suggestions = contextValid
+    && screenContext?.type === "map"
+    && screenState?.screen === "map"
+    && screenState.pointId
+      ? ["Explique este ponto.", ...baseSuggestions.filter((item) => item !== "Explique este ponto.")]
+      : baseSuggestions;
 
   return (
     <>
