@@ -85,6 +85,7 @@ export function AgronomicMapExplorer() {
   const [selectedOrderId, setSelectedOrderIdState] = useState(searchParams.get("ordem") ?? "");
   const [parameter, setParameterState] = useState(searchParams.get("parametro") ?? "");
   const [statusFilter, setStatusFilterState] = useState<"all" | "collected" | "pending">((searchParams.get("status") as any) ?? "all");
+  const selectedPointId = searchParams.get("ponto") ?? "";
   const [layerMode, setLayerMode] = useState<"points" | "interpolation">("points");
   const [satelliteLayer, setSatelliteLayerState] = useState(searchParams.get("satelite") === "1");
   const [layer, setLayer] = useState<MapLayerResponse | null>(null);
@@ -99,12 +100,13 @@ export function AgronomicMapExplorer() {
   const [ndviRasterLoading, setNdviRasterLoading] = useState(false);
   const [ndviRasterError, setNdviRasterError] = useState<string | null>(null);
 
-  function updateUrl(next: { ordem?: string; parametro?: string; status?: string; satelite?: boolean }) {
+  function updateUrl(next: { ordem?: string; parametro?: string; status?: string; satelite?: boolean; ponto?: string }) {
     const params = new URLSearchParams(searchParams.toString());
     if (next.ordem !== undefined) { if (next.ordem) params.set("ordem", next.ordem); else params.delete("ordem"); }
     if (next.parametro !== undefined) { if (next.parametro) params.set("parametro", next.parametro); else params.delete("parametro"); }
     if (next.status !== undefined) { if (next.status !== "all") params.set("status", next.status); else params.delete("status"); }
     if (next.satelite !== undefined) { if (next.satelite) params.set("satelite", "1"); else params.delete("satelite"); }
+    if (next.ponto !== undefined) { if (next.ponto) params.set("ponto", next.ponto); else params.delete("ponto"); }
     router.replace(`/mapas?${params.toString()}`, { scroll: false });
   }
   function setSelectedOrderId(next: string) {
@@ -117,7 +119,7 @@ export function AgronomicMapExplorer() {
     setNdviRaster(null);
     setNdviRasterError(null);
     setSelectedOrderIdState(next);
-    updateUrl({ ordem: next });
+    updateUrl({ ordem: next, ponto: "" });
   }
   function setParameter(next: string) {
     setLayer(null);
@@ -125,7 +127,7 @@ export function AgronomicMapExplorer() {
     setParameterState(next);
     updateUrl({ parametro: next });
   }
-  function setStatusFilter(next: "all" | "collected" | "pending") { setStatusFilterState(next); updateUrl({ status: next }); }
+  function setStatusFilter(next: "all" | "collected" | "pending") { setStatusFilterState(next); updateUrl({ status: next, ponto: "" }); }
   function setSatelliteLayer(next: boolean) { setSatelliteLayerState(next); updateUrl({ satelite: next }); }
 
   useEffect(() => {
@@ -435,6 +437,8 @@ export function AgronomicMapExplorer() {
                 colorFor={colorFor}
                 legend={legend}
                 imageOverlay={satelliteLayer ? ndviRaster : null}
+                selectedPointId={selectedPointId || null}
+                onPointSelect={(point) => updateUrl({ ponto: point?.id ?? "" })}
                 hint={parameter ? `Camada: ${parameter}` : "Clique num ponto para ver os dados"}
               />
             )}
