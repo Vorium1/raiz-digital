@@ -38,11 +38,19 @@ export function GoogleFieldMap({
   boundaryFillColor,
   imageOverlay,
   baseLayer = "default",
+  selectedPointId = null,
+  onPointSelect,
   onProviderFailure,
 }: FieldMapProps & { onProviderFailure?: (error: Error) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const onPointSelectRef = useRef(onPointSelect);
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
   const [tilesReady, setTilesReady] = useState(false);
+  onPointSelectRef.current = onPointSelect;
+
+  useEffect(() => {
+    setSelectedPoint(selectedPointId ? points.find((point) => point.id === selectedPointId) ?? null : null);
+  }, [selectedPointId, points]);
 
   function defaultColor(point: MapPoint) {
     const collected = Boolean(point.collectedAt);
@@ -63,7 +71,6 @@ export function GoogleFieldMap({
       if (!cancelled) onProviderFailure?.(error);
     };
 
-    setSelectedPoint(null);
     setTilesReady(false);
     unsubscribeAuthFailure = subscribeGoogleMapsAuthFailure(failProvider);
 
@@ -150,7 +157,10 @@ export function GoogleFieldMap({
         clickListener = map.data.addListener("click", (event: any) => {
           const pointId = String(event.feature.getProperty("pointId") ?? "");
           const point = pointsById.get(pointId);
-          if (point) setSelectedPoint(point);
+          if (point) {
+            setSelectedPoint(point);
+            onPointSelectRef.current?.(point);
+          }
         });
 
         if (imageOverlay) {
@@ -237,7 +247,7 @@ export function GoogleFieldMap({
         <div className="real-field-map-panel">
           <div className="real-field-map-panel-head">
             <strong>{selectedPoint.code}</strong>
-            <button type="button" className="icon-button" aria-label="Fechar" onClick={() => setSelectedPoint(null)}><Icon name="close" size={13}/></button>
+            <button type="button" className="icon-button" aria-label="Fechar" onClick={() => { setSelectedPoint(null); onPointSelectRef.current?.(null); }}><Icon name="close" size={13}/></button>
           </div>
           <dl>
             <div><dt>Status</dt><dd>{pointPositionKind(selectedPoint) === "PLANNED" ? "Planejado" : selectedPoint.collectedAt ? "Coletado" : "Coordenada real"}</dd></div>
