@@ -48,6 +48,9 @@ export type FieldMapProps = {
   boundaryFillColor?: string;
   imageOverlay?: MapImageOverlay | null;
   baseLayer?: FieldMapBaseLayer;
+  /** Seleção controlada opcional; usada para manter URL, mapa e Assistente RAIZ no mesmo ponto. */
+  selectedPointId?: string | null;
+  onPointSelect?: (point: MapPoint | null) => void;
 };
 
 export type PortfolioCanvasField = {
