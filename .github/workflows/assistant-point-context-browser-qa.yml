@@ -56,7 +56,16 @@ jobs:
         run: npm ci
 
       - name: Build do HEAD
-        run: npm run build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm run build; then
+            exit 0
+          fi
+          echo "::warning::Build inicial falhou; repetindo uma vez para tolerar falha transitória do next/font."
+          rm -rf .next
+          sleep 5
+          npm run build
 
       - name: Preparar sessão temporária e ponto real de homologação
         shell: bash
