@@ -816,8 +816,11 @@ button { color: inherit; }
 .comparison-table td, .comparison-table th{white-space:nowrap}
 .comparison-table td .status-badge{margin-left:6px}
 .comparison-row-incompatible{opacity:.72}
-.comparison-diff-up{color:#29966f;font-weight:700}
-.comparison-diff-down{color:#d9655a;font-weight:700}
+.comparison-diff-neutral{color:var(--ink);font-weight:700}
+.comparison-delta-note{align-items:flex-start;color:var(--muted);display:flex;font-size:9px;gap:6px;line-height:1.5;margin:10px 22px 0}
+.comparison-delta-note svg{flex-shrink:0;margin-top:1px}
+.comparison-value{display:inline-block;font-weight:650}
+.comparison-measurement-context{color:var(--muted);display:block;font-size:8px;line-height:1.35;margin-top:4px;max-width:260px;white-space:normal}
 .comparison-compatible{align-items:center;color:#29966f;display:inline-flex;font-size:9px;font-weight:700;gap:4px}
 .comparison-incompatible{align-items:center;color:var(--warning);cursor:help;display:inline-flex;font-size:9px;font-weight:700;gap:4px}
 .comparison-incompatible-notes{color:var(--muted);font-size:9px;line-height:1.6;margin:10px 22px 4px;padding-top:10px;border-top:1px solid var(--line)}

@@ -1,0 +1,154 @@
+name: Compatible Comparisons Browser QA
+
+on:
+  push:
+    branches:
+      - "feature/compatible-comparisons-deltas"
+    paths:
+      - ".github/workflows/compatible-comparisons-browser-qa.yml"
+      - "e2e/compatible-comparisons-history.spec.ts"
+      - "scripts/test-comparison-compatibility.mjs"
+      - "src/domain/comparison-compatibility.ts"
+      - "src/lib/repositories/comparisons.ts"
+      - "src/app/api/comparisons/**"
+      - "src/components/comparison-explorer.tsx"
+      - "src/components/historical-comparison-explorer.tsx"
+      - "src/components/historical-comparison-explorer.module.css"
+      - "src/app/(platform)/historico/page.tsx"
+      - "src/app/globals.css"
+  workflow_dispatch:
+
+concurrency:
+  group: compatible-comparisons-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: issue-112-browser-qa
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 25
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      DATA_MODE: database
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do HEAD
+        run: npm run build
+
+      - name: Preparar sessão temporária de homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+          const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            await client.query(
+              "UPDATE user_sessions SET revoked_at=now() WHERE user_agent='github-actions-compatible-comparisons-qa' AND revoked_at IS NULL",
+            );
+            const target = await client.query(
+              `SELECT tm.user_id::text AS user_id, tm.tenant_id::text AS tenant_id
+               FROM tenant_members tm
+               JOIN users u ON u.id=tm.user_id
+               JOIN tenants t ON t.id=tm.tenant_id AND t.status='ACTIVE'
+               WHERE tm.active=true
+               ORDER BY u.is_platform_curator DESC, tm.role::text, tm.user_id
+               LIMIT 1`,
+            );
+            const row = target.rows[0];
+            if (!row?.user_id || !row?.tenant_id) throw new Error("Nenhum membro ativo de homologação encontrado.");
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-compatible-comparisons-qa',NULL)
+               RETURNING id::text`,
+              [row.user_id, row.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Iniciar HEAD contra homologação
+        shell: bash
+        env:
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          npm start -- --hostname 127.0.0.1 > /tmp/raiz-compatible-comparisons.log 2>&1 &
+          echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/raiz-compatible-comparisons.log
+          exit 1
+
+      - name: Rodar QA desktop e mobile
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/compatible-comparisons-history.spec.ts
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
+          if [ -z "${E2E_SESSION_ID:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({ connectionString: process.env.HOMOLOGATION_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-compatible-comparisons-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatible-comparisons-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
