@@ -24,13 +24,16 @@ async function authenticate(page: Page) {
 
 async function openPublishedReport(page: Page) {
   await authenticate(page);
-  await page.goto("/relatorios/talhao/" + ANALYSIS_ID + "?versao=publicada", {
+  // Item 9: havendo publicação íntegra, a visão técnica deve abrir a entrega congelada SEM depender
+  // de query string manual. Isso mantém produtor e técnico na mesma decisão por padrão.
+  await page.goto("/relatorios/talhao/" + ANALYSIS_ID, {
     waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
   await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
   await expect(page.locator(".report-final-pages")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/snapshot IMUTÁVEL publicado/i)).toBeVisible();
+  await expect(page.locator(".report-version-toggle a.active")).toContainText("Versão publicada");
   return page.locator(".report-final-pages");
 }
 
@@ -41,8 +44,38 @@ async function assertNoHorizontalOverflow(page: Page) {
   ).toBeLessThanOrEqual(1);
 }
 
-test.describe("Issue #103 · relatório final visual", () => {
+test.describe("Item 9 · entrega oficial congelada", () => {
   test.setTimeout(120_000);
+
+  test("visão técnica usa publicação por padrão e versão atual exige escolha explícita", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await openPublishedReport(page);
+
+    await page.getByRole("link", { name: "Versão atual" }).click();
+    await expect(page).toHaveURL(/versao=atual/);
+    await expect(page.locator(".report-version-toggle a.active")).toContainText("Versão atual");
+    await expect(page.locator(".report-visual-status-card")).toContainText(/versão atual \/ rascunho/i);
+    await expect(page.getByText(/snapshot IMUTÁVEL publicado/i)).toHaveCount(0);
+  });
+
+  test("produtor e técnico publicado usam o mesmo contexto e recomendações congeladas", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    const technical = await openPublishedReport(page);
+
+    const technicalTitle = (await technical.locator(".report-visual-title-row h1").first().innerText()).trim();
+    const fieldName = technicalTitle.split(" · ")[0]?.trim();
+    expect(fieldName).toBeTruthy();
+
+    const technicalLabels = await technical.locator(".report-recommendation-table tbody tr td:first-child strong").allInnerTexts();
+
+    await page.goto("/resultado/" + ANALYSIS_ID, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.locator(".simple-result-document")).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".simple-result-hero h1")).toHaveText(fieldName!);
+    await expect(page.getByText("Resultado oficial", { exact: true })).toBeVisible();
+
+    const producerLabels = await page.locator(".simple-result-recommendations article > div > strong").allInnerTexts();
+    expect(producerLabels).toEqual(technicalLabels);
+  });
 
   test("desktop renderiza três páginas com diagnóstico, manejo e fechamento", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
