@@ -1,5 +1,5 @@
 import { withTenant } from "@/lib/db";
-import type { AssistantScreenContext, AssistantScreenState } from "@/lib/ai/assistant-screen";
+import { UUID_EXACT, type AssistantScreenContext, type AssistantScreenState } from "@/lib/ai/assistant-screen";
 import { buildAgronomicEvidencePackage, type AgronomicEvidencePackage } from "@/lib/ai/evidence-package";
 import { getExecutiveDashboard, getPortfolioFieldSummaries, type ExecutiveDashboard } from "@/lib/repositories/dashboard";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
@@ -254,8 +254,26 @@ export async function buildIntelligenceEvidence(tenantId: string, userId: string
  * de portfólio inteiro disfarçada de "contexto normal" -- só `"dashboard"` representa a ausência LEGÍTIMA
  * de seleção (nenhum `collectionOrderId` informado, comportamento global pretendido de verdade).
  */
+export type MapSelectedPointEvidence = {
+  id: string;
+  code: string;
+  collectedAt: string | null;
+  depthFromCm: number;
+  depthToCm: number;
+  accuracyM: number | null;
+  gpsSource: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  positionKind: "OBSERVED" | "AUDITED_SOURCE" | "PLANNED";
+  labResultCount: number;
+  selectedParameter: {
+    code: string;
+    results: Array<{ value: number; unit: string | null; method: string | null }>;
+  } | null;
+};
+
 export type MapEvidence =
-  | { kind: "map"; delegatedTo: "field"; field: FieldEvidence }
+  | { kind: "map"; delegatedTo: "field"; field: FieldEvidence; selectedPoint: MapSelectedPointEvidence | null }
   | { kind: "map"; delegatedTo: "dashboard"; dashboard: DashboardEvidence }
   | { kind: "map"; delegatedTo: "unavailable" };
 
@@ -272,15 +290,123 @@ async function resolveFieldIdForCollectionOrder(tenantId: string, userId: string
   });
 }
 
+const AUDITED_POINT_SOURCES = new Set(["SHAPEFILE_REAL_GPS_LONLAT", "SHAPEFILE_REAL_EPSG4326"]);
+
+async function resolveMapSelectedPoint(
+  tenantId: string,
+  userId: string,
+  collectionOrderId: string,
+  pointId: string,
+  parameter?: string,
+): Promise<MapSelectedPointEvidence | null> {
+  if (!UUID_EXACT.test(collectionOrderId) || !UUID_EXACT.test(pointId)) return null;
+
+  return withTenant({ tenantId, userId }, async (client) => {
+    const pointResult = await client.query<{
+      id: string;
+      code: string;
+      collectedAt: string | null;
+      depthFromCm: number;
+      depthToCm: number;
+      accuracyM: number | null;
+      gpsSource: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      hasObservedPosition: boolean;
+      labResultCount: number;
+    }>(
+      `SELECT sp.id::text,
+              sp.code,
+              sp.collected_at::text AS "collectedAt",
+              sp.depth_from_cm::float8 AS "depthFromCm",
+              sp.depth_to_cm::float8 AS "depthToCm",
+              sp.accuracy_m::float8 AS "accuracyM",
+              sp.gps_source AS "gpsSource",
+              ST_Y(COALESCE(sp.observed_position, sp.position))::float8 AS latitude,
+              ST_X(COALESCE(sp.observed_position, sp.position))::float8 AS longitude,
+              (sp.observed_position IS NOT NULL) AS "hasObservedPosition",
+              (SELECT count(*)::int
+                 FROM lab_samples ls
+                 JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+                WHERE ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id) AS "labResultCount"
+       FROM sample_points sp
+       WHERE sp.tenant_id = $1::uuid
+         AND sp.collection_order_id = $2::uuid
+         AND sp.id = $3::uuid
+       LIMIT 1`,
+      [tenantId, collectionOrderId, pointId],
+    );
+    const point = pointResult.rows[0];
+    if (!point) return null;
+
+    const selectedParameterResults = parameter
+      ? await client.query<{ value: number; unit: string | null; method: string | null }>(
+          `SELECT lr.numeric_value::float8 AS value,
+                  lr.unit,
+                  lr.analytical_method AS method
+             FROM lab_samples ls
+             JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+            WHERE ls.tenant_id = $1::uuid
+              AND ls.sample_point_id = $2::uuid
+              AND lr.parameter_code = $3
+              AND lr.numeric_value IS NOT NULL
+            ORDER BY lr.id
+            LIMIT 5`,
+          [tenantId, pointId, parameter],
+        )
+      : { rows: [] as Array<{ value: number; unit: string | null; method: string | null }> };
+
+    const gpsSource = point.gpsSource?.trim() ?? null;
+    const positionKind: MapSelectedPointEvidence["positionKind"] = point.hasObservedPosition
+      ? "OBSERVED"
+      : gpsSource && AUDITED_POINT_SOURCES.has(gpsSource.toUpperCase())
+        ? "AUDITED_SOURCE"
+        : "PLANNED";
+
+    return {
+      id: point.id,
+      code: point.code,
+      collectedAt: point.collectedAt,
+      depthFromCm: point.depthFromCm,
+      depthToCm: point.depthToCm,
+      accuracyM: point.accuracyM,
+      gpsSource,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      positionKind,
+      labResultCount: point.labResultCount,
+      selectedParameter: parameter
+        ? { code: parameter, results: selectedParameterResults.rows }
+        : null,
+    };
+  });
+}
+
 export async function buildMapEvidence(tenantId: string, userId: string, state: AssistantScreenState | undefined): Promise<MapEvidence> {
   const s = state && state.screen === "map" ? state : undefined;
+
+  // Um ponto específico sem uma ordem específica é contexto incompleto, nunca visão global.
+  if (s?.pointId && !s.collectionOrderId) {
+    return { kind: "map", delegatedTo: "unavailable" };
+  }
+
   if (s?.collectionOrderId) {
     const fieldId = await resolveFieldIdForCollectionOrder(tenantId, userId, s.collectionOrderId);
     if (!fieldId) return { kind: "map", delegatedTo: "unavailable" };
+
+    const selectedPoint = s.pointId
+      ? await resolveMapSelectedPoint(tenantId, userId, s.collectionOrderId, s.pointId, s.parameter)
+      : null;
+    if (s.pointId && !selectedPoint) {
+      // ID malformado, ponto inexistente, de outro tenant ou pertencente a outra ordem: fail closed.
+      return { kind: "map", delegatedTo: "unavailable" };
+    }
+
     const field = await buildFieldEvidence(tenantId, userId, fieldId);
     if (!field) return { kind: "map", delegatedTo: "unavailable" };
-    return { kind: "map", delegatedTo: "field", field };
+    return { kind: "map", delegatedTo: "field", field, selectedPoint };
   }
+
   // Só aqui, sem NENHUMA seleção informada, o dashboard (contexto global) é o comportamento correto.
   const dashboard = await buildDashboardEvidence(tenantId, userId);
   return { kind: "map", delegatedTo: "dashboard", dashboard };
@@ -362,7 +488,10 @@ export async function buildAssistantEvidence(tenantId: string, userId: string, s
     case "map": {
       const evidence = await buildMapEvidence(tenantId, userId, screenState);
       const entityIds: Record<string, string> = {};
-      if (evidence.delegatedTo === "field") entityIds.fieldId = evidence.field.field.id;
+      if (evidence.delegatedTo === "field") {
+        entityIds.fieldId = evidence.field.field.id;
+        if (evidence.selectedPoint) entityIds.pointId = evidence.selectedPoint.id;
+      }
       // Registra qual ordem foi TENTADA mesmo quando não resolveu -- só pra auditoria/depuração (o valor já
       // veio do próprio client, não é segredo). É o que distingue de verdade, no manifesto, "nada
       // selecionado" (dashboard, `entityIds` vazio) de "algo selecionado que não resolveu" (`unavailable`).
