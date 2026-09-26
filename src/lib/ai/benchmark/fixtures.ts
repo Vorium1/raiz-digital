@@ -102,7 +102,7 @@ export const syntheticIntelligenceEvidence: IntelligenceEvidence = {
   totalCount: 1,
 };
 
-export const syntheticMapFieldEvidence: MapEvidence = { kind: "map", delegatedTo: "field", field: syntheticFieldEvidence };
+export const syntheticMapFieldEvidence: MapEvidence = { kind: "map", delegatedTo: "field", field: syntheticFieldEvidence, selectedPoint: null };
 
 /** Fixture "cross-tenant": simula o resultado que `buildAssistantEvidence` já devolve quando a entidade não
  *  pertence ao tenant da sessão -- `found:false`, nenhum dado. O nome real da entidade de outro tenant NUNCA

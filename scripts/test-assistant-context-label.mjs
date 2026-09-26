@@ -38,10 +38,20 @@ assert.equal(deriveContextLabel({ found: true, kind: "intelligence", evidence: {
 
 // 8. Mapa -- com talhão delegado vs. sem nenhuma seleção (dashboard).
 assert.equal(
-  deriveContextLabel({ found: true, kind: "map", evidence: { delegatedTo: "field", field: { field: { name: "Talhão 04" } } }, entityIds: {} }),
+  deriveContextLabel({ found: true, kind: "map", evidence: { delegatedTo: "field", field: { field: { name: "Talhão 04" } }, selectedPoint: null }, entityIds: {} }),
   "Mapa · Talhão 04",
 );
 assert.equal(deriveContextLabel({ found: true, kind: "map", evidence: { delegatedTo: "dashboard", dashboard: {} }, entityIds: {} }), "Mapa");
+assert.equal(
+  deriveContextLabel({
+    found: true,
+    kind: "map",
+    evidence: { delegatedTo: "field", field: { field: { name: "Talhão 04" } }, selectedPoint: { code: "P3" } },
+    entityIds: { pointId: "9f8b6e2a-4c1d-4a7e-9b3a-2f6d8c1e5a90" },
+  }),
+  "Mapa · Talhão 04 · Ponto P3",
+);
+assert.equal(deriveContextLabel({ found: true, kind: "map", evidence: { delegatedTo: "unavailable" }, entityIds: {} }), null);
 
 // 9. `found: false` (entidade não encontrada/outro tenant) -> null, sempre, pra qualquer kind.
 assert.equal(deriveContextLabel({ found: false, kind: "field", entityIds: {} }), null);
@@ -51,4 +61,4 @@ assert.equal(deriveContextLabel({ found: false, kind: "property", entityIds: {} 
 // 10. Contexto explicitamente inválido -> null (o painel mostra "Contexto indisponível").
 assert.equal(deriveContextLabel({ found: false, kind: "invalid", entityIds: {} }), null);
 
-console.log("assistant-context-label: 10 cenários aprovados (rótulo sempre derivado do Evidence Package real; found:false e contexto inválido nunca viram um rótulo inventado)");
+console.log("assistant-context-label: rótulo sempre deriva da evidência real; mapa com ponto usa código validado e contexto indisponível nunca ganha rótulo genérico");

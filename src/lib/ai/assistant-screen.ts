@@ -29,7 +29,7 @@ export type AssistantScreenContext =
   | { type: "report-property"; id: string };
 
 export type AssistantScreenState =
-  | { screen: "map"; collectionOrderId?: string; parameter?: string; status?: "all" | "collected" | "pending"; satellite?: boolean }
+  | { screen: "map"; collectionOrderId?: string; pointId?: string; parameter?: string; status?: "all" | "collected" | "pending"; satellite?: boolean }
   | { screen: "comparison"; mode?: "fields" | "seasons" | "points" | "properties"; a?: string; b?: string }
   /** `invalidFilter` (pré-ajuste 2, fechamento final da Fase 4A): `true` quando pelo menos um dos 4 ids
    *  veio PREENCHIDO mas fora do formato de uuid. Nesse caso os 4 campos ficam `undefined` de propósito
@@ -109,6 +109,7 @@ export function inferScreenState(pathname: string, searchParams: SearchParamsLik
     return {
       screen: "map",
       collectionOrderId: searchParams.get("ordem") ?? undefined,
+      pointId: searchParams.get("ponto") ?? undefined,
       parameter: searchParams.get("parametro") ?? undefined,
       status: status === "collected" || status === "pending" ? status : status === "all" ? "all" : undefined,
       satellite: searchParams.get("satelite") === "1",
@@ -178,7 +179,7 @@ export function parseAssistantScreenState(raw: unknown): AssistantScreenState | 
   const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string) : undefined);
   if (screen === "map") {
     const status = str("status");
-    return { screen: "map", collectionOrderId: str("collectionOrderId"), parameter: str("parameter"), status: status === "collected" || status === "pending" || status === "all" ? status : undefined, satellite: body.satellite === true };
+    return { screen: "map", collectionOrderId: str("collectionOrderId"), pointId: str("pointId"), parameter: str("parameter"), status: status === "collected" || status === "pending" || status === "all" ? status : undefined, satellite: body.satellite === true };
   }
   if (screen === "comparison") {
     const mode = str("mode");

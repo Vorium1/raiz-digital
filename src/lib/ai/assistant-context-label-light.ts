@@ -92,11 +92,32 @@ export async function resolveContextLabelLight(
 
     case "map": {
       const s = screenState?.screen === "map" ? screenState : undefined;
-      // Mesmo cuidado de `resolveFieldIdForCollectionOrder` (assistant-evidence.ts): `collectionOrderId`
-      // vem do `ScreenState`, nunca pré-validado como uuid em outro ponto -- checa o formato ANTES de
-      // qualquer `::uuid`, nunca deixa um valor malformado chegar no banco.
-      if (!s?.collectionOrderId || !UUID_EXACT.test(s.collectionOrderId)) return "Mapa";
+      if (!s?.collectionOrderId) {
+        // Ausência legítima de seleção: o contexto é o mapa geral.
+        return s?.pointId ? null : "Mapa";
+      }
+      if (!UUID_EXACT.test(s.collectionOrderId)) return null;
+      if (s.pointId && !UUID_EXACT.test(s.pointId)) return null;
+
       return withTenant({ tenantId, userId }, async (client) => {
+        if (s.pointId) {
+          const result = await client.query(
+            `SELECT f.name AS "fieldName", sp.code AS "pointCode"
+               FROM collection_orders co
+               JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
+               JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+               JOIN sample_points sp
+                 ON sp.tenant_id = co.tenant_id
+                AND sp.collection_order_id = co.id
+                AND sp.id = $3::uuid
+              WHERE co.tenant_id = $1::uuid AND co.id = $2::uuid
+              LIMIT 1`,
+            [tenantId, s.collectionOrderId, s.pointId],
+          );
+          const row = result.rows[0];
+          return row ? `Mapa · ${row.fieldName} · Ponto ${row.pointCode}` : null;
+        }
+
         const result = await client.query(
           `SELECT f.name AS "fieldName" FROM collection_orders co
            JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
@@ -105,11 +126,7 @@ export async function resolveContextLabelLight(
           [tenantId, s.collectionOrderId],
         );
         const fieldName = result.rows[0]?.fieldName;
-        // Ordem informada mas que não resolveu (inexistente/outro tenant) -- mesmo comportamento do
-        // caminho pesado (`deriveContextLabel`, `delegatedTo === "unavailable"`): nunca um rótulo
-        // inventado, mas também nunca "Contexto indisponível" aqui -- "Mapa" genérico é honesto (o mapa
-        // em si é um contexto válido, só a seleção específica não resolveu).
-        return fieldName ? `Mapa · ${fieldName}` : "Mapa";
+        return fieldName ? `Mapa · ${fieldName}` : null;
       });
     }
 

@@ -36,6 +36,8 @@ export function LeafletFieldMap({
   boundaryFillColor,
   imageOverlay,
   baseLayer = "default",
+  selectedPointId = null,
+  onPointSelect,
   providerNote,
 }: FieldMapProps & { providerNote?: string | null }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -43,9 +45,14 @@ export function LeafletFieldMap({
   const layersRef = useRef<Record<string, Leaflet.LayerGroup>>({});
   const latestRef = useRef({ boundary, points, colorFor, boundaryFillColor, imageOverlay });
   const onSelectRef = useRef<(point: MapPoint) => void>(() => {});
+  const onPointSelectRef = useRef(onPointSelect);
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
   latestRef.current = { boundary, points, colorFor, boundaryFillColor, imageOverlay };
-  onSelectRef.current = setSelectedPoint;
+  onPointSelectRef.current = onPointSelect;
+  onSelectRef.current = (point) => {
+    setSelectedPoint(point);
+    onPointSelectRef.current?.(point);
+  };
 
   function defaultColor(point: MapPoint) {
     const collected = Boolean(point.collectedAt);
@@ -151,10 +158,15 @@ export function LeafletFieldMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseLayer]);
 
+  // Sincroniza o painel controlado independentemente do instante em que o Leaflet termina de montar.
+  // Antes, o early-return de mapRef impedia restaurar um ponto vindo da URL quando o mapa ainda não existia.
+  useEffect(() => {
+    setSelectedPoint(selectedPointId ? points.find((point) => point.id === selectedPointId) ?? null : null);
+  }, [selectedPointId, points]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    setSelectedPoint(null);
     void import("leaflet").then((mod) => {
       drawLayers(mod.default, map);
       requestAnimationFrame(() => map.invalidateSize({ pan: false }));
@@ -183,7 +195,7 @@ export function LeafletFieldMap({
         <div className="real-field-map-panel">
           <div className="real-field-map-panel-head">
             <strong>{selectedPoint.code}</strong>
-            <button type="button" className="icon-button" aria-label="Fechar" onClick={() => setSelectedPoint(null)}><Icon name="close" size={13}/></button>
+            <button type="button" className="icon-button" aria-label="Fechar" onClick={() => { setSelectedPoint(null); onPointSelectRef.current?.(null); }}><Icon name="close" size={13}/></button>
           </div>
           <dl>
             <div><dt>Status</dt><dd>{selectedPoint.collectedAt ? "Coletado" : "Pendente"}</dd></div>

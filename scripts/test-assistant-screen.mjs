@@ -49,10 +49,10 @@ assert.deepEqual(inferScreenContext(`/talhoes/${REAL_UUID.toUpperCase()}`), { ty
 
 // 8. ScreenState do mapa -- exatamente os mesmos nomes de query param que agronomic-map-explorer.tsx já lê.
 assert.deepEqual(
-  inferScreenState("/mapas", searchParams({ ordem: "abc", parametro: "P", status: "pending", satelite: "1" })),
-  { screen: "map", collectionOrderId: "abc", parameter: "P", status: "pending", satellite: true },
+  inferScreenState("/mapas", searchParams({ ordem: "abc", ponto: REAL_UUID, parametro: "P", status: "pending", satelite: "1" })),
+  { screen: "map", collectionOrderId: "abc", pointId: REAL_UUID, parameter: "P", status: "pending", satellite: true },
 );
-assert.deepEqual(inferScreenState("/mapas", searchParams({})), { screen: "map", collectionOrderId: undefined, parameter: undefined, status: undefined, satellite: false });
+assert.deepEqual(inferScreenState("/mapas", searchParams({})), { screen: "map", collectionOrderId: undefined, pointId: undefined, parameter: undefined, status: undefined, satellite: false });
 
 // 9. ScreenState do comparativo -- só A escolhido (B ainda não), cenário real de pré-seleção via URL.
 assert.deepEqual(
@@ -112,8 +112,8 @@ assert.deepEqual(parseAssistantScreenContext({ type: "comparison" }), { type: "c
 assert.equal(parseAssistantScreenState(undefined), undefined);
 assert.equal(parseAssistantScreenState({ screen: "tela-desconhecida" }), undefined);
 assert.deepEqual(
-  parseAssistantScreenState({ screen: "map", collectionOrderId: "abc", satellite: true }),
-  { screen: "map", collectionOrderId: "abc", parameter: undefined, status: undefined, satellite: true },
+  parseAssistantScreenState({ screen: "map", collectionOrderId: "abc", pointId: REAL_UUID, satellite: true }),
+  { screen: "map", collectionOrderId: "abc", pointId: REAL_UUID, parameter: undefined, status: undefined, satellite: true },
 );
 assert.deepEqual(
   parseAssistantScreenState({ screen: "intelligence", interpretationState: "BLOQUEADA", reviewState: "APROVADA" }),
@@ -153,4 +153,4 @@ assert.equal(parseAssistantScreenState({ screen: "intelligence", reviewState: "A
 assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).invalidFilter, true);
 assert.equal(inferScreenState("/inteligencia", searchParams({ fieldId: "nao-e-um-uuid" })).fieldId, undefined);
 
-console.log("assistant-screen: 23 cenários aprovados (ScreenContext cobre as 9 rotas reais; ScreenState lê os MESMOS query params já usados pelas telas; nenhum id malformado vira contexto; contexto inválido do corpo nunca vira dashboard silenciosamente; uuid malformado no filtro de Inteligência nunca amplia a consulta nem chega no banco)");
+console.log("assistant-screen: 23 cenários aprovados (ScreenContext cobre as rotas reais; ScreenState do mapa transporta ordem + ponto + filtros visíveis; contexto inválido nunca vira dashboard silenciosamente; uuid malformado no filtro de Inteligência nunca amplia a consulta nem chega no banco)");

@@ -20,9 +20,13 @@ export function MapboxFieldMap({
   imageOverlay,
   hint = "Clique num ponto para ver os dados",
   boundaryFillColor,
+  selectedPointId = null,
+  onPointSelect,
   onProviderFailure,
 }: FieldMapProps & { onProviderFailure?: (error: Error) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const onPointSelectRef = useRef(onPointSelect);
+  onPointSelectRef.current = onPointSelect;
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +113,15 @@ export function MapboxFieldMap({
           }
 
           if (points.length) {
+            const pointsById = new Map(points.map((point) => [point.id, point]));
+            const openPointPopup = (point: (typeof points)[number]) => {
+              const effective = effectivePointCoordinates(point);
+              const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
+                .setLngLat([effective.longitude, effective.latitude])
+                .setHTML(`<strong>${point.code}</strong><br><small>${hint}</small>`)
+                .addTo(map);
+              popup.on("close", () => onPointSelectRef.current?.(null));
+            };
             const features = points.map((point) => {
               const effective = effectivePointCoordinates(point);
               const palette = colorFor
@@ -147,13 +160,14 @@ export function MapboxFieldMap({
             map.on("click", "raiz-points", (event: any) => {
               const feature = event.features?.[0];
               if (!feature) return;
-              const coords = feature.geometry.coordinates;
-              const code = String(feature.properties?.code ?? "Ponto");
-              new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
-                .setLngLat(coords)
-                .setHTML(`<strong>${code}</strong><br><small>${hint}</small>`)
-                .addTo(map);
+              const pointId = String(feature.properties?.id ?? "");
+              const point = pointsById.get(pointId);
+              if (!point) return;
+              onPointSelectRef.current?.(point);
+              openPointPopup(point);
             });
+            const initiallySelected = selectedPointId ? pointsById.get(selectedPointId) : null;
+            if (initiallySelected) openPointPopup(initiallySelected);
             map.on("mouseenter", "raiz-points", () => { map.getCanvas().style.cursor = "pointer"; });
             map.on("mouseleave", "raiz-points", () => { map.getCanvas().style.cursor = ""; });
           }
@@ -183,7 +197,7 @@ export function MapboxFieldMap({
       cancelled = true;
       try { map?.remove?.(); } catch { /* noop */ }
     };
-  }, [boundary, points, height, colorFor, imageOverlay, hint, boundaryFillColor, onProviderFailure]);
+  }, [boundary, points, height, colorFor, imageOverlay, hint, boundaryFillColor, selectedPointId, onProviderFailure]);
 
   return (
     <div className="real-field-map mapbox-field-map" data-map-provider="mapbox" data-has-image-overlay={imageOverlay ? "true" : "false"}>

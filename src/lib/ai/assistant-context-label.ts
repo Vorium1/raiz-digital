@@ -28,6 +28,12 @@ export function deriveContextLabel(evidence: AssistantEvidenceResult): string | 
     case "intelligence":
       return "Inteligência Agronômica";
     case "map":
-      return evidence.evidence.delegatedTo === "field" ? `Mapa · ${evidence.evidence.field.field.name}` : "Mapa";
+      if (evidence.evidence.delegatedTo === "unavailable") return null;
+      if (evidence.evidence.delegatedTo === "field") {
+        return evidence.evidence.selectedPoint
+          ? `Mapa · ${evidence.evidence.field.field.name} · Ponto ${evidence.evidence.selectedPoint.code}`
+          : `Mapa · ${evidence.evidence.field.field.name}`;
+      }
+      return "Mapa";
   }
 }

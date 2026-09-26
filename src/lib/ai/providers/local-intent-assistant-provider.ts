@@ -138,6 +138,50 @@ async function resolveIntent(request: OperationalAssistantRequest): Promise<Part
   if (request.screenContext?.type === "map" && request.evidence?.found && request.evidence.kind === "map") {
     const mapEvidence = request.evidence.evidence as MapEvidence;
     const s = request.screenState?.screen === "map" ? request.screenState : undefined;
+    const selectedPoint = mapEvidence.delegatedTo === "field" ? mapEvidence.selectedPoint : null;
+    if (/(este ponto|ponto selecionado|explique.*ponto|explica.*ponto|sobre.*ponto)/.test(q)) {
+      if (!selectedPoint) {
+        return empty(
+          "Nenhum ponto válido está selecionado no mapa. Clique em um ponto e pergunte novamente.",
+          [],
+          ["Nenhum ponto real da ordem atual foi identificado no contexto."],
+        );
+      }
+
+      const positionLabel = selectedPoint.positionKind === "OBSERVED"
+        ? "GPS observado em campo"
+        : selectedPoint.positionKind === "AUDITED_SOURCE"
+          ? "Fonte espacial real auditada"
+          : "Posição planejada";
+      const parameterFacts = selectedPoint.selectedParameter?.results.slice(0, 3).map((result, index, all) => ({
+        label: all.length > 1
+          ? `${selectedPoint.selectedParameter!.code} · registro ${index + 1}`
+          : selectedPoint.selectedParameter!.code,
+        value: `${result.value} ${result.unit ?? ""}`.trim(),
+        source: "database" as const,
+      })) ?? [];
+      const missingInformation: string[] = [];
+      if (!selectedPoint.collectedAt) missingInformation.push("A data de coleta deste ponto não está registrada.");
+      if (selectedPoint.selectedParameter && selectedPoint.selectedParameter.results.length === 0) {
+        missingInformation.push(`Não há resultado laboratorial numérico de ${selectedPoint.selectedParameter.code} para este ponto.`);
+      }
+
+      return {
+        summary: `Ponto ${selectedPoint.code} da ordem selecionada: profundidade ${selectedPoint.depthFromCm}–${selectedPoint.depthToCm} cm; posição exibida como ${positionLabel.toLowerCase()}.`,
+        facts: [
+          { label: "Ponto", value: selectedPoint.code, source: "database" },
+          { label: "Profundidade", value: `${selectedPoint.depthFromCm}–${selectedPoint.depthToCm} cm`, source: "database" },
+          { label: "Posição", value: positionLabel, source: "database" },
+          { label: "Resultados de laudo", value: String(selectedPoint.labResultCount), source: "database" },
+          ...parameterFacts,
+        ],
+        attention_points: selectedPoint.positionKind === "PLANNED"
+          ? [{ label: "Posição planejada", reason: "Este ponto não tem GPS observado nem fonte espacial real auditada; a coordenada exibida não deve ser tratada como posição medida em campo." }]
+          : [],
+        missing_information: missingInformation,
+        cards: [],
+      };
+    }
     if (/(pendente|pending)/.test(q) && mapEvidence.delegatedTo === "field" && s?.collectionOrderId) {
       const pending = mapEvidence.field.collectionSummary.plannedPoints - mapEvidence.field.collectionSummary.collectedPoints;
       return {

@@ -1,0 +1,198 @@
+name: Assistant Point Context Browser QA
+
+on:
+  push:
+    branches:
+      - "feature/assistant-exact-entity-context"
+    paths:
+      - ".github/workflows/assistant-point-context-browser-qa.yml"
+      - "e2e/assistant-point-context.spec.ts"
+      - "scripts/test-assistant-point-context.mjs"
+      - "scripts/test-assistant-screen.mjs"
+      - "scripts/test-assistant-context-label.mjs"
+      - "src/components/agronomic-map-explorer.tsx"
+      - "src/components/spatial-map-types.ts"
+      - "src/components/real-field-map.tsx"
+      - "src/components/leaflet-field-map.tsx"
+      - "src/components/google-field-map.tsx"
+      - "src/components/mapbox-field-map.tsx"
+      - "src/components/assistant-raiz-widget.tsx"
+      - "src/app/(platform)/layout.tsx"
+      - "src/lib/ai/assistant-screen.ts"
+      - "src/lib/ai/assistant-evidence.ts"
+      - "src/lib/ai/assistant-context-label.ts"
+      - "src/lib/ai/assistant-context-label-light.ts"
+      - "src/lib/ai/providers/local-intent-assistant-provider.ts"
+  workflow_dispatch:
+
+concurrency:
+  group: assistant-point-context-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    name: issue-116-browser-qa
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 25
+    env:
+      HOMOLOGATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+      DATABASE_SSL: require
+      DATA_MODE: database
+      NEXT_PUBLIC_RAIZ_MAP_PROVIDER: leaflet
+      RAIZ_ASSISTANT_MODE: local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build do HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm run build; then
+            exit 0
+          fi
+          echo "::warning::Build inicial falhou; repetindo uma vez para tolerar falha transitória do next/font."
+          rm -rf .next
+          sleep 5
+          npm run build
+
+      - name: Preparar sessão temporária e ponto real de homologação
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { createHash, randomBytes } from "node:crypto";
+          import pg from "pg";
+
+          const databaseUrl = process.env.HOMOLOGATION_DATABASE_URL?.trim();
+          if (!databaseUrl) throw new Error("HOMOLOGATION_DATABASE_URL ausente.");
+          const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+          const client = await pool.connect();
+
+          try {
+            await client.query("BEGIN");
+            // Revoga qualquer sessão temporária residual de execução anterior deste QA.
+            await client.query(
+              "UPDATE user_sessions SET revoked_at=now() WHERE user_agent='github-actions-assistant-point-qa' AND revoked_at IS NULL",
+            );
+            const target = await client.query(
+              `SELECT co.id::text AS order_id,
+                      sp.id::text AS point_id,
+                      sp.code AS point_code,
+                      f.name AS field_name,
+                      lr.parameter_code AS parameter_code,
+                      co.tenant_id::text AS tenant_id,
+                      member.user_id::text AS user_id
+                 FROM collection_orders co
+                 JOIN crop_seasons cs ON cs.tenant_id=co.tenant_id AND cs.id=co.crop_season_id
+                 JOIN fields f ON f.tenant_id=cs.tenant_id AND f.id=cs.field_id
+                 JOIN tenants t ON t.id=co.tenant_id AND t.status='ACTIVE'
+                 JOIN sample_points sp ON sp.tenant_id=co.tenant_id AND sp.collection_order_id=co.id
+                 JOIN lab_samples ls ON ls.tenant_id=sp.tenant_id AND ls.sample_point_id=sp.id
+                 JOIN lab_results lr ON lr.tenant_id=ls.tenant_id AND lr.lab_sample_id=ls.id AND lr.numeric_value IS NOT NULL
+                 JOIN LATERAL (
+                   SELECT tm.user_id
+                     FROM tenant_members tm
+                     JOIN users u ON u.id=tm.user_id
+                    WHERE tm.tenant_id=co.tenant_id AND tm.active=true
+                    ORDER BY u.is_platform_curator DESC, tm.role::text, tm.user_id
+                    LIMIT 1
+                 ) member ON true
+                WHERE COALESCE(sp.observed_position, sp.position) IS NOT NULL
+                ORDER BY sp.collected_at DESC NULLS LAST, co.created_at DESC, sp.sequence NULLS LAST, sp.id
+                LIMIT 1`,
+            );
+            const row = target.rows[0];
+            if (!row?.order_id || !row?.point_id || !row?.point_code || !row?.field_name || !row?.parameter_code || !row?.tenant_id || !row?.user_id) {
+              throw new Error("Homologação não possui ordem/ponto real com resultado laboratorial numérico para o QA.");
+            }
+
+            const token = randomBytes(32).toString("base64url");
+            const tokenHash = createHash("sha256").update(token).digest("hex");
+            const session = await client.query(
+              `INSERT INTO user_sessions (user_id, tenant_id, token_hash, expires_at, user_agent, ip_hash)
+               VALUES ($1::uuid,$2::uuid,$3,now()+interval '45 minutes','github-actions-assistant-point-qa',NULL)
+               RETURNING id::text`,
+              [row.user_id, row.tenant_id, tokenHash],
+            );
+            await client.query("COMMIT");
+
+            console.log(`::add-mask::${token}`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_TOKEN=${token}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_SESSION_ID=${session.rows[0].id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_ORDER_ID=${row.order_id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_POINT_ID=${row.point_id}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_POINT_CODE=${row.point_code}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_FIELD_NAME=${row.field_name}\n`);
+            appendFileSync(process.env.GITHUB_ENV, `E2E_PARAMETER=${row.parameter_code}\n`);
+          } catch (error) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw error;
+          } finally {
+            client.release();
+            await pool.end();
+          }
+          NODE
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Iniciar HEAD contra homologação
+        shell: bash
+        env:
+          APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.HOMOLOGATION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          npm start -- --hostname 127.0.0.1 > /tmp/raiz-assistant-point.log 2>&1 &
+          echo "E2E_SERVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/raiz-assistant-point.log
+          exit 1
+
+      - name: Rodar QA desktop e mobile
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test e2e/assistant-point-context.spec.ts
+
+      - name: Revogar sessão temporária
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${E2E_SERVER_PID:-}" ]; then kill "${E2E_SERVER_PID}" 2>/dev/null || true; fi
+          if [ -z "${E2E_SESSION_ID:-}" ] || [ -z "${HOMOLOGATION_DATABASE_URL:-}" ]; then exit 0; fi
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const pool = new pg.Pool({ connectionString: process.env.HOMOLOGATION_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+          await pool.query(
+            "UPDATE user_sessions SET revoked_at=now() WHERE id=$1::uuid AND user_agent='github-actions-assistant-point-qa' AND revoked_at IS NULL",
+            [process.env.E2E_SESSION_ID],
+          );
+          await pool.end();
+          NODE
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-point-context-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
