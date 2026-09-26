@@ -158,16 +158,21 @@ export function LeafletFieldMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseLayer]);
 
+  // Sincroniza o painel controlado independentemente do instante em que o Leaflet termina de montar.
+  // Antes, o early-return de mapRef impedia restaurar um ponto vindo da URL quando o mapa ainda não existia.
+  useEffect(() => {
+    setSelectedPoint(selectedPointId ? points.find((point) => point.id === selectedPointId) ?? null : null);
+  }, [selectedPointId, points]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    setSelectedPoint(selectedPointId ? points.find((point) => point.id === selectedPointId) ?? null : null);
     void import("leaflet").then((mod) => {
       drawLayers(mod.default, map);
       requestAnimationFrame(() => map.invalidateSize({ pan: false }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay, selectedPointId]);
+  }, [boundary, points, colorFor, boundaryFillColor, imageOverlay]);
 
   const defaultLegend: MapLegendEntry[] = [{ label: "Coletado", color: "#00C4D6" }, { label: "Pendente", color: "#B86F3E" }];
   const activeLegend = legend ?? defaultLegend;
