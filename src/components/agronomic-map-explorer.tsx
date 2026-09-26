@@ -80,7 +80,7 @@ export function AgronomicMapExplorer() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [mobileView, setMobileView] = useState<"lista" | "mapa">("lista");
+  const [mobileView, setMobileView] = useState<"lista" | "mapa">(() => searchParams.get("ponto") ? "mapa" : "lista");
 
   const [selectedOrderId, setSelectedOrderIdState] = useState(searchParams.get("ordem") ?? "");
   const [parameter, setParameterState] = useState(searchParams.get("parametro") ?? "");
@@ -129,6 +129,10 @@ export function AgronomicMapExplorer() {
   }
   function setStatusFilter(next: "all" | "collected" | "pending") { setStatusFilterState(next); updateUrl({ status: next, ponto: "" }); }
   function setSatelliteLayer(next: boolean) { setSatelliteLayerState(next); updateUrl({ satelite: next }); }
+
+  useEffect(() => {
+    if (selectedPointId) setMobileView("mapa");
+  }, [selectedPointId]);
 
   useEffect(() => {
     void fetch("/api/collection-orders", { cache: "no-store" })
