@@ -1,9 +1,9 @@
-name: Final Visual Report Preview QA
+name: Frozen Decision Delivery Browser QA
 
 on:
   push:
     branches:
-      - "feature/report-final-visual-2-3-pages"
+      - "feature/frozen-decision-delivery"
     paths:
       - ".github/workflows/final-visual-report-preview-qa.yml"
       - "e2e/final-visual-report-preview.spec.ts"
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   visual:
-    name: issue-103-preview
+    name: issue-118-browser-qa
     runs-on: ubuntu-latest
     environment: homologation
     timeout-minutes: 20
@@ -183,7 +183,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: final-visual-report-preview-${{ github.sha }}
+          name: frozen-decision-delivery-${{ github.sha }}
           path: test-results
           if-no-files-found: warn
           retention-days: 14
