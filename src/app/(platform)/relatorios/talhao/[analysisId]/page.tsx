@@ -75,11 +75,15 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
   const liveStructured = (interpretationCurrent ? interpretation?.structuredOutput : null) as StructuredOutput | null;
 
   const publishedInfo = publishedSnapshot.found ? publishedSnapshot : null;
-  const requestedPublished = query.versao === "publicada";
+  const explicitlyCurrent = query.versao === "atual";
+  const explicitlyPublished = query.versao === "publicada";
   const integrityFailed = publishedInfo != null && publishedInfo.hashVerified === false;
   const canShowPublishedView = publishedInfo != null && publishedInfo.snapshot != null && publishedInfo.hashVerified === true;
-  const requestedView = requestedPublished && canShowPublishedView ? "publicada" : "atual";
-  const viewingPublished = requestedView === "publicada";
+  const publishedRecordExists = publishedInfo != null;
+  // Entrega oficial é a referência primária: quando existe publicação, técnico e produtor abrem a mesma
+  // decisão congelada por padrão. A leitura viva continua disponível, mas somente por escolha explícita.
+  const shouldUsePublishedVersion = explicitlyPublished || (!explicitlyCurrent && publishedRecordExists);
+  const viewingPublished = shouldUsePublishedVersion && canShowPublishedView;
   const publishedInterpretationIsCurrent = data.isShowingPublishedVersion && canShowPublishedView && interpretationCurrent;
 
   // Snapshots v3 congelam a decisão completa (contexto, pontos, síntese/recomendação aprovadas). V2 congela
@@ -149,7 +153,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
     ? reportMapPoints.length
     : new Set(displayInterpretation.map((row) => row.sampleCode)).size;
 
-  if (requestedPublished && !canShowPublishedView) {
+  if (shouldUsePublishedVersion && !canShowPublishedView) {
     const reason = !publishedInfo
       ? "Não existe uma versão oficial publicada para esta análise."
       : integrityFailed
@@ -170,7 +174,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
               <p>{reason}</p>
               <p>A versão atual permanece separada e não é usada como substituta do documento oficial.</p>
             </div>
-            <Link href={`/relatorios/talhao/${analysisId}`} className="button secondary no-print">Abrir somente o rascunho atual</Link>
+            <Link href={`/relatorios/talhao/${analysisId}?versao=atual`} className="button secondary no-print">Abrir somente a versão atual</Link>
           </section>
         </div>
       </>
@@ -187,7 +191,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           <span className="report-empty-note">Entrega técnica construída com dados persistidos, regras homologadas e revisão profissional.</span>
           <div style={{ display: "flex", gap: 10 }}>
             {interpretation && publicationReadiness?.allowed && REVIEW_ROLES.has(session.role) && <PublishReportButton interpretationId={interpretation.id} analysisId={analysisId} initialCommercialPlanSnapshotId={publishedSnapshotV3?.commercialPlanSnapshot?.id ?? ""}/>}
-            {!(query.versao === "publicada" && integrityFailed) && <PrintButton/>}
+            {!(shouldUsePublishedVersion && integrityFailed) && <PrintButton/>}
           </div>
         </div>
 
@@ -217,7 +221,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
 
         {publishedReport && (
           <div className="report-version-toggle no-print">
-            <Link href={`?`} className={!viewingPublished ? "active" : ""}>Versão atual</Link>
+            <Link href="?versao=atual" className={!viewingPublished ? "active" : ""}>Versão atual</Link>
             <Link href={`?versao=publicada`} className={viewingPublished ? "active" : ""} aria-disabled={!canShowPublishedView}>
               Versão publicada{integrityFailed ? " (integridade falhou)" : !canShowPublishedView ? " (indisponível)" : ""}
             </Link>
@@ -237,7 +241,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
         ) : !canShowPublishedView && publishedInfo?.readError ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}), mas o snapshot não pôde ser lido de volta agora ({publishedInfo.readError}) — mostrando o dado atual, que pode não ser idêntico ao publicado.</span></div>
         ) : !publishedInterpretationIsCurrent ? (
-          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Esta tela mostra o dado ATUAL por padrão — use "Versão publicada" acima para ver exatamente o que foi publicado.</span></div>
+          <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> Atenção: existe uma versão publicada (revisão #{publishedReport.interpretationRevision}, {new Date(publishedReport.publishedAt).toLocaleString("pt-BR")}, por {publishedReport.publishedByName ?? "—"}), mas os dados foram recalculados depois (revisão atual #{interpretation?.revision}). Você escolheu a versão ATUAL, que pode divergir da entrega congelada — use "Versão publicada" acima para ver exatamente o que foi entregue.</span></div>
         ) : !sameDecisionAsPublished ? (
           <div className="report-toolbar no-print"><span className="report-empty-note"><Icon name="warning" size={12}/> {isPremiumPublishedSnapshot ? "A interpretação atual é a mesma da versão publicada, mas a recomendação atual é diferente da recomendação congelada naquele snapshot. Esta decisão atual continua como rascunho até uma nova publicação passar pelos gates oficiais." : "A interpretação atual coincide com uma publicação legada, mas esse formato não congelava a recomendação aprovada. Por segurança, não tratamos a decisão atual como já publicada; gere uma nova versão oficial no formato atual."}</span></div>
         ) : (
