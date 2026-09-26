@@ -1,3 +1,4 @@
+import { AssistantRaizWidget } from "@/components/assistant-raiz-widget";
 import { MobileNavigation } from "@/components/mobile-navigation";
 import { Sidebar } from "@/components/sidebar";
 import { requirePlatformSession } from "@/lib/auth/session";
@@ -15,6 +16,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
         isPlatformCurator={session?.isPlatformCurator}
       />
       <main id="conteudo-principal" className="main-content" tabIndex={-1}>{children}</main>
+      <AssistantRaizWidget />
       <MobileNavigation role={session?.role} isPlatformCurator={session?.isPlatformCurator} />
     </div>
   );
