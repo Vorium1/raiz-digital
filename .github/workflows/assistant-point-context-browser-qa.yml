@@ -17,6 +17,7 @@ on:
       - "src/components/google-field-map.tsx"
       - "src/components/mapbox-field-map.tsx"
       - "src/components/assistant-raiz-widget.tsx"
+      - "src/app/(platform)/layout.tsx"
       - "src/lib/ai/assistant-screen.ts"
       - "src/lib/ai/assistant-evidence.ts"
       - "src/lib/ai/assistant-context-label.ts"
