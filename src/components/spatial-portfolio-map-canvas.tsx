@@ -28,7 +28,14 @@ function LeafletPortfolioCanvas({ fields, height, onFieldClick, providerNote }: 
     void import("leaflet").then((mod) => {
       if (cancelled || !containerRef.current) return;
       const L = mod.default;
-      map = L.map(containerRef.current, { attributionControl: true, preferCanvas: true }).setView([-15.7797, -47.9297], 4);
+      const coarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
+      map = L.map(containerRef.current, {
+        attributionControl: true,
+        preferCanvas: true,
+        scrollWheelZoom: false,
+        dragging: !coarsePointer,
+        touchZoom: true,
+      }).setView([-15.7797, -47.9297], 4);
 
       // Fallback de disponibilidade: OSM somente. O bug histórico de quadrantes pretos ocorre em qualquer
       // viewport; manter Esri acima de OSM não ajuda quando o tile preto chega como imagem válida/opaqua.
@@ -124,7 +131,7 @@ function GooglePortfolioCanvas({ fields, height, onFieldClick, onProviderFailure
           fullscreenControl: false,
           rotateControl: false,
           tilt: 0,
-          gestureHandling: "greedy",
+          gestureHandling: "cooperative",
           backgroundColor: "#0c1512",
         });
 
