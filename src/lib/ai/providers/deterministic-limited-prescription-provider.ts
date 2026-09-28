@@ -519,6 +519,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         managementPractices: deterministic.managementPractices,
         missingInformation,
         sources,
+        fertilityPlan: evidence.fertilityHorizonPlan,
       },
       provider: "raiz-deterministic-limited",
       model: "agronomic-engine",
