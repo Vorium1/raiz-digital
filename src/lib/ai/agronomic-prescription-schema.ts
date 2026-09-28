@@ -1,3 +1,5 @@
+import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+
 /**
  * Formato obrigatório de uma prescrição gerada por IA. Ao contrário de
  * `AgronomicNarrative` (que só explica um fato já calculado), este formato
@@ -36,6 +38,8 @@ export type AgronomicPrescription = {
   managementPractices: string[];
   missingInformation: string[];
   sources: AgronomicPrescriptionSource[];
+  /** Estrutura calculada pelo servidor; provedores externos não precisam gerá-la. */
+  fertilityPlan?: ReportFertilityHorizon | null;
 };
 
 function isString(value: unknown): value is string {
