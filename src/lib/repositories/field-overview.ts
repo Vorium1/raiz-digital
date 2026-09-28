@@ -8,7 +8,7 @@ import { withTenant } from "@/lib/db";
  * O read model abaixo preserva exatamente as mesmas fontes/ordenações, mas agrega tudo em uma única
  * consulta SQL. Nenhuma média/interpolação agronômica nova é criada.
  */
-export async function getFieldOverview(tenantId: string, fieldId: string, userId?: string) {
+export async function getFieldOverview(tenantId: string, fieldId: string, userId?: string): Promise<FieldOverview | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fieldId)) return null;
 
   return withTenant({ tenantId, userId }, async (client) => {
@@ -242,33 +242,166 @@ export async function getFieldOverview(tenantId: string, fieldId: string, userId
     const row = result.rows[0];
     if (!row?.field) return null;
     return {
-      field: row.field,
-      seasons: row.seasons ?? [],
-      orders: row.orders ?? [],
-      analyses: row.analyses ?? [],
-      yieldHistory: row.yieldHistory ?? [],
-      ndviSnapshots: row.ndviSnapshots ?? [],
-      collectionPoints: row.collectionPoints ?? [],
-      gpsQuality: row.gpsQuality ?? {
+      field: row.field as FieldOverviewField,
+      seasons: (row.seasons ?? []) as FieldOverviewSeason[],
+      orders: (row.orders ?? []) as FieldOverviewOrder[],
+      analyses: (row.analyses ?? []) as FieldOverviewAnalysis[],
+      yieldHistory: (row.yieldHistory ?? []) as FieldOverviewYield[],
+      ndviSnapshots: (row.ndviSnapshots ?? []) as FieldOverviewNdvi[],
+      collectionPoints: (row.collectionPoints ?? []) as FieldOverviewPoint[],
+      gpsQuality: (row.gpsQuality ?? {
         total: 0,
         verifiedCount: 0,
         confirmedCount: 0,
         browserGpsCount: 0,
         shapefileRealCount: 0,
         estimatedCount: 0,
-      },
-      reports: row.reports ?? [],
+      }) as FieldOverviewGpsQuality,
+      reports: (row.reports ?? []) as FieldOverviewReport[],
     };
   });
 }
 
-export type FieldOverview = NonNullable<Awaited<ReturnType<typeof getFieldOverview>>>;
+export type FieldOverviewField = {
+  id: string;
+  name: string;
+  areaHa: number;
+  boundary: unknown;
+  propertyId: string;
+  propertyName: string;
+  municipality: string | null;
+  state: string | null;
+  clientId: string;
+  clientName: string;
+};
+
+export type FieldOverviewSeason = {
+  id: string;
+  seasonLabel: string;
+  currentCrop: string | null;
+  nextCrop: string | null;
+  cultivar: string | null;
+  nextCultivar: string | null;
+  yieldGoal: number | null;
+  yieldGoalUnit: string | null;
+  createdAt: string;
+};
+
+export type FieldOverviewOrder = {
+  id: string;
+  code: string;
+  status: string;
+  plannedAt: string | null;
+  createdAt: string;
+  cropSeasonId: string;
+  gridAreaHa: number | null;
+  depthFromCm: number | null;
+  depthToCm: number | null;
+  plannedPoints: number;
+  collectedPoints: number;
+};
+
+export type FieldOverviewAnalysis = {
+  id: string;
+  code: string;
+  status: string;
+  confidenceScore: number | null;
+  confidenceLevel: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cropSeasonId: string;
+  latestInterpretationStatus: string | null;
+  notInterpretableReason: string | null;
+  reviewedAt: string | null;
+  approvedAt: string | null;
+  interpretedAt: string | null;
+  latestInterpretationId: string | null;
+};
+
+export type FieldOverviewYield = {
+  id: string;
+  seasonLabel: string;
+  crop: string;
+  cultivar: string | null;
+  yieldValue: number;
+  yieldUnit: string;
+  source: string;
+  createdAt: string;
+};
+
+export type FieldOverviewNdvi = {
+  id: string;
+  capturedAt: string;
+  source: string;
+  cloudCoverPct: number | null;
+  pixelCount: number | null;
+  meanNdvi: number;
+  minNdvi: number;
+  maxNdvi: number;
+  zoneBreakdownPct: Record<string, number> | null;
+  createdAt: string;
+};
+
+export type FieldOverviewPoint = {
+  id: string;
+  code: string;
+  sequence: number | null;
+  latitude: number;
+  longitude: number;
+  observedLatitude: number | null;
+  observedLongitude: number | null;
+  plannedLatitude: number | null;
+  plannedLongitude: number | null;
+  collectedAt: string | null;
+  depthFromCm: number | null;
+  depthToCm: number | null;
+  subsampleCount: number | null;
+  accuracyM: number | null;
+  gpsSource: string | null;
+  notes: string | null;
+  labResultCount: number;
+};
+
+export type FieldOverviewGpsQuality = {
+  total: number;
+  verifiedCount: number;
+  confirmedCount: number;
+  browserGpsCount: number;
+  shapefileRealCount: number;
+  estimatedCount: number;
+};
+
+export type FieldOverviewReport = {
+  id: string;
+  revision: number;
+  publishedAt: string;
+  analysisId: string;
+  analysisCode: string;
+  cropSeasonId: string;
+};
+
+export type FieldOverviewCore = {
+  field: FieldOverviewField;
+  seasons: FieldOverviewSeason[];
+  analyses: FieldOverviewAnalysis[];
+  collectionPoints: FieldOverviewPoint[];
+  reports: FieldOverviewReport[];
+};
+
+export type FieldOverviewTechnicalDetails = {
+  orders: FieldOverviewOrder[];
+  yieldHistory: FieldOverviewYield[];
+  ndviSnapshots: FieldOverviewNdvi[];
+  gpsQuality: FieldOverviewGpsQuality;
+};
+
+export type FieldOverview = FieldOverviewCore & FieldOverviewTechnicalDetails;
 
 /**
  * Fast path da abertura do Talhão 360°: somente dados usados antes de abrir "Detalhes técnicos".
  * Mantém uma única consulta SQL e deixa históricos extensos para uma requisição secundária.
  */
-export async function getFieldOverviewCore(tenantId: string, fieldId: string, userId?: string) {
+export async function getFieldOverviewCore(tenantId: string, fieldId: string, userId?: string): Promise<FieldOverviewCore | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fieldId)) return null;
 
   return withTenant({ tenantId, userId }, async (client) => {
@@ -406,16 +539,16 @@ export async function getFieldOverviewCore(tenantId: string, fieldId: string, us
     const row = result.rows[0];
     if (!row?.field) return null;
     return {
-      field: row.field,
-      seasons: row.seasons ?? [],
-      analyses: row.analyses ?? [],
-      collectionPoints: row.collectionPoints ?? [],
-      reports: row.reports ?? [],
+      field: row.field as FieldOverviewField,
+      seasons: (row.seasons ?? []) as FieldOverviewSeason[],
+      analyses: (row.analyses ?? []) as FieldOverviewAnalysis[],
+      collectionPoints: (row.collectionPoints ?? []) as FieldOverviewPoint[],
+      reports: (row.reports ?? []) as FieldOverviewReport[],
     };
   });
 }
 
-export async function getFieldOverviewTechnicalDetails(tenantId: string, fieldId: string, userId?: string) {
+export async function getFieldOverviewTechnicalDetails(tenantId: string, fieldId: string, userId?: string): Promise<FieldOverviewTechnicalDetails | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fieldId)) return null;
 
   return withTenant({ tenantId, userId }, async (client) => {
@@ -516,21 +649,19 @@ export async function getFieldOverviewTechnicalDetails(tenantId: string, fieldId
     const row = result.rows[0];
     if (!row) return null;
     return {
-      orders: row.orders ?? [],
-      yieldHistory: row.yieldHistory ?? [],
-      ndviSnapshots: row.ndviSnapshots ?? [],
-      gpsQuality: row.gpsQuality ?? {
+      orders: (row.orders ?? []) as FieldOverviewOrder[],
+      yieldHistory: (row.yieldHistory ?? []) as FieldOverviewYield[],
+      ndviSnapshots: (row.ndviSnapshots ?? []) as FieldOverviewNdvi[],
+      gpsQuality: (row.gpsQuality ?? {
         total: 0,
         verifiedCount: 0,
         confirmedCount: 0,
         browserGpsCount: 0,
         shapefileRealCount: 0,
         estimatedCount: 0,
-      },
+      }) as FieldOverviewGpsQuality,
     };
   });
 }
 
-export type FieldOverviewCore = NonNullable<Awaited<ReturnType<typeof getFieldOverviewCore>>>;
-export type FieldOverviewTechnicalDetails = NonNullable<Awaited<ReturnType<typeof getFieldOverviewTechnicalDetails>>>;
 
