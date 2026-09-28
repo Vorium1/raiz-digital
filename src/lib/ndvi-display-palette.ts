@@ -8,19 +8,19 @@ import type { VigorZone } from "@/domain/ndvi-engine";
  * limites, estatísticas ou o artefato histórico persistido.
  */
 export const NDVI_DISPLAY_ZONE_COLOR: Record<VigorZone, string> = {
-  SEM_VEGETACAO: "#8D6E4F",
-  BAIXO: "#E53935",
-  MODERADO: "#F9A825",
-  ALTO: "#7AC943",
-  MUITO_ALTO: "#00A651",
+  SEM_VEGETACAO: "#7A5538",
+  BAIXO: "#E52222",
+  MODERADO: "#FFB000",
+  ALTO: "#2DBE4F",
+  MUITO_ALTO: "#0B5D2A",
 };
 
 const SOURCE_TO_DISPLAY = new Map<string, readonly [number, number, number]>([
-  ["154,132,104", [141, 110, 79]],
-  ["217,101,90", [229, 57, 53]],
-  ["216,153,67", [249, 168, 37]],
-  ["143,191,107", [122, 201, 67]],
-  ["41,150,111", [0, 166, 81]],
+  ["154,132,104", [122, 85, 56]],
+  ["217,101,90", [229, 34, 34]],
+  ["216,153,67", [255, 176, 0]],
+  ["143,191,107", [45, 190, 79]],
+  ["41,150,111", [11, 93, 42]],
 ]);
 
 /**
