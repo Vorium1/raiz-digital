@@ -27,6 +27,14 @@ import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationVali
 import { compareAllValidatedSpatialMethods } from "@/domain/spatial-interpolation-comparison";
 import { buildReportFertilityHorizon, type ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
 import { buildSoilComplementActions, type SoilComplementAction } from "@/domain/soil-complement-actions";
+import {
+  buildReportBiologicalContext,
+  buildSoybeanApplicationGuidance,
+  climateContextFromAnalysisContext,
+  type ReportApplicationGuidance,
+  type ReportBiologicalContext,
+  type ReportClimateContext,
+} from "@/domain/report-context-blocks";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -56,6 +64,8 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
   fertilityHorizonPlan: ReportFertilityHorizon | null;
   soilComplementActions: SoilComplementAction[];
+  biologicalReportContext: ReportBiologicalContext;
+  applicationGuidance: ReportApplicationGuidance;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
@@ -81,6 +91,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     plannedManagementNotes: string | null;
     fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
     fertilityCyclePlanNotes: string | null;
+    climateContext: ReportClimateContext;
     irrigationContext: {
       waterRegime: "SEQUEIRO" | "IRRIGADO" | null;
       system: string | null;
@@ -741,6 +752,28 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       sourceVersion: bioAsRows.map((row) => row.protocol ?? row.method).find((value) => value?.trim()) ?? null,
     });
 
+    const biologicalReportContext = buildReportBiologicalContext({
+      biologicalSoilEvidence,
+      soilMicrobiologyEvidence,
+    });
+    const currentP2O5KgPerHa = deterministicPkPointDoses.P2O5.operationalAverageAllowed
+      ? deterministicPkPointDoses.P2O5.operationalAverageKgPerHa
+      : deterministicPkDoses.P2O5.ready
+        ? deterministicPkDoses.P2O5.expected?.doseKgPerHa ?? null
+        : null;
+    const currentK2OKgPerHa = deterministicPkPointDoses.K2O.operationalAverageAllowed
+      ? deterministicPkPointDoses.K2O.operationalAverageKgPerHa
+      : deterministicPkDoses.K2O.ready
+        ? deterministicPkDoses.K2O.expected?.doseKgPerHa ?? null
+        : null;
+    const applicationGuidance = buildSoybeanApplicationGuidance({
+      cropCode: base.cropProfileCode,
+      state: base.state,
+      p2o5KgPerHa: currentP2O5KgPerHa,
+      k2oKgPerHa: currentK2OKgPerHa,
+    });
+    const climateContext = climateContextFromAnalysisContext(base.analysisContext);
+
     const rawIrrigation = analysisContextIrrigation(base.analysisContext);
     const irrigationEvidence = evaluateIrrigationContext({
       waterRegime: rawIrrigation.waterRegime ?? "",
@@ -776,6 +809,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicPkPointDoses,
       fertilityHorizonPlan,
       soilComplementActions,
+      biologicalReportContext,
+      applicationGuidance,
       deterministicSulfurDose,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
@@ -807,6 +842,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
         fertilityPlanningHorizonYears: fertilityPlanning.horizonYears,
         fertilityCyclePlanNotes: fertilityPlanning.cyclePlanNotes,
+        climateContext,
         irrigationContext: analysisContextIrrigation(base.analysisContext),
       },
       deterministicInterpretation,
