@@ -28,7 +28,8 @@ assert.match(component, /Produto comercial e custo não aparecem aqui porque nã
 
 assert.match(page, /const publishedTechnicalBase = viewingPublished && snapshotOutput\?\.trace/);
 assert.match(page, /technicalBase=\{viewingPublished \? publishedTechnicalBase : interpretation\?\.cropProfileName \?\? null\}/);
-assert.match(page, /requestedPublished && !canShowPublishedView/);
+assert.match(page, /const shouldUsePublishedVersion = explicitlyPublished \|\| \(!explicitlyCurrent && publishedRecordExists\)/);
+assert.match(page, /if \(shouldUsePublishedVersion && !canShowPublishedView\)/);
 assert.match(page, /hashVerified === true/);
 
 console.log("final-visual-report: 3 páginas A4, nutrientes completos, GPS fixo e snapshot fail-closed validados");
