@@ -34,7 +34,8 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     const pointEnvelope = evidence.deterministicPkPointDoses?.[nutrient];
 
     if (
-      pointEnvelope.ready
+      pointEnvelope
+      && pointEnvelope.ready
       && pointEnvelope.operationalAverageAllowed
       && pointEnvelope.operationalAverageKgPerHa != null
     ) {
