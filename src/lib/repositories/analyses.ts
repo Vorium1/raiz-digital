@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { normalizeManagementSystem } from "@/domain/management-system";
 import { isDeepStrictEqual } from "node:util";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import { withTenant } from "@/lib/db";
@@ -10,6 +11,16 @@ import { parseSpatialInterpolationValidations, spatialInterpolationValidationsFr
 function analysisCode() {
   const year = new Date().getFullYear();
   return `AN-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+function reusableManagementFromAnalysisContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
+  const raw = (draft as { tillageSystem?: unknown }).tillageSystem;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const normalized = normalizeManagementSystem(raw);
+  return normalized === "OTHER" ? null : normalized;
 }
 
 export class AnalysisContextError extends Error {
@@ -122,13 +133,37 @@ export async function createAnalysis(input: {
       ],
     );
     const created = result.rows[0];
+
+    // Contexto estrutural informado na própria análise não deve se perder numa segunda tela.
+    // Só promovemos para a safra quando ela ainda não possui um manejo explícito; nunca sobrescrevemos
+    // um valor já cadastrado. O JSON original continua preservado para rastreabilidade.
+    const reusableManagement = reusableManagementFromAnalysisContext(input.analysisContext);
+    let promotedManagementSystem: string | null = null;
+    if (reusableManagement) {
+      const promoted = await client.query(
+        `UPDATE crop_seasons
+         SET management_system = $3,
+             updated_at = now()
+         WHERE tenant_id = $1::uuid
+           AND id = $2::uuid
+           AND (management_system IS NULL OR btrim(management_system) = '' OR management_system = 'OTHER')
+         RETURNING management_system AS "managementSystem"`,
+        [input.tenantId, input.cropSeasonId, reusableManagement],
+      );
+      promotedManagementSystem = promoted.rows[0]?.managementSystem ?? null;
+    }
+
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
       action: "ANALYSIS_CREATED",
       entityType: "analysis",
       entityId: created.id,
-      metadata: { code, analysisDepth: input.analysisDepth ?? null },
+      metadata: {
+        code,
+        analysisDepth: input.analysisDepth ?? null,
+        promotedManagementSystem,
+      },
     });
     return created;
   });
