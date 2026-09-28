@@ -145,6 +145,9 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       ...result.prescription,
       fertilityPlan: evidence.fertilityHorizonPlan,
       soilComplementActions: evidence.soilComplementActions,
+      climateContext: evidence.analysis.climateContext,
+      biologicalContext: evidence.biologicalReportContext,
+      applicationGuidance: evidence.applicationGuidance,
     },
   };
 
