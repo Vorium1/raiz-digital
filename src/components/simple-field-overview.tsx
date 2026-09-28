@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import { FieldOverviewTabs } from "@/components/field-overview-tabs";
+import { DeferredFieldOverviewTabs } from "@/components/deferred-field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
 import { SimpleFieldYieldOutlook } from "@/components/simple-field-yield-outlook";
 import { SimpleFieldMapLayers } from "@/components/simple-field-map-layers";
-import type { FieldOverview } from "@/lib/repositories/field-overview";
+import type { FieldOverviewCore } from "@/lib/repositories/field-overview";
 import type { DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
 import type { AnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
@@ -19,13 +19,14 @@ export function SimpleFieldOverview({
   deliveryStatus,
   canRefreshAnalysis,
 }: {
-  overview: FieldOverview;
+  overview: FieldOverviewCore;
   analysisFreshness: AnalysisEvidenceFreshness | null;
   deliveryStatus: DecisionDeliveryStatus | null;
   canRefreshAnalysis: boolean;
 }) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
   const [alerts, setAlerts] = useState<OperationalAlert[]>([]);
+  const [technicalOpened, setTechnicalOpened] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,10 +148,17 @@ export function SimpleFieldOverview({
         </section>
       )}
 
-      <details className="simple-technical-details">
+      <details
+        className="simple-technical-details"
+        onToggle={(event) => {
+          if (event.currentTarget.open) setTechnicalOpened(true);
+        }}
+      >
         <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={16}/></summary>
         <div className="simple-technical-explainer">Dados de coleta, fertilidade, satélite, histórico, GPS, parâmetros e rastreabilidade ficam aqui para consulta técnica.</div>
-        <FieldOverviewTabs overview={overview} alerts={alerts}/>
+        {technicalOpened
+          ? <DeferredFieldOverviewTabs overview={overview} alerts={alerts}/>
+          : <p className="report-empty-note" style={{ padding: 16 }}>Abra esta seção para carregar o histórico técnico.</p>}
       </details>
     </div>
   );
