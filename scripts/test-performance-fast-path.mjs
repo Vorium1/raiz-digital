@@ -14,6 +14,8 @@ const fieldOverviewRepo = await readFile(new URL("../src/lib/repositories/field-
 const fieldPage = await readFile(new URL("../src/app/(platform)/talhoes/[fieldId]/page.tsx", import.meta.url), "utf8");
 const simpleFieldOverview = await readFile(new URL("../src/components/simple-field-overview.tsx", import.meta.url), "utf8");
 const deliveryStatus = await readFile(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
+const resultsPage = await readFile(new URL("../src/app/(platform)/resultados/page.tsx", import.meta.url), "utf8");
+const resultsOverview = await readFile(new URL("../src/lib/repositories/results-overview.ts", import.meta.url), "utf8");
 
 assert.match(loginForm, /window\.location\.replace\("\/inicio"\)/, "Login deve navegar em uma única requisição completa após Set-Cookie.");
 assert.doesNotMatch(loginForm, /router\.refresh\(/, "Login não deve competir replace com refresh.");
@@ -60,4 +62,10 @@ const technicalBlock = fieldOverviewRepo.slice(technicalStart);
 assert.equal((coreBlock.match(/client\.query\(/g) ?? []).length, 1, "Overview rápido do Talhão 360 deve usar uma única query de domínio.");
 assert.equal((technicalBlock.match(/client\.query\(/g) ?? []).length, 1, "Detalhes técnicos devem usar uma única query de domínio.");
 
-console.log("performance-fast-path: login, sessão, home, NDVI, mapas e Talhão 360 protegidos contra regressões de latência");
+
+// Resultados: uma única leitura tenant-scoped para publicados + análises + estado corrente.
+assert.match(resultsPage, /getResultsOverview/, "Resultados deve usar read model consolidado.");
+assert.doesNotMatch(resultsPage, /listPublishedReports|listAnalyses|getDecisionDeliveryStatuses/, "Resultados não deve abrir três contextos tenant separados.");
+assert.equal((resultsOverview.match(/client\.query\(/g) ?? []).length, 1, "Read model de Resultados deve usar uma única query de domínio.");
+
+console.log("performance-fast-path: login, sessão, home, NDVI, mapas, Talhão 360 e Resultados protegidos contra regressões de latência");
