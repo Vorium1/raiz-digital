@@ -144,6 +144,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     prescription: {
       ...result.prescription,
       fertilityPlan: evidence.fertilityHorizonPlan,
+      soilComplementActions: evidence.soilComplementActions,
     },
   };
 
