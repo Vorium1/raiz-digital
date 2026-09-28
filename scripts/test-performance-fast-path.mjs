@@ -10,6 +10,10 @@ const ndviMapRoute = await readFile(new URL("../src/app/api/fields/[id]/ndvi/map
 const ndviRepository = await readFile(new URL("../src/lib/repositories/ndvi.ts", import.meta.url), "utf8");
 const vigor = await readFile(new URL("../src/components/simple-field-vigor.tsx", import.meta.url), "utf8");
 const portfolioMap = await readFile(new URL("../src/components/spatial-portfolio-map-canvas.tsx", import.meta.url), "utf8");
+const fieldOverviewRepo = await readFile(new URL("../src/lib/repositories/field-overview.ts", import.meta.url), "utf8");
+const fieldPage = await readFile(new URL("../src/app/(platform)/talhoes/[fieldId]/page.tsx", import.meta.url), "utf8");
+const simpleFieldOverview = await readFile(new URL("../src/components/simple-field-overview.tsx", import.meta.url), "utf8");
+const deliveryStatus = await readFile(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
 
 assert.match(loginForm, /window\.location\.replace\("\/inicio"\)/, "Login deve navegar em uma única requisição completa após Set-Cookie.");
 assert.doesNotMatch(loginForm, /router\.refresh\(/, "Login não deve competir replace com refresh.");
@@ -39,4 +43,21 @@ assert.match(portfolioMap, /IntersectionObserver/, "Mapa da carteira deve montar
 assert.match(portfolioMap, /gestureHandling: "cooperative"/, "Google portfolio map não deve capturar scroll acidental.");
 assert.match(portfolioMap, /scrollWheelZoom: false/, "Fallback Leaflet não deve capturar roda do mouse.");
 
-console.log("performance-fast-path: login, sessão, home, NDVI e mapas protegidos contra regressões de latência");
+
+// Talhão 360°: abertura rápida, histórico sob demanda e sem central global de alertas no SSR.
+assert.match(fieldPage, /getFieldOverviewCore/, "Talhão 360 deve usar o read model rápido no primeiro render.");
+assert.doesNotMatch(fieldPage, /listOperationalAlerts/, "Talhão 360 não pode bloquear o SSR esperando alertas globais.");
+assert.match(simpleFieldOverview, /DeferredFieldOverviewTabs/, "Histórico técnico deve carregar sob demanda.");
+assert.match(simpleFieldOverview, /technicalOpened/, "Detalhes técnicos não devem montar antes de o usuário abrir a seção.");
+assert.match(fieldOverviewRepo, /export async function getFieldOverviewCore/, "Read model rápido precisa existir.");
+assert.match(fieldOverviewRepo, /export async function getFieldOverviewTechnicalDetails/, "Histórico técnico precisa ter read model separado.");
+assert.doesNotMatch(deliveryStatus, /information_schema\.columns/, "Estado de entrega não deve introspectar schema em toda abertura.");
+
+const coreStart = fieldOverviewRepo.indexOf("export async function getFieldOverviewCore");
+const technicalStart = fieldOverviewRepo.indexOf("export async function getFieldOverviewTechnicalDetails");
+const coreBlock = fieldOverviewRepo.slice(coreStart, technicalStart);
+const technicalBlock = fieldOverviewRepo.slice(technicalStart);
+assert.equal((coreBlock.match(/client\.query\(/g) ?? []).length, 1, "Overview rápido do Talhão 360 deve usar uma única query de domínio.");
+assert.equal((technicalBlock.match(/client\.query\(/g) ?? []).length, 1, "Detalhes técnicos devem usar uma única query de domínio.");
+
+console.log("performance-fast-path: login, sessão, home, NDVI, mapas e Talhão 360 protegidos contra regressões de latência");
