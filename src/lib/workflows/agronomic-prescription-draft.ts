@@ -187,6 +187,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     yieldGoal: contextAfterProvider.yieldGoal,
     yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
     cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
+    pointDoseEnvelopes: evidence.deterministicPkPointDoses,
   });
   if (!providerPkValidation.allowed) {
     const details = providerPkValidation.failures.map((failure) => ({
