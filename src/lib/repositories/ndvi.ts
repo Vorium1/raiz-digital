@@ -42,6 +42,31 @@ export async function listNdviHistoryForField(tenantId: string, fieldId: string,
   });
 }
 
+const SNAPSHOT_SUMMARY_COLUMNS = `id::text, field_id::text AS "fieldId", captured_at::text AS "capturedAt", source,
+  provider_scene_id AS "providerSceneId", cloud_cover_pct::float8 AS "cloudCoverPct", pixel_count AS "pixelCount",
+  mean_ndvi::float8 AS "meanNdvi", min_ndvi::float8 AS "minNdvi", max_ndvi::float8 AS "maxNdvi",
+  stddev_ndvi::float8 AS "stddevNdvi", zone_breakdown_pct AS "zoneBreakdownPct",
+  (raster_object_key IS NOT NULL) AS "rasterStored",
+  raster_sha256 AS "rasterSha256", raster_bytes AS "rasterBytes",
+  raster_bbox AS "rasterBbox", raster_width AS "rasterWidth", raster_height AS "rasterHeight",
+  raster_algorithm AS "rasterAlgorithm", raster_mosaicking_order AS "rasterMosaickingOrder",
+  raster_archived_at AS "rasterArchivedAt", created_at AS "createdAt"`;
+
+/**
+ * Projeção usada por telas/API de histórico. Nunca traz raster_object_key porque, no storage inline,
+ * essa coluna contém o PNG Base64 inteiro e transformava uma leitura de metadados em download de imagem.
+ */
+export async function listNdviHistorySummaryForField(tenantId: string, fieldId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query(
+      `SELECT ${SNAPSHOT_SUMMARY_COLUMNS} FROM field_ndvi_snapshots
+       WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC, created_at DESC LIMIT 24`,
+      [tenantId, fieldId],
+    );
+    return result.rows;
+  });
+}
+
 export async function getLatestNdviSnapshot(tenantId: string, fieldId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
