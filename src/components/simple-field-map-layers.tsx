@@ -22,6 +22,7 @@ type LayerResponse = {
   fieldBoundary: SpatialGeometry;
   points: MapPoint[];
   availableParameters: string[];
+  classifiedParameters: string[];
   interpretationStatus: string | null;
   interpretationCurrent: boolean;
   interpretationFreshnessCode: string;
@@ -152,8 +153,8 @@ export function SimpleFieldMapLayers({
         if (!layerResponse.ok) throw new Error(layerPayload.error ?? "Não foi possível abrir os dados do solo.");
         if (cancelled) return;
 
-        const params = Array.isArray(layerPayload.availableParameters)
-          ? layerPayload.availableParameters as string[]
+        const params = Array.isArray(layerPayload.classifiedParameters)
+          ? layerPayload.classifiedParameters as string[]
           : [];
         setAvailableParameters(params);
         const preferred = PARAMETER_PRIORITY.find((code) => params.includes(code)) ?? params[0] ?? "";
@@ -225,55 +226,34 @@ export function SimpleFieldMapLayers({
   }, []);
 
   const collectionDisplayPoints = useMemo<MapPoint[]>(() => {
-    const result: MapPoint[] = [];
-    for (const point of collectionPoints) {
-      result.push(point);
-      const plannedLatitude = point.plannedLatitude;
-      const plannedLongitude = point.plannedLongitude;
-      if (plannedLatitude == null || plannedLongitude == null) continue;
-      const actualLatitude = point.observedLatitude ?? point.latitude;
-      const actualLongitude = point.observedLongitude ?? point.longitude;
-      const differs = Math.abs(plannedLatitude - actualLatitude) > 0.0000005
-        || Math.abs(plannedLongitude - actualLongitude) > 0.0000005;
-      if (!differs) continue;
-      result.push({
-        ...point,
-        id: `${point.id}:planned`,
-        code: `${point.code} · planejado`,
-        latitude: plannedLatitude,
-        longitude: plannedLongitude,
-        observedLatitude: null,
-        observedLongitude: null,
-        plannedLatitude: null,
-        plannedLongitude: null,
-        collectedAt: null,
-        accuracyM: null,
-        gpsSource: "PLANNED_GRID_SOURCE",
-        notes: "Posição originalmente planejada para comparar com o local real da coleta.",
-        labResultCount: 0,
-        value: undefined,
-        unit: undefined,
-        method: undefined,
-        interpretable: undefined,
-        classification: undefined,
-        notInterpretableReason: undefined,
-      });
-    }
-    return result;
+    const verified = collectionPoints.filter((point) => {
+      const source = (point.gpsSource ?? "").trim().toUpperCase();
+      return point.observedLatitude != null
+        && point.observedLongitude != null
+        || source === "SHAPEFILE_REAL_GPS_LONLAT"
+        || source === "SHAPEFILE_REAL_EPSG4326";
+    });
+    if (verified.length > 0) return verified;
+
+    // Sem posição real/auditada, preservamos somente coordenadas importadas/cadastradas que não sejam
+    // grid de planejamento do próprio sistema. Elas ficam neutras e nunca são apresentadas como GPS real.
+    return collectionPoints.filter((point) => {
+      const source = (point.gpsSource ?? "").trim().toUpperCase();
+      return source !== "POSTGIS_GRID" && source !== "PLANNED_GRID_SOURCE";
+    });
   }, [collectionPoints]);
+
+  const hiddenPlanningCount = Math.max(0, collectionPoints.length - collectionDisplayPoints.length);
 
   const collectionColorFor = useCallback((point: MapPoint) => {
     const source = (point.gpsSource ?? "").trim().toUpperCase();
-    if (source === "PLANNED_GRID_SOURCE") {
-      return { stroke: "#9A6A24", fill: "#F2C879", fillOpacity: 0.7 };
-    }
     if (source === "SHAPEFILE_REAL_GPS_LONLAT" || source === "SHAPEFILE_REAL_EPSG4326") {
-      return { stroke: "#007F8E", fill: "#00C4D6", fillOpacity: 0.95 };
+      return { stroke: "#00758A", fill: "#00BBD4", fillOpacity: 0.98 };
     }
     if (point.observedLatitude != null && point.observedLongitude != null) {
-      return { stroke: "#176C47", fill: "#2D9B69", fillOpacity: 0.95 };
+      return { stroke: "#0B6B3A", fill: "#16A765", fillOpacity: 0.98 };
     }
-    return { stroke: "#8B765F", fill: "#C7B49D", fillOpacity: 0.72 };
+    return { stroke: "#6E756F", fill: "#AAB2AC", fillOpacity: 0.8 };
   }, []);
 
   const collectionLegend = useMemo<MapLegendEntry[]>(() => {
@@ -281,12 +261,20 @@ export function SimpleFieldMapLayers({
     const sources = new Set(collectionDisplayPoints.map((point) => (point.gpsSource ?? "").trim().toUpperCase()));
     if (collectionDisplayPoints.some((point) => point.observedLatitude != null && point.observedLongitude != null)
         && !sources.has("SHAPEFILE_REAL_GPS_LONLAT") && !sources.has("SHAPEFILE_REAL_EPSG4326")) {
-      entries.push({ label: "GPS coletado", color: "#2D9B69" });
+      entries.push({ label: "GPS coletado em campo", color: "#16A765" });
     }
     if (sources.has("SHAPEFILE_REAL_GPS_LONLAT") || sources.has("SHAPEFILE_REAL_EPSG4326")) {
-      entries.push({ label: "Coleta real importada", color: "#00C4D6" });
+      entries.push({ label: "Ponto real importado", color: "#00BBD4" });
     }
-    if (sources.has("PLANNED_GRID_SOURCE")) entries.push({ label: "Ponto planejado", color: "#F2C879" });
+    if (collectionDisplayPoints.some((point) => {
+      const source = (point.gpsSource ?? "").trim().toUpperCase();
+      return point.observedLatitude == null
+        && point.observedLongitude == null
+        && source !== "SHAPEFILE_REAL_GPS_LONLAT"
+        && source !== "SHAPEFILE_REAL_EPSG4326";
+    })) {
+      entries.push({ label: "Sem GPS real confirmado", color: "#AAB2AC" });
+    }
     return entries;
   }, [collectionDisplayPoints]);
 
@@ -300,10 +288,12 @@ export function SimpleFieldMapLayers({
       <div className="simple-field-map-head layered">
         <div>
           <span>MAPA DA ÁREA</span>
-          <strong>{mode === "soil" ? "Fertilidade por parâmetro" : mode === "terrain" ? "Relevo" : "Planejado × coletado"}</strong>
+          <strong>{mode === "soil" ? "Fertilidade classificada" : mode === "terrain" ? "Relevo" : "Pontos de coleta"}</strong>
         </div>
         <div className="simple-map-layer-switch" role="group" aria-label="Camada do mapa">
-          <button type="button" className={mode === "soil" ? "active" : ""} onClick={() => setMode("soil")} disabled={!context || availableParameters.length === 0}>Fertilidade</button>
+          {availableParameters.length > 0 && (
+            <button type="button" className={mode === "soil" ? "active" : ""} onClick={() => setMode("soil")} disabled={!context}>Fertilidade</button>
+          )}
           <button type="button" className={mode === "collection" ? "active" : ""} onClick={() => setMode("collection")}>Pontos</button>
           <button type="button" className={mode === "terrain" ? "active" : ""} onClick={() => setMode("terrain")}>Relevo</button>
         </div>
@@ -345,15 +335,18 @@ export function SimpleFieldMapLayers({
                 ? terrain3DFailed
                   ? "Relevo 3D indisponível nesta sessão; exibindo base topográfica."
                   : "Base topográfica para leitura do relevo da área."
-                : collectionDisplayPoints.length > collectionPoints.length
-                  ? "Compare onde cada ponto foi planejado com o local real registrado na coleta."
-                  : "Mostra a posição real/auditada dos pontos e sua proveniência de coleta."
+                : collectionDisplayPoints.length > 0
+                  ? "Mostra a posição real/auditada dos pontos. Planejamento interno não aparece nesta visão."
+                  : "Ainda não há coordenada real/auditada para exibir nesta área."
           }
         />
       )}
 
       {mode === "soil" && !loading && availableParameters.length === 0 && (
-        <div className="simple-map-layer-note"><Icon name="shield" size={14}/> Ainda não há parâmetros laboratoriais vinculados a esta coleta.</div>
+        <div className="simple-map-layer-note"><Icon name="shield" size={14}/> Os resultados laboratoriais estão preservados nos detalhes técnicos, mas ainda não há classificação corrente útil para colorir este mapa.</div>
+      )}
+      {mode === "collection" && hiddenPlanningCount > 0 && (
+        <div className="simple-map-layer-note"><Icon name="shield" size={14}/> {hiddenPlanningCount} posição(ões) de planejamento interno foram ocultadas desta visão. O histórico continua preservado para auditoria.</div>
       )}
       {mode === "soil" && classifiedCount === 0 && !layerLoading && parameter && (
         <div className="simple-map-layer-note"><Icon name="clock" size={14}/> A RAIZ ainda não tem uma classificação atual deste parâmetro. Os valores continuam preservados; nenhuma cor é inventada.</div>
