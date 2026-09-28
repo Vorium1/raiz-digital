@@ -137,6 +137,16 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     result = await provider.prescribe({ evidence });
   }
 
+  // O horizonte de fertilidade é calculado pelo servidor a partir dos mesmos gates determinísticos.
+  // Mesmo quando a narrativa vem de LLM, ela não pode omitir nem reescrever este bloco.
+  result = {
+    ...result,
+    prescription: {
+      ...result.prescription,
+      fertilityPlan: evidence.fertilityHorizonPlan,
+    },
+  };
+
   const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider, planningAfterProvider] = await Promise.all([
     getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
     getRecommendationContextByAnalysis({ tenantId: input.tenantId, userId: input.userId, analysisId: input.analysisId }),
