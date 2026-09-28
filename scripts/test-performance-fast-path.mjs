@@ -68,7 +68,7 @@ assert.equal((technicalBlock.match(/client\.query\(/g) ?? []).length, 1, "Detalh
 // Resultados: uma única leitura tenant-scoped para publicados + análises + estado corrente.
 assert.match(resultsPage, /getResultsOverview/, "Resultados deve usar read model consolidado.");
 assert.doesNotMatch(resultsPage, /listPublishedReports|listAnalyses|getDecisionDeliveryStatuses/, "Resultados não deve abrir três contextos tenant separados.");
-assert.equal((resultsOverview.match(/client\.query\(/g) ?? []).length, 1, "Read model de Resultados deve usar uma única query de domínio.");
+assert.equal((resultsOverview.match(/client\.query(?:<[^>]+>)?\(/g) ?? []).length, 1, "Read model de Resultados deve usar uma única query de domínio.");
 
 
 // Atenção: todas as categorias preservadas com uma única ida ao banco.
