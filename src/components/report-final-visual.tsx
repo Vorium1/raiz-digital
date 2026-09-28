@@ -479,7 +479,7 @@ export function FinalVisualReport(props: Props) {
 
         {(climateContext?.status !== "MISSING" || biologicalContext?.hasAnyBiology) && (
           <div className="report-management-grid">
-            {climateContext?.status !== "MISSING" && (
+            {climateContext && climateContext.status !== "MISSING" && (
               <section className="report-visual-panel">
                 <div className="report-visual-section-head"><div><span>CLIMA</span><h2>Contexto agroclimático informado</h2></div></div>
                 <p className="report-visual-note">
