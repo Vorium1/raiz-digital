@@ -87,12 +87,15 @@ test.describe("Performance fast path · Preview", () => {
     await expect(technical).toBeVisible();
     await expect(technical).not.toHaveAttribute("open", "");
 
+    const deferred = technical.locator(".deferred-field-overview-tabs");
+    await expect(deferred).toHaveAttribute("data-state", "idle");
+
     const technicalStarted = Date.now();
     await technical.locator("summary").click();
     await expect(technical).toHaveAttribute("open", "");
-    await expect(
-      technical.locator(".field-overview, .field-ops-message, .agro-loading"),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(deferred).toHaveAttribute("data-state", "ready", { timeout: 20_000 });
+    await expect(deferred.locator(".field-overview")).toBeVisible();
+
     await test.info().attach("timing-talhao-technical-on-demand", {
       body: Buffer.from(JSON.stringify({ elapsedMs: Date.now() - technicalStarted }, null, 2)),
       contentType: "application/json",
