@@ -1,4 +1,5 @@
 import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import type { SoilComplementAction } from "@/domain/soil-complement-actions";
 
 /**
  * Formato obrigatório de uma prescrição gerada por IA. Ao contrário de
@@ -40,6 +41,7 @@ export type AgronomicPrescription = {
   sources: AgronomicPrescriptionSource[];
   /** Estrutura calculada pelo servidor; provedores externos não precisam gerá-la. */
   fertilityPlan?: ReportFertilityHorizon | null;
+  soilComplementActions?: SoilComplementAction[];
 };
 
 function isString(value: unknown): value is string {
