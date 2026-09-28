@@ -1,12 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 export function LoginForm() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; role: string }>>([]);
@@ -31,8 +29,7 @@ export function LoginForm() {
       setError(payload.error ?? "Não foi possível entrar.");
       return;
     }
-    router.replace("/dashboard");
-    router.refresh();
+    window.location.replace("/inicio");
   }
 
   async function submitTwoFactor(event: FormEvent<HTMLFormElement>) {
@@ -52,8 +49,7 @@ export function LoginForm() {
       if (response.status === 401) setPendingToken("");
       return;
     }
-    router.replace("/dashboard");
-    router.refresh();
+    window.location.replace("/inicio");
   }
 
   if (pendingToken) {

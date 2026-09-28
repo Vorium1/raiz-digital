@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
@@ -74,11 +75,7 @@ export async function revokeCurrentSession() {
   store.delete(SESSION_COOKIE);
 }
 
-export async function getPlatformSession(): Promise<PlatformSession | null> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
+const loadPlatformSessionByTokenHash = cache(async (tokenHash: string): Promise<PlatformSession | null> => {
   const result = await query<PlatformSession>(
     `SELECT
        s.id::text AS "sessionId",
@@ -99,10 +96,17 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
        AND s.expires_at > now()
        AND t.status = 'ACTIVE'
      LIMIT 1`,
-    [hashSessionToken(token)],
+    [tokenHash],
   );
+  return result.rows[0] ?? null;
+});
 
-  const session = result.rows[0] ?? null;
+export async function getPlatformSession(): Promise<PlatformSession | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  const session = await loadPlatformSessionByTokenHash(hashSessionToken(token));
   if (!session) {
     store.delete(SESSION_COOKIE);
     return null;
