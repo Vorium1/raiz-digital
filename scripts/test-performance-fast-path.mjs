@@ -16,6 +16,8 @@ const simpleFieldOverview = await readFile(new URL("../src/components/simple-fie
 const deliveryStatus = await readFile(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
 const resultsPage = await readFile(new URL("../src/app/(platform)/resultados/page.tsx", import.meta.url), "utf8");
 const resultsOverview = await readFile(new URL("../src/lib/repositories/results-overview.ts", import.meta.url), "utf8");
+const alertsRepository = await readFile(new URL("../src/lib/repositories/alerts.ts", import.meta.url), "utf8");
+const alertsReadModel = await readFile(new URL("../src/lib/repositories/alerts-read-model.ts", import.meta.url), "utf8");
 
 assert.match(loginForm, /window\.location\.replace\("\/inicio"\)/, "Login deve navegar em uma única requisição completa após Set-Cookie.");
 assert.doesNotMatch(loginForm, /router\.refresh\(/, "Login não deve competir replace com refresh.");
@@ -68,4 +70,15 @@ assert.match(resultsPage, /getResultsOverview/, "Resultados deve usar read model
 assert.doesNotMatch(resultsPage, /listPublishedReports|listAnalyses|getDecisionDeliveryStatuses/, "Resultados não deve abrir três contextos tenant separados.");
 assert.equal((resultsOverview.match(/client\.query\(/g) ?? []).length, 1, "Read model de Resultados deve usar uma única query de domínio.");
 
-console.log("performance-fast-path: login, sessão, home, NDVI, mapas, Talhão 360 e Resultados protegidos contra regressões de latência");
+
+// Atenção: todas as categorias preservadas com uma única ida ao banco.
+assert.match(alertsRepository, /getOperationalAlertSources/, "Central de Atenção deve consumir read model agregado.");
+assert.doesNotMatch(alertsRepository, /client\.query\(/, "Montagem de alertas não deve voltar a disparar queries por categoria.");
+assert.equal((alertsReadModel.match(/client\.query\(/g) ?? []).length, 1, "Fontes da Central de Atenção devem sair de uma única query de domínio.");
+assert.match(alertsReadModel, /overdueOrders/);
+assert.match(alertsReadModel, /pendingPoints/);
+assert.match(alertsReadModel, /staleCurrentInterpretations/);
+assert.match(alertsReadModel, /inputDeviation/);
+assert.match(alertsReadModel, /climateSeasons/);
+
+console.log("performance-fast-path: login, sessão, home, NDVI, mapas, Talhão 360, Resultados e Atenção protegidos contra regressões de latência");
