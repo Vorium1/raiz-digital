@@ -74,7 +74,7 @@ assert.equal((resultsOverview.match(/client\.query(?:<[^>]+>)?\(/g) ?? []).lengt
 // Atenção: todas as categorias preservadas com uma única ida ao banco.
 assert.match(alertsRepository, /getOperationalAlertSources/, "Central de Atenção deve consumir read model agregado.");
 assert.doesNotMatch(alertsRepository, /client\.query\(/, "Montagem de alertas não deve voltar a disparar queries por categoria.");
-assert.equal((alertsReadModel.match(/client\.query\(/g) ?? []).length, 1, "Fontes da Central de Atenção devem sair de uma única query de domínio.");
+assert.equal((alertsReadModel.match(/client\.query(?:<[^>]+>)?\(/g) ?? []).length, 1, "Fontes da Central de Atenção devem sair de uma única query de domínio.");
 assert.match(alertsReadModel, /overdueOrders/);
 assert.match(alertsReadModel, /pendingPoints/);
 assert.match(alertsReadModel, /staleCurrentInterpretations/);
