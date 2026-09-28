@@ -14,7 +14,7 @@ type Snapshot = {
   minNdvi?: number | null;
   maxNdvi?: number | null;
   cloudCoverPct: number | null;
-  rasterObjectKey?: string | null;
+  rasterStored?: boolean;
   zoneBreakdownPct?: Partial<Record<VigorZone, number>>;
 };
 
@@ -53,7 +53,7 @@ function parseBounds(raw: string | null): MapImageOverlay["bounds"] | null {
 }
 
 function hasRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot {
-  return Boolean(snapshot?.rasterObjectKey);
+  return Boolean(snapshot?.rasterStored);
 }
 
 export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
@@ -144,7 +144,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
     void (async () => {
       try {
         const response = await fetch(`/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(rasterDate)}`, {
-          cache: "no-store",
+          cache: "no-cache",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("Imagem NDVI indisponível para esta data.");
