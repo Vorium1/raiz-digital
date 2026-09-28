@@ -327,6 +327,7 @@ export type DeterministicPkPointDoseEnvelope = {
   maximumKgPerHa: number | null;
   operationalAverageAllowed: boolean;
   operationalAverageKgPerHa: number | null;
+  operationalAverageRangeKgPerHa: { min: number; max: number } | null;
   operationalBasis: "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
   assumptions: string[];
   blockers: string[];
@@ -421,6 +422,7 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
       maximumKgPerHa: rows.length ? Math.max(...rows.map((row) => row.maximumKgPerHa)) : null,
       operationalAverageAllowed: false,
       operationalAverageKgPerHa: null,
+      operationalAverageRangeKgPerHa: null,
       operationalBasis: null,
       assumptions,
       blockers: uniqueBlockers,
@@ -433,6 +435,12 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
   const operationalAverageKgPerHa = operationalAverageAllowed
     ? Math.round((rows.reduce((sum, row) => sum + row.doseKgPerHa, 0) / rows.length) * 10) / 10
     : null;
+  const operationalAverageRangeKgPerHa = input.allowEqualWeightOperationalAverage === true
+    ? {
+        min: Math.round((rows.reduce((sum, row) => sum + row.minimumKgPerHa, 0) / rows.length) * 10) / 10,
+        max: Math.round((rows.reduce((sum, row) => sum + row.maximumKgPerHa, 0) / rows.length) * 10) / 10,
+      }
+    : null;
 
   return {
     ready: true,
@@ -443,7 +451,8 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
     maximumKgPerHa: Math.max(...rows.map((row) => row.maximumKgPerHa)),
     operationalAverageAllowed,
     operationalAverageKgPerHa,
-    operationalBasis: operationalAverageAllowed ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
+    operationalAverageRangeKgPerHa,
+    operationalBasis: input.allowEqualWeightOperationalAverage === true ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
     assumptions,
     blockers: [],
     source: table?.source ?? null,
