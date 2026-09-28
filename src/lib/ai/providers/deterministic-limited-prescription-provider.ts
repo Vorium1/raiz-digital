@@ -99,6 +99,24 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     limitations.push("Nitrogênio: a execução persistida não passou nas verificações de rastreabilidade e foi isolada sem afetar as demais conclusões.");
   }
 
+  const complementActions = evidence.soilComplementActions ?? [];
+  const complementReview = complementActions.filter((item) =>
+    item.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
+    || item.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW"
+  );
+  if (complementReview.length) {
+    for (const item of complementReview) managementPractices.push(item.action);
+  } else {
+    const micro = complementActions.filter((item) => new Set(["B", "ZN", "CU", "MN"]).has(item.parameterCode));
+    if (micro.length && micro.every((item) => item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT")) {
+      managementPractices.push("Micronutrientes B, Zn, Cu e Mn: nenhum ponto classificado como baixo; não há indicação para aplicação geral automática neste momento.");
+    }
+    const organicMatter = complementActions.find((item) => item.parameterCode === "MO");
+    if (organicMatter?.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT") {
+      managementPractices.push(organicMatter.action);
+    }
+  }
+
   const sulfur = evidence.deterministicSulfurDose;
   if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
     if (sulfur.operationalDoseKgSPerHa != null) {
@@ -520,6 +538,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         missingInformation,
         sources,
         fertilityPlan: evidence.fertilityHorizonPlan,
+        soilComplementActions: evidence.soilComplementActions,
       },
       provider: "raiz-deterministic-limited",
       model: "agronomic-engine",
