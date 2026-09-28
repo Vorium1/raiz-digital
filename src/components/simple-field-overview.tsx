@@ -154,7 +154,7 @@ export function SimpleFieldOverview({
           if (event.currentTarget.open) setTechnicalOpened(true);
         }}
       >
-        <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={16}/></summary>
+        <summary onClick={() => setTechnicalOpened(true)}><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={16}/></summary>
         <div className="simple-technical-explainer">Dados de coleta, fertilidade, satélite, histórico, GPS, parâmetros e rastreabilidade ficam aqui para consulta técnica.</div>
         {technicalOpened
           ? <DeferredFieldOverviewTabs overview={overview} alerts={alerts}/>
