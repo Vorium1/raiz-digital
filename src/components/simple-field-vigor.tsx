@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { RealFieldMap, type MapImageOverlay, type MapLegendEntry } from "@/components/real-field-map";
 import type { VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
+import { enhanceArchivedNdviRasterForDisplay, NDVI_DISPLAY_ZONE_COLOR } from "@/lib/ndvi-display-palette";
 
 type Snapshot = {
   id: string;
@@ -13,20 +14,14 @@ type Snapshot = {
   minNdvi?: number | null;
   maxNdvi?: number | null;
   cloudCoverPct: number | null;
-  rasterObjectKey?: string | null;
+  rasterStored?: boolean;
   zoneBreakdownPct?: Partial<Record<VigorZone, number>>;
 };
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
-const ZONE_COLOR: Record<VigorZone, string> = {
-  SEM_VEGETACAO: "#9a8468",
-  BAIXO: "#d9655a",
-  MODERADO: "#d89943",
-  ALTO: "#8fbf6b",
-  MUITO_ALTO: "#29966f",
-};
+const ZONE_COLOR = NDVI_DISPLAY_ZONE_COLOR;
 
 function dominantZone(breakdown: Partial<Record<VigorZone, number>> | undefined) {
   if (!breakdown) return null;
@@ -58,7 +53,7 @@ function parseBounds(raw: string | null): MapImageOverlay["bounds"] | null {
 }
 
 function hasRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot {
-  return Boolean(snapshot?.rasterObjectKey);
+  return Boolean(snapshot?.rasterStored);
 }
 
 export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
@@ -149,7 +144,7 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
     void (async () => {
       try {
         const response = await fetch(`/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(rasterDate)}`, {
-          cache: "no-store",
+          cache: "no-cache",
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("Imagem NDVI indisponível para esta data.");
@@ -157,9 +152,10 @@ export function SimpleFieldVigor({ fieldId }: { fieldId: string }) {
         if (!bounds) throw new Error("Imagem NDVI sem envelope geográfico válido.");
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("Formato inesperado da imagem NDVI.");
+        const displayBlob = await enhanceArchivedNdviRasterForDisplay(blob);
         if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(blob);
-        setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
+        objectUrl = URL.createObjectURL(displayBlob);
+        setOverlay({ url: objectUrl, bounds, opacity: 0.84 });
       } catch (caught) {
         if (!controller.signal.aborted) setRasterError(caught instanceof Error ? caught.message : "Não foi possível abrir o mapa de vigor.");
       }

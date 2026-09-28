@@ -1,12 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 export function LoginForm() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tenants, setTenants] = useState<Array<{ id: string; name: string; role: string }>>([]);
@@ -15,45 +13,61 @@ export function LoginForm() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: form.get("email"), password: form.get("password"), tenantId: form.get("tenantId") || undefined }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    setLoading(false);
-    if (!response.ok) {
-      if (payload.code === "TENANT_REQUIRED" && Array.isArray(payload.tenants)) setTenants(payload.tenants);
-      if (payload.code === "TOTP_REQUIRED" && payload.pendingToken) { setPendingToken(payload.pendingToken); return; }
-      setError(payload.error ?? "Não foi possível entrar.");
-      return;
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), password: form.get("password"), tenantId: form.get("tenantId") || undefined }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLoading(false);
+        if (payload.code === "TENANT_REQUIRED" && Array.isArray(payload.tenants)) setTenants(payload.tenants);
+        if (payload.code === "TOTP_REQUIRED" && payload.pendingToken) {
+          setPendingToken(payload.pendingToken);
+          return;
+        }
+        setError(payload.error ?? "Não foi possível entrar.");
+        return;
+      }
+
+      // Navegação completa depois do Set-Cookie evita a corrida entre router.replace/router.refresh
+      // que fazia o primeiro clique parecer apenas uma confirmação.
+      window.location.replace("/inicio");
+    } catch {
+      setLoading(false);
+      setError("Não foi possível conectar agora. Tente novamente.");
     }
-    router.replace("/dashboard");
-    router.refresh();
   }
 
   async function submitTwoFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/2fa/verify", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pendingToken, code: form.get("code") }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    setLoading(false);
-    if (!response.ok) {
-      setError(payload.error ?? "Não foi possível validar o código.");
-      if (response.status === 401) setPendingToken("");
-      return;
+    try {
+      const response = await fetch("/api/auth/2fa/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pendingToken, code: form.get("code") }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLoading(false);
+        setError(payload.error ?? "Não foi possível validar o código.");
+        if (response.status === 401) setPendingToken("");
+        return;
+      }
+      window.location.replace("/inicio");
+    } catch {
+      setLoading(false);
+      setError("Não foi possível validar o acesso agora. Tente novamente.");
     }
-    router.replace("/dashboard");
-    router.refresh();
   }
 
   if (pendingToken) {

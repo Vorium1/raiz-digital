@@ -1,12 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
-import { FieldOverviewTabs } from "@/components/field-overview-tabs";
+import { DeferredFieldOverviewTabs } from "@/components/deferred-field-overview-tabs";
 import { SimpleFieldVigor } from "@/components/simple-field-vigor";
 import { SimpleFieldYieldOutlook } from "@/components/simple-field-yield-outlook";
 import { SimpleFieldMapLayers } from "@/components/simple-field-map-layers";
-import type { FieldOverview } from "@/lib/repositories/field-overview";
+import type { FieldOverviewCore } from "@/lib/repositories/field-overview";
 import type { DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
 import type { AnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
@@ -14,18 +15,34 @@ import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domai
 
 export function SimpleFieldOverview({
   overview,
-  alerts,
   analysisFreshness,
   deliveryStatus,
   canRefreshAnalysis,
 }: {
-  overview: FieldOverview;
-  alerts: OperationalAlert[];
+  overview: FieldOverviewCore;
   analysisFreshness: AnalysisEvidenceFreshness | null;
   deliveryStatus: DecisionDeliveryStatus | null;
   canRefreshAnalysis: boolean;
 }) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
+  const [alerts, setAlerts] = useState<OperationalAlert[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/fields/${field.id}/alerts`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<{ alerts?: OperationalAlert[] }>;
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setAlerts(payload.alerts ?? []);
+      })
+      .catch(() => {
+        // Alertas são informação secundária; falha aqui nunca bloqueia o restante do Talhão 360°.
+        if (!controller.signal.aborted) setAlerts([]);
+      });
+    return () => controller.abort();
+  }, [field.id]);
   const season = seasons[0] ?? null;
   const seasonAnalyses = analyses.filter((analysis) => !season || analysis.cropSeasonId === season.id);
   const latest = seasonAnalyses[0] ?? null;
@@ -133,7 +150,7 @@ export function SimpleFieldOverview({
       <details className="simple-technical-details">
         <summary><span><Icon name="settings" size={17}/> Detalhes técnicos</span><Icon name="chevron" size={16}/></summary>
         <div className="simple-technical-explainer">Dados de coleta, fertilidade, satélite, histórico, GPS, parâmetros e rastreabilidade ficam aqui para consulta técnica.</div>
-        <FieldOverviewTabs overview={overview} alerts={alerts}/>
+        <DeferredFieldOverviewTabs overview={overview} alerts={alerts}/>
       </details>
     </div>
   );

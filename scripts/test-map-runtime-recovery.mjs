@@ -25,6 +25,16 @@ function componentHarness(path, name, fetchImpl) {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (id.includes("ndvi-engine")) return { VIGOR_ZONE_LABELS: {}, NDVI_QUALITY_LABELS: {} };
+      if (id.includes("ndvi-display-palette")) return {
+        NDVI_DISPLAY_ZONE_COLOR: {
+          SEM_VEGETACAO: "#8D6E4F",
+          BAIXO: "#E53935",
+          MODERADO: "#F9A825",
+          ALTO: "#7AC943",
+          MUITO_ALTO: "#00A651",
+        },
+        enhanceArchivedNdviRasterForDisplay: async blob => blob,
+      };
       return {};
     },
   };
@@ -64,7 +74,7 @@ assert.equal(capturedSignal.aborted, true, "unmount must cancel satellite reques
 // Synthetic response only for testing the component's recovery UI, never persisted.
 const vigor = componentHarness("../src/components/simple-field-vigor.tsx", "SimpleFieldVigor", async url => {
   if (url.includes("/map?")) return { ok: false };
-  return { ok: true, json: async () => ({ history: [{ capturedAt: "2026-01-01", rasterObjectKey: "test", meanNdvi: 0.5 }], fieldBoundary: { type: "Polygon", coordinates: [] } }) };
+  return { ok: true, json: async () => ({ history: [{ capturedAt: "2026-01-01", rasterStored: true, meanNdvi: 0.5 }], fieldBoundary: { type: "Polygon", coordinates: [] } }) };
 });
 vigor.render();
 const cleanupVigor = vigor.effects[0]();

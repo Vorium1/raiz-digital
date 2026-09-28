@@ -1,9 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { SimplePortfolioMap } from "@/components/simple-portfolio-map";
 import { isDatabaseMode } from "@/lib/data-mode";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { getDashboardSnapshot, getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
+import { getPortfolioFieldSummaries } from "@/lib/repositories/dashboard";
 import { listOperationalAlerts } from "@/lib/repositories/alerts";
 import { userActionAlerts } from "@/domain/user-attention";
 
@@ -15,15 +16,7 @@ export default async function InicioPage() {
   if (!isDatabaseMode()) return <DemoInicio/>;
 
   const session = await requirePlatformSession();
-  const [snapshot, alerts, fields] = await Promise.all([
-    getDashboardSnapshot(session.tenantId, session.userId),
-    listOperationalAlerts(session.tenantId, session.userId),
-    getPortfolioFieldSummaries(session.tenantId, {}, session.userId),
-  ]);
-
   const firstName = session.name.trim().split(/\s+/)[0] || "você";
-  const actionableAlerts = userActionAlerts(alerts);
-  const attentionCount = actionableAlerts.length;
 
   return (
     <div className="simple-home">
@@ -33,10 +26,13 @@ export default async function InicioPage() {
           <h1>Olá, {firstName}.</h1>
           <p>O que você quer fazer?</p>
         </div>
-        <Link href="/atencao" className={`simple-alert-button ${attentionCount > 0 ? "has-attention" : ""}`} aria-label={attentionCount > 0 ? "Há algo para conferir" : "Nada precisa da sua atenção agora"}>
-          <Icon name={attentionCount > 0 ? "warning" : "check"} size={22}/>
-          {attentionCount > 0 && <span className="simple-alert-dot" aria-hidden="true"/>}
-        </Link>
+        <Suspense fallback={
+          <Link href="/atencao" className="simple-alert-button" aria-label="Carregando itens de atenção">
+            <Icon name="clock" size={22}/>
+          </Link>
+        }>
+          <HomeAttentionButton tenantId={session.tenantId} userId={session.userId}/>
+        </Suspense>
       </header>
 
       <section className="simple-action-grid" aria-label="Ações principais">
@@ -64,18 +60,47 @@ export default async function InicioPage() {
           <div><span>SEUS TALHÕES</span><h2>Suas áreas</h2><p>Clique em uma área para abrir.</p></div>
           <Link href="/talhoes">Ver todos <Icon name="arrow" size={15}/></Link>
         </div>
-        {fields.length > 0 ? (
-          <SimplePortfolioMap fields={fields as any}/>
-        ) : (
-          <div className="simple-empty-map">
-            <Icon name="map" size={34}/>
-            <strong>Nenhum talhão cadastrado ainda.</strong>
-            <small>Quando uma área for adicionada, ela aparece aqui automaticamente.</small>
+        <Suspense fallback={
+          <div className="simple-empty-map" role="status">
+            <Icon name="clock" size={30}/>
+            <strong>Preparando suas áreas…</strong>
+            <small>A página já está disponível enquanto o mapa termina de carregar.</small>
           </div>
-        )}
+        }>
+          <HomePortfolioMap tenantId={session.tenantId} userId={session.userId}/>
+        </Suspense>
       </section>
     </div>
   );
+}
+
+async function HomeAttentionButton({ tenantId, userId }: { tenantId: string; userId: string }) {
+  const alerts = await listOperationalAlerts(tenantId, userId);
+  const attentionCount = userActionAlerts(alerts).length;
+  return (
+    <Link
+      href="/atencao"
+      className={`simple-alert-button ${attentionCount > 0 ? "has-attention" : ""}`}
+      aria-label={attentionCount > 0 ? "Há algo para conferir" : "Nada precisa da sua atenção agora"}
+    >
+      <Icon name={attentionCount > 0 ? "warning" : "check"} size={22}/>
+      {attentionCount > 0 && <span className="simple-alert-dot" aria-hidden="true"/>}
+    </Link>
+  );
+}
+
+async function HomePortfolioMap({ tenantId, userId }: { tenantId: string; userId: string }) {
+  const fields = await getPortfolioFieldSummaries(tenantId, {}, userId);
+  if (fields.length === 0) {
+    return (
+      <div className="simple-empty-map">
+        <Icon name="map" size={34}/>
+        <strong>Nenhum talhão cadastrado ainda.</strong>
+        <small>Quando uma área for adicionada, ela aparece aqui automaticamente.</small>
+      </div>
+    );
+  }
+  return <SimplePortfolioMap fields={fields as any}/>;
 }
 
 function DemoInicio() {

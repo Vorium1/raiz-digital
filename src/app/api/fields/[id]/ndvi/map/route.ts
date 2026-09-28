@@ -78,6 +78,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     );
   }
 
+  const etag = `"${snapshot.rasterSha256}"`;
+  const cacheHeaders = {
+    "cache-control": "private, no-cache",
+    etag,
+    vary: "Cookie",
+  };
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch && ifNoneMatch.split(",").some((value) => value.trim() === etag)) {
+    return new Response(null, { status: 304, headers: cacheHeaders });
+  }
+
   try {
     const raster = await readNdviRasterArtifact({
       tenantId: session.tenantId,
@@ -91,8 +102,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       status: 200,
       headers: {
         "content-type": "image/png",
-        "cache-control": "private, no-store",
-        etag: `"${snapshot.rasterSha256}"`,
+        ...cacheHeaders,
         "x-raiz-ndvi-date": requestedDate,
         "x-raiz-ndvi-bbox": bbox.join(","),
         "x-raiz-ndvi-size": `${snapshot.rasterWidth}x${snapshot.rasterHeight}`,

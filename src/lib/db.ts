@@ -70,8 +70,10 @@ export async function withTenant<T>(context: TenantDbContext, work: (client: Poo
   };
   try {
     await client.query("BEGIN");
-    await client.query("SELECT set_config('app.tenant_id', $1, true)", [context.tenantId]);
-    await client.query("SELECT set_config('app.user_id', $1, true)", [context.userId ?? ""]);
+    await client.query(
+      "SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true)",
+      [context.tenantId, context.userId ?? ""],
+    );
     const result = await work(client);
     await client.query("COMMIT");
     return result;

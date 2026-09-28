@@ -86,7 +86,7 @@ export async function buildPropertyEvidence(tenantId: string, userId: string, pr
 
 export type FieldEvidence = {
   kind: "field";
-  field: { id: string; name: string; areaHa: number; propertyId: string; propertyName: string; clientId: string; clientName: string; municipality: string; state: string };
+  field: { id: string; name: string; areaHa: number; propertyId: string; propertyName: string; clientId: string; clientName: string; municipality: string | null; state: string | null };
   seasons: Array<{ id: string; seasonLabel: string; currentCrop: string | null; cultivar: string | null; yieldGoal: number | null; yieldGoalUnit: string | null; createdAt: string }>;
   collectionSummary: { plannedPoints: number; collectedPoints: number; orderCount: number };
   analyses: Array<{ id: string; code: string; status: string; confidenceScore: number | null; latestInterpretationStatus: string | null; notInterpretableReason: string | null; createdAt: string }>;

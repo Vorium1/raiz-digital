@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { listPublishedReports } from "@/lib/repositories/reports";
-import { listAnalyses } from "@/lib/repositories/analyses";
-import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
+import { getResultsOverview } from "@/lib/repositories/results-overview";
 import { SimpleResultsPreparation } from "@/components/simple-results-preparation";
 
 export const metadata = { title: "Resultados" };
@@ -15,23 +13,8 @@ export default async function ResultadosPage() {
   const session = await requirePlatformSession();
   const canRefresh = REFRESH_ROLES.has(session.role);
   const canPublishOfficial = PUBLISH_ROLES.has(session.role);
-  const [published, analyses] = await Promise.all([
-    listPublishedReports(session.tenantId, session.userId),
-    listAnalyses(session.tenantId, session.userId),
-  ]);
-  const seenAnalyses = new Set<string>();
-  const latestResults = published.filter((report: any) => {
-    if (seenAnalyses.has(report.analysisId)) return false;
-    seenAnalyses.add(report.analysisId);
-    return true;
-  });
-
-  // Publicação é histórico imutável, não um bloqueio para o estado corrente. Uma análise pode ter
-  // uma versão oficial já emitida e, depois de novo laudo/regra/contexto, voltar a precisar atualização,
-  // revisão ou nova publicação. Por isso o estado de entrega é calculado para TODAS as análises.
-  const deliveryRows = await getDecisionDeliveryStatuses(
+  const { published: latestResults, analyses, deliveryRows } = await getResultsOverview(
     session.tenantId,
-    analyses.map((analysis: any) => String(analysis.id)),
     session.userId,
   );
   const deliveryByAnalysis = new Map(deliveryRows.map((row) => [row.analysisId, row]));

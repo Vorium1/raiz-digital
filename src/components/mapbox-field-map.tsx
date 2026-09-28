@@ -44,6 +44,7 @@ export function MapboxFieldMap({
           bearing: 0,
           antialias: true,
           attributionControl: true,
+          cooperativeGestures: true,
           config: {
             basemap: {
               lightPreset: "day",

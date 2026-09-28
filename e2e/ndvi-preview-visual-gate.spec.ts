@@ -58,7 +58,7 @@ type NdviPayload = {
   latest?: { capturedAt?: string | null } | null;
   history?: Array<{
     capturedAt: string;
-    rasterObjectKey?: string | null;
+    rasterStored?: boolean;
   }>;
   fieldBoundary?: {
     type: "Polygon" | "MultiPolygon";
@@ -123,14 +123,14 @@ async function fieldWithArchivedNdvi(page: Page) {
       hasBoundary: Boolean(payload?.fieldBoundary),
       historyCount: Array.isArray(payload?.history) ? payload!.history!.length : 0,
       archivedCount: Array.isArray(payload?.history)
-        ? payload!.history!.filter((snapshot) => Boolean(snapshot.rasterObjectKey)).length
+        ? payload!.history!.filter((snapshot) => Boolean(snapshot.rasterStored)).length
         : 0,
       error: (result.body as any)?.error ?? null,
     });
 
     if (!result.ok || !payload?.fieldBoundary) continue;
     let effectivePayload = payload;
-    let archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
+    let archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterStored));
 
     if (!archived?.capturedAt) {
       const refresh = await page.evaluate(async (fieldId) => {
@@ -147,13 +147,13 @@ async function fieldWithArchivedNdvi(page: Page) {
         refreshOk: refresh.ok,
         refreshError: refresh.body?.error ?? refresh.body?.partialFailure?.error ?? null,
         refreshArchivedCount: Array.isArray(refresh.body?.history)
-          ? refresh.body.history.filter((snapshot: any) => Boolean(snapshot.rasterObjectKey)).length
+          ? refresh.body.history.filter((snapshot: any) => Boolean(snapshot.rasterStored)).length
           : 0,
       });
 
       if (refresh.ok) {
         effectivePayload = refresh.body as NdviPayload;
-        archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterObjectKey));
+        archived = (effectivePayload.history ?? []).find((snapshot) => Boolean(snapshot.rasterStored));
       }
     }
 

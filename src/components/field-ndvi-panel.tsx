@@ -16,7 +16,7 @@ type Snapshot = {
   minNdvi?: number | null;
   maxNdvi?: number | null;
   pixelCount?: number | null;
-  rasterObjectKey?: string | null;
+  rasterStored?: boolean;
   zoneBreakdownPct: Partial<Record<VigorZone, number>>;
 };
 
@@ -83,7 +83,7 @@ function parseRasterBounds(raw: string | null): MapImageOverlay["bounds"] | null
 }
 
 function hasArchivedRaster(snapshot: Snapshot | null | undefined): snapshot is Snapshot {
-  return Boolean(snapshot?.rasterObjectKey);
+  return Boolean(snapshot?.rasterStored);
 }
 
 /**
@@ -178,7 +178,7 @@ export function FieldNdviPanel({
     void (async () => {
       try {
         const response = await fetch(`/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(selectedRasterDate)}`, {
-          cache: "no-store",
+          cache: "no-cache",
           signal: controller.signal,
         });
         if (!response.ok) {
