@@ -77,6 +77,23 @@ assert.equal(noEqualSupport.ready, true);
 assert.equal(noEqualSupport.operationalAverageAllowed, false);
 assert.equal(noEqualSupport.operationalAverageKgPerHa, null);
 
+const cabedaOperationalPrescription = validatePrescriptionPkRecommendations({
+  recommendations: [
+    { inputType: "P2O5", quantity: 94.5, unit: "kg/ha" },
+    { inputType: "K2O", quantity: 91.9, unit: "kg/ha" },
+  ],
+  cropCode: "SOJA",
+  interpretation: area01,
+  yieldGoal: 4.8,
+  yieldGoalUnit: "t/ha",
+  cultivationOrderAfterSoilAnalysis: 1,
+  pointDoseEnvelopes: { P2O5: cabedaPointP, K2O: cabedaPointK },
+});
+assert.equal(cabedaOperationalPrescription.allowed, true);
+assert.equal(cabedaOperationalPrescription.failures.length, 0);
+assert.equal(cabedaOperationalPrescription.validated[0].validation.operationalExpected?.doseKgPerHa, 94.5);
+assert.equal(cabedaOperationalPrescription.validated[1].validation.operationalExpected?.doseKgPerHa, 91.9);
+
 const twoPoints = evaluateUniformPkReadiness({
   cropCode: "SOJA",
   interpretation: [
