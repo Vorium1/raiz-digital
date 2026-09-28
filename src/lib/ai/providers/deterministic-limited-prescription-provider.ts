@@ -118,6 +118,17 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     }
   }
 
+  const climateContext = evidence.analysis.climateContext;
+  if (climateContext?.status === "PROVIDED" && climateContext.notes) {
+    managementPractices.push(`Contexto climático informado: ${climateContext.notes} O clima contextualiza risco e operação, mas não altera automaticamente as doses determinísticas.`);
+  }
+  if (evidence.biologicalReportContext?.hasAnyBiology && evidence.biologicalReportContext.summary) {
+    managementPractices.push(evidence.biologicalReportContext.summary);
+  }
+  if (evidence.applicationGuidance?.status === "PLACEMENT_REVIEW_REQUIRED") {
+    managementPractices.push(evidence.applicationGuidance.guidance);
+  }
+
   const sulfur = evidence.deterministicSulfurDose;
   if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
     if (sulfur.operationalDoseKgSPerHa != null) {
@@ -540,6 +551,9 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         sources,
         fertilityPlan: evidence.fertilityHorizonPlan ?? null,
         soilComplementActions: evidence.soilComplementActions ?? [],
+        climateContext: evidence.analysis.climateContext ?? null,
+        biologicalContext: evidence.biologicalReportContext ?? null,
+        applicationGuidance: evidence.applicationGuidance ?? null,
       },
       provider: "raiz-deterministic-limited",
       model: "agronomic-engine",
