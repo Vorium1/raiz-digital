@@ -1,190 +1,263 @@
 import { withTenant } from "@/lib/db";
 
 /**
- * Dado real consolidado de UM talhão, pra Talhão 360° (RAIZ 2.0, Fase 1, Etapa 5). Reaproveita as MESMAS
- * tabelas e colunas já usadas em `getAnalysisById`, `getCollectionReportData` e no próprio motor -- nenhum
- * dado novo, nenhuma agregação inventada. Cada seção da página lê uma fatia daqui:
- * VISÃO GERAL (field+seasons+gpsQuality), EVIDÊNCIAS (orders+ndviSnapshots), DECISÕES (analyses),
- * LINHA DO TEMPO (todas as datas reais, montadas na própria página/componente).
+ * Read model do Talhão 360°.
+ *
+ * A versão anterior executava nove consultas SQL sequenciais dentro da mesma transação tenant-scoped.
+ * Em Vercel/Neon a latência de rede entre app e banco multiplicava esse custo em toda abertura de talhão.
+ * O read model abaixo preserva exatamente as mesmas fontes/ordenações, mas agrega tudo em uma única
+ * consulta SQL. Nenhuma média/interpolação agronômica nova é criada.
  */
 export async function getFieldOverview(tenantId: string, fieldId: string, userId?: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fieldId)) return null;
+
   return withTenant({ tenantId, userId }, async (client) => {
-    const fieldResult = await client.query(
-      `SELECT f.id::text, f.name, f.area_ha::float8 AS "areaHa", ST_AsGeoJSON(f.boundary)::json AS boundary,
-              p.id::text AS "propertyId", p.name AS "propertyName", p.municipality, p.state,
-              c.id::text AS "clientId", c.name AS "clientName"
-       FROM fields f
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE f.tenant_id = $1::uuid AND f.id = $2::uuid`,
-      [tenantId, fieldId],
-    );
-    const field = fieldResult.rows[0];
-    if (!field) return null;
-
-    const seasonsResult = await client.query(
-      `SELECT id::text, season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop",
-              cultivar, next_cultivar AS "nextCultivar", yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit",
-              created_at::text AS "createdAt"
-       FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY created_at DESC`,
-      [tenantId, fieldId],
-    );
-
-    const ordersResult = await client.query(
-      `SELECT co.id::text, co.code, co.status, co.planned_at::text AS "plannedAt", co.created_at::text AS "createdAt",
-              co.crop_season_id::text AS "cropSeasonId", co.grid_area_ha::float8 AS "gridAreaHa",
-              co.depth_from_cm::float8 AS "depthFromCm", co.depth_to_cm::float8 AS "depthToCm",
-              count(sp.*)::int AS "plannedPoints", count(sp.*) FILTER (WHERE sp.collected_at IS NOT NULL)::int AS "collectedPoints"
-       FROM collection_orders co
-       LEFT JOIN sample_points sp ON sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
-       WHERE co.tenant_id = $1::uuid AND co.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
-       GROUP BY co.id ORDER BY co.created_at DESC`,
-      [tenantId, fieldId],
-    );
-
-    const analysesResult = await client.query(
-      `SELECT a.id::text, a.code, a.status, a.confidence_score::float8 AS "confidenceScore", a.confidence_level AS "confidenceLevel",
-              a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt", a.crop_season_id::text AS "cropSeasonId",
-              li.status AS "latestInterpretationStatus", li.not_interpretable_reason AS "notInterpretableReason",
-              li.reviewed_at::text AS "reviewedAt", li.approved_at::text AS "approvedAt", li.created_at::text AS "interpretedAt",
-              li.id::text AS "latestInterpretationId"
-       FROM analyses a
-       LEFT JOIN LATERAL (
-         SELECT id, status, not_interpretable_reason, reviewed_at, approved_at, created_at FROM interpretations
-         WHERE interpretations.tenant_id = a.tenant_id AND interpretations.analysis_id = a.id ORDER BY revision DESC LIMIT 1
-       ) li ON true
-       WHERE a.tenant_id = $1::uuid AND a.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
-       ORDER BY a.created_at DESC`,
-      [tenantId, fieldId],
-    );
-
-    const yieldResult = await client.query(
-      `SELECT id::text, season_label AS "seasonLabel", crop, cultivar, yield_value::float8 AS "yieldValue", yield_unit AS "yieldUnit", source, created_at::text AS "createdAt"
-       FROM field_yield_history WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY created_at DESC`,
-      [tenantId, fieldId],
-    );
-
-    const ndviResult = await client.query(
-      `SELECT id::text, captured_at::text AS "capturedAt", source, cloud_cover_pct::float8 AS "cloudCoverPct",
-              pixel_count AS "pixelCount", mean_ndvi::float8 AS "meanNdvi", min_ndvi::float8 AS "minNdvi", max_ndvi::float8 AS "maxNdvi",
-              zone_breakdown_pct AS "zoneBreakdownPct", created_at::text AS "createdAt"
-       FROM field_ndvi_snapshots WHERE tenant_id = $1::uuid AND field_id = $2::uuid ORDER BY captured_at DESC`,
-      [tenantId, fieldId],
-    );
-
-    /**
-     * Qualidade/origem espacial do talhão.
-     *
-     * Antes esta métrica só reconhecia `BROWSER_GPS`, então um ponto real importado de shapefile/GPS
-     * auditado apareceria como 0% confirmado no Talhão 360° — exatamente o oposto do dado real. A métrica
-     * agora separa as origens em vez de usar um LIKE único:
-     * - observed_position: captura observada em campo; prevalece sobre qualquer rótulo de origem;
-     * - SHAPEFILE_REAL_GPS_LONLAT / SHAPEFILE_REAL_EPSG4326: únicas fontes importadas aceitas como
-     *   coordenada real auditada quando não existe observed_position;
-     * - qualquer outro rótulo, inclusive prefixo/sufixo parecido, continua não verificado.
-     *
-     * `verifiedCount` significa origem espacial rastreável, não “precisão centimétrica”. `confirmedCount`
-     * é mantido como alias de compatibilidade para componentes antigos e tem exatamente o mesmo valor.
-     */
-    const pointsResult = await client.query(
-      `WITH latest_season AS (
-         SELECT id
-         FROM crop_seasons
-         WHERE tenant_id = $1::uuid AND field_id = $2::uuid
-         ORDER BY created_at DESC
-         LIMIT 1
-       ),
-       latest_order AS (
-         SELECT id
-         FROM collection_orders
-         WHERE tenant_id = $1::uuid AND crop_season_id = (SELECT id FROM latest_season)
-         ORDER BY created_at DESC
-         LIMIT 1
+    const result = await client.query(
+      `WITH field_row AS (
+         SELECT f.id::text AS id,
+                f.name,
+                f.area_ha::float8 AS "areaHa",
+                ST_AsGeoJSON(f.boundary)::json AS boundary,
+                p.id::text AS "propertyId",
+                p.name AS "propertyName",
+                p.municipality,
+                p.state,
+                c.id::text AS "clientId",
+                c.name AS "clientName"
+         FROM fields f
+         JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id
+         JOIN clients c ON c.tenant_id=p.tenant_id AND c.id=p.client_id
+         WHERE f.tenant_id=$1::uuid AND f.id=$2::uuid
        )
-       SELECT sp.id::text,
-              sp.code,
-              sp.sequence,
-              ST_Y(sp.position)::float8 AS latitude,
-              ST_X(sp.position)::float8 AS longitude,
-              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
-              CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
-              CASE WHEN jsonb_typeof(sp.source_payload->'plannedLatitude') = 'number'
-                   THEN (sp.source_payload->>'plannedLatitude')::float8 ELSE NULL END AS "plannedLatitude",
-              CASE WHEN jsonb_typeof(sp.source_payload->'plannedLongitude') = 'number'
-                   THEN (sp.source_payload->>'plannedLongitude')::float8 ELSE NULL END AS "plannedLongitude",
-              sp.collected_at::text AS "collectedAt",
-              sp.depth_from_cm::float8 AS "depthFromCm",
-              sp.depth_to_cm::float8 AS "depthToCm",
-              sp.subsample_count AS "subsampleCount",
-              sp.accuracy_m::float8 AS "accuracyM",
-              sp.gps_source AS "gpsSource",
-              sp.notes,
-              (
-                SELECT count(*)::int
-                FROM lab_results lr
-                JOIN lab_samples ls ON ls.tenant_id = lr.tenant_id AND ls.id = lr.lab_sample_id
-                WHERE ls.tenant_id = sp.tenant_id AND ls.sample_point_id = sp.id
-              ) AS "labResultCount"
-       FROM sample_points sp
-       WHERE sp.tenant_id = $1::uuid
-         AND sp.collection_order_id = (SELECT id FROM latest_order)
-       ORDER BY coalesce(sp.sequence, 2147483647), sp.code`,
+       SELECT
+         row_to_json(fr) AS field,
+
+         coalesce((
+           SELECT json_agg(row_to_json(s) ORDER BY s."createdAt" DESC)
+           FROM (
+             SELECT cs.id::text AS id,
+                    cs.season_label AS "seasonLabel",
+                    cs.current_crop AS "currentCrop",
+                    cs.next_crop AS "nextCrop",
+                    cs.cultivar,
+                    cs.next_cultivar AS "nextCultivar",
+                    cs.yield_goal::float8 AS "yieldGoal",
+                    cs.yield_goal_unit AS "yieldGoalUnit",
+                    cs.created_at::text AS "createdAt"
+             FROM crop_seasons cs
+             WHERE cs.tenant_id=$1::uuid AND cs.field_id=$2::uuid
+           ) s
+         ), '[]'::json) AS seasons,
+
+         coalesce((
+           SELECT json_agg(row_to_json(o) ORDER BY o."createdAt" DESC)
+           FROM (
+             SELECT co.id::text AS id,
+                    co.code,
+                    co.status,
+                    co.planned_at::text AS "plannedAt",
+                    co.created_at::text AS "createdAt",
+                    co.crop_season_id::text AS "cropSeasonId",
+                    co.grid_area_ha::float8 AS "gridAreaHa",
+                    co.depth_from_cm::float8 AS "depthFromCm",
+                    co.depth_to_cm::float8 AS "depthToCm",
+                    count(sp.*)::int AS "plannedPoints",
+                    count(sp.*) FILTER (WHERE sp.collected_at IS NOT NULL)::int AS "collectedPoints"
+             FROM collection_orders co
+             LEFT JOIN sample_points sp
+               ON sp.tenant_id=co.tenant_id AND sp.collection_order_id=co.id
+             WHERE co.tenant_id=$1::uuid
+               AND co.crop_season_id IN (
+                 SELECT id FROM crop_seasons
+                 WHERE tenant_id=$1::uuid AND field_id=$2::uuid
+               )
+             GROUP BY co.id
+           ) o
+         ), '[]'::json) AS orders,
+
+         coalesce((
+           SELECT json_agg(row_to_json(a) ORDER BY a."createdAt" DESC)
+           FROM (
+             SELECT an.id::text AS id,
+                    an.code,
+                    an.status,
+                    an.confidence_score::float8 AS "confidenceScore",
+                    an.confidence_level AS "confidenceLevel",
+                    an.created_at::text AS "createdAt",
+                    an.updated_at::text AS "updatedAt",
+                    an.crop_season_id::text AS "cropSeasonId",
+                    li.status AS "latestInterpretationStatus",
+                    li.not_interpretable_reason AS "notInterpretableReason",
+                    li.reviewed_at::text AS "reviewedAt",
+                    li.approved_at::text AS "approvedAt",
+                    li.created_at::text AS "interpretedAt",
+                    li.id::text AS "latestInterpretationId"
+             FROM analyses an
+             LEFT JOIN LATERAL (
+               SELECT i.id, i.status, i.not_interpretable_reason, i.reviewed_at, i.approved_at, i.created_at
+               FROM interpretations i
+               WHERE i.tenant_id=an.tenant_id AND i.analysis_id=an.id
+               ORDER BY i.revision DESC
+               LIMIT 1
+             ) li ON true
+             WHERE an.tenant_id=$1::uuid
+               AND an.crop_season_id IN (
+                 SELECT id FROM crop_seasons
+                 WHERE tenant_id=$1::uuid AND field_id=$2::uuid
+               )
+           ) a
+         ), '[]'::json) AS analyses,
+
+         coalesce((
+           SELECT json_agg(row_to_json(y) ORDER BY y."createdAt" DESC)
+           FROM (
+             SELECT fy.id::text AS id,
+                    fy.season_label AS "seasonLabel",
+                    fy.crop,
+                    fy.cultivar,
+                    fy.yield_value::float8 AS "yieldValue",
+                    fy.yield_unit AS "yieldUnit",
+                    fy.source,
+                    fy.created_at::text AS "createdAt"
+             FROM field_yield_history fy
+             WHERE fy.tenant_id=$1::uuid AND fy.field_id=$2::uuid
+           ) y
+         ), '[]'::json) AS "yieldHistory",
+
+         coalesce((
+           SELECT json_agg(row_to_json(n) ORDER BY n."capturedAt" DESC)
+           FROM (
+             SELECT nd.id::text AS id,
+                    nd.captured_at::text AS "capturedAt",
+                    nd.source,
+                    nd.cloud_cover_pct::float8 AS "cloudCoverPct",
+                    nd.pixel_count AS "pixelCount",
+                    nd.mean_ndvi::float8 AS "meanNdvi",
+                    nd.min_ndvi::float8 AS "minNdvi",
+                    nd.max_ndvi::float8 AS "maxNdvi",
+                    nd.zone_breakdown_pct AS "zoneBreakdownPct",
+                    nd.created_at::text AS "createdAt"
+             FROM field_ndvi_snapshots nd
+             WHERE nd.tenant_id=$1::uuid AND nd.field_id=$2::uuid
+           ) n
+         ), '[]'::json) AS "ndviSnapshots",
+
+         coalesce((
+           SELECT json_agg(row_to_json(pt) ORDER BY coalesce(pt.sequence,2147483647), pt.code)
+           FROM (
+             SELECT sp.id::text AS id,
+                    sp.code,
+                    sp.sequence,
+                    ST_Y(sp.position)::float8 AS latitude,
+                    ST_X(sp.position)::float8 AS longitude,
+                    CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_Y(sp.observed_position)::float8 END AS "observedLatitude",
+                    CASE WHEN sp.observed_position IS NULL THEN NULL ELSE ST_X(sp.observed_position)::float8 END AS "observedLongitude",
+                    CASE WHEN jsonb_typeof(sp.source_payload->'plannedLatitude')='number'
+                         THEN (sp.source_payload->>'plannedLatitude')::float8 ELSE NULL END AS "plannedLatitude",
+                    CASE WHEN jsonb_typeof(sp.source_payload->'plannedLongitude')='number'
+                         THEN (sp.source_payload->>'plannedLongitude')::float8 ELSE NULL END AS "plannedLongitude",
+                    sp.collected_at::text AS "collectedAt",
+                    sp.depth_from_cm::float8 AS "depthFromCm",
+                    sp.depth_to_cm::float8 AS "depthToCm",
+                    sp.subsample_count AS "subsampleCount",
+                    sp.accuracy_m::float8 AS "accuracyM",
+                    sp.gps_source AS "gpsSource",
+                    sp.notes,
+                    (
+                      SELECT count(*)::int
+                      FROM lab_results lr
+                      JOIN lab_samples ls ON ls.tenant_id=lr.tenant_id AND ls.id=lr.lab_sample_id
+                      WHERE ls.tenant_id=sp.tenant_id AND ls.sample_point_id=sp.id
+                    ) AS "labResultCount"
+             FROM sample_points sp
+             WHERE sp.tenant_id=$1::uuid
+               AND sp.collection_order_id=(
+                 SELECT co2.id
+                 FROM collection_orders co2
+                 JOIN crop_seasons cs2
+                   ON cs2.tenant_id=co2.tenant_id AND cs2.id=co2.crop_season_id
+                 WHERE co2.tenant_id=$1::uuid AND cs2.field_id=$2::uuid
+                 ORDER BY cs2.created_at DESC, co2.created_at DESC
+                 LIMIT 1
+               )
+           ) pt
+         ), '[]'::json) AS "collectionPoints",
+
+         (
+           SELECT json_build_object(
+             'total', count(*)::int,
+             'browserGpsCount', count(*) FILTER (WHERE sp.observed_position IS NOT NULL)::int,
+             'shapefileRealCount', count(*) FILTER (
+               WHERE upper(trim(coalesce(sp.gps_source,''))) IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+             )::int,
+             'estimatedCount', count(*) FILTER (
+               WHERE sp.observed_position IS NULL
+                 AND upper(trim(coalesce(sp.gps_source,''))) NOT IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+             )::int,
+             'verifiedCount', count(*) FILTER (
+               WHERE sp.observed_position IS NOT NULL
+                  OR upper(trim(coalesce(sp.gps_source,''))) IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+             )::int,
+             'confirmedCount', count(*) FILTER (
+               WHERE sp.observed_position IS NOT NULL
+                  OR upper(trim(coalesce(sp.gps_source,''))) IN ('SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326')
+             )::int
+           )
+           FROM sample_points sp
+           JOIN collection_orders co
+             ON co.tenant_id=sp.tenant_id AND co.id=sp.collection_order_id
+           WHERE sp.tenant_id=$1::uuid
+             AND co.crop_season_id IN (
+               SELECT id FROM crop_seasons
+               WHERE tenant_id=$1::uuid AND field_id=$2::uuid
+             )
+             AND sp.collected_at IS NOT NULL
+         ) AS "gpsQuality",
+
+         coalesce((
+           SELECT json_agg(row_to_json(r) ORDER BY r."publishedAt" DESC)
+           FROM (
+             SELECT rep.id::text AS id,
+                    rep.revision,
+                    rep.published_at::text AS "publishedAt",
+                    i.analysis_id::text AS "analysisId",
+                    an.code AS "analysisCode",
+                    an.crop_season_id::text AS "cropSeasonId"
+             FROM reports rep
+             JOIN interpretations i
+               ON i.tenant_id=rep.tenant_id AND i.id=rep.interpretation_id
+             JOIN analyses an
+               ON an.tenant_id=i.tenant_id AND an.id=i.analysis_id
+             WHERE rep.tenant_id=$1::uuid
+               AND an.crop_season_id IN (
+                 SELECT id FROM crop_seasons
+                 WHERE tenant_id=$1::uuid AND field_id=$2::uuid
+               )
+           ) r
+         ), '[]'::json) AS reports
+       FROM field_row fr`,
       [tenantId, fieldId],
     );
 
-    const gpsQualityResult = await client.query(
-      `SELECT count(*)::int AS total,
-              count(*) FILTER (WHERE sp.observed_position IS NOT NULL)::int AS "browserGpsCount",
-              count(*) FILTER (
-                WHERE upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
-              )::int AS "shapefileRealCount",
-              count(*) FILTER (
-                WHERE sp.observed_position IS NULL
-                  AND upper(trim(coalesce(sp.gps_source, ''))) NOT IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
-              )::int AS "estimatedCount",
-              count(*) FILTER (
-                WHERE sp.observed_position IS NOT NULL
-                   OR upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
-              )::int AS "verifiedCount",
-              count(*) FILTER (
-                WHERE sp.observed_position IS NOT NULL
-                   OR upper(trim(coalesce(sp.gps_source, ''))) IN ('SHAPEFILE_REAL_GPS_LONLAT', 'SHAPEFILE_REAL_EPSG4326')
-              )::int AS "confirmedCount"
-       FROM sample_points sp
-       JOIN collection_orders co ON co.tenant_id = sp.tenant_id AND co.id = sp.collection_order_id
-       WHERE sp.tenant_id = $1::uuid AND co.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
-         AND sp.collected_at IS NOT NULL`,
-      [tenantId, fieldId],
-    );
-
-    const reportsResult = await client.query(
-      `SELECT r.id::text, r.revision, r.published_at::text AS "publishedAt", i.analysis_id::text AS "analysisId", a.code AS "analysisCode", a.crop_season_id::text AS "cropSeasonId"
-       FROM reports r
-       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
-       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
-       WHERE r.tenant_id = $1::uuid AND a.crop_season_id IN (SELECT id FROM crop_seasons WHERE tenant_id = $1::uuid AND field_id = $2::uuid)
-       ORDER BY r.published_at DESC`,
-      [tenantId, fieldId],
-    );
-
+    const row = result.rows[0];
+    if (!row?.field) return null;
     return {
-      field,
-      seasons: seasonsResult.rows,
-      orders: ordersResult.rows,
-      analyses: analysesResult.rows,
-      yieldHistory: yieldResult.rows,
-      ndviSnapshots: ndviResult.rows,
-      collectionPoints: pointsResult.rows,
-      gpsQuality: gpsQualityResult.rows[0] as {
-        total: number;
-        verifiedCount: number;
-        confirmedCount: number;
-        browserGpsCount: number;
-        shapefileRealCount: number;
-        estimatedCount: number;
+      field: row.field,
+      seasons: row.seasons ?? [],
+      orders: row.orders ?? [],
+      analyses: row.analyses ?? [],
+      yieldHistory: row.yieldHistory ?? [],
+      ndviSnapshots: row.ndviSnapshots ?? [],
+      collectionPoints: row.collectionPoints ?? [],
+      gpsQuality: row.gpsQuality ?? {
+        total: 0,
+        verifiedCount: 0,
+        confirmedCount: 0,
+        browserGpsCount: 0,
+        shapefileRealCount: 0,
+        estimatedCount: 0,
       },
-      reports: reportsResult.rows,
+      reports: row.reports ?? [],
     };
   });
 }
