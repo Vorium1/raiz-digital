@@ -13,6 +13,7 @@ const portfolioMap = await readFile(new URL("../src/components/spatial-portfolio
 const fieldOverviewRepo = await readFile(new URL("../src/lib/repositories/field-overview.ts", import.meta.url), "utf8");
 const fieldPage = await readFile(new URL("../src/app/(platform)/talhoes/[fieldId]/page.tsx", import.meta.url), "utf8");
 const simpleFieldOverview = await readFile(new URL("../src/components/simple-field-overview.tsx", import.meta.url), "utf8");
+const deferredFieldOverview = await readFile(new URL("../src/components/deferred-field-overview-tabs.tsx", import.meta.url), "utf8");
 const deliveryStatus = await readFile(new URL("../src/lib/repositories/decision-delivery-status.ts", import.meta.url), "utf8");
 const resultsPage = await readFile(new URL("../src/app/(platform)/resultados/page.tsx", import.meta.url), "utf8");
 const resultsOverview = await readFile(new URL("../src/lib/repositories/results-overview.ts", import.meta.url), "utf8");
@@ -51,8 +52,11 @@ assert.match(portfolioMap, /scrollWheelZoom: false/, "Fallback Leaflet não deve
 // Talhão 360°: abertura rápida, histórico sob demanda e sem central global de alertas no SSR.
 assert.match(fieldPage, /getFieldOverviewCore/, "Talhão 360 deve usar o read model rápido no primeiro render.");
 assert.doesNotMatch(fieldPage, /listOperationalAlerts/, "Talhão 360 não pode bloquear o SSR esperando alertas globais.");
-assert.match(simpleFieldOverview, /DeferredFieldOverviewTabs/, "Histórico técnico deve carregar sob demanda.");
-assert.match(simpleFieldOverview, /technicalOpened/, "Detalhes técnicos não devem montar antes de o usuário abrir a seção.");
+assert.match(simpleFieldOverview, /DeferredFieldOverviewTabs/, "Histórico técnico deve permanecer atrás do componente deferido.");
+assert.doesNotMatch(simpleFieldOverview, /technicalOpened/, "Pai não deve depender de estado de clique que pode ser perdido antes da hidratação.");
+assert.match(deferredFieldOverview, /closest\("details"\)/, "Componente deferido deve sincronizar com o estado nativo do details.");
+assert.match(deferredFieldOverview, /addEventListener\("toggle"/, "Componente deferido deve reagir à abertura real do details.");
+assert.match(deferredFieldOverview, /if \(!active \|\| details \|\| error\) return;/, "Fetch técnico não deve ocorrer enquanto a seção estiver fechada.");
 assert.match(fieldOverviewRepo, /export async function getFieldOverviewCore/, "Read model rápido precisa existir.");
 assert.match(fieldOverviewRepo, /export async function getFieldOverviewTechnicalDetails/, "Histórico técnico precisa ter read model separado.");
 assert.doesNotMatch(deliveryStatus, /information_schema\.columns/, "Estado de entrega não deve introspectar schema em toda abertura.");
