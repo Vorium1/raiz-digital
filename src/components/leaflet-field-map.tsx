@@ -113,7 +113,14 @@ export function LeafletFieldMap({
     void import("leaflet").then((mod) => {
       if (cancelled || !containerRef.current || mapRef.current) return;
       const L = mod.default;
-      const map = L.map(containerRef.current, { attributionControl: true, preferCanvas: true }).setView([-15.7797, -47.9297], 4);
+      const coarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
+      const map = L.map(containerRef.current, {
+        attributionControl: true,
+        preferCanvas: true,
+        scrollWheelZoom: false,
+        dragging: !coarsePointer,
+        touchZoom: true,
+      }).setView([-15.7797, -47.9297], 4);
 
       // Contingência deliberadamente SEM Esri. O bug histórico de quadrantes pretos ocorre em qualquer
       // viewport e pode vir de tile opaco inválido (HTTP 200), caso em que uma camada inferior não aparece.

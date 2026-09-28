@@ -84,7 +84,7 @@ export function GoogleFieldMap({
           fullscreenControl: false,
           rotateControl: false,
           tilt: 0,
-          gestureHandling: "greedy",
+          gestureHandling: "cooperative",
           backgroundColor: "#0c1512",
         });
 

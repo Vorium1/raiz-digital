@@ -4,15 +4,10 @@ import { useEffect, useState } from "react";
 import { RealFieldMap, type MapImageOverlay, type MapLegendEntry, type SpatialGeometry } from "@/components/real-field-map";
 import type { VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
+import { enhanceArchivedNdviRasterForDisplay, NDVI_DISPLAY_ZONE_COLOR } from "@/lib/ndvi-display-palette";
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
-const ZONE_COLOR: Record<VigorZone, string> = {
-  SEM_VEGETACAO: "#9a8468",
-  BAIXO: "#d9655a",
-  MODERADO: "#d89943",
-  ALTO: "#8fbf6b",
-  MUITO_ALTO: "#29966f",
-};
+const ZONE_COLOR = NDVI_DISPLAY_ZONE_COLOR;
 
 const VIGOR_LEGEND: MapLegendEntry[] = ZONE_ORDER.map((zone) => ({
   label: VIGOR_ZONE_LABELS[zone],
@@ -64,10 +59,11 @@ export function PublishedNdviMap({
 
         const blob = await response.blob();
         if (!blob.type.includes("image/png")) throw new Error("Formato inesperado do raster NDVI oficial.");
+        const displayBlob = await enhanceArchivedNdviRasterForDisplay(blob);
 
-        objectUrl = URL.createObjectURL(blob);
+        objectUrl = URL.createObjectURL(displayBlob);
         if (!controller.signal.aborted) {
-          setOverlay({ url: objectUrl, bounds, opacity: 0.62 });
+          setOverlay({ url: objectUrl, bounds, opacity: 0.84 });
           setState("ready");
         }
       } catch {

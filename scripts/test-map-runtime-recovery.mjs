@@ -25,6 +25,16 @@ function componentHarness(path, name, fetchImpl) {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (id.includes("ndvi-engine")) return { VIGOR_ZONE_LABELS: {}, NDVI_QUALITY_LABELS: {} };
+      if (id.includes("ndvi-display-palette")) return {
+        NDVI_DISPLAY_ZONE_COLOR: {
+          SEM_VEGETACAO: "#8D6E4F",
+          BAIXO: "#E53935",
+          MODERADO: "#F9A825",
+          ALTO: "#7AC943",
+          MUITO_ALTO: "#00A651",
+        },
+        enhanceArchivedNdviRasterForDisplay: async blob => blob,
+      };
       return {};
     },
   };
