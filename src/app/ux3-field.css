@@ -241,8 +241,9 @@
 }
 .simple-field-state.ready > span { color: #2f7d45; }
 .simple-field-state.review > span { color: #5a6bb5; }
-.simple-field-state strong { display:block; font-size:15px; margin-bottom:3px; }
-.simple-field-state p { color:#6f7d74; font-size:12px; margin:0; }
+.simple-field-state > div { min-width:0; }
+.simple-field-state strong { display:block; font-size:15px; margin-bottom:3px; overflow-wrap:anywhere; }
+.simple-field-state p { color:#6f7d74; font-size:12px; margin:0; overflow-wrap:anywhere; }
 .simple-field-state > a {
   align-items:center;
   color:#315f3d;
@@ -360,10 +361,29 @@
   .simple-field-vigor-summary{grid-template-columns:1fr 1fr}
   .simple-field-vigor-summary>div:last-child{grid-column:1/-1}
   .simple-field-vigor-zones-head{align-items:flex-start;flex-direction:column}
-  .simple-field-vigor-zone-list{display:grid;grid-template-columns:1fr 1fr}
+  .simple-field-vigor-zone-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}
+  .simple-field-vigor-zone-list>span{font-size:11px;line-height:1.25;min-width:0}
+  .simple-field-vigor-zone-list i{height:9px;width:9px}
+  .simple-field-vigor .real-field-map-legend{
+    align-items:start;
+    display:grid;
+    font-size:11px;
+    gap:9px 12px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    padding:12px;
+  }
+  .simple-field-vigor .real-field-map-legend>span{line-height:1.25;min-width:0}
+  .simple-field-vigor .real-field-map-legend i{flex:0 0 auto;height:9px;width:9px}
+  .simple-field-vigor .real-field-map-hint{
+    border-top:1px solid #e4eae2;
+    font-size:10px;
+    grid-column:1/-1;
+    margin-left:0;
+    padding-top:9px;
+  }
   .simple-field-vigor .leaflet-container{min-height:300px !important}
-  .simple-field-state { align-items:start; grid-template-columns:42px minmax(0,1fr); }
-  .simple-field-state > a { grid-column:2; }
+  .simple-field-state { align-items:start; box-sizing:border-box; grid-template-columns:42px minmax(0,1fr); max-width:100%; overflow:hidden; width:100%; }
+  .simple-field-state > a { grid-column:2; white-space:normal; }
   .simple-field-attention-list > a { grid-template-columns:36px minmax(0,1fr) auto; }
   .simple-field-attention-list b { display:none; }
   .simple-field-attention-list > a > svg { grid-column:3; grid-row:1; }
