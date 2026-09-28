@@ -26,6 +26,14 @@ assert.match(component, /buildProducerCommercialPlanSummary/);
 assert.match(page, /commercialPlanSnapshot=\{viewingPublished \? publishedSnapshotV3\?\.commercialPlanSnapshot \?\? null : null\}/);
 assert.match(component, /Produto comercial e custo não aparecem aqui porque não existe cenário comercial congelado/);
 
+assert.match(component, /HORIZONTE DE FERTILIDADE/);
+assert.match(component, /MICRONUTRIENTES E MATÉRIA ORGÂNICA/);
+assert.match(component, /CONTEXTO AGROCLIMÁTICO INFORMADO/);
+assert.match(component, /BIOLOGIA DO SOLO/);
+assert.match(component, /APLICAÇÃO E POSICIONAMENTO/);
+assert.match(component, /Aplicar tudo de uma vez\?/);
+assert.match(component, /Biologia isolada não gera crédito automático de N\/P\/K\/S/);
+
 assert.match(page, /const publishedTechnicalBase = viewingPublished && snapshotOutput\?\.trace/);
 assert.match(page, /technicalBase=\{viewingPublished \? publishedTechnicalBase : interpretation\?\.cropProfileName \?\? null\}/);
 assert.match(page, /const shouldUsePublishedVersion = explicitlyPublished \|\| \(!explicitlyCurrent && publishedRecordExists\)/);
