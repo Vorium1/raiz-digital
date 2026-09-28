@@ -265,7 +265,7 @@ export function computeSoybeanSulfurRecommendation(input: {
     classification: item.sulfurMgDm3 < SOYBEAN_S_CRITICAL_MG_DM3 ? "ABAIXO_CRITICO_SOJA" : "SUFICIENTE_SOJA",
   }));
 
-  const pointDoses = input.observations.map((item) =>
+  const pointDoses: number[] = input.observations.map((item) =>
     item.sulfurMgDm3 < SOYBEAN_S_CRITICAL_MG_DM3 ? SOYBEAN_S_DOSE_KG_HA : 0
   );
   const operationalDoseKgSPerHa = input.allowEqualWeightOperationalAverage === true && pointDoses.length > 0
