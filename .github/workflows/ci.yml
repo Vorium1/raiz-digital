@@ -38,6 +38,7 @@ jobs:
           node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs
           node --experimental-strip-types scripts/test-ux3-zero-training.mjs
           node --experimental-strip-types scripts/test-performance-fast-path.mjs
+          node --experimental-strip-types scripts/test-talhao-visual-polish.mjs
 
       - name: Validar preflight automático de homologação
         run: node --experimental-strip-types scripts/test-homologation-readiness.mjs
