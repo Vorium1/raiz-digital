@@ -31,7 +31,7 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   for (const nutrient of ["P2O5", "K2O"] as const) {
     const dose = evidence.deterministicPkDoses[nutrient];
-    const pointEnvelope = evidence.deterministicPkPointDoses[nutrient];
+    const pointEnvelope = evidence.deterministicPkPointDoses?.[nutrient];
 
     if (
       pointEnvelope.ready
@@ -537,8 +537,8 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         managementPractices: deterministic.managementPractices,
         missingInformation,
         sources,
-        fertilityPlan: evidence.fertilityHorizonPlan,
-        soilComplementActions: evidence.soilComplementActions,
+        fertilityPlan: evidence.fertilityHorizonPlan ?? null,
+        soilComplementActions: evidence.soilComplementActions ?? [],
       },
       provider: "raiz-deterministic-limited",
       model: "agronomic-engine",
