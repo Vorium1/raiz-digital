@@ -291,7 +291,7 @@ assert.match(fieldOverviewRepository, /SHAPEFILE_REAL_GPS_LONLAT/);
 assert.match(fieldOverviewRepository, /SHAPEFILE_REAL_EPSG4326/);
 assert.doesNotMatch(fieldOverviewRepository, /LIKE 'SHAPEFILE_REAL_%'/);
 assert.match(fieldOverviewRepository, /sp\.observed_position IS NOT NULL/);
-assert.match(fieldOverviewRepository, /collectionPoints:\s*row\.collectionPoints\s*\?\?\s*\[\]/);
+assert.match(fieldOverviewRepository, /collectionPoints:\s*\(row\.collectionPoints\s*\?\?\s*\[\]\)\s*as\s*FieldOverviewPoint\[\]/);
 assert.match(fieldVigor, /raiz:ndvi:auto:\$\{fieldId\}/);
 assert.match(fieldVigor, /\/api\/fields\/\$\{fieldId\}\/ndvi/);
 assert.match(fieldVigor, /method:\s*"POST"/);
