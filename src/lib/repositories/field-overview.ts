@@ -419,12 +419,6 @@ export async function getFieldOverviewTechnicalDetails(tenantId: string, fieldId
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fieldId)) return null;
 
   return withTenant({ tenantId, userId }, async (client) => {
-    const exists = await client.query(
-      `SELECT 1 FROM fields WHERE tenant_id=$1::uuid AND id=$2::uuid LIMIT 1`,
-      [tenantId, fieldId],
-    );
-    if (!exists.rows[0]) return null;
-
     const result = await client.query(
       `SELECT
          coalesce((
@@ -513,11 +507,14 @@ export async function getFieldOverviewTechnicalDetails(tenantId: string, fieldId
                WHERE tenant_id=$1::uuid AND field_id=$2::uuid
              )
              AND sp.collected_at IS NOT NULL
-         ) AS "gpsQuality"`,
+         ) AS "gpsQuality"
+       FROM fields target_field
+       WHERE target_field.tenant_id=$1::uuid AND target_field.id=$2::uuid`,
       [tenantId, fieldId],
     );
 
-    const row = result.rows[0] ?? {};
+    const row = result.rows[0];
+    if (!row) return null;
     return {
       orders: row.orders ?? [],
       yieldHistory: row.yieldHistory ?? [],
