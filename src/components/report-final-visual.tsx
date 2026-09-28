@@ -7,6 +7,11 @@ import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
 import type { SoilComplementAction } from "@/domain/soil-complement-actions";
+import type {
+  ReportApplicationGuidance,
+  ReportBiologicalContext,
+  ReportClimateContext,
+} from "@/domain/report-context-blocks";
 
 type StructuredFact = {
   sampleCode: string;
@@ -71,6 +76,9 @@ type Prescription = {
   sources?: Array<{ title?: string; institution?: string }>;
   fertilityPlan?: ReportFertilityHorizon | null;
   soilComplementActions?: SoilComplementAction[];
+  climateContext?: ReportClimateContext | null;
+  biologicalContext?: ReportBiologicalContext | null;
+  applicationGuidance?: ReportApplicationGuidance | null;
 };
 
 type Props = {
@@ -293,6 +301,9 @@ export function FinalVisualReport(props: Props) {
   const missingInformation = prescription?.missingInformation ?? [];
   const fertilityPlan = prescription?.fertilityPlan ?? null;
   const soilComplementActions = prescription?.soilComplementActions ?? [];
+  const climateContext = prescription?.climateContext ?? null;
+  const biologicalContext = prescription?.biologicalContext ?? null;
+  const applicationGuidance = prescription?.applicationGuidance ?? null;
   const pending = summaries.filter((item) => item.pendingCode);
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
@@ -463,6 +474,44 @@ export function FinalVisualReport(props: Props) {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {(climateContext?.status !== "MISSING" || biologicalContext?.hasAnyBiology) && (
+          <div className="report-management-grid">
+            {climateContext?.status !== "MISSING" && (
+              <section className="report-visual-panel">
+                <div className="report-visual-section-head"><div><span>CLIMA</span><h2>Contexto agroclimático informado</h2></div></div>
+                <p className="report-visual-note">
+                  {climateContext.status === "PROVIDED"
+                    ? climateContext.notes || "Contexto climático marcado como fornecido, sem observação textual adicional."
+                    : "Contexto climático declarado como indisponível nesta análise."}
+                </p>
+                <small>Este bloco reproduz o contexto congelado na análise. Não altera automaticamente dose de fertilizante ou corretivo.</small>
+              </section>
+            )}
+            {biologicalContext?.hasAnyBiology && (
+              <section className="report-visual-panel">
+                <div className="report-visual-section-head"><div><span>BIOLOGIA DO SOLO</span><h2>Evidência biológica registrada</h2></div></div>
+                <p className="report-visual-note">{biologicalContext.summary || "Há evidência biológica registrada."}</p>
+                <div className="report-commercial-rows">
+                  <div><strong>BioAS</strong><span>{biologicalContext.hasBioAsEvidence ? (biologicalContext.officialBioAsInterpretationAvailable ? "Interpretação laboratorial preservada" : "Evidência disponível; interpretação automática não autorizada") : "Não informado"}</span></div>
+                  <div><strong>Microbiologia</strong><span>{biologicalContext.hasMicrobiologyEvidence ? biologicalContext.microbiologyObservationCount + " observação(ões)" : "Não informada"}</span></div>
+                </div>
+                <small>Biologia isolada não gera crédito automático de N/P/K/S nem redução de dose.</small>
+              </section>
+            )}
+          </div>
+        )}
+
+        {applicationGuidance && applicationGuidance.status !== "NOT_APPLICABLE" && (
+          <section className="report-visual-panel">
+            <div className="report-visual-section-head">
+              <div><span>APLICAÇÃO E POSICIONAMENTO</span><h2>Aplicar tudo de uma vez?</h2></div>
+              <strong>{applicationGuidance.status === "PLACEMENT_REVIEW_REQUIRED" ? "Rever posicionamento" : "Dentro do limite-base"}</strong>
+            </div>
+            <p className="report-visual-note">{applicationGuidance.guidance}</p>
+            <p className="report-visual-note"><strong>Custo-benefício:</strong> {applicationGuidance.costBenefitNote}</p>
           </section>
         )}
 
