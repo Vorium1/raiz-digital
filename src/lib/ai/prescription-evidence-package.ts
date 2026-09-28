@@ -25,6 +25,7 @@ import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/doma
 import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evidence";
 import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 import { compareAllValidatedSpatialMethods } from "@/domain/spatial-interpolation-comparison";
+import { buildReportFertilityHorizon, type ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -52,6 +53,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   uniformPkReadiness: UniformPkReadiness;
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   deterministicPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
+  fertilityHorizonPlan: ReportFertilityHorizon | null;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
@@ -688,6 +690,19 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
     });
 
+    const fertilityPlanning = analysisContextFertilityPlanning(base.analysisContext);
+    const fertilityHorizonPlan = buildReportFertilityHorizon({
+      horizonYears: fertilityPlanning.horizonYears,
+      cropCode: base.cropProfileCode,
+      interpretation: interpreted,
+      targetYieldTonPerHa: base.yieldGoal,
+      targetYieldUnit: base.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      currentPkPointDoses: deterministicPkPointDoses,
+      currentPkDoses: deterministicPkDoses,
+    });
+
     const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
       cropCode: base.cropProfileCode,
       state: base.state,
@@ -756,6 +771,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       uniformPkReadiness,
       deterministicPkDoses,
       deterministicPkPointDoses,
+      fertilityHorizonPlan,
       deterministicSulfurDose,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
@@ -785,8 +801,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         createdAt: base.createdAt,
         contextFingerprint: base.analysisContextFingerprint,
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
-        fertilityPlanningHorizonYears: analysisContextFertilityPlanning(base.analysisContext).horizonYears,
-        fertilityCyclePlanNotes: analysisContextFertilityPlanning(base.analysisContext).cyclePlanNotes,
+        fertilityPlanningHorizonYears: fertilityPlanning.horizonYears,
+        fertilityCyclePlanNotes: fertilityPlanning.cyclePlanNotes,
         irrigationContext: analysisContextIrrigation(base.analysisContext),
       },
       deterministicInterpretation,
