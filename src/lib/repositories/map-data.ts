@@ -29,6 +29,7 @@ export type MapLayerResult = {
   fieldBoundary: object;
   points: MapPointLayer[];
   availableParameters: string[];
+  classifiedParameters: string[];
   interpretationStatus: string | null;
   interpretationCurrent: boolean;
   interpretationFreshnessCode: string;
@@ -188,6 +189,11 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
           reason: "Ainda não existe interpretação determinística corrente para esta coleta.",
         };
     const currentInterpretation = interpretationFreshness.current ? interpretation : null;
+    const classifiedParameters = Array.from(new Set(
+      ((currentInterpretation?.structuredOutput?.interpretation ?? []) as any[])
+        .filter((item) => item?.parameterCode && item?.interpretable === true && Boolean(item?.classification))
+        .map((item) => String(item.parameterCode)),
+    )).filter((code) => availableParameters.includes(code));
     const byCode = new Map<string, any>();
     if (currentInterpretation?.structuredOutput?.interpretation) {
       for (const item of currentInterpretation.structuredOutput.interpretation as any[]) {
@@ -226,6 +232,7 @@ export async function getFieldMapLayer(input: { tenantId: string; userId?: strin
       fieldBoundary: order.fieldBoundary,
       points,
       availableParameters,
+      classifiedParameters,
       interpretationStatus: interpretation?.status ?? null,
       interpretationCurrent: interpretationFreshness.current,
       interpretationFreshnessCode: interpretationFreshness.code,
