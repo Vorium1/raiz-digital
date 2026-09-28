@@ -42,7 +42,11 @@ export function validatePrescriptionSulfurRecommendation(input: {
     .filter(({ row }) => typeof row.inputType === "string" && canonicalCommercialTarget(row.inputType) === "S");
 
   const decision = input.deterministicDecision;
-  const expectedKgSPerHa = decision?.dose.kind === "EXACT" ? decision.dose.kgSPerHa : null;
+  const expectedKgSPerHa = decision?.operationalDoseKgSPerHa != null
+    ? decision.operationalDoseKgSPerHa
+    : decision?.dose.kind === "EXACT"
+      ? decision.dose.kgSPerHa
+      : null;
   const blockers: string[] = [];
 
   if (sulfurRows.length > 1) blockers.push("S_DUPLICATE_TARGET");
@@ -52,7 +56,7 @@ export function validatePrescriptionSulfurRecommendation(input: {
   }
 
   for (const { row } of sulfurRows) {
-    if (!decision || decision.dose.kind !== "EXACT") {
+    if (!decision || expectedKgSPerHa == null) {
       blockers.push("S_DETERMINISTIC_DOSE_NOT_READY");
       continue;
     }
@@ -64,7 +68,7 @@ export function validatePrescriptionSulfurRecommendation(input: {
       blockers.push("S_UNIT_MUST_BE_KG_PER_HA");
       continue;
     }
-    if (Math.abs(row.quantity - decision.dose.kgSPerHa) > 0.11) {
+    if (Math.abs(row.quantity - expectedKgSPerHa) > 0.11) {
       blockers.push("S_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE");
     }
   }
