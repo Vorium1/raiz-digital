@@ -222,7 +222,42 @@ export function SpatialPortfolioMapCanvas({ fields, height = 420, onFieldClick }
 }) {
   const resolution = useMemo(() => resolveSpatialMapProvider(), []);
   const [googleFailed, setGoogleFailed] = useState(false);
+  const [shouldMountMap, setShouldMountMap] = useState(false);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const failGoogle = useCallback((_error?: Error) => setGoogleFailed(true), []);
+
+  useEffect(() => {
+    const node = hostRef.current;
+    if (!node || shouldMountMap) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setShouldMountMap(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldMountMap(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "320px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shouldMountMap]);
+
+  if (!shouldMountMap) {
+    return (
+      <div
+        ref={hostRef}
+        className="portfolio-map-canvas real-field-map-deferred"
+        style={{ height }}
+        role="status"
+      >
+        <span>Preparando mapa…</span>
+      </div>
+    );
+  }
 
   if (resolution.provider === "GOOGLE" && !googleFailed) {
     return <GooglePortfolioCanvas fields={fields} height={height} onFieldClick={onFieldClick} onProviderFailure={failGoogle} />;
