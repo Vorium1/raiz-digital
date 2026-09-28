@@ -1,8 +1,10 @@
 import { evaluatePkDoseReadiness, type PkDoseReadiness } from "@/domain/recommendation-context";
 import {
   computeDeterministicPkDose,
+  computeDeterministicPkPointDoseEnvelope,
   evaluateUniformPkReadiness,
   type DeterministicPkDoseDecision,
+  type DeterministicPkPointDoseEnvelope,
   type UniformPkReadiness,
 } from "@/domain/uniform-pk-readiness";
 import { withTenant } from "@/lib/db";
@@ -49,6 +51,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   pkDoseReadiness: PkDoseReadiness;
   uniformPkReadiness: UniformPkReadiness;
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
+  deterministicPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
@@ -304,6 +307,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
               (f.boundary IS NOT NULL AND NOT ST_IsEmpty(f.boundary)) AS "hasFieldBoundary",
               a.collection_order_id::text AS "collectionOrderId",
+              co.sampling_strategy AS "samplingStrategy",
+              co.grid_area_ha::float8 AS "gridAreaHa",
               a.analysis_context AS "analysisContext",
               cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
               cs.next_crop AS "nextCrop", cs.next_cultivar AS "nextCultivar", cs.cultivar,
@@ -323,6 +328,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+       LEFT JOIN collection_orders co
+         ON co.tenant_id = a.tenant_id AND co.id = a.collection_order_id
        LEFT JOIN nitrogen_recommendation_contexts nc
          ON nc.tenant_id = cs.tenant_id AND nc.crop_season_id = cs.id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
@@ -623,6 +630,11 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
     });
     const uniformPkReadiness = evaluateUniformPkReadiness({ cropCode: base.cropProfileCode, interpretation: interpreted });
+    const equalWeightSamplingSupport = base.samplingStrategy === "GRID"
+      && typeof base.gridAreaHa === "number"
+      && Number.isFinite(base.gridAreaHa)
+      && base.gridAreaHa > 0;
+
     const deterministicPkDoses = {
       P2O5: computeDeterministicPkDose({
         cropCode: base.cropProfileCode,
@@ -641,6 +653,26 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         nutrient: "K2O",
       }),
     };
+    const deterministicPkPointDoses = {
+      P2O5: computeDeterministicPkPointDoseEnvelope({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "P2O5",
+        allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      }),
+      K2O: computeDeterministicPkPointDoseEnvelope({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "K2O",
+        allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      }),
+    };
 
     const deterministicSulfurDose = computeSoybeanSulfurRecommendation({
       cropCode: base.cropProfileCode,
@@ -653,6 +685,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           depthFromCm: row.depthFromCm ?? null,
           depthToCm: row.depthToCm ?? null,
         })),
+      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
     });
 
     const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
@@ -722,6 +755,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       pkDoseReadiness,
       uniformPkReadiness,
       deterministicPkDoses,
+      deterministicPkPointDoses,
       deterministicSulfurDose,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
