@@ -15,6 +15,8 @@ on:
       - "src/app/(platform)/resultados/**"
       - "src/app/(platform)/atencao/**"
       - "src/lib/repositories/field-overview.ts"
+      - "src/components/simple-field-overview.tsx"
+      - "src/components/deferred-field-overview-tabs.tsx"
       - "src/lib/repositories/results-overview.ts"
       - "src/lib/repositories/alerts.ts"
       - "src/lib/repositories/alerts-read-model.ts"
