@@ -319,6 +319,9 @@ export type DeterministicPkPointDoseEnvelope = {
   rows: DeterministicPkPointDose[];
   minimumKgPerHa: number | null;
   maximumKgPerHa: number | null;
+  operationalAverageAllowed: boolean;
+  operationalAverageKgPerHa: number | null;
+  operationalBasis: "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
   assumptions: string[];
   blockers: string[];
   source: string | null;
@@ -338,6 +341,7 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
   yieldGoalUnit: string | null | undefined;
   cultivationOrderAfterSoilAnalysis: number | null | undefined;
   nutrient: UniformPkTarget;
+  allowEqualWeightOperationalAverage?: boolean;
 }): DeterministicPkPointDoseEnvelope {
   const blockers: string[] = [];
   const assumptions: string[] = [];
@@ -409,11 +413,20 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
       rows,
       minimumKgPerHa: rows.length ? Math.min(...rows.map((row) => row.minimumKgPerHa)) : null,
       maximumKgPerHa: rows.length ? Math.max(...rows.map((row) => row.maximumKgPerHa)) : null,
+      operationalAverageAllowed: false,
+      operationalAverageKgPerHa: null,
+      operationalBasis: null,
       assumptions,
       blockers: uniqueBlockers,
       source: table?.source ?? null,
     };
   }
+
+  const operationalAverageAllowed = input.allowEqualWeightOperationalAverage === true
+    && rows.every((row) => !row.isDiscretionaryRange);
+  const operationalAverageKgPerHa = operationalAverageAllowed
+    ? Math.round((rows.reduce((sum, row) => sum + row.doseKgPerHa, 0) / rows.length) * 10) / 10
+    : null;
 
   return {
     ready: true,
@@ -422,6 +435,9 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
     rows,
     minimumKgPerHa: Math.min(...rows.map((row) => row.minimumKgPerHa)),
     maximumKgPerHa: Math.max(...rows.map((row) => row.maximumKgPerHa)),
+    operationalAverageAllowed,
+    operationalAverageKgPerHa,
+    operationalBasis: operationalAverageAllowed ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
     assumptions,
     blockers: [],
     source: table?.source ?? null,
