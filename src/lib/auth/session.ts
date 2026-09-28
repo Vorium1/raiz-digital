@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { createOpaqueSessionToken, hashSessionToken, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/token";
@@ -74,7 +75,7 @@ export async function revokeCurrentSession() {
   store.delete(SESSION_COOKIE);
 }
 
-export async function getPlatformSession(): Promise<PlatformSession | null> {
+async function readPlatformSession(): Promise<PlatformSession | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -109,6 +110,8 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
   }
   return session;
 }
+
+export const getPlatformSession = cache(readPlatformSession);
 
 export async function changeOwnPassword(input: { userId: string; currentSessionId: string; currentPassword: string; newPassword: string }) {
   const result = await query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id = $1::uuid", [input.userId]);
