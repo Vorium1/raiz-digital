@@ -26,6 +26,7 @@ import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evi
 import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 import { compareAllValidatedSpatialMethods } from "@/domain/spatial-interpolation-comparison";
 import { buildReportFertilityHorizon, type ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import { buildSoilComplementActions, type SoilComplementAction } from "@/domain/soil-complement-actions";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -54,6 +55,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
   deterministicPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
   fertilityHorizonPlan: ReportFertilityHorizon | null;
+  soilComplementActions: SoilComplementAction[];
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
@@ -626,6 +628,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
 
     const deterministicInterpretation = interpretationResult.rows[0] ?? null;
     const interpreted = interpretationItems(deterministicInterpretation?.structuredOutput);
+    const soilComplementActions = buildSoilComplementActions(interpreted);
     const pkDoseReadiness = evaluatePkDoseReadiness({
       yieldGoal: base.yieldGoal,
       yieldGoalUnit: base.yieldGoalUnit,
@@ -772,6 +775,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       deterministicPkDoses,
       deterministicPkPointDoses,
       fertilityHorizonPlan,
+      soilComplementActions,
       deterministicSulfurDose,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
