@@ -183,8 +183,18 @@ const ndviRasterRouteSource = readFileSync(new URL("../src/app/api/fields/[id]/n
 const googleFieldMapSource = readFileSync(new URL("../src/components/google-field-map.tsx", import.meta.url), "utf8");
 assert.match(
   ndviRasterRouteSource,
-  /["']cache-control["']\s*:\s*["']private, no-store["']/,
-  "raster NDVI autenticado não pode ficar armazenado por longo prazo no cache do navegador",
+  /["']cache-control["']\s*:\s*["']private, no-cache["']/,
+  "raster NDVI autenticado pode ser revalidado no cache privado, mas sempre precisa voltar ao servidor para autorizar",
+);
+assert.match(
+  ndviRasterRouteSource,
+  /status:\s*304/,
+  "raster imutável deve poder responder 304 somente depois de revalidar sessão, tenant, hash, algoritmo e contorno",
+);
+assert.match(
+  ndviRasterRouteSource,
+  /vary:\s*["']Cookie["']/,
+  "cache privado do raster precisa variar pela sessão autenticada",
 );
 assert.doesNotMatch(
   ndviRasterRouteSource,
