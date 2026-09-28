@@ -13,7 +13,7 @@ import {
   ndviRasterStorageProvider,
   saveRequiredNdviRasterArtifact,
 } from "@/lib/ndvi-raster-storage";
-import { getFieldBoundaryGeoJson, listNdviHistorySummaryForField, saveNdviSnapshot } from "@/lib/repositories/ndvi";
+import { getNdviFieldReadModel, saveNdviSnapshot } from "@/lib/repositories/ndvi";
 import { COPERNICUS_NDVI_MOSAICKING_ORDER, copernicusNdviProvider } from "@/lib/satellite/copernicus-ndvi-provider";
 import {
   EARTH_SEARCH_NDVI_MOSAICKING_ORDER,
@@ -145,12 +145,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   const { id: fieldId } = await context.params;
 
-  const [history, fieldBoundary] = await Promise.all([
-    listNdviHistorySummaryForField(session.tenantId, fieldId, session.userId),
-    getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId),
-  ]);
-  if (!fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
-
+  const readModel = await getNdviFieldReadModel(session.tenantId, fieldId, session.userId);
+  if (!readModel?.fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
+  const fieldBoundary = readModel.fieldBoundary;
+  const history = readModel.history as any[];
   const latest = history[0] ?? null;
   const usableHistory = usableHistoryForBoundary(history, fieldBoundary);
   const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, fieldBoundary)
@@ -200,8 +198,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     );
   }
 
-  const boundary = await getFieldBoundaryGeoJson(session.tenantId, fieldId, session.userId);
-  if (!boundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
+  const initialReadModel = await getNdviFieldReadModel(session.tenantId, fieldId, session.userId);
+  if (!initialReadModel?.fieldBoundary) return Response.json({ error: "Talhão não encontrado." }, { status: 404 });
+  const boundary = initialReadModel.fieldBoundary;
+  const existingHistory = initialReadModel.history as any[];
 
   const toDate = new Date();
   const fromDate = new Date(toDate);
@@ -224,7 +224,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   }
 
   const selectedScenes = scenes.slice(-MAX_SCENES_PER_REFRESH);
-  const existingHistory = await listNdviHistorySummaryForField(session.tenantId, fieldId, session.userId);
   const archivedByDate = new Map(
     existingHistory
       .filter((snapshot: any) => snapshot.source === "SENTINEL_2" && rasterMatchesCurrentEvidence(snapshot, boundary))
@@ -319,7 +318,8 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     ? pendingOutsideThisBatch + (scenesToArchive.length - archivedRasterCount)
     : pendingOutsideThisBatch;
 
-  const history = await listNdviHistorySummaryForField(session.tenantId, fieldId, session.userId);
+  const finalReadModel = await getNdviFieldReadModel(session.tenantId, fieldId, session.userId);
+  const history = (finalReadModel?.history ?? []) as any[];
   const latest = history[0] ?? null;
   const usableHistory = usableHistoryForBoundary(history, boundary);
   const usableLatest = latest && hasArchivedRaster(latest) && !rasterMatchesCurrentEvidence(latest, boundary)
