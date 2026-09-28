@@ -298,7 +298,7 @@ assert.match(fieldVigor, /method:\s*"POST"/);
 assert.match(fieldVigor, /const refreshed = await refreshSatellite\(\{ automatic: true \}\)/);
 assert.match(fieldVigor, /if \(!refreshed\) sessionStorage\.removeItem\(key\)/);
 assert.match(fieldVigor, /imageOverlay=\{overlay\}/);
-assert.match(fieldVigor, /opacity:\s*0\.62/);
+assert.match(fieldVigor, /opacity:\s*0\.84/);
 assert.match(fieldVigor, /overlay \? \(/);
 assert.match(realFieldMap, /IntersectionObserver/);
 assert.match(realFieldMap, /rootMargin:\s*"420px 0px"/);
