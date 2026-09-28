@@ -242,7 +242,7 @@ function evaluateSample(input: {
   sampleCode: string;
   rows: SoybeanLimingLabResult[];
   region: "RS" | "SC" | "OTHER";
-  system: Exclude<CanonicalManagementSystem, "OTHER">;
+  system: Exclude<CanonicalManagementSystem, "OTHER" | "NO_TILL_CONSOLIDATED_UNSPECIFIED">;
   yearsSinceLastLiming?: number | null;
   restrictionAssessment?: SoybeanLimingRestrictionAssessment | null;
 }) {
@@ -445,6 +445,26 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       incorporatedDepthCm: null,
       sampleDecisions: [],
       blockers: ["MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING"],
+      warnings: [],
+    };
+  }
+
+  if (managementSystem === "NO_TILL_CONSOLIDATED_UNSPECIFIED") {
+    return {
+      cropCode: input.cropCode,
+      region,
+      managementSystem,
+      status: "BLOCKED",
+      automaticUniformDoseAllowed: false,
+      uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      applicationMode: null,
+      incorporatedDepthCm: null,
+      sampleDecisions: [],
+      blockers: ["NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED"],
       warnings: [],
     };
   }
