@@ -273,6 +273,12 @@ export type DeterministicPkRecommendationValidation = {
   allowed: boolean;
   blockers: string[];
   expected: DeterministicPkDoseDecision["expected"];
+  operationalExpected?: {
+    doseKgPerHa: number;
+    minimumKgPerHa: number | null;
+    maximumKgPerHa: number | null;
+    basis: "EQUAL_WEIGHT_SAMPLE_MEAN";
+  } | null;
 };
 
 export function validateDeterministicPkRecommendation(input: {
@@ -441,5 +447,42 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
     assumptions,
     blockers: [],
     source: table?.source ?? null,
+  };
+}
+
+
+export function validateOperationalPkPointAverageRecommendation(input: {
+  envelope: DeterministicPkPointDoseEnvelope | null | undefined;
+  quantity: number;
+  unit: string;
+}): DeterministicPkRecommendationValidation {
+  const blockers: string[] = [];
+  const envelope = input.envelope;
+  if (!envelope?.ready || !envelope.operationalAverageAllowed || envelope.operationalAverageKgPerHa == null) {
+    blockers.push("PK_OPERATIONAL_AVERAGE_NOT_READY");
+  }
+  if (!Number.isFinite(input.quantity) || input.quantity < 0) blockers.push("PK_QUANTITY_INVALID");
+  if (!isKgPerHa(input.unit)) blockers.push("PK_UNIT_MUST_BE_KG_PER_HA");
+
+  if (
+    blockers.length === 0
+    && envelope?.operationalAverageKgPerHa != null
+    && Math.abs(input.quantity - envelope.operationalAverageKgPerHa) > 0.11
+  ) {
+    blockers.push("PK_QUANTITY_DOES_NOT_MATCH_OPERATIONAL_POINT_AVERAGE");
+  }
+
+  return {
+    allowed: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    expected: null,
+    operationalExpected: envelope?.operationalAverageKgPerHa != null && envelope.operationalBasis === "EQUAL_WEIGHT_SAMPLE_MEAN"
+      ? {
+          doseKgPerHa: envelope.operationalAverageKgPerHa,
+          minimumKgPerHa: envelope.minimumKgPerHa,
+          maximumKgPerHa: envelope.maximumKgPerHa,
+          basis: "EQUAL_WEIGHT_SAMPLE_MEAN",
+        }
+      : null,
   };
 }
