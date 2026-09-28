@@ -50,7 +50,7 @@ export function PublishedNdviMap({
         setState("loading");
         const response = await fetch(
           `/api/fields/${fieldId}/ndvi/map?date=${encodeURIComponent(date)}`,
-          { cache: "no-store", signal: controller.signal },
+          { cache: "no-cache", signal: controller.signal },
         );
         if (!response.ok) throw new Error("Raster NDVI oficial indisponível nesta sessão.");
 
