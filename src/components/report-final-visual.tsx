@@ -5,6 +5,7 @@ import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/c
 import { buildProducerCommercialPlanSummary, type FrozenCommercialPlanSnapshot } from "@/domain/official-commercial-plan";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import type { TenantBranding } from "@/lib/repositories/tenant-branding";
+import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
 
 type StructuredFact = {
   sampleCode: string;
@@ -67,6 +68,7 @@ type Prescription = {
   managementPractices?: string[];
   missingInformation?: string[];
   sources?: Array<{ title?: string; institution?: string }>;
+  fertilityPlan?: ReportFertilityHorizon | null;
 };
 
 type Props = {
@@ -287,6 +289,7 @@ export function FinalVisualReport(props: Props) {
   const recommendations = prescription?.recommendations ?? [];
   const management = prescription?.managementPractices ?? [];
   const missingInformation = prescription?.missingInformation ?? [];
+  const fertilityPlan = prescription?.fertilityPlan ?? null;
   const pending = summaries.filter((item) => item.pendingCode);
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
@@ -379,6 +382,35 @@ export function FinalVisualReport(props: Props) {
           <div><span>Sistema</span><strong>{props.context.managementSystem || "—"}</strong></div>
           <div><span>Status técnico</span><strong>{props.prescriptionStatus === "APPROVED" ? "Recomendação aprovada" : props.prescriptionStatus === "PENDING_REVIEW" ? "Em revisão" : "Sem recomendação aprovada"}</strong></div>
         </div>
+
+        {fertilityPlan && (
+          <section className="report-visual-panel report-fertility-horizon">
+            <div className="report-visual-section-head">
+              <div><span>HORIZONTE DE FERTILIDADE</span><h2>Plano até {fertilityPlan.horizonYears} anos</h2></div>
+              <strong>{fertilityPlan.targetYieldDisplay ?? "meta não informada"}</strong>
+            </div>
+            <p className="report-visual-note">{fertilityPlan.summary}</p>
+            <div className="report-recommendation-table-wrap">
+              <table className="report-recommendation-table">
+                <thead><tr><th>Etapa</th><th>P₂O₅</th><th>K₂O</th><th>Situação</th><th>Decisão</th></tr></thead>
+                <tbody>
+                  {fertilityPlan.stages.map((stage) => (
+                    <tr key={stage.kind + "-" + String(stage.cultivationOrder ?? "")}>
+                      <td><strong>{stage.label}</strong></td>
+                      <td>{stage.p2o5KgPerHa != null ? numberPt(stage.p2o5KgPerHa) + " kg/ha" : "Recalcular"}</td>
+                      <td>{stage.k2oKgPerHa != null ? numberPt(stage.k2oKgPerHa) + " kg/ha" : "Recalcular"}</td>
+                      <td>{stage.status === "NUMERIC_READY" ? "Dose disponível" : stage.status === "REANALYSIS_REQUIRED" ? "Nova análise obrigatória" : "Parcial"}</td>
+                      <td>{stage.rationale}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="report-visual-note">
+              Reanálise: após {fertilityPlan.reanalysisAfterCultivations} cultivos. A meta é objetivo de manejo; não é previsão nem garantia de produtividade.
+            </p>
+          </section>
+        )}
 
         <section className="report-visual-panel report-recommendation-panel">
           <div className="report-visual-section-head">
