@@ -21,7 +21,10 @@ export async function POST(request: Request) {
       return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
 
-    const lock = await isLoginLocked(email);
+    const [lock, user] = await Promise.all([
+      isLoginLocked(email),
+      findUserByEmail(email),
+    ]);
     if (lock.locked) {
       const minutes = Math.ceil(lock.retryAfterSeconds / 60);
       return Response.json(
@@ -29,8 +32,6 @@ export async function POST(request: Request) {
         { status: 429, headers: { "Retry-After": String(lock.retryAfterSeconds) } },
       );
     }
-
-    const user = await findUserByEmail(email);
     if (!user?.password_hash || !(await verifyPassword(user.password_hash, password))) {
       await recordFailedLogin(email, ipHash(request));
       return Response.json({ error: "Credenciais inválidas." }, { status: 401 });
