@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { FieldOverviewTabs } from "@/components/field-overview-tabs";
@@ -14,18 +15,34 @@ import { userActionAlerts, userAttentionHref, userAttentionTitle } from "@/domai
 
 export function SimpleFieldOverview({
   overview,
-  alerts,
   analysisFreshness,
   deliveryStatus,
   canRefreshAnalysis,
 }: {
   overview: FieldOverview;
-  alerts: OperationalAlert[];
   analysisFreshness: AnalysisEvidenceFreshness | null;
   deliveryStatus: DecisionDeliveryStatus | null;
   canRefreshAnalysis: boolean;
 }) {
   const { field, seasons, analyses, reports, collectionPoints } = overview;
+  const [alerts, setAlerts] = useState<OperationalAlert[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/fields/${field.id}/alerts`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<{ alerts?: OperationalAlert[] }>;
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setAlerts(payload.alerts ?? []);
+      })
+      .catch(() => {
+        // Alertas são informação secundária; falha aqui nunca bloqueia o restante do Talhão 360°.
+        if (!controller.signal.aborted) setAlerts([]);
+      });
+    return () => controller.abort();
+  }, [field.id]);
   const season = seasons[0] ?? null;
   const seasonAnalyses = analyses.filter((analysis) => !season || analysis.cropSeasonId === season.id);
   const latest = seasonAnalyses[0] ?? null;
