@@ -74,7 +74,7 @@ assert.equal(capturedSignal.aborted, true, "unmount must cancel satellite reques
 // Synthetic response only for testing the component's recovery UI, never persisted.
 const vigor = componentHarness("../src/components/simple-field-vigor.tsx", "SimpleFieldVigor", async url => {
   if (url.includes("/map?")) return { ok: false };
-  return { ok: true, json: async () => ({ history: [{ capturedAt: "2026-01-01", rasterObjectKey: "test", meanNdvi: 0.5 }], fieldBoundary: { type: "Polygon", coordinates: [] } }) };
+  return { ok: true, json: async () => ({ history: [{ capturedAt: "2026-01-01", rasterStored: true, meanNdvi: 0.5 }], fieldBoundary: { type: "Polygon", coordinates: [] } }) };
 });
 vigor.render();
 const cleanupVigor = vigor.effects[0]();
