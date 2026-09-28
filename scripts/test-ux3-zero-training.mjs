@@ -321,7 +321,7 @@ assert.match(results, /getResultsOverview/);
 assert.match(resultsOverviewRepository, /DISTINCT ON \(a\.id\)/);
 assert.match(resultsOverviewRepository, /ORDER BY a\.id, r\.published_at DESC/);
 assert.doesNotMatch(results, /publishedAnalysisIds|unpublishedAnalyses/);
-assert.match(results, /analyses\.map\(\(analysis: any\) => String\(analysis\.id\)\)/);
+assert.match(results, /published: latestResults, analyses, deliveryRows/);
 assert.match(results, /Versões oficiais já emitidas/);
 assert.doesNotMatch(results, /Nenhum resultado publicado ainda/);
 assert.match(results, /SimpleResultsPreparation/);
