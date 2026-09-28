@@ -3,6 +3,11 @@ import { buildFertilityCyclePlan } from "../src/domain/fertility-cycle-plan.ts";
 import { buildReportFertilityHorizon } from "../src/domain/report-fertility-horizon.ts";
 import { buildSoilComplementActions } from "../src/domain/soil-complement-actions.ts";
 import { computeDeterministicPkDose, computeDeterministicPkPointDoseEnvelope } from "../src/domain/uniform-pk-readiness.ts";
+import {
+  buildReportBiologicalContext,
+  buildSoybeanApplicationGuidance,
+  climateContextFromAnalysisContext,
+} from "../src/domain/report-context-blocks.ts";
 import { evaluateSoilWaterNutrientDynamics } from "../src/domain/soil-water-nutrient-dynamics.ts";
 
 const plan = buildFertilityCyclePlan({
@@ -199,5 +204,47 @@ assert.match(lowB?.action ?? "", /não aplicar uma dose geral/i);
 const lowMo = complementsLow.find((item) => item.parameterCode === "MO");
 assert.equal(lowMo?.status, "LOW_REQUIRES_COMPLEMENT_REVIEW");
 assert.match(lowMo?.action ?? "", /cobertura|rotação/i);
+
+
+const climateProvided = climateContextFromAnalysisContext({
+  draft: {
+    weatherContextStatus: "PROVIDED",
+    weatherContextNotes: "Safra com risco hídrico informado pelo responsável técnico.",
+  },
+});
+assert.equal(climateProvided.status, "PROVIDED");
+assert.match(climateProvided.notes ?? "", /risco hídrico/);
+assert.equal(climateProvided.automaticDoseAdjustmentAllowed, false);
+
+const biologyContext = buildReportBiologicalContext({
+  biologicalSoilEvidence: {
+    hasAnyBiology: true,
+    coreBioAs: { complete: true },
+    interpretation: { officialLabInterpretationAvailable: true },
+    warnings: [],
+  },
+  soilMicrobiologyEvidence: {
+    hasMicrobiologyEvidence: true,
+    observations: [{ id: 1 }, { id: 2 }],
+    detectedFunctionalRoles: ["PHOSPHORUS_SOLUBILIZATION"],
+    warnings: [],
+  },
+});
+assert.equal(biologyContext.hasAnyBiology, true);
+assert.equal(biologyContext.microbiologyObservationCount, 2);
+assert.equal(biologyContext.automaticNutrientCreditAllowed, false);
+assert.equal(biologyContext.automaticDoseAdjustmentAllowed, false);
+assert.match(biologyContext.summary ?? "", /não gera crédito automático/i);
+
+const cabedaPlacement = buildSoybeanApplicationGuidance({
+  cropCode: "SOJA",
+  state: "RS",
+  p2o5KgPerHa: 94.5,
+  k2oKgPerHa: 91.9,
+});
+assert.equal(cabedaPlacement.status, "PLACEMENT_REVIEW_REQUIRED");
+assert.ok(cabedaPlacement.blockers.includes("FURROW_K2O_EXCEEDS_80_WITHOUT_SAFE_OFFSET"));
+assert.match(cabedaPlacement.guidance, /80 kg K₂O\/ha/);
+assert.match(cabedaPlacement.costBenefitNote, /produto, preço, equipamento e logística/i);
 
 console.log("fertility-cycle-plan: correção multi-ano, manutenção e cenário sem reinvestimento validados");
