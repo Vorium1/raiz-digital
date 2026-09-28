@@ -1,4 +1,5 @@
 import { withTenant } from "@/lib/db";
+import { getOperationalAlertSources } from "@/lib/repositories/alerts-read-model";
 
 export type AlertCriticality = "ALTA" | "MEDIA" | "BAIXA";
 
@@ -33,18 +34,9 @@ export type OperationalAlert = {
 export async function listOperationalAlerts(tenantId: string, userId?: string): Promise<OperationalAlert[]> {
   return withTenant({ tenantId, userId }, async (client) => {
     const alerts: OperationalAlert[] = [];
+    const sources = await getOperationalAlertSources(client, tenantId);
 
-    const overdueOrders = await client.query(
-      `SELECT co.id::text, co.code, co.planned_at::text AS "plannedAt", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName", u.name AS "assignedToName"
-       FROM collection_orders co
-       JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN users u ON u.id = co.assigned_to
-       WHERE co.tenant_id = $1::uuid AND co.status IN ('PLANNED','IN_PROGRESS') AND co.planned_at IS NOT NULL AND co.planned_at < now()`,
-      [tenantId],
-    );
+    const overdueOrders = { rows: sources.overdueOrders ?? [] };
     for (const row of overdueOrders.rows) {
       alerts.push({
         id: `overdue-order-${row.id}`, category: "Coleta atrasada", criticality: "ALTA",
@@ -54,20 +46,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const pendingPoints = await client.query(
-      `SELECT co.id::text, co.code, co.planned_at::text AS "plannedAt", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName", u.name AS "assignedToName",
-              count(sp.*) FILTER (WHERE sp.collected_at IS NULL)::int AS pending, count(sp.*)::int AS total
-       FROM collection_orders co
-       JOIN crop_seasons cs ON cs.tenant_id = co.tenant_id AND cs.id = co.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       JOIN sample_points sp ON sp.tenant_id = co.tenant_id AND sp.collection_order_id = co.id
-       LEFT JOIN users u ON u.id = co.assigned_to
-       WHERE co.tenant_id = $1::uuid AND co.status IN ('PLANNED','IN_PROGRESS')
-       GROUP BY co.id, co.code, co.planned_at, f.id, f.name, c.name, u.name HAVING count(sp.*) FILTER (WHERE sp.collected_at IS NULL) > 0`,
-      [tenantId],
-    );
+    const pendingPoints = { rows: sources.pendingPoints ?? [] };
     for (const row of pendingPoints.rows) {
       alerts.push({
         id: `pending-points-${row.id}`, category: "Pontos não coletados", criticality: row.pending === row.total ? "MEDIA" : "BAIXA",
@@ -80,16 +59,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const awaitingLab = await client.query(
-      `SELECT a.id::text, a.code, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName", a.updated_at::text AS "updatedAt"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE a.tenant_id = $1::uuid AND a.status = 'AWAITING_LAB'`,
-      [tenantId],
-    );
+    const awaitingLab = { rows: sources.awaitingLab ?? [] };
     for (const row of awaitingLab.rows) {
       alerts.push({
         id: `awaiting-lab-${row.id}`, category: "Laudo aguardando importação", criticality: "MEDIA",
@@ -99,16 +69,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const inconsistent = await client.query(
-      `SELECT a.id::text, a.code, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName", a.updated_at::text AS "updatedAt"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE a.tenant_id = $1::uuid AND a.status = 'INCONSISTENT'`,
-      [tenantId],
-    );
+    const inconsistent = { rows: sources.inconsistent ?? [] };
     for (const row of inconsistent.rows) {
       alerts.push({
         id: `inconsistent-${row.id}`, category: "Dados inválidos", criticality: "ALTA",
@@ -121,65 +82,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
     // Uma interpretação pode continuar no banco e, ainda assim, deixar de representar a decisão
     // corrente quando muda laudo, crop profile ou regra. Só olhamos a análise mais recente da safra mais
     // recente de cada talhão para não transformar histórico legítimo em alerta operacional.
-    const staleCurrentInterpretations = await client.query(
-      `WITH latest_seasons AS (
-         SELECT DISTINCT ON (cs.field_id)
-                cs.id, cs.field_id, cs.crop_profile_id, cs.created_at
-         FROM crop_seasons cs
-         WHERE cs.tenant_id = $1::uuid
-         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
-       ),
-       latest_analyses AS (
-         SELECT DISTINCT ON (ls.field_id)
-                a.id, a.tenant_id, a.code, a.created_at,
-                ls.field_id, ls.crop_profile_id
-         FROM analyses a
-         JOIN latest_seasons ls ON ls.id = a.crop_season_id
-         ORDER BY ls.field_id, a.created_at DESC, a.id DESC
-       )
-       SELECT la.id::text AS "analysisId",
-              la.code,
-              f.id::text AS "fieldId",
-              f.name AS "fieldName",
-              c.name AS "clientName",
-              li.created_at::text AS "interpretationCreatedAt",
-              CASE
-                WHEN li.crop_profile_id IS DISTINCT FROM la.crop_profile_id THEN 'CROP_PROFILE_CHANGED'
-                WHEN latest_import.latest_import_at IS NOT NULL AND li.created_at < latest_import.latest_import_at THEN 'LAB_EVIDENCE_CHANGED'
-                WHEN cp.id IS NOT NULL
-                 AND li.created_at < greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at)) THEN 'AGRONOMIC_RULES_CHANGED'
-                ELSE NULL
-              END AS "freshnessCode"
-       FROM latest_analyses la
-       JOIN fields f ON f.tenant_id = la.tenant_id AND f.id = la.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN crop_profiles cp ON cp.id = la.crop_profile_id
-       JOIN LATERAL (
-         SELECT i.created_at, i.crop_profile_id
-         FROM interpretations i
-         WHERE i.tenant_id = la.tenant_id AND i.analysis_id = la.id
-         ORDER BY i.revision DESC
-         LIMIT 1
-       ) li ON true
-       LEFT JOIN LATERAL (
-         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
-         FROM analysis_imports ai
-         WHERE ai.tenant_id = la.tenant_id AND ai.analysis_id = la.id
-       ) latest_import ON true
-       LEFT JOIN LATERAL (
-         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
-         FROM crop_profile_parameters cpp
-         WHERE cpp.crop_profile_id = cp.id
-       ) rule_state ON cp.id IS NOT NULL
-       WHERE li.crop_profile_id IS DISTINCT FROM la.crop_profile_id
-          OR (latest_import.latest_import_at IS NOT NULL AND li.created_at < latest_import.latest_import_at)
-          OR (
-            cp.id IS NOT NULL
-            AND li.created_at < greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
-          )`,
-      [tenantId],
-    );
+    const staleCurrentInterpretations = { rows: sources.staleCurrentInterpretations ?? [] };
     for (const row of staleCurrentInterpretations.rows) {
       const reason = row.freshnessCode === "CROP_PROFILE_CHANGED"
         ? "o perfil agronômico da safra mudou"
@@ -200,35 +103,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const awaitingReview = await client.query(
-      `SELECT i.id::text, i.analysis_id::text AS "analysisId", i.created_at::text AS "createdAt", a.code, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
-       FROM interpretations i
-       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN LATERAL (
-         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
-         FROM analysis_imports ai
-         WHERE ai.tenant_id = a.tenant_id AND ai.analysis_id = a.id
-       ) latest_import ON true
-       LEFT JOIN LATERAL (
-         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
-         FROM crop_profile_parameters cpp
-         WHERE cpp.crop_profile_id = cp.id
-       ) rule_state ON cp.id IS NOT NULL
-       WHERE i.tenant_id = $1::uuid AND i.status = 'IN_REVIEW'
-         AND i.revision = (SELECT max(revision) FROM interpretations i2 WHERE i2.tenant_id = i.tenant_id AND i2.analysis_id = i.analysis_id)
-         AND i.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
-         AND (latest_import.latest_import_at IS NULL OR i.created_at >= latest_import.latest_import_at)
-         AND (
-           cp.id IS NULL
-           OR i.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
-         )`,
-      [tenantId],
-    );
+    const awaitingReview = { rows: sources.awaitingReview ?? [] };
     for (const row of awaitingReview.rows) {
       alerts.push({
         id: `awaiting-review-${row.id}`, category: "Interpretação aguardando revisão", criticality: "MEDIA",
@@ -243,15 +118,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
     // filtro, todo tenant via alerta de homologação pendente de toda cultura do catálogo, mesmo as que
     // nunca vai plantar -- 84 alertas de baixa prioridade que na prática viram ruído, escondendo os que
     // realmente importam pra essa operação.
-    const unhomologatedParams = await client.query(
-      `SELECT cp.id::text, cp.name, count(*)::int AS pending
-       FROM crop_profile_parameters cpp
-       JOIN crop_profiles cp ON cp.id = cpp.crop_profile_id
-       WHERE cpp.status != 'ACTIVE'
-         AND cp.id IN (SELECT DISTINCT crop_profile_id FROM crop_seasons WHERE tenant_id = $1::uuid AND crop_profile_id IS NOT NULL)
-       GROUP BY cp.id, cp.name`,
-      [tenantId],
-    );
+    const unhomologatedParams = { rows: sources.unhomologatedParams ?? [] };
     for (const row of unhomologatedParams.rows) {
       alerts.push({
         id: `unhomologated-${row.id}`, category: "Parâmetro sem regra homologada", criticality: "BAIXA",
@@ -261,22 +128,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const seasonsWithoutCrop = await client.query(
-      `WITH latest_seasons AS (
-         SELECT DISTINCT ON (cs.field_id)
-                cs.id, cs.tenant_id, cs.field_id, cs.season_label, cs.crop_profile_id, cs.created_at
-         FROM crop_seasons cs
-         WHERE cs.tenant_id = $1::uuid
-         ORDER BY cs.field_id, cs.created_at DESC, cs.id DESC
-       )
-       SELECT cs.id::text, cs.season_label AS "seasonLabel", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
-       FROM latest_seasons cs
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE cs.crop_profile_id IS NULL`,
-      [tenantId],
-    );
+    const seasonsWithoutCrop = { rows: sources.seasonsWithoutCrop ?? [] };
     for (const row of seasonsWithoutCrop.rows) {
       alerts.push({
         id: `season-no-crop-${row.id}`, category: "Talhão sem cultura definida", criticality: "MEDIA",
@@ -286,14 +138,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const fieldsWithoutSeason = await client.query(
-      `SELECT f.id::text, f.name, c.name AS "clientName"
-       FROM fields f
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE f.tenant_id = $1::uuid AND NOT EXISTS (SELECT 1 FROM crop_seasons cs WHERE cs.tenant_id = f.tenant_id AND cs.field_id = f.id)`,
-      [tenantId],
-    );
+    const fieldsWithoutSeason = { rows: sources.fieldsWithoutSeason ?? [] };
     for (const row of fieldsWithoutSeason.rows) {
       alerts.push({
         id: `field-no-season-${row.id}`, category: "Talhão sem safra definida", criticality: "BAIXA",
@@ -303,17 +148,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const staleAnalyses = await client.query(
-      `SELECT a.id::text, a.code, a.status, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName", a.created_at::text AS "createdAt"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE a.tenant_id = $1::uuid AND a.status IN ('DRAFT','COLLECTION_SCHEDULED','COLLECTION_IN_PROGRESS','AWAITING_LAB')
-         AND a.created_at < now() - interval '14 days'`,
-      [tenantId],
-    );
+    const staleAnalyses = { rows: sources.staleAnalyses ?? [] };
     for (const row of staleAnalyses.rows) {
       alerts.push({
         id: `stale-${row.id}`, category: "Análise incompleta", criticality: "BAIXA",
@@ -323,17 +158,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
       });
     }
 
-    const brokenTraceability = await client.query(
-      `SELECT ls.id::text, ls.laboratory_code, a.id::text AS "analysisId", a.code AS "analysisCode", f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
-       FROM lab_samples ls
-       JOIN analyses a ON a.tenant_id = ls.tenant_id AND a.id = ls.analysis_id
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE ls.tenant_id = $1::uuid AND ls.sample_point_id IS NULL AND a.collection_order_id IS NOT NULL`,
-      [tenantId],
-    );
+    const brokenTraceability = { rows: sources.brokenTraceability ?? [] };
     for (const row of brokenTraceability.rows) {
       alerts.push({
         id: `broken-trace-${row.id}`, category: "Inconsistência de rastreabilidade", criticality: "ALTA",
@@ -349,18 +174,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      * manter o produtor "na vida da plataforma", incentivando recoleta periódica em vez de deixar a
      * análise antiga silenciosamente desatualizada.
      */
-    const reanalysisDue = await client.query(
-      `SELECT f.id::text, f.name, c.name AS "clientName", max(a.created_at)::text AS "lastAnalysisAt"
-       FROM analyses a
-       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE a.tenant_id = $1::uuid
-       GROUP BY f.id, f.name, c.name
-       HAVING max(a.created_at) < now() - interval '3 years'`,
-      [tenantId],
-    );
+    const reanalysisDue = { rows: sources.reanalysisDue ?? [] };
     for (const row of reanalysisDue.rows) {
       const years = ((Date.now() - new Date(row.lastAnalysisAt).getTime()) / (1000 * 60 * 60 * 24 * 365.25)).toFixed(1);
       alerts.push({
@@ -380,66 +194,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      * recomendado. Só aplica quando HOUVE aplicação registrada -- "não aplicou ainda" não é alertado
      * aqui (pode ser só falta de tempo, não é necessariamente desvio).
      */
-    const inputDeviation = await client.query(
-      `WITH latest_recommendations AS (
-         SELECT DISTINCT ON (analysis_id, input_type)
-                id, analysis_id, input_type, quantity, unit, calculation_source, calculated_at, source_generation_id
-         FROM input_recommendations WHERE tenant_id = $1::uuid
-         ORDER BY analysis_id, input_type, calculated_at DESC, id DESC
-       ),
-       applied_totals AS (
-         SELECT analysis_id, input_type, unit, SUM(quantity) AS total_quantity
-         FROM input_applications WHERE tenant_id = $1::uuid
-         GROUP BY analysis_id, input_type, unit
-       )
-       SELECT r.analysis_id::text AS "analysisId", r.input_type AS "inputType", r.quantity::float8 AS "recommendedQuantity", r.unit,
-              a.total_quantity::float8 AS "appliedQuantity", an.code, f.id::text AS "fieldId", f.name AS "fieldName", c.name AS "clientName"
-       FROM latest_recommendations r
-       JOIN applied_totals a ON a.analysis_id = r.analysis_id AND a.input_type = r.input_type AND a.unit = r.unit
-       JOIN analyses an ON an.tenant_id = $1::uuid AND an.id = r.analysis_id
-       JOIN crop_seasons cs ON cs.tenant_id = an.tenant_id AND cs.id = an.crop_season_id
-       LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       LEFT JOIN ai_generations g
-         ON g.tenant_id = $1::uuid AND g.id = r.source_generation_id AND g.kind = 'AGRONOMIC_PRESCRIPTION'
-       LEFT JOIN LATERAL (
-         SELECT i.id, i.status, i.created_at, i.crop_profile_id
-         FROM interpretations i
-         WHERE i.tenant_id = an.tenant_id AND i.analysis_id = an.id
-         ORDER BY i.revision DESC
-         LIMIT 1
-       ) li ON true
-       LEFT JOIN LATERAL (
-         SELECT max(coalesce(ai.committed_at, ai.created_at)) AS latest_import_at
-         FROM analysis_imports ai
-         WHERE ai.tenant_id = an.tenant_id AND ai.analysis_id = an.id
-       ) latest_import ON true
-       LEFT JOIN LATERAL (
-         SELECT max(cpp.updated_at) AS latest_parameter_rule_at
-         FROM crop_profile_parameters cpp
-         WHERE cpp.crop_profile_id = cp.id
-       ) rule_state ON cp.id IS NOT NULL
-       WHERE (
-         -- Recomendações não-IA permanecem fora do lifecycle das gerações assistidas.
-         (r.source_generation_id IS NULL AND coalesce(r.calculation_source, '') NOT LIKE 'ai_generations:%')
-         OR (
-           r.source_generation_id IS NOT NULL
-           AND g.status = 'APPROVED'
-           AND g.created_at >= cs.updated_at
-           AND g.interpretation_id = li.id
-           AND li.status = 'APPROVED'
-           AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
-           AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
-           AND (
-             cp.id IS NULL
-             OR li.created_at >= greatest(cp.updated_at, coalesce(rule_state.latest_parameter_rule_at, cp.updated_at))
-           )
-         )
-       )`,
-      [tenantId],
-    );
+    const inputDeviation = { rows: sources.inputDeviation ?? [] };
     for (const row of inputDeviation.rows) {
       const ratio = row.appliedQuantity / row.recommendedQuantity;
       if (ratio >= 0.95 && ratio <= 1.1) continue;
@@ -498,18 +253,7 @@ export async function listOperationalAlerts(tenantId: string, userId?: string): 
      * safra específica) -- precisa ser atualizado ou removido quando a safra 2026/27 passar; não
      * generaliza pra safras futuras sozinho.
      */
-    const CLIMATE_ADVISORY_CROPS = ["soja", "milho", "arroz"];
-    const climateSeasons = await client.query(
-      `SELECT cs.id::text, cs.field_id::text AS "fieldId", cs.season_label AS "seasonLabel",
-              coalesce(cs.next_crop, cs.current_crop) AS crop, f.name AS "fieldName", c.name AS "clientName"
-       FROM crop_seasons cs
-       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
-       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
-       JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
-       WHERE cs.tenant_id = $1::uuid AND cs.season_label = '2026/27' AND p.state = 'RS'
-         AND lower(coalesce(cs.next_crop, cs.current_crop, '')) = ANY($2::text[])`,
-      [tenantId, CLIMATE_ADVISORY_CROPS],
-    );
+    const climateSeasons = { rows: sources.climateSeasons ?? [] };
     for (const row of climateSeasons.rows) {
       alerts.push({
         id: `climate-el-nino-2026-27-${row.id}`,
