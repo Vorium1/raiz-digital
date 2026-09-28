@@ -31,6 +31,22 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   for (const nutrient of ["P2O5", "K2O"] as const) {
     const dose = evidence.deterministicPkDoses[nutrient];
+    const pointEnvelope = evidence.deterministicPkPointDoses[nutrient];
+
+    if (
+      pointEnvelope.ready
+      && pointEnvelope.operationalAverageAllowed
+      && pointEnvelope.operationalAverageKgPerHa != null
+    ) {
+      recommendations.push({
+        inputType: nutrient,
+        quantity: pointEnvelope.operationalAverageKgPerHa,
+        unit: "kg/ha",
+        rationale: `Regulagem uniforme operacional calculada pelo motor a partir das doses determinísticas dos ${pointEnvelope.rows.length} pontos com suporte amostral equivalente. Média simples: ${pointEnvelope.operationalAverageKgPerHa} kg/ha; variação real: ${pointEnvelope.minimumKgPerHa}–${pointEnvelope.maximumKgPerHa} kg/ha. A média não cria uma classe de solo e os valores por ponto permanecem rastreáveis.`,
+      });
+      continue;
+    }
+
     if (!dose.ready || !dose.expected) {
       limitations.push(`Dose de ${nutrient} não incluída: ${dose.blockers.join(", ") || "evidência insuficiente para uma dose uniforme segura"}.`);
       continue;
@@ -85,7 +101,15 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   const sulfur = evidence.deterministicSulfurDose;
   if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
-    if (sulfur.dose.kind === "EXACT") {
+    if (sulfur.operationalDoseKgSPerHa != null) {
+      const range = sulfur.operationalDoseRangeKgSPerHa;
+      recommendations.push({
+        inputType: "S",
+        quantity: sulfur.operationalDoseKgSPerHa,
+        unit: "kg/ha",
+        rationale: `Regulagem uniforme operacional de S calculada pela média das decisões determinísticas por ponto (0 ou 20 kg S/ha conforme o limiar oficial). Média: ${sulfur.operationalDoseKgSPerHa} kg S/ha${range ? `; variação real: ${range.min}–${range.max} kg S/ha` : ""}. O teor médio de S não é usado para reclassificar o talhão.`,
+      });
+    } else if (sulfur.dose.kind === "EXACT") {
       recommendations.push({
         inputType: "S",
         quantity: sulfur.dose.kgSPerHa,
