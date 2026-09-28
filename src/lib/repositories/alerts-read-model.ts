@@ -326,13 +326,13 @@ export async function getOperationalAlertSources(client: PoolClient, tenantId: s
          WHERE cpp.crop_profile_id=cp.id
        ) rule_state ON cp.id IS NOT NULL
        WHERE (
-         (r.source_generation_id IS NULL AND coalesce(r.calculation_source,'') NOT LIKE 'ai_generations:%')
+         (r.source_generation_id IS NULL AND coalesce(r.calculation_source, '') NOT LIKE 'ai_generations:%')
          OR (
            r.source_generation_id IS NOT NULL
-           AND g.status='APPROVED'
+           AND g.status = 'APPROVED'
            AND g.created_at >= cs.updated_at
-           AND g.interpretation_id=li.id
-           AND li.status='APPROVED'
+           AND g.interpretation_id = li.id
+           AND li.status = 'APPROVED'
            AND li.crop_profile_id IS NOT DISTINCT FROM cs.crop_profile_id
            AND (latest_import.latest_import_at IS NULL OR li.created_at >= latest_import.latest_import_at)
            AND (
