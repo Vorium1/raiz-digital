@@ -6,6 +6,7 @@ import { buildProducerCommercialPlanSummary, type FrozenCommercialPlanSnapshot }
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import type { TenantBranding } from "@/lib/repositories/tenant-branding";
 import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import type { SoilComplementAction } from "@/domain/soil-complement-actions";
 
 type StructuredFact = {
   sampleCode: string;
@@ -69,6 +70,7 @@ type Prescription = {
   missingInformation?: string[];
   sources?: Array<{ title?: string; institution?: string }>;
   fertilityPlan?: ReportFertilityHorizon | null;
+  soilComplementActions?: SoilComplementAction[];
 };
 
 type Props = {
@@ -290,6 +292,7 @@ export function FinalVisualReport(props: Props) {
   const management = prescription?.managementPractices ?? [];
   const missingInformation = prescription?.missingInformation ?? [];
   const fertilityPlan = prescription?.fertilityPlan ?? null;
+  const soilComplementActions = prescription?.soilComplementActions ?? [];
   const pending = summaries.filter((item) => item.pendingCode);
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
@@ -444,6 +447,24 @@ export function FinalVisualReport(props: Props) {
             <div className="report-evidence-warning"><Icon name="shield" size={14}/><span><strong>Sem dose inventada.</strong> Nenhuma dose numérica sustentada está disponível nesta versão. A ausência fica explícita e não bloqueia o restante do parecer.</span></div>
           )}
         </section>
+
+        {soilComplementActions.length > 0 && (
+          <section className="report-visual-panel">
+            <div className="report-visual-section-head">
+              <div><span>MICRONUTRIENTES E MATÉRIA ORGÂNICA</span><h2>Complementos e manutenção</h2></div>
+            </div>
+            <div className="report-commercial-rows">
+              {soilComplementActions.map((item) => (
+                <div key={item.parameterCode}>
+                  <strong>{item.label}</strong>
+                  <span>{item.classifications.length ? item.classifications.join(" · ") : "Não avaliado"}</span>
+                  <span>{item.action}</span>
+                  <span>{item.numericDoseAllowed ? "Dose automática disponível" : "Sem dose automática genérica"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="report-management-grid">
           <section className="report-visual-panel">
