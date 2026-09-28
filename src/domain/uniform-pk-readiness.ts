@@ -424,6 +424,6 @@ export function computeDeterministicPkPointDoseEnvelope(input: {
     maximumKgPerHa: Math.max(...rows.map((row) => row.maximumKgPerHa)),
     assumptions,
     blockers: [],
-    source: table.source,
+    source: table?.source ?? null,
   };
 }
