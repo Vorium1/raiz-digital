@@ -1,0 +1,107 @@
+name: Performance Fast Path Browser QA
+
+on:
+  push:
+    branches:
+      - "feature/performance-login-fast-path"
+    paths:
+      - ".github/workflows/performance-preview-qa.yml"
+      - "e2e/performance-fast-path.spec.ts"
+      - "src/components/login-form.tsx"
+      - "src/lib/auth/session.ts"
+      - "src/lib/db.ts"
+      - "src/app/(platform)/inicio/**"
+      - "src/app/(platform)/talhoes/**"
+      - "src/app/(platform)/resultados/**"
+      - "src/app/(platform)/atencao/**"
+      - "src/lib/repositories/field-overview.ts"
+      - "src/lib/repositories/results-overview.ts"
+      - "src/lib/repositories/alerts.ts"
+      - "src/lib/repositories/alerts-read-model.ts"
+      - "src/lib/repositories/ndvi.ts"
+      - "src/app/api/fields/**"
+  workflow_dispatch:
+
+concurrency:
+  group: performance-fast-path-preview-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: read
+  id-token: write
+
+jobs:
+  browser:
+    name: issue-120-browser-qa
+    runs-on: ubuntu-latest
+    environment: homologation
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Obter token OIDC para Deployment Protection
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput("token", token);
+
+      - name: Descobrir Preview Vercel deste SHA
+        id: preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            for (let attempt = 0; attempt < 60; attempt++) {
+              const deployments = await github.rest.repos.listDeployments({
+                owner, repo, sha: context.sha, per_page: 20,
+              });
+              for (const deployment of deployments.data) {
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner, repo, deployment_id: deployment.id, per_page: 20,
+                });
+                const ready = statuses.data.find((status) =>
+                  status.state === "success"
+                  && typeof status.environment_url === "string"
+                  && status.environment_url.startsWith("https://")
+                );
+                if (ready) {
+                  core.setOutput("url", ready.environment_url);
+                  return;
+                }
+              }
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            core.setFailed("Nenhum environment_url de Preview ficou pronto para o SHA atual.");
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar QA de performance no Preview
+        env:
+          E2E_BASE_URL: ${{ steps.preview.outputs.url }}
+          E2E_ADMIN_EMAIL: admin@raiz.local
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: npx playwright test e2e/performance-fast-path.spec.ts
+
+      - name: Publicar evidências
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-fast-path-${{ github.sha }}
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 14
