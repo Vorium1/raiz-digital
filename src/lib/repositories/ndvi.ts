@@ -67,6 +67,38 @@ export async function listNdviHistorySummaryForField(tenantId: string, fieldId: 
   });
 }
 
+/**
+ * Read model da tela de satélite: contorno + histórico leve em uma única ida de domínio ao banco.
+ * O PNG/objeto continua fora deste payload e só é lido pela rota autenticada de imagem.
+ */
+export async function getNdviFieldReadModel(tenantId: string, fieldId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const result = await client.query<{
+      fieldBoundary: unknown;
+      history: Array<Record<string, unknown>>;
+    }>(
+      `SELECT
+         ST_AsGeoJSON(f.boundary)::json AS "fieldBoundary",
+         coalesce((
+           SELECT json_agg(row_to_json(snapshot_row) ORDER BY snapshot_row."capturedAt" DESC, snapshot_row."createdAt" DESC)
+           FROM (
+             SELECT ${SNAPSHOT_SUMMARY_COLUMNS}
+             FROM field_ndvi_snapshots
+             WHERE tenant_id = $1::uuid AND field_id = $2::uuid
+             ORDER BY captured_at DESC, created_at DESC
+             LIMIT 24
+           ) snapshot_row
+         ), '[]'::json) AS history
+       FROM fields f
+       WHERE f.tenant_id = $1::uuid AND f.id = $2::uuid`,
+      [tenantId, fieldId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { fieldBoundary: row.fieldBoundary, history: row.history ?? [] };
+  });
+}
+
 export async function getLatestNdviSnapshot(tenantId: string, fieldId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
