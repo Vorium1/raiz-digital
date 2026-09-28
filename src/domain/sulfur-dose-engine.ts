@@ -163,6 +163,9 @@ export type SoybeanSulfurUniformDecision = SulfurDoseDecision & {
   basis: "SINGLE_SAMPLE" | "STRICT_PREDOMINANCE" | null;
   matchingCount: number;
   totalCount: number;
+  operationalDoseKgSPerHa?: number | null;
+  operationalDoseRangeKgSPerHa?: { min: number; max: number } | null;
+  operationalBasis?: "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
 };
 
 const SOYBEAN_S_METHOD = "Ca(H2PO4)2 500mg P/L, turbidimetria";
@@ -181,6 +184,7 @@ const SOYBEAN_S_DOSE_KG_HA = 20;
 export function computeSoybeanSulfurRecommendation(input: {
   cropCode: string | null | undefined;
   observations: SoybeanSulfurObservation[];
+  allowEqualWeightOperationalAverage?: boolean;
 }): SoybeanSulfurUniformDecision {
   const cropCode = input.cropCode?.trim().toUpperCase() ?? "";
   if (cropCode !== "SOJA") {
@@ -261,6 +265,16 @@ export function computeSoybeanSulfurRecommendation(input: {
     classification: item.sulfurMgDm3 < SOYBEAN_S_CRITICAL_MG_DM3 ? "ABAIXO_CRITICO_SOJA" : "SUFICIENTE_SOJA",
   }));
 
+  const pointDoses = input.observations.map((item) =>
+    item.sulfurMgDm3 < SOYBEAN_S_CRITICAL_MG_DM3 ? SOYBEAN_S_DOSE_KG_HA : 0
+  );
+  const operationalDoseKgSPerHa = input.allowEqualWeightOperationalAverage === true && pointDoses.length > 0
+    ? Math.round((pointDoses.reduce((sum, dose) => sum + dose, 0) / pointDoses.length) * 10) / 10
+    : null;
+  const operationalDoseRangeKgSPerHa = input.allowEqualWeightOperationalAverage === true && pointDoses.length > 0
+    ? { min: Math.min(...pointDoses), max: Math.max(...pointDoses) }
+    : null;
+
   let basis: SoybeanSulfurUniformDecision["basis"] = null;
   let classification: string | null = null;
   let matchingCount = 0;
@@ -291,6 +305,9 @@ export function computeSoybeanSulfurRecommendation(input: {
       basis: null,
       matchingCount: 0,
       totalCount: classified.length,
+      operationalDoseKgSPerHa,
+      operationalDoseRangeKgSPerHa,
+      operationalBasis: operationalDoseKgSPerHa != null ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
     };
   }
 
@@ -307,5 +324,8 @@ export function computeSoybeanSulfurRecommendation(input: {
     basis,
     matchingCount,
     totalCount: classified.length,
+    operationalDoseKgSPerHa,
+    operationalDoseRangeKgSPerHa,
+    operationalBasis: operationalDoseKgSPerHa != null ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
   };
 }
