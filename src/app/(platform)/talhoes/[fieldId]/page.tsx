@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requirePlatformSession } from "@/lib/auth/session";
-import { getFieldOverview } from "@/lib/repositories/field-overview";
+import { getFieldOverviewCore } from "@/lib/repositories/field-overview";
 import { getAnalysisEvidenceState } from "@/lib/repositories/analysis-evidence";
 import { getDecisionDeliveryStatuses } from "@/lib/repositories/decision-delivery-status";
 import { SimpleFieldOverview } from "@/components/simple-field-overview";
@@ -12,7 +12,7 @@ const AUTO_REFRESH_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST",
 export default async function FieldOverviewPage({ params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const session = await requirePlatformSession();
-  const overview = await getFieldOverview(session.tenantId, fieldId, session.userId);
+  const overview = await getFieldOverviewCore(session.tenantId, fieldId, session.userId);
   if (!overview) notFound();
 
   const currentSeason = overview.seasons[0] ?? null;
