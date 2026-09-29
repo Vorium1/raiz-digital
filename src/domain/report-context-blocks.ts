@@ -24,8 +24,11 @@ export type ReportBiologicalContext = {
 export type ReportApplicationGuidance = {
   cropCode: string | null;
   status: "NOT_APPLICABLE" | "DOSE_NOT_READY" | "PLACEMENT_REVIEW_REQUIRED" | "WITHIN_UNKNOWN_OFFSET_LIMITS";
+  assessmentBasis: "UNIFORM" | "POINT_RANGE_MAX" | "NOT_READY";
   p2o5KgPerHa: number | null;
   k2oKgPerHa: number | null;
+  p2o5RangeKgPerHa: { min: number; max: number } | null;
+  k2oRangeKgPerHa: { min: number; max: number } | null;
   limitsWithoutSafeOffsetKgHa: { P2O5: number; K2O: number } | null;
   blockers: string[];
   guidance: string;
@@ -129,6 +132,94 @@ export function buildSoybeanApplicationGuidance(input: {
   state: string | null | undefined;
   p2o5KgPerHa: number | null | undefined;
   k2oKgPerHa: number | null | undefined;
+  p2o5RangeKgPerHa?: { min: number; max: number } | null;
+  k2oRangeKgPerHa?: { min: number; max: number } | null;
+}): ReportApplicationGuidance {
+  const cropCode = input.cropCode?.trim().toUpperCase() || null;
+  const pRange = input.p2o5RangeKgPerHa ?? null;
+  const kRange = input.k2oRangeKgPerHa ?? null;
+
+  if (cropCode !== "SOJA") {
+    return {
+      cropCode,
+      status: "NOT_APPLICABLE",
+      assessmentBasis: "NOT_READY",
+      p2o5KgPerHa: input.p2o5KgPerHa ?? null,
+      k2oKgPerHa: input.k2oKgPerHa ?? null,
+      p2o5RangeKgPerHa: pRange,
+      k2oRangeKgPerHa: kRange,
+      limitsWithoutSafeOffsetKgHa: null,
+      blockers: [],
+      guidance: "Orientação de posicionamento específica desta etapa implementada somente para soja RS/SC.",
+      costBenefitNote: "Custo-benefício depende de produto, preço, equipamento e logística declarados; não é inferido sem cenário comercial.",
+    };
+  }
+
+  const uniformP = typeof input.p2o5KgPerHa === "number" && Number.isFinite(input.p2o5KgPerHa)
+    ? input.p2o5KgPerHa
+    : null;
+  const uniformK = typeof input.k2oKgPerHa === "number" && Number.isFinite(input.k2oKgPerHa)
+    ? input.k2oKgPerHa
+    : null;
+  const rangeP = pRange && Number.isFinite(pRange.max) ? pRange.max : null;
+  const rangeK = kRange && Number.isFinite(kRange.max) ? kRange.max : null;
+  const plannedP = uniformP ?? rangeP;
+  const plannedK = uniformK ?? rangeK;
+  const assessmentBasis: ReportApplicationGuidance["assessmentBasis"] =
+    uniformP != null && uniformK != null
+      ? "UNIFORM"
+      : plannedP != null && plannedK != null
+        ? "POINT_RANGE_MAX"
+        : "NOT_READY";
+
+  if (plannedP == null || plannedK == null) {
+    return {
+      cropCode,
+      status: "DOSE_NOT_READY",
+      assessmentBasis,
+      p2o5KgPerHa: uniformP,
+      k2oKgPerHa: uniformK,
+      p2o5RangeKgPerHa: pRange,
+      k2oRangeKgPerHa: kRange,
+      limitsWithoutSafeOffsetKgHa: { P2O5: 120, K2O: 80 },
+      blockers: ["PK_DOSE_NOT_READY_FOR_PLACEMENT_REVIEW"],
+      guidance: "A dose de P/K precisa estar fechada, como taxa uniforme ou faixa espacial por ponto, antes de avaliar o posicionamento de semeadura.",
+      costBenefitNote: "Custo-benefício depende de produto, preço, concentração, equipamento e logística declarados; não é inferido sem cenário comercial.",
+    };
+  }
+
+  const state = input.state?.trim().toUpperCase();
+  const assessment = evaluateSoybeanPkFurrowPlacementRsSc2025({
+    region: state === "RS" ? "RS" : state === "SC" ? "SC" : "OTHER",
+    placement: "NO_OFFSET_OR_UNKNOWN",
+    plannedP2O5KgHa: plannedP,
+    plannedK2OKgHa: plannedK,
+  });
+
+  const placementBlockers = assessment.blockers.filter((code) =>
+    code === "FURROW_P2O5_EXCEEDS_120_WITHOUT_SAFE_OFFSET"
+    || code === "FURROW_K2O_EXCEEDS_80_WITHOUT_SAFE_OFFSET"
+  );
+  const placementReviewRequired = placementBlockers.length > 0;
+  const spatialPrefix = assessmentBasis === "POINT_RANGE_MAX"
+    ? "Como a recomendação é espacial, esta checagem usa o maior valor da faixa por ponto, não uma média do talhão. "
+    : "";
+
+  return {
+    cropCode,
+    status: placementReviewRequired ? "PLACEMENT_REVIEW_REQUIRED" : "WITHIN_UNKNOWN_OFFSET_LIMITS",
+    assessmentBasis,
+    p2o5KgPerHa: uniformP,
+    k2oKgPerHa: uniformK,
+    p2o5RangeKgPerHa: pRange,
+    k2oRangeKgPerHa: kRange,
+    limitsWithoutSafeOffsetKgHa: assessment.limitsWithoutSafeOffsetKgHa,
+    blockers: assessment.blockers,
+    guidance: placementReviewRequired
+      ? spatialPrefix + "Se P/K forem aplicados no sulco e o afastamento 5 cm abaixo + 5 cm ao lado da semente não estiver confirmado, não colocar a necessidade inteira na linha. A referência limita a 120 kg P₂O₅/ha e 80 kg K₂O/ha nessa condição; o excedente precisa de posicionamento/época segura definidos no plano operacional. Isso não reduz a necessidade agronômica calculada."
+      : spatialPrefix + "Com o afastamento 5×5 ainda não informado, os valores avaliados não ultrapassam os limites de P₂O₅/K₂O usados pela referência para sulco sem afastamento seguro confirmado. Produto, salinidade, formulação e regulagem do equipamento ainda precisam ser conferidos.",
+    costBenefitNote: "Aplicar em uma ou mais operações é também uma decisão econômica/operacional. O RAIZ só compara custo quando produto, preço, concentração, equipamento e logística estiverem registrados; sem esses dados, não declara que uma aplicação única é mais barata ou melhor.",
+  };
 }): ReportApplicationGuidance {
   const cropCode = input.cropCode?.trim().toUpperCase() || null;
   if (cropCode !== "SOJA") {
