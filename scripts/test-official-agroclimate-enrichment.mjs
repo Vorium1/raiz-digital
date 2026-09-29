@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { collectOfficialAgroclimateEnrichment } from "../src/lib/agroclimate/official-enrichment.ts";
+import { buildReportAgroclimateSnapshot } from "../src/domain/report-agroclimate-snapshot.ts";
 
 const metricEvidence=[{
   metric:"DAY_MAX_TEMP_C",
@@ -34,7 +35,9 @@ const ready=await collectOfficialAgroclimateEnrichment({
   utcOffset:"-03:00",
   technicalRegionCodes:["br-rs","BR-RS"],
   zarcSeason:{startYear:2026,endYear:2027},
+  sourceTimeoutMs:2500,
   cptecFetcher:async(input)=>{
+    assert.equal(input.timeoutMs,2500);
     assert.deepEqual(input.technicalRegionCodes,["BR-RS"]);
     return {
       evidence:metricEvidence,
@@ -46,7 +49,10 @@ const ready=await collectOfficialAgroclimateEnrichment({
       retrievedAt:"2026-09-20T23:00:00Z",
     };
   },
-  zarcFetcher:async()=>zarcResource,
+  zarcFetcher:async(input)=>{
+    assert.equal(input.timeoutMs,2500);
+    return zarcResource;
+  },
 });
 assert.equal(ready.status,"READY");
 assert.equal(ready.cptec.status,"READY");
@@ -122,5 +128,56 @@ await assert.rejects(
   collectOfficialAgroclimateEnrichment({latitude:91,longitude:-52}),
   /AGROCLIMATE_LATITUDE_INVALID/,
 );
+
+
+const frozen=buildReportAgroclimateSnapshot({
+  collectedAt:"2026-09-29T01:00:00Z",
+  analysisId:"analysis-1",
+  location:{
+    state:"RS",
+    municipality:"Passo Fundo",
+    latitude:-28.26,
+    longitude:-52.41,
+    coordinateSource:"FIELD_BOUNDARY",
+    timeZone:"America/Sao_Paulo",
+    utcOffset:"-03:00",
+  },
+  season:{label:"2026/2027",zarcSeason:{startYear:2026,endYear:2027}},
+  technicalRegionCodes:["BR-RS"],
+  enrichment:{
+    ...ready,
+    metricEvidence:[
+      metricEvidence[0],
+      {...metricEvidence[0],value:31,sourceRecordId:"cptec:test:2",validFrom:"2026-09-22T00:00:00-03:00",validUntil:"2026-09-22T23:59:59-03:00"},
+    ],
+  },
+  inmetObservation:{
+    status:"READY",
+    observedDateUtc:"2026-09-28",
+    station:{code:"A001",name:"Passo Fundo",stateCode:"RS",distanceKm:12.4,sourceUrl:"https://portal.inmet.gov.br/"},
+    metricEvidence:[{
+      metric:"PRECIPITATION_MM",
+      value:18.2,
+      evidenceKind:"OBSERVED_STATION",
+      source:"INMET",
+      sourceRecordId:"inmet:a001:2026-09-28",
+      issuedAt:"2026-09-29T00:00:00Z",
+      validFrom:"2026-09-28T00:00:00Z",
+      validUntil:"2026-09-28T23:59:59Z",
+      technicalRegionCodes:["BR-RS"],
+    }],
+    warnings:[],
+  },
+  warnings:[],
+});
+assert.equal(frozen.status,"READY");
+assert.equal(frozen.forecast.summaries[0].label,"Temperatura máxima");
+assert.equal(frozen.forecast.summaries[0].min,27);
+assert.equal(frozen.forecast.summaries[0].max,31);
+assert.equal(frozen.forecast.summaries[0].sampleCount,2);
+assert.equal(frozen.observed.summaries[0].label,"Precipitação");
+assert.equal(frozen.observed.summaries[0].value,undefined);
+assert.equal(frozen.observed.summaries[0].min,18.2);
+assert.equal(frozen.automaticDoseAdjustmentAllowed,false);
 
 console.log("official-enrichment: clima oficial é opcional, rastreável e não bloqueia o laudo-base");
