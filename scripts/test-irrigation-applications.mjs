@@ -73,6 +73,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/repositor
   if (name.includes("irrigation-applications")) return irrigation;
   if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
   if (name.includes("spatial-interpolation-context")) return spatialInterpolationContext;
+  if (name.includes("management-system")) return { normalizeManagementSystem: value => value === "PLANTIO_DIRETO_CONSOLIDADO" ? "NO_TILL_CONSOLIDATED" : "OTHER" };
   if (name === "@/lib/db") return { withTenant: async (scope, run) => {
     assert.equal(scope.tenantId, "tenant-a"); assert.equal(scope.userId, "user-a"); return run(client);
   } };
