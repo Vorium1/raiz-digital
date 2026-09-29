@@ -162,7 +162,7 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
           inputType: "CALCARIO_PRNT100",
           quantity: liming.operationalGeneralDoseTonHaPrnt100,
           unit: "t/ha",
-          rationale: `Dose geral operacional do talhão calculada pelo motor como média simples das necessidades dos ${liming.sampleDecisions.length} pontos, equivalentes a PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A média assume representatividade equivalente entre os pontos; quando houver zonas/polígonos com área conhecida, a RAIZ deve preferir ponderação por área.`,
+          rationale: `Dose geral operacional do talhão calculada pelo motor a partir de ${liming.sampleDecisions.length} pontos de uma grade com área equivalente por ponto, em PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A consolidação por média só é autorizada porque a evidência de amostragem confirma representatividade espacial equivalente.`,
         });
       }
       const bySample = liming.sampleDecisions
@@ -185,9 +185,15 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
             ? " Modo de aplicação: superficial."
             : " Modo de aplicação: incorporada."
           : "";
-        managementPractices.push(`Calagem por ponto: ${bySample.join("; ")}. A recomendação principal do talhão usa a média operacional dos pontos; os valores individuais permanecem visíveis para auditoria e futura taxa variável.${modeText}`);
+        managementPractices.push(
+          liming.automaticGeneralDoseAllowed
+            ? `Calagem por ponto: ${bySample.join("; ")}. A recomendação principal do talhão usa a média operacional somente porque a grade confirma área equivalente por ponto; os valores individuais permanecem visíveis para auditoria e futura taxa variável.${modeText}`
+            : `Calagem por ponto: ${bySample.join("; ")}. Não foi criada dose geral para o talhão porque a representatividade de área equivalente entre os pontos não está comprovada; os valores individuais e a faixa permanecem preservados.${modeText}`,
+        );
       }
-      if (liming.generalDoseBasis === "EQUAL_WEIGHT_SAMPLE_MEAN") limitations.push("Calagem: a dose geral considera peso igual entre os pontos de amostragem. Se a área representada por cada ponto for diferente, refaça a consolidação com ponderação por zona/área.");
+      if (liming.blockers.includes("LIMING_EQUAL_WEIGHT_AVERAGE_REQUIRES_EQUAL_AREA_GRID")) {
+        limitations.push("Calagem: os pontos sustentam necessidades individuais, mas a amostragem não comprova área equivalente por ponto; por segurança, o RAIZ não calculou uma dose geral por média simples.");
+      }
     } else if (liming.status === "BLOCKED") {
       if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
         limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
