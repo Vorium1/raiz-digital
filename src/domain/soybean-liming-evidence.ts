@@ -386,6 +386,7 @@ export function evaluateSoybeanLimingFromEvidence(input: {
   allowEqualWeightOperationalAverage?: boolean;
   yearsSinceLastLiming?: number | null;
   restrictionAssessment?: SoybeanLimingRestrictionAssessment | null;
+  contextValidationBlockers?: string[];
 }): SoybeanLimingUniformDecision {
   const region = regionFromState(input.state);
   const managementSystem = normalizeManagementSystem(input.managementSystem);
@@ -466,6 +467,30 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       incorporatedDepthCm: null,
       sampleDecisions: [],
       blockers: ["NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED"],
+      warnings: [],
+    };
+  }
+
+  if (
+    (managementSystem === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS"
+      || managementSystem === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS")
+    && (input.contextValidationBlockers?.length ?? 0) > 0
+  ) {
+    return {
+      cropCode: input.cropCode,
+      region,
+      managementSystem,
+      status: "BLOCKED",
+      automaticUniformDoseAllowed: false,
+      uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      applicationMode: null,
+      incorporatedDepthCm: null,
+      sampleDecisions: [],
+      blockers: unique(input.contextValidationBlockers ?? []),
       warnings: [],
     };
   }
