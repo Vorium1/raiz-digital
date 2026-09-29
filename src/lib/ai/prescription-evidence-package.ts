@@ -35,6 +35,10 @@ import {
   type ReportBiologicalContext,
   type ReportClimateContext,
 } from "@/domain/report-context-blocks";
+import {
+  buildReportSpatialNutrientPlan,
+  type ReportSpatialNutrientPlan,
+} from "@/domain/report-spatial-nutrient-plan";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -65,6 +69,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   fertilityHorizonPlan: ReportFertilityHorizon | null;
   soilComplementActions: SoilComplementAction[];
   biologicalReportContext: ReportBiologicalContext;
+  spatialNutrientPlan: ReportSpatialNutrientPlan;
   applicationGuidance: ReportApplicationGuidance;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
@@ -677,7 +682,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         yieldGoalUnit: base.yieldGoalUnit,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
         nutrient: "P2O5",
-        allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+        allowEqualWeightOperationalAverage: false,
       }),
       K2O: computeDeterministicPkPointDoseEnvelope({
         cropCode: base.cropProfileCode,
@@ -686,7 +691,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         yieldGoalUnit: base.yieldGoalUnit,
         cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
         nutrient: "K2O",
-        allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+        allowEqualWeightOperationalAverage: false,
       }),
     };
 
@@ -701,7 +706,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           depthFromCm: row.depthFromCm ?? null,
           depthToCm: row.depthToCm ?? null,
         })),
-      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      allowEqualWeightOperationalAverage: false,
     });
 
     const fertilityPlanning = analysisContextFertilityPlanning(base.analysisContext);
@@ -712,7 +717,6 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       targetYieldTonPerHa: base.yieldGoal,
       targetYieldUnit: base.yieldGoalUnit,
       cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
-      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
       currentPkPointDoses: deterministicPkPointDoses,
       currentPkDoses: deterministicPkDoses,
     });
@@ -756,21 +760,22 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       biologicalSoilEvidence,
       soilMicrobiologyEvidence,
     });
-    const currentP2O5KgPerHa = deterministicPkPointDoses.P2O5.operationalAverageAllowed
-      ? deterministicPkPointDoses.P2O5.operationalAverageKgPerHa
-      : deterministicPkDoses.P2O5.ready
-        ? deterministicPkDoses.P2O5.expected?.doseKgPerHa ?? null
-        : null;
-    const currentK2OKgPerHa = deterministicPkPointDoses.K2O.operationalAverageAllowed
-      ? deterministicPkPointDoses.K2O.operationalAverageKgPerHa
-      : deterministicPkDoses.K2O.ready
-        ? deterministicPkDoses.K2O.expected?.doseKgPerHa ?? null
-        : null;
+    const spatialNutrientPlan = buildReportSpatialNutrientPlan({
+      areaHa: base.areaHa,
+      equalAreaGrid: equalWeightSamplingSupport,
+      pkDoses: deterministicPkDoses,
+      pkPointDoses: deterministicPkPointDoses,
+      sulfurDecision: deterministicSulfurDose,
+    });
+    const pSpatial = spatialNutrientPlan.nutrients.find((item) => item.nutrient === "P2O5");
+    const kSpatial = spatialNutrientPlan.nutrients.find((item) => item.nutrient === "K2O");
     const applicationGuidance = buildSoybeanApplicationGuidance({
       cropCode: base.cropProfileCode,
       state: base.state,
-      p2o5KgPerHa: currentP2O5KgPerHa,
-      k2oKgPerHa: currentK2OKgPerHa,
+      p2o5KgPerHa: pSpatial?.uniformDoseKgPerHa ?? null,
+      k2oKgPerHa: kSpatial?.uniformDoseKgPerHa ?? null,
+      p2o5RangeKgPerHa: pSpatial?.rangeKgPerHa ?? null,
+      k2oRangeKgPerHa: kSpatial?.rangeKgPerHa ?? null,
     });
     const climateContext = climateContextFromAnalysisContext(base.analysisContext);
 
@@ -810,6 +815,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       fertilityHorizonPlan,
       soilComplementActions,
       biologicalReportContext,
+      spatialNutrientPlan,
       applicationGuidance,
       deterministicSulfurDose,
       deterministicLimingDecision,
