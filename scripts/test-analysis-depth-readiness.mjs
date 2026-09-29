@@ -61,6 +61,7 @@ const optionalWaterContext = evaluateAnalysisDepthReadiness("recomendacao-manejo
   currentSoilAnalysis: true,
   crop: true,
   samplingDepth: true,
+  tillageSystem: true,
   managementHistory: "DECLARED_UNAVAILABLE",
 });
 assert.equal(optionalWaterContext.effectiveLayer, 2);
