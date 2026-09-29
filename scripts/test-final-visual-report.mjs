@@ -6,6 +6,9 @@ const component = read("src/components/report-final-visual.tsx");
 const technicalPage = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
 const resultPage = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 const css = read("src/app/ux3-result-document.css");
+const publishedNdviMap = read("src/components/published-ndvi-map.tsx");
+const realFieldMap = read("src/components/real-field-map.tsx");
+const printButton = read("src/components/print-button.tsx");
 
 assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
 assert.match(component, /RELATÓRIO/);
@@ -37,6 +40,12 @@ assert.match(component, /effectivePointCoordinates\(point\)/);
 assert.match(component, /PublishedNdviMap/);
 assert.match(component, /points=\{props\.points\}/);
 assert.doesNotMatch(component, /Math\.random|latitude\s*[+\-]=|longitude\s*[+\-]=/);
+assert.match(component, /showLegend=\{false\}[\s\S]*?eager/);
+assert.match(publishedNdviMap, /data-report-ndvi-state="loading"/);
+assert.match(publishedNdviMap, /renderImmediately=\{eager\}/);
+assert.match(realFieldMap, /renderImmediately = false/);
+assert.match(printButton, /data-report-ndvi-state="loading"/);
+assert.match(printButton, /Preparando PDF/);
 
 assert.match(component, /HORIZONTE DE FERTILIDADE/);
 assert.match(component, /MICRONUTRIENTES/);
