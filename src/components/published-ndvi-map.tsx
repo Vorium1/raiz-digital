@@ -30,6 +30,7 @@ export function PublishedNdviMap({
   points = [],
   height = 300,
   showLegend = true,
+  eager = false,
 }: {
   fieldId: string;
   capturedAt: string;
@@ -37,6 +38,7 @@ export function PublishedNdviMap({
   points?: MapPoint[];
   height?: number;
   showLegend?: boolean;
+  eager?: boolean;
 }) {
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -87,15 +89,15 @@ export function PublishedNdviMap({
   }, [fieldId, capturedAt]);
 
   if (state === "loading") {
-    return <div className="simple-result-ndvi-map-state">Carregando a evidência visual arquivada…</div>;
+    return <div className="simple-result-ndvi-map-state" data-report-ndvi-state="loading">Carregando a evidência visual arquivada…</div>;
   }
 
   if (state === "unavailable" || !overlay) {
-    return <div className="simple-result-ndvi-map-state">A imagem arquivada não pôde ser aberta nesta sessão. O resumo NDVI acima continua sendo o snapshot oficial congelado.</div>;
+    return <div className="simple-result-ndvi-map-state" data-report-ndvi-state="unavailable">A imagem arquivada não pôde ser aberta nesta sessão. O resumo NDVI acima continua sendo o snapshot oficial congelado.</div>;
   }
 
   return (
-    <div className="simple-result-ndvi-map">
+    <div className="simple-result-ndvi-map" data-report-ndvi-state="ready">
       <RealFieldMap
         boundary={boundary}
         points={points}
@@ -103,6 +105,7 @@ export function PublishedNdviMap({
         legend={showLegend ? VIGOR_LEGEND : undefined}
         hint="Raster NDVI arquivado e verificado · mesma data congelada no laudo"
         imageOverlay={overlay}
+        renderImmediately={eager}
       />
     </div>
   );
