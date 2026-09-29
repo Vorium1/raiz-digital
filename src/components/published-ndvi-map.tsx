@@ -31,6 +31,7 @@ export function PublishedNdviMap({
   height = 300,
   showLegend = true,
   eager = false,
+  showHint = true,
 }: {
   fieldId: string;
   capturedAt: string;
@@ -39,6 +40,7 @@ export function PublishedNdviMap({
   height?: number;
   showLegend?: boolean;
   eager?: boolean;
+  showHint?: boolean;
 }) {
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -103,7 +105,7 @@ export function PublishedNdviMap({
         points={points}
         height={height}
         legend={showLegend ? VIGOR_LEGEND : undefined}
-        hint="Raster NDVI arquivado e verificado · mesma data congelada no laudo"
+        hint={showHint ? "Raster NDVI arquivado e verificado · mesma data congelada no laudo" : undefined}
         imageOverlay={overlay}
         renderImmediately={eager}
       />
