@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { evaluateReportPublicationGate } from "../src/domain/report-publication-gate.ts";
+import { evaluateOfficialResultCompleteness } from "../src/domain/official-result-completeness.ts";
 
 const missing = evaluateReportPublicationGate({ interpretationExists: false, interpretationStatus: null, interpretationEvidenceCurrent: false, prescriptionId: null, prescriptionStatus: null });
 assert.equal(missing.allowed, false);
@@ -100,5 +101,47 @@ const incompletePrescription = evaluateReportPublicationGate({
 });
 assert.equal(incompletePrescription.allowed, false);
 assert.match(incompletePrescription.reason, /Calagem pendente/);
+
+const missingLiming = evaluateOfficialResultCompleteness({
+  prescription: {
+    limingDecision: null,
+    spatialNutrientPlan: { nutrients: [] },
+    soilComplementActions: [],
+    recommendations: [],
+  },
+});
+assert.equal(missingLiming.ready, false);
+assert.ok(missingLiming.blockers.some((item) => item.code === "LIMING_DECISION_MISSING"));
+
+const unresolvedBoron = evaluateOfficialResultCompleteness({
+  prescription: {
+    limingDecision: { status: "UNIFORM_NO_APPLY" },
+    spatialNutrientPlan: { nutrients: [] },
+    soilComplementActions: [{
+      parameterCode: "B",
+      label: "Boro",
+      status: "LOW_REQUIRES_COMPLEMENT_REVIEW",
+      action: "Definir correção de Boro.",
+    }],
+    recommendations: [],
+  },
+});
+assert.equal(unresolvedBoron.ready, false);
+assert.ok(unresolvedBoron.blockers.some((item) => item.code === "SOIL_COMPLEMENT_B"));
+
+const resolvedBoron = evaluateOfficialResultCompleteness({
+  prescription: {
+    limingDecision: { status: "UNIFORM_NO_APPLY" },
+    spatialNutrientPlan: { nutrients: [] },
+    soilComplementActions: [{
+      parameterCode: "B",
+      label: "Boro",
+      status: "LOW_REQUIRES_COMPLEMENT_REVIEW",
+      action: "Definir correção de Boro.",
+    }],
+    recommendations: [{ inputType: "B", quantity: 1, unit: "kg/ha" }],
+  },
+});
+assert.equal(resolvedBoron.ready, true);
 
 console.log("report publication gate: interpretação/regra corrente + fonte + conclusão técnica aprovada enforced");

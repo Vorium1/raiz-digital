@@ -490,6 +490,24 @@ export function FinalVisualReport(props: Props) {
       action = "Correção precisa estar definida antes da publicação oficial.";
     }
 
+    const explicitDose = Boolean(
+      recommendation
+      && typeof recommendation.quantity === "number"
+      && Number.isFinite(recommendation.quantity)
+      && recommendation.quantity > 0
+      && recommendation.unit
+    );
+    const spatialDose = Boolean(
+      spatial?.status === "POINT_SPECIFIC"
+      || (spatial?.status === "UNIFORM" && (spatial.uniformDoseKgPerHa ?? 0) > 0)
+    );
+    const complementNeedsAction = Boolean(
+      complement
+      && complement.status !== "SUFFICIENT_NO_GENERAL_COMPLEMENT"
+      && complement.status !== "NO_EVIDENCE"
+    );
+    const lowNeedsAction = tone === "low" && !["PH", "CA", "MG"].includes(code);
+
     return {
       code: summary.code,
       label: parameterDisplayLabel(summary.code),
@@ -497,11 +515,17 @@ export function FinalVisualReport(props: Props) {
       state,
       stateDetail,
       action,
+      needsAction: explicitDose || spatialDose || complementNeedsAction || lowNeedsAction,
     };
   }).sort((a, b) => {
     const rank: Record<string, number> = { low: 0, medium: 1, neutral: 2, high: 3 };
     return (rank[a.tone] ?? 9) - (rank[b.tone] ?? 9) || a.label.localeCompare(b.label, "pt-BR");
   });
+
+  const fertilityActionRows = fertilityProfileRows.filter((item) => item.needsAction);
+  const fertilityQuietRows = fertilityProfileRows.filter((item) => !item.needsAction);
+  const quietNutrientLabels = fertilityQuietRows.map((item) => item.label);
+  const nextCropForProfile = currentCropLabel || "a cultura desta safra";
 
   const limeRecommendation = recommendations.find((item) => /CALCAR|LIME/i.test(item.inputType ?? "")) ?? null;
   const limeProfileRow = (() => {
@@ -662,7 +686,7 @@ export function FinalVisualReport(props: Props) {
             <span>DECISÃO</span>
           </div>
 
-          {fertilityProfileRows.map((item) => (
+          {fertilityActionRows.map((item) => (
             <div className={"concept-profile-row profile-" + item.tone} key={item.code}>
               <div className="concept-profile-item">
                 <b>{item.code}</b>
@@ -687,6 +711,13 @@ export function FinalVisualReport(props: Props) {
             </div>
             <div className="concept-profile-action">{limeProfileRow.action}</div>
           </div>
+
+          {quietNutrientLabels.length > 0 && (
+            <div className="concept-profile-legend">
+              <strong>DEMAIS PARÂMETROS AVALIADOS</strong>
+              <span>{quietNutrientLabels.join(", ")} não aparecem em destaque porque, para {nextCropForProfile}, a análise não indicou correção geral neste cultivo.</span>
+            </div>
+          )}
         </section>
 
         <div className="concept-scope-strip"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>

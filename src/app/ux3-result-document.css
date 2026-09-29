@@ -745,3 +745,18 @@
   .concept-profile-state strong{font-size:6.6pt}
   .concept-profile-action{font-size:6.2pt}
 }
+
+.concept-profile-legend{
+  background:#f4f8f5;
+  border-top:1px solid #dfe9e1;
+  display:grid;
+  gap:4px;
+  padding:10px 12px 11px;
+}
+.concept-profile-legend strong{color:#4d6c5a;font-size:7px;letter-spacing:.07em}
+.concept-profile-legend span{color:#78877e;font-size:7px;line-height:1.45}
+@media print{
+  .concept-profile-legend{padding:2.2mm 3mm 2.5mm}
+  .concept-profile-legend strong{font-size:5.7pt}
+  .concept-profile-legend span{font-size:5.6pt}
+}

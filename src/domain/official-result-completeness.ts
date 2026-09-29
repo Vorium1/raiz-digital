@@ -83,6 +83,15 @@ export function evaluateOfficialResultCompleteness(responsePayload: unknown): Of
     });
   }
 
+  const recommendations = Array.isArray(prescription.recommendations) ? prescription.recommendations : [];
+  const hasExplicitRecommendation = (parameterCode: string) => recommendations.some((raw) => {
+    const recommendation = asRecord(raw);
+    const inputType = typeof recommendation?.inputType === "string" ? recommendation.inputType.trim().toUpperCase() : "";
+    const quantity = typeof recommendation?.quantity === "number" ? recommendation.quantity : Number.NaN;
+    const unit = typeof recommendation?.unit === "string" ? recommendation.unit.trim() : "";
+    return inputType === parameterCode.trim().toUpperCase() && Number.isFinite(quantity) && quantity > 0 && Boolean(unit);
+  });
+
   const spatialPlan = asRecord(prescription.spatialNutrientPlan);
   const nutrients = Array.isArray(spatialPlan?.nutrients) ? spatialPlan!.nutrients : [];
   for (const raw of nutrients) {
@@ -98,7 +107,13 @@ export function evaluateOfficialResultCompleteness(responsePayload: unknown): Of
   }
 
   const liming = asRecord(prescription.limingDecision);
-  if (liming?.status === "BLOCKED") {
+  if (!liming) {
+    pushUnique(blockers, {
+      code: "LIMING_DECISION_MISSING",
+      category: "LIMING",
+      message: "Calagem: a decisão oficial precisa indicar aplicar, aplicação espacial ou não aplicar antes de gerar o laudo final.",
+    });
+  } else if (liming.status === "BLOCKED") {
     const codes = Array.isArray(liming.blockers) ? liming.blockers.filter((item): item is string => typeof item === "string") : [];
     pushUnique(blockers, {
       code: "LIMING_DECISION_BLOCKED",
@@ -124,7 +139,9 @@ export function evaluateOfficialResultCompleteness(responsePayload: unknown): Of
     const item = asRecord(raw);
     const status = typeof item?.status === "string" ? item.status : "";
     if (!new Set(["LOW_REQUIRES_COMPLEMENT_REVIEW", "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW"]).has(status)) continue;
-    const parameter = typeof item?.label === "string" ? item.label : typeof item?.parameterCode === "string" ? item.parameterCode : "Micronutriente";
+    const parameterCode = typeof item?.parameterCode === "string" ? item.parameterCode : "";
+    if (parameterCode && hasExplicitRecommendation(parameterCode)) continue;
+    const parameter = typeof item?.label === "string" ? item.label : parameterCode || "Micronutriente";
     const action = typeof item?.action === "string" ? item.action : "Defina a correção profissional antes da publicação.";
     pushUnique(blockers, {
       code: "SOIL_COMPLEMENT_" + String(item?.parameterCode ?? "UNKNOWN"),

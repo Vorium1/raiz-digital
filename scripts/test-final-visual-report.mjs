@@ -33,6 +33,7 @@ assert.match(css, /concept-fertility-profile/);
 assert.match(css, /grid-template-columns:1\.05fr \.85fr 1\.75fr/);
 assert.match(css, /profile-low:before/);
 assert.match(css, /profile-high:before/);
+assert.match(css, /concept-profile-legend/);
 
 
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
@@ -54,7 +55,10 @@ assert.match(component, /operationalSummary\.rows\.map/);
 assert.doesNotMatch(component, /const priorityParameterCodes = \["P", "K", "B"\]/);
 assert.doesNotMatch(component, /diagnosticCodes\.slice\(0, 3\)/);
 assert.doesNotMatch(component, /recommendations\.slice\(0, 2\)/);
-assert.match(component, /fertilityProfileRows\.map/);
+assert.match(component, /fertilityActionRows\.map/);
+assert.match(component, /fertilityProfileRows\.filter\(\(item\) => item\.needsAction\)/);
+assert.match(component, /quietNutrientLabels\.join/);
+assert.match(component, /não aparecem em destaque porque/);
 assert.match(component, /ANÁLISE/);
 assert.match(component, /ESTADO/);
 assert.match(component, /DECISÃO/);
