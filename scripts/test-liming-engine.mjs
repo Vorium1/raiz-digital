@@ -15,6 +15,10 @@ import {
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
 import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
 import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
+import {
+  evaluateStoredLimingManagementContext,
+  parseLimingManagementContext,
+} from "../src/domain/liming-management-context.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
 assert.equal(targetBaseSaturationForPh("5.5"), 65);
@@ -295,6 +299,53 @@ assert.equal(lowBuffer.recommendedDoseTonHaPrnt100, 2.31);
 assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
 
+
+// 19a. Contexto de calagem preserva UNKNOWN != NO e rejeita valores inválidos.
+const emptyLimingContext = parseLimingManagementContext(null);
+assert.equal(emptyLimingContext.yearsSinceLastLiming, null);
+assert.equal(emptyLimingContext.restrictionAssessment, null);
+const partialLimingContext = parseLimingManagementContext({
+  yearsSinceLastLiming: 4,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: null,
+    phosphorus10To20BelowCritical: false,
+    agronomistConfirmedIncorporationDecision: null,
+  },
+});
+assert.equal(partialLimingContext.restrictionAssessment.compactionRestrictsRootGrowthAtDepth, null);
+assert.equal(partialLimingContext.restrictionAssessment.phosphorus10To20BelowCritical, false);
+assert.throws(() => parseLimingManagementContext({ yearsSinceLastLiming: -1 }));
+assert.equal(evaluateStoredLimingManagementContext({ yearsSinceLastLiming: "inválido" }).status, "INVALID_OPTIONAL_EVIDENCE");
+
+// 19b. No ramo com restrições, confirmação profissional desconhecida bloqueia como contexto ausente.
+const unknownProfessionalDecision = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
+  phWater10To20: 5.1,
+  aluminumSaturation10To20Pct: 15,
+  smp0To10: 5.6,
+  smp10To20: 5.7,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: true,
+    phosphorus10To20BelowCritical: false,
+    agronomistConfirmedIncorporationDecision: null,
+  },
+});
+assert.equal(unknownProfessionalDecision.decision, "BLOCKED_CONTEXT");
+assert.ok(unknownProfessionalDecision.blockers.includes("INCORPORATION_DECISION_NOT_ASSESSED"));
+
+// 19c. Contexto persistido inválido bloqueia somente a calagem consolidada.
+const invalidStoredContextDecision = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  results: [],
+  contextValidationBlockers: ["LIMING_MANAGEMENT_CONTEXT_INVALID"],
+});
+assert.equal(invalidStoredContextDecision.status, "BLOCKED");
+assert.ok(invalidStoredContextDecision.blockers.includes("LIMING_MANAGEMENT_CONTEXT_INVALID"));
 
 // 20. Evidência por amostra: duas doses distintas nunca viram média uniforme.
 const spatialEvidence = evaluateSoybeanLimingFromEvidence({
