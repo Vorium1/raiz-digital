@@ -421,9 +421,12 @@ export function FinalVisualReport(props: Props) {
       ? seasonLabel
       : currentCropLabel + " " + seasonLabel
     : currentCropLabel || seasonLabel || "—";
+  const fertilityYieldGoalLabel = fertilityPlan?.targetYieldDisplay
+    ? fertilityPlan.targetYieldDisplay.replace(/\s*\([^)]*\)\s*$/, "")
+    : null;
   const yieldGoalLabel = props.context.yieldGoal != null
     ? numberPt(Number(props.context.yieldGoal)) + (props.context.yieldGoalUnit ? " " + props.context.yieldGoalUnit : "")
-    : "Meta não congelada";
+    : fertilityYieldGoalLabel ?? "Meta da safra não registrada";
   const totalYieldBags = props.context.yieldGoal != null
     && areaHa != null
     && /sc\s*\/\s*ha/i.test(props.context.yieldGoalUnit ?? "")
@@ -542,10 +545,79 @@ export function FinalVisualReport(props: Props) {
         : "dose definida por ponto";
       return { tone: "low", state: "NÃO ATENDE", stateDetail: "Correção espacial", action: "Aplicar calcário por ponto/zona: " + dose + "." };
     }
+    if (limingDecision?.status === "UNIFORM_APPLY") {
+      const dose = limingDecision.operationalGeneralDoseTonHaPrnt100 ?? limingDecision.uniformDoseTonHaPrnt100;
+      return {
+        tone: "low",
+        state: "NÃO ATENDE",
+        stateDetail: "Necessita correção",
+        action: dose != null ? "Aplicar " + numberPt(dose) + " t/ha PRNT 100%." : "Aplicar calcário conforme a dose determinística congelada.",
+      };
+    }
     return { tone: "neutral", state: "SEM DECISÃO", stateDetail: "Laudo final não deve sair assim", action: "Fechar a decisão de calagem antes da publicação oficial." };
   })();
 
-  const plainProducerOpinion = commercial?.rows.length
+  const producerPlanRows: Array<{
+    key: string;
+    label: string;
+    dose: string;
+    detail: string | null;
+    tone: "apply" | "none";
+  }> = operationalSummary.rows.map((row) => ({
+    key: "recommendation-" + row.inputType,
+    label: row.label,
+    dose: numberPt(row.doseQuantity) + " " + row.doseUnit,
+    detail: row.totalQuantity != null && row.totalUnit
+      ? numberPt(row.totalQuantity) + " " + row.totalUnit + " equivalentes na área"
+      : null,
+    tone: "apply",
+  }));
+
+  const hasLimePlanRow = operationalSummary.rows.some(
+    (row) => row.quantityKind === "LIME_PRNT100_EQUIVALENT" || /CALCAR|LIME/i.test(row.inputType),
+  );
+  if (!hasLimePlanRow && limingDecision?.status === "UNIFORM_APPLY") {
+    const limeDose = limingDecision.operationalGeneralDoseTonHaPrnt100 ?? limingDecision.uniformDoseTonHaPrnt100;
+    producerPlanRows.push({
+      key: "lime-uniform",
+      label: "Calcário",
+      dose: limeDose != null ? numberPt(limeDose) + " t/ha PRNT 100%" : "Dose determinística congelada",
+      detail: "Correção da acidez para esta safra.",
+      tone: "apply",
+    });
+  } else if (!hasLimePlanRow && limingDecision?.status === "SPATIAL") {
+    producerPlanRows.push({
+      key: "lime-spatial",
+      label: "Calcário",
+      dose: limingDecision.doseRangeTonHaPrnt100
+        ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%"
+        : "Aplicação por ponto/zona",
+      detail: "Usar a decisão espacial; não converter a faixa em taxa uniforme simples.",
+      tone: "apply",
+    });
+  } else if (!hasLimePlanRow && limingDecision?.status === "UNIFORM_NO_APPLY") {
+    producerPlanRows.push({
+      key: "lime-no-apply",
+      label: "Calcário",
+      dose: "Não aplicar nesta safra",
+      detail: "A decisão de calagem está fechada sem necessidade de aplicação.",
+      tone: "none",
+    });
+  }
+
+  const producerPlanText = producerPlanRows
+    .map((row) => row.label + ": " + row.dose)
+    .join("; ");
+
+  const plainProducerOpinion = producerPlanRows.length
+    ? "Para " + (props.context.fieldName || "esta área") + ", nesta safra, o plano é " + producerPlanText + ". "
+      + (commercial?.rows.length
+        ? "Os produtos comerciais congelados devem ser executados conforme o cenário aprovado."
+        : "As doses de nutrientes são necessidades agronômicas; a fonte comercial deve respeitar o teor do produto escolhido.")
+    : "Para " + (props.context.fieldName || "esta área") + ", nenhuma aplicação geral foi indicada para esta safra.";
+
+  /* legacy branch kept out of rendering: */
+  const _legacyProducerOpinion = commercial?.rows.length
     ? "Para " + (props.context.fieldName || "esta área") + ", o plano comercial congelado usa "
       + commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" e ")
       + ". Antes da operação, confira produto, teor e posicionamento."
@@ -554,6 +626,7 @@ export function FinalVisualReport(props: Props) {
         + operationalSummary.rows.map((row) => numberPt(row.doseQuantity) + " " + row.doseUnit + " de " + row.label).join(" e ")
         + ". Isso ainda não representa o peso de um fertilizante comercial."
       : "Ainda não existe uma dose geral segura para " + (props.context.fieldName || "esta área") + ". Resolva as pendências indicadas antes de definir produto e quantidade.";
+  void _legacyProducerOpinion;
 
   return (
     <article className="concept-report">
@@ -592,10 +665,15 @@ export function FinalVisualReport(props: Props) {
           </div>
         </div>
 
-        <div className="concept-cover-meta">
-          <div><span>ÁREA</span><strong>{props.context.fieldName || "Talhão"}</strong></div>
+        <div className="concept-cover-meta concept-cover-meta-identified">
+          <div><span>PRODUTOR</span><strong>{props.context.clientName || "—"}</strong></div>
+          <div><span>TALHÃO</span><strong>{props.context.fieldName || "—"}</strong></div>
           <div><span>CULTURA / SAFRA</span><strong>{cropSeasonLabel}</strong></div>
-          <div><span>HECTARES</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
+          <div><span>ÁREA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
+        </div>
+        <div className="concept-cover-location">
+          <span>{props.context.propertyName || "Propriedade não identificada"}</span>
+          <b>{[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "Município / UF não informado"}</b>
         </div>
 
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / 5</b></footer>
@@ -769,34 +847,28 @@ export function FinalVisualReport(props: Props) {
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
 
-        <section className="concept-producer-apply-card">
-          <span>{commercial ? "APLICAR" : operationalSummary.rows.length ? "NECESSIDADE APROVADA" : "SEM APLICAÇÃO GERAL"}</span>
-          {primaryCommercialRow ? (
-            <>
-              <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
-              <b>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)} na {props.context.fieldName || "área"}</b>
-            </>
-          ) : commercial && commercial.rows.length > 1 ? (
-            <>
-              <strong>{commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" + ")}</strong>
-              <b>{commercial.rows.map((row) => row.productName + ": " + commercialTotalDisplay(row.totalQuantity, row.totalUnit)).join(" · ")}</b>
-            </>
-          ) : operationalSummary.rows.length ? (
-            <>
-              <strong>{operationalSummary.rows.map((row) => numberPt(row.doseQuantity) + " " + row.doseUnit + " de " + row.label).join(" · ")}</strong>
-              <b>Definir a fonte comercial antes de converter estas necessidades em produto e quantidade a comprar.</b>
-              <small>Estas quantidades são necessidades agronômicas equivalentes; não interpretar como peso de fertilizante comercial.</small>
-            </>
-          ) : (
-            <>
-              <strong>Nenhuma aplicação uniforme foi indicada nesta decisão.</strong>
-              <b>O laudo oficial só é publicado quando as decisões agronômicas essenciais estão fechadas.</b>
-            </>
+        <section className="concept-producer-plan-card">
+          <span>PLANO DA SAFRA</span>
+          <div className="concept-producer-plan-list">
+            {producerPlanRows.map((row) => (
+              <div className={"concept-producer-plan-row plan-" + row.tone} key={row.key}>
+                <div><small>{row.label}</small><strong>{row.dose}</strong></div>
+                {row.detail && <p>{row.detail}</p>}
+              </div>
+            ))}
+            {!producerPlanRows.length && (
+              <div className="concept-producer-plan-row plan-none">
+                <div><small>Aplicações gerais</small><strong>Nenhuma aplicação geral indicada</strong></div>
+              </div>
+            )}
+          </div>
+          {!commercial && operationalSummary.rows.some((row) => row.quantityKind === "NUTRIENT_EQUIVALENT") && (
+            <small>As doses de nutrientes são necessidades agronômicas. A quantidade do fertilizante comercial depende do teor da fonte escolhida.</small>
           )}
         </section>
 
         <section className="concept-yield-banner concept-yield-banner-approved">
-          <span>CENÁRIO DE PLANEJAMENTO</span>
+          <span>META DA SAFRA</span>
           <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas</b>}</div>
           <small>Meta usada no cálculo. Sujeita a clima, cultivar, sanidade e manejo.</small>
         </section>
@@ -806,16 +878,7 @@ export function FinalVisualReport(props: Props) {
           <p>{plainProducerOpinion}</p>
         </section>
 
-        <section className="concept-identification-card concept-identification-card-approved">
-          <span>IDENTIFICAÇÃO</span>
-          <div className="concept-identification-grid">
-            <p><strong>Cliente:</strong> {props.context.clientName || "—"}</p>
-            <p><strong>Área:</strong> {areaHa != null ? numberPt(areaHa) + " ha" : "—"}</p>
-            <p><strong>Empresa:</strong> {props.branding.displayName || "—"}</p>
-            <p><strong>Município / UF:</strong> {[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "—"}</p>
-            <p><strong>Responsável técnico:</strong> {props.responsibleName || props.branding.responsibleName || "—"}</p>
-            <p><strong>Registro:</strong> {props.branding.responsibleRegistration || "—"}</p>
-          </div>
+        <section className="concept-final-signature">
           <ReportSignature branding={props.branding} />
         </section>
 

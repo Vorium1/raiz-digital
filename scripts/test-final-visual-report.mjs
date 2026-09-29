@@ -34,6 +34,8 @@ assert.match(css, /grid-template-columns:1\.05fr \.85fr 1\.75fr/);
 assert.match(css, /profile-low:before/);
 assert.match(css, /profile-high:before/);
 assert.match(css, /concept-profile-legend/);
+assert.match(css, /concept-producer-plan-card/);
+assert.match(css, /concept-cover-meta-identified/);
 
 
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
@@ -47,10 +49,20 @@ assert.match(component, /Ainda não é peso de fertilizante comercial/);
 assert.match(component, /commercialTotalDisplay/);
 assert.match(component, /totalQuantity \* 1000/);
 assert.match(component, /plainProducerOpinion/);
-assert.match(component, /Isso ainda não representa o peso de um fertilizante comercial/);
-assert.match(component, /commercial \? "APLICAR" : operationalSummary\.rows\.length \? "NECESSIDADE APROVADA" : "SEM APLICAÇÃO GERAL"/);
-assert.match(component, /Definir a fonte comercial antes de converter estas necessidades em produto/);
+assert.match(component, /producerPlanRows/);
+assert.match(component, /PLANO DA SAFRA/);
+assert.match(component, /META DA SAFRA/);
+assert.match(component, /concept-cover-meta-identified/);
+assert.match(component, /PRODUTOR/);
+assert.match(component, /TALHÃO/);
+assert.match(component, /concept-cover-location/);
+assert.match(component, /lime-uniform/);
+assert.match(component, /lime-spatial/);
+assert.match(component, /lime-no-apply/);
 assert.match(component, /operationalSummary\.rows\.map/);
+assert.doesNotMatch(component, /Meta não congelada/);
+assert.doesNotMatch(component, /CENÁRIO DE PLANEJAMENTO/);
+assert.doesNotMatch(component, /concept-identification-card concept-identification-card-approved/);
 
 assert.doesNotMatch(component, /const priorityParameterCodes = \["P", "K", "B"\]/);
 assert.doesNotMatch(component, /diagnosticCodes\.slice\(0, 3\)/);
