@@ -42,7 +42,7 @@ export type SoybeanLimingUniformDecision = {
   uniformDoseTonHaPrnt100: number | null;
   automaticGeneralDoseAllowed: boolean;
   operationalGeneralDoseTonHaPrnt100: number | null;
-  generalDoseBasis: "UNIFORM" | "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
+  generalDoseBasis: "UNIFORM" | "EQUAL_AREA_GRID_MEAN" | null;
   doseRangeTonHaPrnt100: { min: number; max: number } | null;
   applicationMode: "INCORPORATED" | "SURFACE" | null;
   incorporatedDepthCm: { from: number; to: number } | null;
@@ -645,7 +645,7 @@ export function evaluateSoybeanLimingFromEvidence(input: {
     uniformDoseTonHaPrnt100: null,
     automaticGeneralDoseAllowed,
     operationalGeneralDoseTonHaPrnt100,
-    generalDoseBasis: automaticGeneralDoseAllowed ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
+    generalDoseBasis: automaticGeneralDoseAllowed ? "EQUAL_AREA_GRID_MEAN" : null,
     doseRangeTonHaPrnt100,
     applicationMode: automaticGeneralDoseAllowed ? operationalApplicationMode : null,
     incorporatedDepthCm: null,
