@@ -6,6 +6,7 @@ import {
 } from "@/lib/repositories/analyses";
 
 const writeRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
+const professionalReviewRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await getPlatformSession();
@@ -41,8 +42,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const hasIrrigation = Object.prototype.hasOwnProperty.call(body, "irrigationApplications");
     const hasWheatBuyerQuality = Object.prototype.hasOwnProperty.call(body, "wheatBuyerQualityContext");
     const hasSpatialInterpolationValidations = Object.prototype.hasOwnProperty.call(body, "spatialInterpolationValidations");
+    const hasLimingContext = Object.prototype.hasOwnProperty.call(body, "limingContext");
 
-    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes && !hasIrrigation && !hasWheatBuyerQuality && !hasSpatialInterpolationValidations) {
+    if (hasLimingContext) {
+      const liming = body.limingContext;
+      const restriction = liming && typeof liming === "object" && !Array.isArray(liming)
+        ? (liming as { restrictionAssessment?: unknown }).restrictionAssessment
+        : null;
+      const professionalDecision = restriction && typeof restriction === "object" && !Array.isArray(restriction)
+        ? (restriction as { agronomistConfirmedIncorporationDecision?: unknown }).agronomistConfirmedIncorporationDecision
+        : null;
+      if (professionalDecision === true && !professionalReviewRoles.has(session.role)) {
+        return Response.json({ error: "A confirmação de incorporação exige perfil habilitado para validação profissional." }, { status: 403 });
+      }
+    }
+
+    if (!hasPlannedManagement && !hasHorizon && !hasCycleNotes && !hasIrrigation && !hasWheatBuyerQuality && !hasSpatialInterpolationValidations && !hasLimingContext) {
       throw new AnalysisContextError("Informe ao menos um campo de planejamento.", 400);
     }
 
@@ -60,6 +75,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       expectedWheatBuyerQualityContext: hasWheatBuyerQuality ? body.expectedWheatBuyerQualityContext : undefined,
       spatialInterpolationValidations: hasSpatialInterpolationValidations ? body.spatialInterpolationValidations : undefined,
       expectedSpatialInterpolationValidations: hasSpatialInterpolationValidations ? body.expectedSpatialInterpolationValidations : undefined,
+      limingContext: hasLimingContext ? body.limingContext : undefined,
+      expectedLimingContext: hasLimingContext ? body.expectedLimingContext : undefined,
       plannedManagementNotes: hasPlannedManagement
         ? (body.plannedManagementNotes == null ? "" : String(body.plannedManagementNotes))
         : undefined,
