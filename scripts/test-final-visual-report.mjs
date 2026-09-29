@@ -99,7 +99,7 @@ assert.match(component, /Escala teórica de -1 a \+1/);
 assert.match(component, /classifyNdviValue/);
 assert.match(component, /zoneBreakdownPct/);
 assert.match(component, /fieldTotalLabel/);
-assert.match(component, /EM DESTAQUE: O QUE EXIGE AÇÃO NESTA SAFRA/);
+assert.match(component, /NECESSIDADES PARA \{cropSeasonLabel\.toUpperCase\(\)\}/);
 assert.match(component, /points=\{props\.points\}/);
 assert.doesNotMatch(component, /Math\.random|latitude\s*[+\-]=|longitude\s*[+\-]=/);
 assert.match(component, /showLegend=\{false\}[\s\S]*?eager/);
