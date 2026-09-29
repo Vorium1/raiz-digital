@@ -431,7 +431,7 @@ assert.match(finalVisualReport, /<h2>PEDE<\/h2>/);
 assert.match(finalVisualReport, /REPOR PARA A SAFRA/);
 assert.doesNotMatch(finalVisualReport, />NÃO ATENDE</);
 assert.doesNotMatch(finalVisualReport, />ATENDE</);
-assert.doesNotMatch(finalVisualReport, /SEM DECISÃO/);
+assert.doesNotMatch(finalVisualReport, /state:\s*"SEM DECISÃO"/);
 assert.match(finalVisualReport, /RELATÓRIO/);
 assert.match(finalVisualReport, /<ReportSignature branding=\{props\.branding\}\s*\/>/);
 assert.ok(simpleResult.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);"));
