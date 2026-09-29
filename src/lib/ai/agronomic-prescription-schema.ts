@@ -5,6 +5,7 @@ import type {
   ReportBiologicalContext,
   ReportClimateContext,
 } from "@/domain/report-context-blocks";
+import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
 
 /**
  * Formato obrigatório de uma prescrição gerada por IA. Ao contrário de
@@ -50,6 +51,7 @@ export type AgronomicPrescription = {
   climateContext?: ReportClimateContext | null;
   biologicalContext?: ReportBiologicalContext | null;
   applicationGuidance?: ReportApplicationGuidance | null;
+  agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
 function isString(value: unknown): value is string {
