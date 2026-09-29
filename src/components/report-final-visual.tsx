@@ -202,6 +202,26 @@ function recommendationShortLabel(inputType: string | undefined) {
   return inputType || "Recomendação";
 }
 
+function parameterDisplayLabel(code: string) {
+  const normalized = code.trim().toUpperCase();
+  const labels: Record<string, string> = {
+    P: "Fósforo",
+    K: "Potássio",
+    S: "Enxofre",
+    N: "Nitrogênio",
+    B: "Boro",
+    ZN: "Zinco",
+    CU: "Cobre",
+    MN: "Manganês",
+    CA: "Cálcio",
+    MG: "Magnésio",
+    MO: "Matéria orgânica",
+    PH: "pH",
+    AL: "Alumínio",
+  };
+  return labels[normalized] ?? code;
+}
+
 function unique(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim()))));
 }
@@ -391,7 +411,7 @@ export function FinalVisualReport(props: Props) {
       )
       .map((item) => ({ inputType: item.inputType, quantity: item.quantity, unit: item.unit })),
   });
-  const diagnosticCodes = summaries.filter((item) => !item.auxiliary).map((item) => item.code);
+  const diagnosticSummaries = summaries.filter((item) => !item.auxiliary);
   const primaryCommercialRow = commercial?.rows.length === 1 ? commercial.rows[0] : null;
   const primaryRecommendation = operationalSummary.rows[0] ?? null;
   const currentCropLabel = (props.context.currentCrop || "").trim();
@@ -415,7 +435,6 @@ export function FinalVisualReport(props: Props) {
     && props.context.fieldId
     && props.boundary,
   );
-  const hasValidationPending = missingInformation.length > 0;
   const currentFertilityStage = fertilityPlan?.stages.find((stage) => stage.kind === "CURRENT_CULTIVATION") ?? null;
   const fertilityScopeText = fertilityPlan
     ? "Escopo das doses: " + (currentFertilityStage?.label ?? "cultivo atual")
@@ -423,7 +442,89 @@ export function FinalVisualReport(props: Props) {
       + fertilityPlan.reanalysisAfterCultivations + " cultivos. Horizonte de " + fertilityPlan.horizonYears
       + " anos é planejamento, não repetição automática desta dose."
     : "Escopo das doses: cultivo atual desta análise. Mudança de safra, cultura ou evidência exige novo cálculo.";
-  const hasLimeRecommendation = recommendations.some((item) => /CALCAR|LIME/i.test(item.inputType ?? ""));
+  const nutrientInputByParameter: Record<string, string> = { P: "P2O5", K: "K2O", S: "S", N: "N" };
+  const fertilityProfileRows = diagnosticSummaries.map((summary) => {
+    const code = summary.code.toUpperCase();
+    const distribution = distributionForParameter(props.interpretationRows, summary.code);
+    const lowCount = distribution
+      .filter((item) => item.key === "MUITO_BAIXO" || item.key === "BAIXO")
+      .reduce((sum, item) => sum + item.count, 0);
+    const mediumCount = distribution
+      .filter((item) => item.key === "MEDIO")
+      .reduce((sum, item) => sum + item.count, 0);
+    const classifiedCount = distribution.reduce((sum, item) => sum + item.count, 0);
+
+    const tone = lowCount > 0 ? "low" : mediumCount > 0 ? "medium" : classifiedCount > 0 ? "high" : "neutral";
+    const state = lowCount > 0 ? "NÃO ATENDE" : mediumCount > 0 ? "ATENÇÃO" : classifiedCount > 0 ? "ATENDE" : "SEM CLASSE";
+    const stateDetail = lowCount > 0
+      ? lowCount + " ponto(s) baixo(s)"
+      : mediumCount > 0
+        ? mediumCount + " ponto(s) médio(s)"
+        : classifiedCount > 0
+          ? "Sem deficiência classificada"
+          : summary.classification || "Sem classificação consolidada";
+
+    const nutrientInput = nutrientInputByParameter[code] ?? code;
+    const recommendation = recommendations.find((item) => (item.inputType ?? "").trim().toUpperCase() === nutrientInput);
+    const spatial = spatialNutrientPlan?.nutrients.find((item) => item.nutrient === nutrientInput) ?? null;
+    const complement = soilComplementActions.find((item) => item.parameterCode.toUpperCase() === code) ?? null;
+
+    let action = "Sem aplicação geral indicada.";
+    if (recommendation && typeof recommendation.quantity === "number" && recommendation.unit) {
+      action = "Aplicar " + numberPt(recommendation.quantity) + " " + recommendation.unit + " de " + recommendation.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") + ".";
+    } else if (spatial?.status === "POINT_SPECIFIC") {
+      action = spatial.rangeKgPerHa
+        ? "Aplicar por ponto/zona: " + numberPt(spatial.rangeKgPerHa.min) + "–" + numberPt(spatial.rangeKgPerHa.max) + " kg/ha."
+        : "Aplicar conforme a decisão por ponto/zona.";
+    } else if (spatial?.status === "UNIFORM" && spatial.uniformKgPerHa != null) {
+      action = "Aplicar " + numberPt(spatial.uniformKgPerHa) + " kg/ha.";
+    } else if (complement) {
+      action = complement.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT"
+        ? "Sem aplicação geral."
+        : complement.action;
+    } else if (["PH", "CA", "MG"].includes(code) && limingDecision) {
+      action = "Ver decisão de calcário abaixo.";
+    } else if (tone === "medium") {
+      action = "Acompanhar; sem aplicação geral automática nesta decisão.";
+    } else if (tone === "low") {
+      action = "Correção precisa estar definida antes da publicação oficial.";
+    }
+
+    return {
+      code: summary.code,
+      label: parameterDisplayLabel(summary.code),
+      tone,
+      state,
+      stateDetail,
+      action,
+    };
+  }).sort((a, b) => {
+    const rank: Record<string, number> = { low: 0, medium: 1, neutral: 2, high: 3 };
+    return (rank[a.tone] ?? 9) - (rank[b.tone] ?? 9) || a.label.localeCompare(b.label, "pt-BR");
+  });
+
+  const limeRecommendation = recommendations.find((item) => /CALCAR|LIME/i.test(item.inputType ?? "")) ?? null;
+  const limeProfileRow = (() => {
+    if (limeRecommendation && typeof limeRecommendation.quantity === "number" && limeRecommendation.unit) {
+      return {
+        tone: "low",
+        state: "NÃO ATENDE",
+        stateDetail: "Necessita correção",
+        action: "Aplicar " + numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit + " de " + limeRecommendation.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") + ".",
+      };
+    }
+    if (limingDecision?.status === "UNIFORM_NO_APPLY") {
+      return { tone: "high", state: "ATENDE", stateDetail: "Sem necessidade de calagem", action: "Não aplicar calcário nesta decisão." };
+    }
+    if (limingDecision?.status === "SPATIAL") {
+      const dose = limingDecision.doseRangeTonHaPrnt100
+        ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%"
+        : "dose definida por ponto";
+      return { tone: "low", state: "NÃO ATENDE", stateDetail: "Correção espacial", action: "Aplicar calcário por ponto/zona: " + dose + "." };
+    }
+    return { tone: "neutral", state: "SEM DECISÃO", stateDetail: "Laudo final não deve sair assim", action: "Fechar a decisão de calagem antes da publicação oficial." };
+  })();
+
   const plainProducerOpinion = commercial?.rows.length
     ? "Para " + (props.context.fieldName || "esta área") + ", o plano comercial congelado usa "
       + commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" e ")
@@ -554,78 +655,41 @@ export function FinalVisualReport(props: Props) {
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
 
-        <section className="concept-diagnostic-card concept-diagnostic-card-approved">
-          <div className="concept-diagnostic-grid">
-            {diagnosticCodes.map((code) => {
-              const distribution = distributionForParameter(props.interpretationRows, code);
-              const total = distribution.reduce((sum, item) => sum + item.count, 0);
-              return (
-                <div className="concept-diagnostic-row concept-diagnostic-row-approved" key={code}>
-                  <div className="concept-parameter-badge">{code}</div>
-                  <div className="concept-diagnostic-content">
-                    <div className="concept-diagnostic-row-head">
-                      <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code === "S" ? "ENXOFRE" : code}</strong>
-                      <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
-                    </div>
-                    <div className="concept-distribution-bar">
-                      {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        <section className="concept-fertility-profile">
+          <div className="concept-profile-header">
+            <span>ANÁLISE</span>
+            <span>ESTADO</span>
+            <span>DECISÃO</span>
+          </div>
+
+          {fertilityProfileRows.map((item) => (
+            <div className={"concept-profile-row profile-" + item.tone} key={item.code}>
+              <div className="concept-profile-item">
+                <b>{item.code}</b>
+                <div><strong>{item.label}</strong><small>Baseado nos pontos analisados</small></div>
+              </div>
+              <div className="concept-profile-state">
+                <strong>{item.state}</strong>
+                <small>{item.stateDetail}</small>
+              </div>
+              <div className="concept-profile-action">{item.action}</div>
+            </div>
+          ))}
+
+          <div className={"concept-profile-row concept-profile-lime profile-" + limeProfileRow.tone}>
+            <div className="concept-profile-item">
+              <b>Ca</b>
+              <div><strong>Calcário</strong><small>Correção da acidez</small></div>
+            </div>
+            <div className="concept-profile-state">
+              <strong>{limeProfileRow.state}</strong>
+              <small>{limeProfileRow.stateDetail}</small>
+            </div>
+            <div className="concept-profile-action">{limeProfileRow.action}</div>
           </div>
         </section>
 
         <div className="concept-scope-strip"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
-
-        <div className="concept-decision-grid">
-          {recommendations.map((item, index) => {
-            const operational = producerRow(item, areaHa);
-            return (
-              <section className="concept-decision-card" key={(item.inputType || "rec") + index}>
-                <span>{recommendationShortLabel(item.inputType).toUpperCase()}</span>
-                <h3>{typeof item.quantity === "number" ? numberPt(item.quantity) : "—"} {item.unit || ""}{item.inputType ? " de " + item.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") : ""}</h3>
-                <p>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit + " equivalentes no talhão." : "Dose sustentada pelo motor para esta decisão."}</p>
-                <b>LIBERADO</b>
-              </section>
-            );
-          })}
-
-          {spatialNutrientPlan?.nutrients.filter((item) => item.status === "POINT_SPECIFIC").map((item) => (
-            <section className="concept-decision-card" key={"spatial-" + item.nutrient}>
-              <span>{recommendationShortLabel(item.nutrient).toUpperCase()}</span>
-              <h3>{item.rangeKgPerHa ? numberPt(item.rangeKgPerHa.min) + "–" + numberPt(item.rangeKgPerHa.max) + " kg/ha" : "Dose por ponto/zona"}</h3>
-              <p>{item.purchaseEquivalent ? "Equivalência de compra: " + numberPt(item.purchaseEquivalent.totalKg) + " kg no talhão. Não usar esta média como taxa uniforme." : item.note}</p>
-              <b>POR PONTO / ZONA</b>
-            </section>
-          ))}
-
-          {!hasLimeRecommendation && limingDecision?.status === "UNIFORM_NO_APPLY" && (
-            <section className="concept-decision-card" key="lime-no-apply">
-              <span>CALCÁRIO</span><h3>Não aplicar</h3>
-              <p>O critério determinístico atual não indica calagem para os pontos avaliados.</p>
-              <b>DECISÃO FECHADA</b>
-            </section>
-          )}
-          {!hasLimeRecommendation && limingDecision?.status === "SPATIAL" && (
-            <section className="concept-decision-card" key="lime-spatial">
-              <span>CALCÁRIO</span>
-              <h3>{limingDecision.doseRangeTonHaPrnt100 ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%" : "Dose por ponto"}</h3>
-              <p>{limingDecision.automaticGeneralDoseAllowed && limingDecision.operationalGeneralDoseTonHaPrnt100 != null ? "Dose geral operacional: " + numberPt(limingDecision.operationalGeneralDoseTonHaPrnt100) + " t/ha PRNT 100%." : "Aplicar conforme a decisão por ponto/zona; não promover média simples sem suporte de área equivalente."}</p>
-              <b>DECISÃO ESPACIAL</b>
-            </section>
-          )}
-
-          {soilComplementActions.filter((item) => item.parameterCode !== "MO" && item.evaluatedCount > 0).map((item) => (
-            <section className="concept-decision-card concept-decision-card-secondary" key={"complement-" + item.parameterCode}>
-              <span>{item.label.toUpperCase()}</span>
-              <h3>{item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT" ? "Sem aplicação geral" : "Correção localizada"}</h3>
-              <p>{item.action}</p>
-              <b>{item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT" ? "SEM NECESSIDADE GERAL" : "DECISÃO TÉCNICA NECESSÁRIA"}</b>
-            </section>
-          ))}
-        </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
       </section>
 

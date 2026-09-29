@@ -661,3 +661,87 @@
   .concept-decision-card{min-height:27mm;padding:3mm}
   .concept-scope-strip{margin-top:3mm;padding:2.5mm 3mm}
 }
+
+/* Página 3 — perfil rápido: análise / estado / decisão */
+.concept-fertility-profile{
+  background:#fff;
+  border:1.3px solid #8fc4a2;
+  border-radius:18px;
+  box-shadow:0 14px 34px rgba(18,83,55,.08);
+  overflow:hidden;
+}
+.concept-profile-header,
+.concept-profile-row{
+  align-items:center;
+  display:grid;
+  gap:12px;
+  grid-template-columns:1.05fr .85fr 1.75fr;
+}
+.concept-profile-header{
+  background:#edf6ef;
+  color:#557166;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+  padding:8px 12px;
+}
+.concept-profile-row{
+  border-top:1px solid #e5ede7;
+  min-height:46px;
+  padding:8px 12px;
+  position:relative;
+}
+.concept-profile-row:before{
+  bottom:0;
+  content:"";
+  left:0;
+  position:absolute;
+  top:0;
+  width:4px;
+}
+.concept-profile-row.profile-low:before{background:#df704f}
+.concept-profile-row.profile-medium:before{background:#e9ae42}
+.concept-profile-row.profile-high:before{background:#2c8259}
+.concept-profile-row.profile-neutral:before{background:#9aa9a0}
+.concept-profile-item{align-items:center;display:flex;gap:8px;min-width:0}
+.concept-profile-item>b{
+  align-items:center;
+  background:#0b5a3d;
+  border-radius:50%;
+  color:#fff;
+  display:flex;
+  font-size:9px;
+  height:28px;
+  justify-content:center;
+  min-width:28px;
+  padding:0 3px;
+}
+.concept-profile-item strong,.concept-profile-item small,
+.concept-profile-state strong,.concept-profile-state small{display:block}
+.concept-profile-item strong{font-size:9px}
+.concept-profile-item small{color:#8b9790;font-size:6.5px!important;margin-top:2px}
+.concept-profile-state strong{font-size:8px;letter-spacing:.025em}
+.profile-low .concept-profile-state strong{color:#bc573d}
+.profile-medium .concept-profile-state strong{color:#a77016}
+.profile-high .concept-profile-state strong{color:#23734d}
+.profile-neutral .concept-profile-state strong{color:#65766d}
+.concept-profile-state small{color:#7f8e85;font-size:6.5px!important;line-height:1.35;margin-top:2px}
+.concept-profile-action{color:#40584a;font-size:7.5px;line-height:1.42}
+.concept-profile-lime{background:#f8fbf8}
+@media(max-width:820px){
+  .concept-profile-header{display:none}
+  .concept-profile-row{grid-template-columns:1fr;gap:6px;padding:11px 14px}
+  .concept-profile-state{padding-left:36px}
+  .concept-profile-action{padding-left:36px}
+}
+@media print{
+  .concept-fertility-profile{box-shadow:none}
+  .concept-profile-header,.concept-profile-row{gap:2.5mm;grid-template-columns:1.05fr .82fr 1.8fr}
+  .concept-profile-header{padding:2mm 3mm}
+  .concept-profile-row{min-height:10.5mm;padding:1.8mm 3mm}
+  .concept-profile-item>b{font-size:6.8pt;height:7mm;min-width:7mm}
+  .concept-profile-item strong{font-size:7.2pt}
+  .concept-profile-item small,.concept-profile-state small{font-size:5.5pt!important}
+  .concept-profile-state strong{font-size:6.6pt}
+  .concept-profile-action{font-size:6.2pt}
+}

@@ -29,6 +29,10 @@ assert.match(css, /concept-map-shell-overview[\s\S]*padding:0/);
 assert.match(css, /concept-page-heading-approved>span[\s\S]*line-height:1\.18/);
 assert.match(css, /gm-style-pbc/);
 assert.match(css, /gm-style-pbt/);
+assert.match(css, /concept-fertility-profile/);
+assert.match(css, /grid-template-columns:1\.05fr \.85fr 1\.75fr/);
+assert.match(css, /profile-low:before/);
+assert.match(css, /profile-high:before/);
 
 
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
@@ -50,9 +54,11 @@ assert.match(component, /operationalSummary\.rows\.map/);
 assert.doesNotMatch(component, /const priorityParameterCodes = \["P", "K", "B"\]/);
 assert.doesNotMatch(component, /diagnosticCodes\.slice\(0, 3\)/);
 assert.doesNotMatch(component, /recommendations\.slice\(0, 2\)/);
-assert.match(component, /diagnosticCodes\.map/);
-assert.match(component, /spatialNutrientPlan\?\.nutrients\.filter/);
-assert.match(component, /limingDecision\?\.status === "UNIFORM_NO_APPLY"/);
+assert.match(component, /fertilityProfileRows\.map/);
+assert.match(component, /ANÁLISE/);
+assert.match(component, /ESTADO/);
+assert.match(component, /DECISÃO/);
+assert.match(component, /limeProfileRow/);
 assert.match(component, /VIGÊNCIA DA RECOMENDAÇÃO/);
 assert.doesNotMatch(component, />VALIDAR</);
 
