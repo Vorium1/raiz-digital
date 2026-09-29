@@ -46,6 +46,9 @@ assert.match(publishedNdviMap, /renderImmediately=\{eager\}/);
 assert.match(realFieldMap, /renderImmediately = false/);
 assert.match(printButton, /data-report-ndvi-state="loading"/);
 assert.match(printButton, /Preparando PDF/);
+assert.match(printButton, /document\.fonts\.ready/);
+assert.match(printButton, /real-field-map-deferred/);
+assert.match(printButton, /document\.images/);
 
 assert.match(component, /HORIZONTE DE FERTILIDADE/);
 assert.match(component, /MICRONUTRIENTES/);
