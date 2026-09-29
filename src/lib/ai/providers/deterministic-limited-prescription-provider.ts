@@ -118,7 +118,7 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     }
   }
 
-  const climateContext = evidence.analysis.climateContext;
+  const climateContext = evidence.analysis?.climateContext;
   if (climateContext?.status === "PROVIDED" && climateContext.notes) {
     managementPractices.push(`Contexto climático informado: ${climateContext.notes} O clima contextualiza risco e operação, mas não altera automaticamente as doses determinísticas.`);
   }
