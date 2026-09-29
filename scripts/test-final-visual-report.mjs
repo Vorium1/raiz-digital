@@ -6,6 +6,7 @@ const component = read("src/components/report-final-visual.tsx");
 const technicalPage = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
 const resultPage = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 const css = read("src/app/ux3-result-document.css");
+const rootLayout = read("src/app/layout.tsx");
 const publishedNdviMap = read("src/components/published-ndvi-map.tsx");
 const realFieldMap = read("src/components/real-field-map.tsx");
 const printButton = read("src/components/print-button.tsx");
@@ -21,6 +22,10 @@ assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
 assert.match(css, /height:297mm/);
 assert.match(css, /width:210mm/);
 assert.match(css, /page-break-after:always/);
+assert.match(css, /-webkit-text-fill-color:#075c3b/);
+assert.match(css, /concept-map-frame-cover[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
+assert.match(css, /concept-map-frame-overview[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
+
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
 
 assert.match(component, /facts\.forEach\(\(fact\) => register\(fact\.parameterCode\)\)/);
@@ -62,6 +67,9 @@ assert.match(technicalPage, /ndviSnapshot=\{viewingPublished \? publishedSnapsho
 assert.match(resultPage, /<FinalVisualReport/);
 assert.match(resultPage, /ndviSnapshot=\{v3\?\.ndviSnapshot \?\? null\}/);
 assert.match(resultPage, /commercialPlanSnapshot=\{v3\?\.commercialPlanSnapshot \?\? null\}/);
+assert.match(rootLayout, /\/favicon-32x32\.png/);
+assert.match(rootLayout, /\/favicon-48x48\.png/);
+
 assert.doesNotMatch(resultPage, /summarizeSimpleInterpretation|recommendationTotalForArea/);
 assert.match(component, /showTechnicalAppendix\?: boolean/);
 assert.match(component, /ANEXO TÉCNICO/);

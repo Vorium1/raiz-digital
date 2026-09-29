@@ -28,8 +28,11 @@ export const metadata: Metadata = {
   title: { default: "Raiz Digital", template: "%s · Raiz Digital" },
   description: "Inteligência agronômica do solo à decisão.",
   icons: {
-    icon: [{ url: "/brand/symbol-light.png", type: "image/png" }],
-    shortcut: "/brand/symbol-light.png",
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" },
+    ],
+    shortcut: "/favicon-32x32.png",
     apple: "/brand/symbol-light.png",
   },
 };

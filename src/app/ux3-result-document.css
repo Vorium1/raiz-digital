@@ -278,14 +278,16 @@
 .concept-cover-title-approved{margin:38px 0 20px;text-align:left}
 .concept-cover-title-approved>span{color:#193d2c;font-size:28px;font-weight:400;letter-spacing:-.02em}
 .concept-cover-title-approved h1{
-  background:linear-gradient(180deg,#0b6d43 0%,#06452f 92%);
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-  font-size:64px;
-  font-weight:950;
-  letter-spacing:-.055em;
-  margin:1px 0 4px;
+  background:none;
+  color:#075c3b;
+  -webkit-text-fill-color:#075c3b;
+  font-size:60px;
+  font-weight:700;
+  letter-spacing:-.045em;
+  line-height:1.12;
+  margin:0 0 4px;
+  overflow:visible;
+  padding:.10em 0 .04em;
 }
 .concept-cover-title-approved p{color:#294f3a;font-size:19px;letter-spacing:.08em}
 .concept-cover-map{
@@ -296,8 +298,16 @@
   margin:28px auto 0;
   padding:14px;
 }
-.concept-map-frame-cover{height:470px;border-radius:22px}
-.concept-map-frame-cover .simple-result-ndvi-map .real-field-map{min-height:470px}
+.concept-map-frame-cover{height:420px;border-radius:22px}
+.concept-map-frame-cover .simple-result-ndvi-map,
+.concept-map-frame-cover .real-field-map,
+.concept-map-frame-cover .real-field-map>div:first-child,
+.concept-map-frame-cover .real-field-map-canvas{
+  height:100%!important;
+  min-height:100%!important;
+  margin:0!important;
+  width:100%!important;
+}
 .concept-cover-meta{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);margin-top:22px}
 .concept-cover-meta>div{
   background:rgba(255,255,255,.92);
@@ -329,18 +339,28 @@
 .concept-page-heading-approved{margin:30px 0 18px}
 .concept-page-heading-approved>span{color:#173d2b;font-size:26px;font-weight:400;letter-spacing:-.025em}
 .concept-page-heading-approved h2{
-  background:linear-gradient(180deg,#0b6d43 0%,#06452f 92%);
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-  font-size:58px;
-  font-weight:950;
-  letter-spacing:-.055em;
+  background:none;
+  color:#075c3b;
+  -webkit-text-fill-color:#075c3b;
+  font-size:54px;
+  font-weight:700;
+  letter-spacing:-.045em;
+  line-height:1.12;
   margin:0;
+  overflow:visible;
+  padding:.10em 0 .04em;
 }
 .concept-map-shell-overview{padding:13px}
-.concept-map-frame-overview{height:430px}
-.concept-map-frame-overview .simple-result-ndvi-map .real-field-map{min-height:430px}
+.concept-map-frame-overview{height:390px}
+.concept-map-frame-overview .simple-result-ndvi-map,
+.concept-map-frame-overview .real-field-map,
+.concept-map-frame-overview .real-field-map>div:first-child,
+.concept-map-frame-overview .real-field-map-canvas{
+  height:100%!important;
+  min-height:100%!important;
+  margin:0!important;
+  width:100%!important;
+}
 .concept-stat-grid-approved>div{text-align:center}
 .concept-stat-grid-approved>div strong{font-size:23px}
 .concept-decision-hero-approved{margin-top:14px;min-height:128px;padding:18px 22px}
@@ -471,10 +491,16 @@
   .concept-cover-title-approved>span{font-size:18pt}
   .concept-cover-title-approved h1{font-size:42pt}
   .concept-cover-title-approved p{font-size:13pt}
-  .concept-map-frame-cover{height:118mm}
-  .concept-map-frame-cover .simple-result-ndvi-map .real-field-map{min-height:118mm!important}
-  .concept-map-frame-overview{height:92mm}
-  .concept-map-frame-overview .simple-result-ndvi-map .real-field-map{min-height:92mm!important}
+  .concept-map-frame-cover{height:106mm}
+  .concept-map-frame-cover .simple-result-ndvi-map,
+  .concept-map-frame-cover .real-field-map,
+  .concept-map-frame-cover .real-field-map>div:first-child,
+  .concept-map-frame-cover .real-field-map-canvas{height:100%!important;min-height:100%!important;width:100%!important}
+  .concept-map-frame-overview{height:88mm}
+  .concept-map-frame-overview .simple-result-ndvi-map,
+  .concept-map-frame-overview .real-field-map,
+  .concept-map-frame-overview .real-field-map>div:first-child,
+  .concept-map-frame-overview .real-field-map-canvas{height:100%!important;min-height:100%!important;width:100%!important}
   .concept-cover-meta>div{box-shadow:none}
   .concept-page-heading-approved>span{font-size:17pt}
   .concept-page-heading-approved h2{font-size:36pt}
