@@ -301,6 +301,7 @@ const spatialEvidence = evaluateSoybeanLimingFromEvidence({
   cropCode: "SOJA",
   state: "RS",
   managementSystem: "CONVENTIONAL",
+  allowEqualWeightOperationalAverage: true,
   results: [
     { sampleCode: "A", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
     { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
@@ -333,6 +334,31 @@ assert.deepEqual(
 );
 assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedBaseSaturation));
 assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedAluminumSaturation));
+assert.ok(spatialEvidence.warnings.includes("LIMING_GENERAL_DOSE_EQUAL_AREA_GRID_MEAN"));
+
+// 20a. Sem prova de área equivalente, a mesma heterogeneidade permanece espacial sem promover média geral.
+const spatialWithoutEqualAreaSupport = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "A", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "V", value: 60, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "M", value: 12, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "SMP", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "V", value: 60, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "M", value: 12, unit: "%", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(spatialWithoutEqualAreaSupport.status, "SPATIAL");
+assert.equal(spatialWithoutEqualAreaSupport.automaticUniformDoseAllowed, false);
+assert.equal(spatialWithoutEqualAreaSupport.automaticGeneralDoseAllowed, false);
+assert.equal(spatialWithoutEqualAreaSupport.operationalGeneralDoseTonHaPrnt100, null);
+assert.equal(spatialWithoutEqualAreaSupport.generalDoseBasis, null);
+assert.deepEqual(spatialWithoutEqualAreaSupport.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
+assert.ok(spatialWithoutEqualAreaSupport.blockers.includes("LIMING_EQUAL_WEIGHT_AVERAGE_REQUIRES_EQUAL_AREA_GRID"));
 
 // 21. pH>=5,5 em todos os pontos resulta em decisão uniforme de não aplicar quando o restante da evidência é válido.
 const noApplyEvidence = evaluateSoybeanLimingFromEvidence({
@@ -417,6 +443,13 @@ const wrongSpatialAverageLime = validatePrescriptionLimingRecommendation({
 });
 assert.equal(wrongSpatialAverageLime.allowed, false);
 assert.ok(wrongSpatialAverageLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
+
+const forbiddenSpatialAverageWithoutArea = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.8, unit: "t/ha" }],
+  deterministicDecision: spatialWithoutEqualAreaSupport,
+});
+assert.equal(forbiddenSpatialAverageWithoutArea.allowed, false);
+assert.ok(forbiddenSpatialAverageWithoutArea.blockers.includes("LIME_DETERMINISTIC_DOSE_NOT_READY"));
 
 // 26. Decisão uniforme de não aplicar aceita ausência de calcário e rejeita dose positiva.
 const noApplyWithoutLime = validatePrescriptionLimingRecommendation({
