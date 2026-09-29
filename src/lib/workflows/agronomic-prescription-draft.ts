@@ -158,6 +158,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       climateContext: evidence.analysis.climateContext,
       biologicalContext: evidence.biologicalReportContext,
       applicationGuidance: evidence.applicationGuidance,
+      spatialNutrientPlan: evidence.spatialNutrientPlan,
       agroclimateSnapshot: collectedAgroclimate?.reportSnapshot ?? null,
     },
   };
