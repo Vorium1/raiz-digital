@@ -38,6 +38,8 @@ assert.match(css, /concept-producer-plan-card/);
 assert.match(css, /concept-yield-banner-primary/);
 assert.match(css, /concept-producer-plan-intro/);
 assert.match(css, /concept-cover-meta-identified/);
+assert.match(css, /concept-cover-identification/);
+assert.match(css, /grid-template-columns:1\.15fr 1\.15fr \.9fr/);
 
 
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
@@ -56,9 +58,12 @@ assert.match(component, /META PRODUTIVA/);
 assert.match(component, /NECESSIDADES PARA BUSCAR ESTA META/);
 assert.match(component, /Considerando a análise do solo e as exigências de/);
 assert.match(component, /concept-cover-meta-identified/);
+assert.match(component, /concept-cover-identification/);
+assert.match(component, /IDENTIFICAÇÃO DA ÁREA/);
+assert.match(component, /PROPRIEDADE/);
+assert.match(component, /MUNICÍPIO \/ UF/);
 assert.match(component, /PRODUTOR/);
 assert.match(component, /TALHÃO/);
-assert.match(component, /concept-cover-location/);
 assert.match(component, /lime-uniform/);
 assert.match(component, /lime-spatial/);
 assert.match(component, /lime-no-apply/);

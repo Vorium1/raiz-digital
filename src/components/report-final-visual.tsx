@@ -646,6 +646,18 @@ export function FinalVisualReport(props: Props) {
           <p>Do solo à decisão.</p>
         </div>
 
+        <div className="concept-cover-identification">
+          <span>IDENTIFICAÇÃO DA ÁREA</span>
+          <div className="concept-cover-meta concept-cover-meta-identified">
+            <div><span>PRODUTOR</span><strong>{props.context.clientName || "—"}</strong></div>
+            <div><span>PROPRIEDADE</span><strong>{props.context.propertyName || "—"}</strong></div>
+            <div><span>TALHÃO</span><strong>{props.context.fieldName || "—"}</strong></div>
+            <div><span>MUNICÍPIO / UF</span><strong>{[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "—"}</strong></div>
+            <div><span>CULTURA / SAFRA</span><strong>{cropSeasonLabel}</strong></div>
+            <div><span>ÁREA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
+          </div>
+        </div>
+
         <div className="concept-cover-map">
           <div className="concept-map-frame concept-map-frame-cover">
             {mapCanUseNdvi ? (
@@ -654,7 +666,7 @@ export function FinalVisualReport(props: Props) {
                 capturedAt={props.ndviSnapshot!.capturedAt}
                 boundary={props.boundary as any}
                 points={props.points}
-                height={470}
+                height={430}
                 showLegend={false}
                 eager
                 showHint={false}
@@ -663,17 +675,6 @@ export function FinalVisualReport(props: Props) {
               <SpatialOverview boundary={props.boundary} points={props.points} />
             )}
           </div>
-        </div>
-
-        <div className="concept-cover-meta concept-cover-meta-identified">
-          <div><span>PRODUTOR</span><strong>{props.context.clientName || "—"}</strong></div>
-          <div><span>TALHÃO</span><strong>{props.context.fieldName || "—"}</strong></div>
-          <div><span>CULTURA / SAFRA</span><strong>{cropSeasonLabel}</strong></div>
-          <div><span>ÁREA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
-        </div>
-        <div className="concept-cover-location">
-          <span>{props.context.propertyName || "Propriedade não identificada"}</span>
-          <b>{[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "Município / UF não informado"}</b>
         </div>
 
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / 5</b></footer>

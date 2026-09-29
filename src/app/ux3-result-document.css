@@ -919,3 +919,77 @@
   .concept-producer-plan-card{margin-top:3mm}
   .concept-producer-plan-intro{font-size:6.4pt;line-height:1.5;margin-top:1.8mm}
 }
+
+/* Capa mobile-first: identificação completa antes do mapa */
+.concept-cover-identification{
+  margin-top:18px;
+}
+.concept-cover-identification>span{
+  color:#2c7652;
+  display:block;
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.09em;
+  margin:0 0 8px 2px;
+}
+.concept-cover-identification .concept-cover-meta{
+  margin-top:0;
+}
+.concept-cover-identification .concept-cover-meta-identified{
+  gap:9px;
+  grid-template-columns:1.15fr 1.15fr .9fr;
+}
+.concept-cover-identification .concept-cover-meta>div{
+  border-radius:14px;
+  min-height:50px;
+  padding:9px 11px;
+  text-align:left;
+}
+.concept-cover-identification .concept-cover-meta span{
+  font-size:6.5px;
+}
+.concept-cover-identification .concept-cover-meta strong{
+  font-size:12px;
+  line-height:1.2;
+  margin-top:4px;
+  overflow-wrap:anywhere;
+}
+.concept-cover-identification + .concept-cover-map{
+  margin-top:14px;
+}
+.concept-cover-page .concept-map-frame-cover{
+  height:360px;
+}
+@media(max-width:820px){
+  .concept-cover-identification .concept-cover-meta-identified{
+    grid-template-columns:1fr 1fr;
+  }
+  .concept-cover-identification .concept-cover-meta>div{
+    min-height:48px;
+    padding:9px 10px;
+  }
+  .concept-cover-identification .concept-cover-meta strong{
+    font-size:11px;
+  }
+}
+@media(max-width:520px){
+  .concept-cover-identification .concept-cover-meta-identified{
+    grid-template-columns:1fr;
+  }
+}
+@media print{
+  .concept-cover-identification{margin-top:4mm}
+  .concept-cover-identification>span{font-size:5.8pt;margin-bottom:1.7mm}
+  .concept-cover-identification .concept-cover-meta-identified{
+    gap:2mm;
+    grid-template-columns:1.15fr 1.15fr .9fr;
+  }
+  .concept-cover-identification .concept-cover-meta>div{
+    min-height:10mm;
+    padding:2mm 2.5mm;
+  }
+  .concept-cover-identification .concept-cover-meta span{font-size:4.8pt}
+  .concept-cover-identification .concept-cover-meta strong{font-size:8.2pt}
+  .concept-cover-identification + .concept-cover-map{margin-top:3mm}
+  .concept-cover-page .concept-map-frame-cover{height:80mm}
+}
