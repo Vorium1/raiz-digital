@@ -7,6 +7,7 @@ import type {
 } from "@/domain/report-context-blocks";
 import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
 import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient-plan";
+import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 
 /**
  * Formato obrigatório de uma prescrição gerada por IA. Ao contrário de
@@ -53,6 +54,7 @@ export type AgronomicPrescription = {
   biologicalContext?: ReportBiologicalContext | null;
   applicationGuidance?: ReportApplicationGuidance | null;
   spatialNutrientPlan?: ReportSpatialNutrientPlan | null;
+  limingDecision?: SoybeanLimingUniformDecision | null;
   agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 

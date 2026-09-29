@@ -43,10 +43,18 @@ assert.match(component, /commercialTotalDisplay/);
 assert.match(component, /totalQuantity \* 1000/);
 assert.match(component, /plainProducerOpinion/);
 assert.match(component, /Isso ainda não representa o peso de um fertilizante comercial/);
-assert.match(component, /hasValidationPending \? "VALIDAR" : "CONFERIR"/);
-assert.match(component, /commercial \? "APLICAR" : operationalSummary\.rows\.length \? "NECESSIDADE APROVADA" : "VALIDAR"/);
+assert.match(component, /commercial \? "APLICAR" : operationalSummary\.rows\.length \? "NECESSIDADE APROVADA" : "SEM APLICAÇÃO GERAL"/);
 assert.match(component, /Definir a fonte comercial antes de converter estas necessidades em produto/);
 assert.match(component, /operationalSummary\.rows\.map/);
+
+assert.doesNotMatch(component, /const priorityParameterCodes = \["P", "K", "B"\]/);
+assert.doesNotMatch(component, /diagnosticCodes\.slice\(0, 3\)/);
+assert.doesNotMatch(component, /recommendations\.slice\(0, 2\)/);
+assert.match(component, /diagnosticCodes\.map/);
+assert.match(component, /spatialNutrientPlan\?\.nutrients\.filter/);
+assert.match(component, /limingDecision\?\.status === "UNIFORM_NO_APPLY"/);
+assert.match(component, /VIGÊNCIA DA RECOMENDAÇÃO/);
+assert.doesNotMatch(component, />VALIDAR</);
 
 assert.match(component, /effectivePointCoordinates\(point\)/);
 assert.match(component, /PublishedNdviMap/);

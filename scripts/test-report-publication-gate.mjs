@@ -87,4 +87,18 @@ assert.equal(approved.allowed, true);
 assert.equal(approved.reason, null);
 assert.equal(approved.prescriptionStatus, "APPROVED");
 
+const incompletePrescription = evaluateReportPublicationGate({
+  interpretationExists: true,
+  interpretationStatus: "APPROVED",
+  interpretationIsLatest: true,
+  interpretationEvidenceCurrent: true,
+  prescriptionId: "00000000-0000-4000-8000-000000000001",
+  prescriptionStatus: "APPROVED",
+  prescriptionCurrent: true,
+  prescriptionCompletenessReady: false,
+  prescriptionCompletenessReason: "Laudo final ainda não pode ser publicado: Calagem pendente.",
+});
+assert.equal(incompletePrescription.allowed, false);
+assert.match(incompletePrescription.reason, /Calagem pendente/);
+
 console.log("report publication gate: interpretação/regra corrente + fonte + conclusão técnica aprovada enforced");

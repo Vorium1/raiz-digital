@@ -633,3 +633,31 @@
     width:100%!important;
   }
 }
+
+/* Página 3 — diagnóstico completo e decisões fechadas */
+.concept-diagnostic-grid{display:grid;gap:0 14px;grid-template-columns:1fr 1fr}
+.concept-diagnostic-grid .concept-diagnostic-row-approved{grid-template-columns:40px minmax(0,1fr);min-height:58px;padding:8px 0}
+.concept-diagnostic-grid .concept-diagnostic-row-approved:nth-child(n+3){border-top:1px solid #e2ece4}
+.concept-diagnostic-grid .concept-parameter-badge{border-width:3px;font-size:15px;height:36px;width:36px}
+.concept-diagnostic-grid .concept-diagnostic-row-head{align-items:center;gap:8px}
+.concept-diagnostic-grid .concept-diagnostic-row-head strong{font-size:10px}
+.concept-diagnostic-grid .concept-diagnostic-row-head small{font-size:7px}
+.concept-diagnostic-grid .concept-distribution-bar{height:11px;margin-top:5px}
+.concept-scope-strip{background:#eef6ef;border:1px solid #c8decf;border-radius:12px;display:grid;gap:4px;margin-top:12px;padding:10px 12px}
+.concept-scope-strip strong{color:#236c49;font-size:8px;letter-spacing:.06em}
+.concept-scope-strip span{color:#5c7064;font-size:8px;line-height:1.45}
+.concept-decision-grid{display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:12px}
+.concept-decision-card{background:#fff;border:1px solid #b7d7c1;border-radius:14px;break-inside:avoid;min-height:118px;padding:12px}
+.concept-decision-card>span{color:#2d7b55;display:block;font-size:7px;font-weight:900;letter-spacing:.07em}
+.concept-decision-card h3{font-size:16px;letter-spacing:-.025em;line-height:1.12;margin:7px 0 6px}
+.concept-decision-card p{color:#65766d;font-size:7.5px;line-height:1.45;margin:0}
+.concept-decision-card b{background:#168b53;border-radius:999px;color:#fff;display:inline-block;font-size:7px;letter-spacing:.04em;margin-top:8px;padding:5px 9px}
+.concept-decision-card-secondary b{background:#315f49}
+@media(max-width:820px){.concept-diagnostic-grid,.concept-decision-grid{grid-template-columns:1fr}.concept-diagnostic-grid .concept-diagnostic-row-approved:nth-child(n+2){border-top:1px solid #e2ece4}}
+@media print{
+  .concept-diagnostic-grid{gap:0 4mm}
+  .concept-diagnostic-grid .concept-diagnostic-row-approved{min-height:13mm;padding:2mm 0}
+  .concept-decision-grid{gap:2.5mm;margin-top:3mm}
+  .concept-decision-card{min-height:27mm;padding:3mm}
+  .concept-scope-strip{margin-top:3mm;padding:2.5mm 3mm}
+}

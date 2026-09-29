@@ -16,6 +16,8 @@ export type ReportPublicationGateInput = {
   prescriptionCurrent?: boolean;
   sourceVerificationRequired?: boolean;
   sourceHumanVerified?: boolean;
+  prescriptionCompletenessReady?: boolean;
+  prescriptionCompletenessReason?: string | null;
 };
 
 /** Regra pura da entrega oficial, sem banco e sem dependências de runtime. */
@@ -85,6 +87,15 @@ export function evaluateReportPublicationGate(input: ReportPublicationGateInput)
     return {
       allowed: false,
       reason: "A conclusão técnica aprovada foi preparada com um contexto agronômico anterior. Prepare e aprove uma nova versão antes da entrega oficial.",
+      interpretationStatus: input.interpretationStatus,
+      prescriptionStatus: input.prescriptionStatus,
+      prescriptionId: input.prescriptionId,
+    };
+  }
+  if (input.prescriptionCompletenessReady === false) {
+    return {
+      allowed: false,
+      reason: input.prescriptionCompletenessReason ?? "A conclusão técnica ainda possui decisões agronômicas essenciais não resolvidas para o laudo final.",
       interpretationStatus: input.interpretationStatus,
       prescriptionStatus: input.prescriptionStatus,
       prescriptionId: input.prescriptionId,

@@ -15,6 +15,8 @@ import type {
 } from "@/domain/report-context-blocks";
 import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
 import type { FrozenNdviSnapshot } from "@/lib/repositories/premium-report-publication";
+import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient-plan";
+import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 
 type StructuredFact = {
   sampleCode: string;
@@ -28,6 +30,7 @@ type StructuredFact = {
 type StructuredInterpretation = {
   sampleCode: string;
   parameterCode: string;
+  classificationRole?: "TARGET" | "AUXILIARY";
   interpretable: boolean;
   classification?: string;
   reason?: string;
@@ -84,6 +87,8 @@ type Prescription = {
   climateContext?: ReportClimateContext | null;
   biologicalContext?: ReportBiologicalContext | null;
   applicationGuidance?: ReportApplicationGuidance | null;
+  spatialNutrientPlan?: ReportSpatialNutrientPlan | null;
+  limingDecision?: SoybeanLimingUniformDecision | null;
   agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
@@ -233,11 +238,13 @@ function parameterSummaries(facts: StructuredFact[], rows: StructuredInterpretat
       value = numericValues.length + " resultados · " + units.join(" / ");
     }
 
-    const labels = unique(parameterRows.filter((row) => row.interpretable).map((row) => row.classification));
-    const nonInterpretable = parameterRows.some((row) => !row.interpretable);
-    const pendingReasons = unique(parameterRows.filter((row) => !row.interpretable).map((row) => row.reason));
+    const targetRows = parameterRows.filter((row) => row.classificationRole !== "AUXILIARY");
+    const labels = unique(targetRows.filter((row) => row.interpretable).map((row) => row.classification));
+    const nonInterpretable = targetRows.some((row) => !row.interpretable);
+    const pendingReasons = unique(targetRows.filter((row) => !row.interpretable).map((row) => row.reason));
     const pendingReason = pendingReasons.length ? pendingReasons.join(" · ") : null;
-    const auxiliary = Boolean(pendingReason && /dado auxiliar|insumo\/contexto|não é um alvo|nao e um alvo|não se aplica|nao se aplica/i.test(pendingReason));
+    const auxiliary = (parameterRows.length > 0 && targetRows.length === 0)
+      || Boolean(pendingReason && /dado auxiliar|insumo\/contexto|não é um alvo|nao e um alvo|não se aplica|nao se aplica/i.test(pendingReason));
     const requiresReview = Boolean(pendingReason && /agronom|revis|valid/i.test(pendingReason));
 
     return {
@@ -368,6 +375,8 @@ export function FinalVisualReport(props: Props) {
   const biologicalContext = prescription?.biologicalContext ?? null;
   const applicationGuidance = prescription?.applicationGuidance ?? null;
   const agroclimateSnapshot = prescription?.agroclimateSnapshot ?? null;
+  const spatialNutrientPlan = prescription?.spatialNutrientPlan ?? null;
+  const limingDecision = prescription?.limingDecision ?? null;
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
   const collectedCount = props.points.filter((point) => Boolean(point.collectedAt)).length;
@@ -382,8 +391,7 @@ export function FinalVisualReport(props: Props) {
       )
       .map((item) => ({ inputType: item.inputType, quantity: item.quantity, unit: item.unit })),
   });
-  const priorityParameterCodes = ["P", "K", "B"].filter((code) => props.interpretationRows.some((row) => row.parameterCode === code));
-  const diagnosticCodes = [...priorityParameterCodes, ...summaries.map((item) => item.code).filter((code) => !priorityParameterCodes.includes(code))].slice(0, 5);
+  const diagnosticCodes = summaries.filter((item) => !item.auxiliary).map((item) => item.code);
   const primaryCommercialRow = commercial?.rows.length === 1 ? commercial.rows[0] : null;
   const primaryRecommendation = operationalSummary.rows[0] ?? null;
   const currentCropLabel = (props.context.currentCrop || "").trim();
@@ -408,10 +416,18 @@ export function FinalVisualReport(props: Props) {
     && props.boundary,
   );
   const hasValidationPending = missingInformation.length > 0;
+  const currentFertilityStage = fertilityPlan?.stages.find((stage) => stage.kind === "CURRENT_CULTIVATION") ?? null;
+  const fertilityScopeText = fertilityPlan
+    ? "Escopo das doses: " + (currentFertilityStage?.label ?? "cultivo atual")
+      + ". O 2º cultivo usa a regra específica correspondente e uma nova análise é obrigatória após "
+      + fertilityPlan.reanalysisAfterCultivations + " cultivos. Horizonte de " + fertilityPlan.horizonYears
+      + " anos é planejamento, não repetição automática desta dose."
+    : "Escopo das doses: cultivo atual desta análise. Mudança de safra, cultura ou evidência exige novo cálculo.";
+  const hasLimeRecommendation = recommendations.some((item) => /CALCAR|LIME/i.test(item.inputType ?? ""));
   const plainProducerOpinion = commercial?.rows.length
     ? "Para " + (props.context.fieldName || "esta área") + ", o plano comercial congelado usa "
       + commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" e ")
-      + ". " + (hasValidationPending ? "Antes de aplicar, resolva os itens marcados para validação." : "Antes da operação, apenas confira produto, teor e posicionamento.")
+      + ". Antes da operação, confira produto, teor e posicionamento."
     : operationalSummary.rows.length
       ? "Para " + (props.context.fieldName || "esta área") + ", a necessidade aprovada é "
         + operationalSummary.rows.map((row) => numberPt(row.doseQuantity) + " " + row.doseUnit + " de " + row.label).join(" e ")
@@ -522,7 +538,7 @@ export function FinalVisualReport(props: Props) {
           ) : (
             <div className="concept-decision-split">
               <div><strong>Sem dose uniforme</strong><small>A evidência não sustentou uma taxa geral.</small></div>
-              <div><strong>VALIDAR</strong><small>Consulte os bloqueios antes da aplicação.</small></div>
+              <div><strong>SEM DECISÃO LIBERADA</strong><small>O laudo oficial não deve ser publicado enquanto uma decisão essencial estiver incompleta.</small></div>
             </div>
           )}
           {!commercial && primaryRecommendation && <small className="concept-hero-footnote">Ainda não é peso de fertilizante comercial: produto e teor precisam estar oficialmente definidos.</small>}
@@ -539,44 +555,76 @@ export function FinalVisualReport(props: Props) {
         <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
 
         <section className="concept-diagnostic-card concept-diagnostic-card-approved">
-          {diagnosticCodes.slice(0, 3).map((code) => {
-            const distribution = distributionForParameter(props.interpretationRows, code);
-            const total = distribution.reduce((sum, item) => sum + item.count, 0);
-            return (
-              <div className="concept-diagnostic-row concept-diagnostic-row-approved" key={code}>
-                <div className="concept-parameter-badge">{code}</div>
-                <div className="concept-diagnostic-content">
-                  <div className="concept-diagnostic-row-head">
-                    <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code}</strong>
-                    <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
+          <div className="concept-diagnostic-grid">
+            {diagnosticCodes.map((code) => {
+              const distribution = distributionForParameter(props.interpretationRows, code);
+              const total = distribution.reduce((sum, item) => sum + item.count, 0);
+              return (
+                <div className="concept-diagnostic-row concept-diagnostic-row-approved" key={code}>
+                  <div className="concept-parameter-badge">{code}</div>
+                  <div className="concept-diagnostic-content">
+                    <div className="concept-diagnostic-row-head">
+                      <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code === "S" ? "ENXOFRE" : code}</strong>
+                      <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
+                    </div>
+                    <div className="concept-distribution-bar">
+                      {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
+                    </div>
                   </div>
-                  <div className="concept-distribution-bar">
-                    {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
-                  </div>
-                  <div className="concept-distribution-labels">{distribution.map((item) => <span key={item.key} className={item.tone}>{item.label.toUpperCase()}</span>)}</div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </section>
 
-        <div className="concept-two-card-grid concept-two-card-grid-approved">
-          {recommendations.slice(0, 2).map((item, index) => {
+        <div className="concept-scope-strip"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
+
+        <div className="concept-decision-grid">
+          {recommendations.map((item, index) => {
             const operational = producerRow(item, areaHa);
             return (
-              <section className="concept-recommendation-card concept-recommendation-card-approved" key={(item.inputType || "rec") + index}>
+              <section className="concept-decision-card" key={(item.inputType || "rec") + index}>
                 <span>{recommendationShortLabel(item.inputType).toUpperCase()}</span>
                 <h3>{typeof item.quantity === "number" ? numberPt(item.quantity) : "—"} {item.unit || ""}{item.inputType ? " de " + item.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") : ""}</h3>
                 <p>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit + " equivalentes no talhão." : "Dose sustentada pelo motor para esta decisão."}</p>
-                <b>APROVADO</b>
+                <b>LIBERADO</b>
               </section>
             );
           })}
-        </div>
 
-        <div className="concept-warning-box concept-warning-box-approved">
-          <div className="concept-warning-icon">!</div>
-          <div><strong>{hasValidationPending ? "VALIDAR" : "CONFERIR"}</strong><span>{hasValidationPending ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</span></div>
+          {spatialNutrientPlan?.nutrients.filter((item) => item.status === "POINT_SPECIFIC").map((item) => (
+            <section className="concept-decision-card" key={"spatial-" + item.nutrient}>
+              <span>{recommendationShortLabel(item.nutrient).toUpperCase()}</span>
+              <h3>{item.rangeKgPerHa ? numberPt(item.rangeKgPerHa.min) + "–" + numberPt(item.rangeKgPerHa.max) + " kg/ha" : "Dose por ponto/zona"}</h3>
+              <p>{item.purchaseEquivalent ? "Equivalência de compra: " + numberPt(item.purchaseEquivalent.totalKg) + " kg no talhão. Não usar esta média como taxa uniforme." : item.note}</p>
+              <b>POR PONTO / ZONA</b>
+            </section>
+          ))}
+
+          {!hasLimeRecommendation && limingDecision?.status === "UNIFORM_NO_APPLY" && (
+            <section className="concept-decision-card" key="lime-no-apply">
+              <span>CALCÁRIO</span><h3>Não aplicar</h3>
+              <p>O critério determinístico atual não indica calagem para os pontos avaliados.</p>
+              <b>DECISÃO FECHADA</b>
+            </section>
+          )}
+          {!hasLimeRecommendation && limingDecision?.status === "SPATIAL" && (
+            <section className="concept-decision-card" key="lime-spatial">
+              <span>CALCÁRIO</span>
+              <h3>{limingDecision.doseRangeTonHaPrnt100 ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%" : "Dose por ponto"}</h3>
+              <p>{limingDecision.automaticGeneralDoseAllowed && limingDecision.operationalGeneralDoseTonHaPrnt100 != null ? "Dose geral operacional: " + numberPt(limingDecision.operationalGeneralDoseTonHaPrnt100) + " t/ha PRNT 100%." : "Aplicar conforme a decisão por ponto/zona; não promover média simples sem suporte de área equivalente."}</p>
+              <b>DECISÃO ESPACIAL</b>
+            </section>
+          )}
+
+          {soilComplementActions.filter((item) => item.parameterCode !== "MO" && item.evaluatedCount > 0).map((item) => (
+            <section className="concept-decision-card concept-decision-card-secondary" key={"complement-" + item.parameterCode}>
+              <span>{item.label.toUpperCase()}</span>
+              <h3>{item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT" ? "Sem aplicação geral" : "Correção localizada"}</h3>
+              <p>{item.action}</p>
+              <b>{item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT" ? "SEM NECESSIDADE GERAL" : "DECISÃO TÉCNICA NECESSÁRIA"}</b>
+            </section>
+          ))}
         </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
       </section>
@@ -644,7 +692,7 @@ export function FinalVisualReport(props: Props) {
         <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
 
         <section className="concept-producer-apply-card">
-          <span>{commercial ? "APLICAR" : operationalSummary.rows.length ? "NECESSIDADE APROVADA" : "VALIDAR"}</span>
+          <span>{commercial ? "APLICAR" : operationalSummary.rows.length ? "NECESSIDADE APROVADA" : "SEM APLICAÇÃO GERAL"}</span>
           {primaryCommercialRow ? (
             <>
               <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
@@ -663,15 +711,10 @@ export function FinalVisualReport(props: Props) {
             </>
           ) : (
             <>
-              <strong>Sem aplicação uniforme liberada</strong>
-              <b>Validar as pendências antes de definir produto e dose.</b>
+              <strong>Nenhuma aplicação uniforme foi indicada nesta decisão.</strong>
+              <b>O laudo oficial só é publicado quando as decisões agronômicas essenciais estão fechadas.</b>
             </>
           )}
-        </section>
-
-        <section className="concept-producer-validate-card">
-          <div className="concept-warning-icon">!</div>
-          <div><span>{hasValidationPending ? "VALIDAR" : "CONFERIR"}</span><strong>{hasValidationPending ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</strong></div>
         </section>
 
         <section className="concept-yield-banner concept-yield-banner-approved">
