@@ -471,13 +471,13 @@ export function FinalVisualReport(props: Props) {
 
     let action = "Sem aplicação geral indicada.";
     if (recommendation && typeof recommendation.quantity === "number" && recommendation.unit) {
-      action = "Aplicar " + numberPt(recommendation.quantity) + " " + recommendation.unit + " de " + recommendation.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") + ".";
+      action = "Aplicar " + numberPt(recommendation.quantity) + " " + recommendation.unit + " de " + (recommendation.inputType ?? nutrientInput).replace("CALCARIO_PRNT100", "PRNT 100%") + ".";
     } else if (spatial?.status === "POINT_SPECIFIC") {
       action = spatial.rangeKgPerHa
         ? "Aplicar por ponto/zona: " + numberPt(spatial.rangeKgPerHa.min) + "–" + numberPt(spatial.rangeKgPerHa.max) + " kg/ha."
         : "Aplicar conforme a decisão por ponto/zona.";
-    } else if (spatial?.status === "UNIFORM" && spatial.uniformKgPerHa != null) {
-      action = "Aplicar " + numberPt(spatial.uniformKgPerHa) + " kg/ha.";
+    } else if (spatial?.status === "UNIFORM" && spatial.uniformDoseKgPerHa != null) {
+      action = "Aplicar " + numberPt(spatial.uniformDoseKgPerHa) + " kg/ha.";
     } else if (complement) {
       action = complement.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT"
         ? "Sem aplicação geral."
@@ -510,7 +510,7 @@ export function FinalVisualReport(props: Props) {
         tone: "low",
         state: "NÃO ATENDE",
         stateDetail: "Necessita correção",
-        action: "Aplicar " + numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit + " de " + limeRecommendation.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") + ".",
+        action: "Aplicar " + numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit + " de " + (limeRecommendation.inputType ?? "CALCARIO_PRNT100").replace("CALCARIO_PRNT100", "PRNT 100%") + ".",
       };
     }
     if (limingDecision?.status === "UNIFORM_NO_APPLY") {
