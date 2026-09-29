@@ -80,6 +80,7 @@ export async function collectOfficialAgroclimateEnrichment(input: {
   utcOffset?: string | null;
   technicalRegionCodes?: string[];
   zarcSeason?: { startYear: number; endYear: number } | null;
+  sourceTimeoutMs?: number;
   cptecFetcher?: CptecFetcher;
   zarcFetcher?: ZarcFetcher;
 }): Promise<OfficialAgroclimateEnrichment> {
@@ -117,6 +118,7 @@ export async function collectOfficialAgroclimateEnrichment(input: {
           longitude: input.longitude!,
           utcOffset: input.utcOffset,
           technicalRegionCodes: regions,
+          timeoutMs: input.sourceTimeoutMs,
         });
         metricEvidence = result.evidence;
         cptec = {
@@ -150,6 +152,7 @@ export async function collectOfficialAgroclimateEnrichment(input: {
       const resource = await (input.zarcFetcher ?? fetchMapaZarcSeasonResource)({
         seasonStartYear: input.zarcSeason.startYear,
         seasonEndYear: input.zarcSeason.endYear,
+        timeoutMs: input.sourceTimeoutMs,
       });
       zarc = {
         status: "READY",
