@@ -614,7 +614,7 @@ export function FinalVisualReport(props: Props) {
 
         <div className="concept-final-integrity">
           <Icon name="shield" size={14}/>
-          <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : "Rascunho técnico"}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
+          <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : props.currentStatusLabel}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
         </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>5 / 5</b></footer>
       </section>
