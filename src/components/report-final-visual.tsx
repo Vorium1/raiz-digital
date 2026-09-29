@@ -503,8 +503,8 @@ export function FinalVisualReport(props: Props) {
     );
     const complementNeedsAction = Boolean(
       complement
-      && complement.status !== "SUFFICIENT_NO_GENERAL_COMPLEMENT"
-      && complement.status !== "NO_EVIDENCE"
+      && (complement.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
+        || complement.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW")
     );
     const lowNeedsAction = tone === "low" && !["PH", "CA", "MG"].includes(code);
 
