@@ -8,11 +8,11 @@ const resultPage = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
 const css = read("src/app/ux3-result-document.css");
 
 assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
-assert.match(component, /Inteligência que vira ação/);
-assert.match(component, /O solo mostra o caminho/);
-assert.match(component, /Quanto aplicar e por quê/);
-assert.match(component, /Decisão hoje. Solo acompanhado amanhã/);
-assert.match(component, /Uma orientação sem complicação/);
+assert.match(component, /RELATÓRIO/);
+assert.match(component, /A ÁREA EM UMA/);
+assert.match(component, /O QUE O SOLO/);
+assert.match(component, /PLANEJAMENTO TÉCNICO/);
+assert.match(component, /O PLANO PARA O/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
 assert.match(css, /height:297mm/);
