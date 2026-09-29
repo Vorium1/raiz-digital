@@ -1,4 +1,6 @@
 import { Icon } from "@/components/icon";
+import { BrandLogo } from "@/components/brand-logo";
+import { PublishedNdviMap } from "@/components/published-ndvi-map";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
 import { ClassificationBadge } from "@/components/ui";
 import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
@@ -13,6 +15,7 @@ import type {
   ReportClimateContext,
 } from "@/domain/report-context-blocks";
 import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
+import type { FrozenNdviSnapshot } from "@/lib/repositories/premium-report-publication";
 
 type StructuredFact = {
   sampleCode: string;
@@ -32,6 +35,8 @@ type StructuredInterpretation = {
 };
 
 type ReportContext = {
+  id?: string | null;
+  fieldId?: string | null;
   code?: string | null;
   clientName?: string | null;
   propertyName?: string | null;
@@ -105,6 +110,7 @@ type Props = {
   publishedAt?: string | null;
   publishedHashPrefix?: string | null;
   commercialPlanSnapshot?: FrozenCommercialPlanSnapshot | null;
+  ndviSnapshot?: FrozenNdviSnapshot | null;
 };
 
 type ParameterSummary = {
@@ -120,6 +126,68 @@ type ParameterSummary = {
 
 function numberPt(value: number, maximumFractionDigits = 2) {
   return value.toLocaleString("pt-BR", { maximumFractionDigits });
+}
+
+const CLASSIFICATION_ORDER = ["MUITO_BAIXO", "BAIXO", "MEDIO", "ALTO", "MUITO_ALTO"];
+
+function normalizedClassification(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function classificationLabel(value: string) {
+  const normalized = normalizedClassification(value);
+  const known: Record<string, string> = {
+    MUITO_BAIXO: "Muito baixo",
+    BAIXO: "Baixo",
+    MEDIO: "Médio",
+    ALTO: "Alto",
+    MUITO_ALTO: "Muito alto",
+  };
+  return known[normalized] ?? value.replace(/_/g, " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function classificationTone(value: string) {
+  const normalized = normalizedClassification(value);
+  if (normalized === "MUITO_BAIXO" || normalized === "BAIXO") return "low";
+  if (normalized === "MEDIO") return "medium";
+  if (normalized === "ALTO") return "high";
+  if (normalized === "MUITO_ALTO") return "very-high";
+  return "neutral";
+}
+
+function distributionForParameter(rows: StructuredInterpretation[], code: string) {
+  const values = rows
+    .filter((row) => row.parameterCode === code && row.interpretable && row.classification)
+    .map((row) => row.classification as string);
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const value of values) {
+    const normalized = normalizedClassification(value);
+    const current = counts.get(normalized);
+    counts.set(normalized, { label: classificationLabel(value), count: (current?.count ?? 0) + 1 });
+  }
+  return Array.from(counts.entries())
+    .map(([key, value]) => ({ key, ...value, tone: classificationTone(key) }))
+    .sort((a, b) => {
+      const ai = CLASSIFICATION_ORDER.indexOf(a.key);
+      const bi = CLASSIFICATION_ORDER.indexOf(b.key);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.label.localeCompare(b.label);
+    });
+}
+
+function recommendationShortLabel(inputType: string | undefined) {
+  const code = (inputType ?? "").trim().toUpperCase();
+  if (code === "K2O") return "Potássio";
+  if (code === "P2O5") return "Fósforo";
+  if (code === "S") return "Enxofre";
+  if (code === "N") return "Nitrogênio";
+  if (code.includes("CALCAR") || code.includes("LIME")) return "Calcário";
+  return inputType || "Recomendação";
 }
 
 function textValue(value: unknown) {
@@ -320,361 +388,271 @@ export function FinalVisualReport(props: Props) {
     .map((source) => [source.title, source.institution].filter(Boolean).join(" — "))
     .filter(Boolean);
 
+  const operationalSummary = buildProducerResultSummary({
+    areaHa: areaHa ?? 0,
+    recommendations: recommendations
+      .filter((item): item is Recommendation & { inputType: string; quantity: number; unit: string } =>
+        typeof item.inputType === "string"
+        && typeof item.quantity === "number"
+        && Number.isFinite(item.quantity)
+        && typeof item.unit === "string",
+      )
+      .map((item) => ({ inputType: item.inputType, quantity: item.quantity, unit: item.unit })),
+  });
+  const priorityParameterCodes = ["P", "K", "B"].filter((code) => props.interpretationRows.some((row) => row.parameterCode === code));
+  const diagnosticCodes = [...priorityParameterCodes, ...summaries.map((item) => item.code).filter((code) => !priorityParameterCodes.includes(code))].slice(0, 5);
+  const primaryCommercialRow = commercial?.rows.length === 1 ? commercial.rows[0] : null;
+  const primaryRecommendation = operationalSummary.rows[0] ?? null;
+  const yieldGoalLabel = props.context.yieldGoal != null
+    ? numberPt(Number(props.context.yieldGoal)) + (props.context.yieldGoalUnit ? " " + props.context.yieldGoalUnit : "")
+    : "Meta não congelada";
+  const totalYieldBags = props.context.yieldGoal != null
+    && areaHa != null
+    && /sc\s*\/\s*ha/i.test(props.context.yieldGoalUnit ?? "")
+      ? Math.round(Number(props.context.yieldGoal) * areaHa)
+      : null;
+  const mapCanUseNdvi = Boolean(
+    props.ndviSnapshot
+    && props.ndviSnapshot.rasterArchived
+    && props.context.fieldId
+    && props.boundary,
+  );
+  const finalOpinion = prescription?.summary
+    || props.narrativeSummary
+    || (operationalSummary.rows.length
+      ? "A recomendação abaixo reúne somente doses sustentadas e congeladas nesta decisão."
+      : "O relatório foi concluído sem promover doses que ainda não possuem evidência suficiente.");
+
   return (
-    <article className="report-doc report-final-pages">
-      <section className="report-a4-page">
-        <ReportPageHeader branding={props.branding} page={1} title="Diagnóstico visual" code={props.context.code} />
-
-        <div className="report-visual-title-row">
-          <div>
-            <span className="report-visual-kicker">RELATÓRIO TÉCNICO DE DECISÃO AGRONÔMICA</span>
-            <h1>{props.context.fieldName || "Talhão"} · {props.context.currentCrop || "Cultura não informada"}</h1>
-            <p>{props.context.clientName || "Cliente não informado"} · {props.context.propertyName || "Propriedade não informada"}{props.context.municipality ? " · " + props.context.municipality + (props.context.state ? "/" + props.context.state : "") : ""}</p>
+    <article className="concept-report">
+      <section className="concept-report-page concept-cover-page">
+        <div className="concept-brand-row">
+          <div className="concept-partner-brand">
+            {props.branding.logoDataUrl
+              ? <ReportBrand branding={props.branding} />
+              : <><strong>{props.branding.displayName || "Empresa parceira"}</strong><small>SUA MARCA ENTRA AQUI</small></>}
           </div>
-          <div className="report-visual-status-card">
-            <span>Situação</span>
-            <strong>{props.viewingPublished ? "Publicado" : props.currentStatusLabel}</strong>
-            <small>{props.viewingPublished ? "snapshot imutável verificado" : "versão atual / rascunho"}</small>
-          </div>
+          <div className="concept-raiz-brand"><BrandLogo variant="light" /></div>
         </div>
 
-        <div className="report-visual-context-grid">
-          <div><span>Área</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
-          <div><span>Safra</span><strong>{props.context.seasonLabel || "—"}</strong></div>
-          <div><span>Meta produtiva</span><strong>{props.context.yieldGoal != null ? numberPt(Number(props.context.yieldGoal)) + " " + (props.context.yieldGoalUnit || "") : "—"}</strong></div>
-          <div><span>Laboratório</span><strong>{props.context.laboratoryName || "Não identificado"}</strong></div>
-          <div><span>Textura</span><strong>{props.context.soilTexture || "—"}</strong></div>
-          <div><span>Confiabilidade</span><strong>{props.confidence ? Math.round(props.confidence.score) + "/100 · " + props.confidence.level : props.context.confidenceScore != null ? Math.round(Number(props.context.confidenceScore)) + "/100" : "—"}</strong></div>
+        <div className="concept-cover-title">
+          <span>RELATÓRIO DE DECISÃO / {(props.context.currentCrop || "CULTURA").toUpperCase()} {props.context.seasonLabel || ""}</span>
+          <h1>Inteligência que vira ação.</h1>
+          <p>{props.context.fieldName || "Talhão"} <i>•</i> {props.context.clientName || "Cliente"} <i>•</i> {areaHa != null ? numberPt(areaHa) + " ha" : "área não informada"}</p>
         </div>
 
-        <div className="report-diagnostic-layout">
-          <section className="report-visual-panel report-map-panel">
-            <div className="report-visual-section-head">
-              <div><span>AMOSTRAGEM</span><h2>Talhão e pontos</h2></div>
-              <strong>{props.points.length} pontos</strong>
-            </div>
-            <SpatialOverview boundary={props.boundary} points={props.points} />
-            <div className="report-sampling-stats">
-              <span><strong>{collectedCount}</strong> coletados</span>
-              <span><strong>{observedCount}</strong> observados</span>
-              <span><strong>{auditedCount}</strong> fonte auditada</span>
-              <span><strong>{plannedCount}</strong> planejados</span>
-            </div>
-            <p className="report-visual-note">Profundidade: {depthLabels.length ? depthLabels.join(" · ") : "não informada"}. O mapa usa as coordenadas efetivas registradas; nenhum ponto é deslocado para caber no talhão.</p>
-          </section>
-
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head">
-              <div><span>DIAGNÓSTICO</span><h2>Indicadores e nutrientes</h2></div>
-              <strong>{summaries.length} parâmetros</strong>
-            </div>
-            <div className="report-parameter-grid">
-              {summaries.map((item) => (
-                <div className={"report-parameter-card " + (item.pendingCode ? "pending" : "")} key={item.code}>
-                  <div className="report-parameter-head"><strong>{item.code}</strong><small>{item.sampleCount || "—"} ponto(s)</small></div>
-                  <b>{item.value}</b>
-                  <span>{item.classification ? <ClassificationBadge label={item.classification} /> : item.pendingCode || (item.auxiliary ? "Dado auxiliar" : "Sem faixa homologada")}</span>
-                  {item.classification && item.pendingCode && <small className="report-parameter-warning">{item.pendingCode}</small>}
-                  <small>{item.method}</small>
-                  {item.pendingReason && <em title={item.pendingReason}>{item.pendingReason}</em>}
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section className="report-a4-page">
-        <ReportPageHeader branding={props.branding} page={2} title="Recomendação e manejo" code={props.context.code} />
-
-        <div className="report-page-heading">
-          <span>PLANO DE MANEJO</span>
-          <h2>O que fazer, quanto aplicar e por quê</h2>
-          <p>{prescription?.summary || "A recomendação numérica só aparece quando existe evidência suficiente e revisão compatível com o estado atual da análise."}</p>
-        </div>
-
-        <div className="report-target-strip">
-          <div><span>Cultura</span><strong>{props.context.currentCrop || "—"}</strong></div>
-          <div><span>Meta produtiva</span><strong>{props.context.yieldGoal != null ? numberPt(Number(props.context.yieldGoal)) + " " + (props.context.yieldGoalUnit || "") : "—"}</strong></div>
-          <div><span>Sistema</span><strong>{props.context.managementSystem || "—"}</strong></div>
-          <div><span>Status técnico</span><strong>{props.prescriptionStatus === "APPROVED" ? "Recomendação aprovada" : props.prescriptionStatus === "PENDING_REVIEW" ? "Em revisão" : "Sem recomendação aprovada"}</strong></div>
-        </div>
-
-        {fertilityPlan && (
-          <section className="report-visual-panel report-fertility-horizon">
-            <div className="report-visual-section-head">
-              <div><span>HORIZONTE DE FERTILIDADE</span><h2>Plano até {fertilityPlan.horizonYears} anos</h2></div>
-              <strong>{fertilityPlan.targetYieldDisplay ?? "meta não informada"}</strong>
-            </div>
-            <p className="report-visual-note">{fertilityPlan.summary}</p>
-            <div className="report-recommendation-table-wrap">
-              <table className="report-recommendation-table">
-                <thead><tr><th>Etapa</th><th>P₂O₅</th><th>K₂O</th><th>Situação</th><th>Decisão</th></tr></thead>
-                <tbody>
-                  {fertilityPlan.stages.map((stage) => (
-                    <tr key={stage.kind + "-" + String(stage.cultivationOrder ?? "")}>
-                      <td><strong>{stage.label}</strong></td>
-                      <td>{stage.p2o5KgPerHa != null ? numberPt(stage.p2o5KgPerHa) + " kg/ha" : "Recalcular"}</td>
-                      <td>{stage.k2oKgPerHa != null ? numberPt(stage.k2oKgPerHa) + " kg/ha" : "Recalcular"}</td>
-                      <td>{stage.status === "NUMERIC_READY" ? "Dose disponível" : stage.status === "REANALYSIS_REQUIRED" ? "Nova análise obrigatória" : "Parcial"}</td>
-                      <td>{stage.rationale}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="report-visual-note">
-              Reanálise: após {fertilityPlan.reanalysisAfterCultivations} cultivos. A meta é objetivo de manejo; não é previsão nem garantia de produtividade.
-            </p>
-          </section>
-        )}
-
-        <section className="report-visual-panel report-recommendation-panel">
-          <div className="report-visual-section-head">
-            <div><span>RECOMENDAÇÕES</span><h2>Necessidade agronômica</h2></div>
-            <strong>{recommendations.length} item(ns)</strong>
-          </div>
-          {recommendations.length ? (
-            <div className="report-recommendation-table-wrap">
-              <table className="report-recommendation-table">
-                <thead><tr><th>Insumo/nutriente</th><th>Dose</th><th>Total do talhão</th><th>Época / via</th><th>Justificativa</th></tr></thead>
-                <tbody>
-                  {recommendations.map((item, index) => {
-                    const quantity = typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : null;
-                    const operational = producerRow(item, areaHa);
-                    const timing = firstText(item, ["timing", "applicationTiming", "stage", "when", "period"]);
-                    const via = firstText(item, ["via", "applicationMethod", "placement"]);
-                    return (
-                      <tr key={(item.inputType || "item") + "-" + index}>
-                        <td><strong>{operational?.label || item.inputType || "Não identificado"}</strong></td>
-                        <td>{quantity != null ? numberPt(quantity) + " " + (item.unit || "") : "INSUFFICIENT_EVIDENCE"}</td>
-                        <td>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit : "—"}</td>
-                        <td>{[timing, via].filter(Boolean).join(" · ") || "Não congelado na recomendação"}</td>
-                        <td>{item.rationale || "Sem justificativa textual adicional."}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="report-evidence-warning"><Icon name="shield" size={14}/><span><strong>Sem dose inventada.</strong> Nenhuma dose numérica sustentada está disponível nesta versão. A ausência fica explícita e não bloqueia o restante do parecer.</span></div>
-          )}
-        </section>
-
-        {soilComplementActions.length > 0 && (
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head">
-              <div><span>MICRONUTRIENTES E MATÉRIA ORGÂNICA</span><h2>Complementos e manutenção</h2></div>
-            </div>
-            <div className="report-commercial-rows">
-              {soilComplementActions.map((item) => (
-                <div key={item.parameterCode}>
-                  <strong>{item.label}</strong>
-                  <span>{item.classifications.length ? item.classifications.join(" · ") : "Não avaliado"}</span>
-                  <span>{item.action}</span>
-                  <span>{item.numericDoseAllowed ? "Dose automática disponível" : "Sem dose automática genérica"}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {agroclimateSnapshot && (
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head">
-              <div><span>CLIMA OFICIAL CONGELADO</span><h2>INMET · CPTEC/INPE · ZARC</h2></div>
-              <strong>{agroclimateSnapshot.status === "READY" ? "Completo" : agroclimateSnapshot.status === "PARTIAL" ? "Parcial" : "Indisponível"}</strong>
-            </div>
-            <div className="report-commercial-rows">
-              <div>
-                <strong>INMET</strong>
-                <span>{agroclimateSnapshot.observed.status}</span>
-                <span>{agroclimateSnapshot.observed.station ? agroclimateSnapshot.observed.station.name + " · " + numberPt(agroclimateSnapshot.observed.station.distanceKm, 1) + " km do talhão" : "Estação aplicável não consolidada"}</span>
-                <span>{agroclimateSnapshot.observed.observedDateUtc ? "Observação: " + agroclimateSnapshot.observed.observedDateUtc : "Sem data observada"}</span>
-              </div>
-              <div>
-                <strong>CPTEC/INPE</strong>
-                <span>{agroclimateSnapshot.forecast.status}</span>
-                <span>Previsão de curto prazo · até 7 dias</span>
-                <span>{agroclimateSnapshot.forecast.retrievedAt ? "Coletado: " + agroclimateSnapshot.forecast.retrievedAt : "Sem coleta disponível"}</span>
-              </div>
-              <div>
-                <strong>ZARC</strong>
-                <span>{agroclimateSnapshot.zarc.status}</span>
-                <span>{agroclimateSnapshot.zarc.resource?.name || "Janela oficial não consolidada para esta safra"}</span>
-                <span>Zoneamento de risco de plantio; não é previsão meteorológica.</span>
-              </div>
-            </div>
-            {agroclimateSnapshot.observed.summaries.length > 0 && (
-              <>
-                <p className="report-visual-note"><strong>Observação regional:</strong></p>
-                <div className="report-sampling-stats">
-                  {agroclimateSnapshot.observed.summaries.map((item) => (
-                    <span key={"obs-" + item.metric}><strong>{item.min === item.max ? numberPt(item.min, 1) : numberPt(item.min, 1) + "–" + numberPt(item.max, 1)}</strong> {item.unit} · {item.label}</span>
-                  ))}
-                </div>
-              </>
-            )}
-            {agroclimateSnapshot.forecast.summaries.length > 0 && (
-              <>
-                <p className="report-visual-note"><strong>Faixa prevista no período:</strong></p>
-                <div className="report-sampling-stats">
-                  {agroclimateSnapshot.forecast.summaries.map((item) => (
-                    <span key={"fc-" + item.metric}><strong>{item.min === item.max ? numberPt(item.min, 1) : numberPt(item.min, 1) + "–" + numberPt(item.max, 1)}</strong> {item.unit} · {item.label}</span>
-                  ))}
-                </div>
-              </>
-            )}
-            <p className="report-visual-note">
-              Coleta congelada em {agroclimateSnapshot.collectedAt}. Contexto climático oficial é evidência de risco e operação; não altera automaticamente P, K, S ou calcário.
-            </p>
-          </section>
-        )}
-
-        {(climateContext?.status !== "MISSING" || biologicalContext?.hasAnyBiology) && (
-          <div className="report-management-grid">
-            {climateContext && climateContext.status !== "MISSING" && (
-              <section className="report-visual-panel">
-                <div className="report-visual-section-head"><div><span>CLIMA</span><h2>Contexto agroclimático informado</h2></div></div>
-                <p className="report-visual-note">
-                  {climateContext.status === "PROVIDED"
-                    ? climateContext.notes || "Contexto climático marcado como fornecido, sem observação textual adicional."
-                    : "Contexto climático declarado como indisponível nesta análise."}
-                </p>
-                <small>Este bloco reproduz o contexto congelado na análise. Não altera automaticamente dose de fertilizante ou corretivo.</small>
-              </section>
-            )}
-            {biologicalContext?.hasAnyBiology && (
-              <section className="report-visual-panel">
-                <div className="report-visual-section-head"><div><span>BIOLOGIA DO SOLO</span><h2>Evidência biológica registrada</h2></div></div>
-                <p className="report-visual-note">{biologicalContext.summary || "Há evidência biológica registrada."}</p>
-                <div className="report-commercial-rows">
-                  <div><strong>BioAS</strong><span>{biologicalContext.hasBioAsEvidence ? (biologicalContext.officialBioAsInterpretationAvailable ? "Interpretação laboratorial preservada" : "Evidência disponível; interpretação automática não autorizada") : "Não informado"}</span></div>
-                  <div><strong>Microbiologia</strong><span>{biologicalContext.hasMicrobiologyEvidence ? biologicalContext.microbiologyObservationCount + " observação(ões)" : "Não informada"}</span></div>
-                </div>
-                <small>Biologia isolada não gera crédito automático de N/P/K/S nem redução de dose.</small>
-              </section>
-            )}
-          </div>
-        )}
-
-        {applicationGuidance && applicationGuidance.status !== "NOT_APPLICABLE" && (
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head">
-              <div><span>APLICAÇÃO E POSICIONAMENTO</span><h2>Aplicar tudo de uma vez?</h2></div>
-              <strong>{applicationGuidance.status === "PLACEMENT_REVIEW_REQUIRED" ? "Rever posicionamento" : "Dentro do limite-base"}</strong>
-            </div>
-            <p className="report-visual-note">{applicationGuidance.guidance}</p>
-            <p className="report-visual-note"><strong>Custo-benefício:</strong> {applicationGuidance.costBenefitNote}</p>
-          </section>
-        )}
-
-        <div className="report-management-grid">
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head"><div><span>PRIORIDADES</span><h2>Manejo</h2></div></div>
-            {management.length ? <ol className="report-priority-list">{management.map((item, index) => <li key={index}><b>{index + 1}</b><span>{item}</span></li>)}</ol> : <p className="report-visual-note">Nenhuma prática adicional foi congelada nesta recomendação.</p>}
-          </section>
-
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head"><div><span>PRODUTO / CUSTO</span><h2>Cenário comercial congelado</h2></div></div>
-            {commercial ? (
-              <>
-                <div className="report-commercial-rows">
-                  {commercial.rows.map((row, index) => (
-                    <div key={row.productName + index}>
-                      <strong>{row.productName}</strong>
-                      <span>{numberPt(row.doseQuantity)} {row.doseUnit}</span>
-                      <span>Total: {numberPt(row.totalQuantity)} {row.totalUnit}</span>
-                      <span>{row.pricePerTon != null ? "Preço congelado: " + row.pricePerTon.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "/t" : "Preço não congelado"}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="report-commercial-total">
-                  <span>Custo/ha</span><strong>{commercial.costPerHa != null ? commercial.costPerHa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong>
-                  <span>Total</span><strong>{commercial.totalCost != null ? commercial.totalCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong>
-                </div>
-              </>
+        <div className="concept-map-shell">
+          <div className="concept-map-frame">
+            {mapCanUseNdvi ? (
+              <PublishedNdviMap
+                fieldId={props.context.fieldId!}
+                capturedAt={props.ndviSnapshot!.capturedAt}
+                boundary={props.boundary as any}
+                points={props.points}
+                height={390}
+                showLegend={false}
+              />
             ) : (
-              <p className="report-visual-note">Produto comercial e custo não aparecem aqui porque não existe cenário comercial congelado no snapshot oficial desta versão.</p>
+              <SpatialOverview boundary={props.boundary} points={props.points} />
             )}
-          </section>
+            {props.ndviSnapshot && (
+              <>
+                <span className="concept-map-date">NDVI / {props.ndviSnapshot.capturedAt.slice(0, 10).split("-").reverse().join(".")}</span>
+                <span className="concept-map-ndvi"><small>VIGOR MÉDIO</small><strong>{numberPt(props.ndviSnapshot.meanNdvi, 2)}</strong></span>
+              </>
+            )}
+          </div>
+          <div className="concept-stat-grid">
+            <div><span>ÁREA ANALISADA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong><small>{props.context.fieldName || "Talhão"}</small></div>
+            <div><span>AMOSTRAGEM</span><strong>{props.points.length} pontos</strong><small>{collectedCount ? collectedCount + " coletados" : "Coletas do snapshot"}</small></div>
+            <div><span>REFERÊNCIA</span><strong>{yieldGoalLabel}</strong><small>Meta usada no planejamento</small></div>
+          </div>
         </div>
 
-        {missingInformation.length > 0 && (
-          <section className="report-evidence-strip">
-            <strong>Limites preservados</strong>
-            <span>{missingInformation.join(" · ")}</span>
-          </section>
-        )}
+        <div className="concept-decision-hero">
+          <span>DECISÃO JÁ TRADUZIDA {primaryCommercialRow ? "EM PRODUTO" : "EM NECESSIDADE AGRONÔMICA"}</span>
+          {primaryCommercialRow ? (
+            <>
+              <div className="concept-decision-main"><strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit}</strong><em>de {primaryCommercialRow.productName}</em></div>
+              <b>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit} para toda a área</b>
+              <small>Produto, dose e total congelados junto com esta publicação.</small>
+            </>
+          ) : primaryRecommendation ? (
+            <>
+              <div className="concept-decision-main"><strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit}</strong><em>de {primaryRecommendation.label}</em></div>
+              <b>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit + " equivalentes na área" : "Dose aprovada por hectare"}</b>
+              <small>Produto comercial ainda não congelado. A RAIZ não converte nutriente em fertilizante sem fonte definida.</small>
+            </>
+          ) : (
+            <>
+              <div className="concept-decision-main"><strong>Sem dose uniforme</strong></div>
+              <small>A evidência disponível não sustentou uma quantidade geral para o talhão.</small>
+            </>
+          )}
+        </div>
+
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL • DECISÃO CONGELADA</span><b>1 / 5</b></footer>
       </section>
 
-      <section className="report-a4-page">
-        <ReportPageHeader branding={props.branding} page={3} title="Fechamento para o produtor" code={props.context.code} />
+      <section className="concept-report-page">
+        <div className="concept-section-header"><BrandLogo variant="light" /><span>01 / O SOLO E A RECOMENDAÇÃO</span></div>
+        <div className="concept-page-heading"><span>DIAGNÓSTICO VISUAL</span><h2>O solo mostra o caminho.</h2></div>
 
-        <div className="report-page-heading producer">
-          <span>RESUMO FINAL</span>
-          <h2>O que importa para executar no talhão</h2>
-          <p>{producerSummary}</p>
-        </div>
-
-        <section className="report-producer-action-card">
-          <div className="report-visual-section-head">
-            <div><span>QUANTIDADES</span><h2>Resumo de aplicação</h2></div>
-            <strong>{areaHa != null ? numberPt(areaHa) + " ha" : "área não informada"}</strong>
-          </div>
-          {recommendations.length ? (
-            <div className="report-producer-actions">
-              {recommendations.map((item, index) => {
-                const quantity = typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : null;
-                const operational = producerRow(item, areaHa);
-                return (
-                  <div key={(item.inputType || "item") + index}>
-                    <span>{operational?.label || item.inputType || "Insumo"}</span>
-                    <strong>{quantity != null ? numberPt(quantity) + " " + (item.unit || "") : "Sem dose sustentada"}</strong>
-                    <small>{operational?.totalQuantity != null && operational.totalUnit ? "Total do talhão: " + numberPt(operational.totalQuantity) + " " + operational.totalUnit : "Total não calculado: unidade não expressa por hectare."}</small>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <div className="report-evidence-warning"><Icon name="warning" size={14}/><span>Não há dose numérica sustentada nesta versão. O parecer permanece emitido com as limitações técnicas registradas.</span></div>}
-        </section>
-
-        <div className="report-closing-grid">
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head"><div><span>ORDEM DE AÇÃO</span><h2>Prioridades</h2></div></div>
-            {management.length ? <ol className="report-priority-list">{management.slice(0, 6).map((item, index) => <li key={index}><b>{index + 1}</b><span>{item}</span></li>)}</ol> : <p className="report-visual-note">Sem prioridades adicionais registradas.</p>}
-          </section>
-
-          <section className="report-visual-panel">
-            <div className="report-visual-section-head"><div><span>PARECER</span><h2>Conclusão técnica curta</h2></div></div>
-            <p className="report-technical-opinion">{producerSummary}</p>
-            {pending.length > 0 && (
-              <div className="report-pending-compact">
-                <strong>Pontos sem evidência suficiente</strong>
-                {pending.map((item) => <span key={item.code}><b>{item.code}</b> · {item.pendingCode}</span>)}
+        <section className="concept-diagnostic-card">
+          <span>LEITURA DOS {props.points.length || "—"} PONTOS</span>
+          {diagnosticCodes.map((code) => {
+            const distribution = distributionForParameter(props.interpretationRows, code);
+            const total = distribution.reduce((sum, item) => sum + item.count, 0);
+            return (
+              <div className="concept-diagnostic-row" key={code}>
+                <div className="concept-diagnostic-row-head">
+                  <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code}</strong>
+                  <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
+                </div>
+                <div className="concept-distribution-bar">
+                  {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
+                </div>
               </div>
-            )}
+            );
+          })}
+          <div className="concept-legend"><span className="low">BAIXO</span><span className="medium">MÉDIO</span><span className="high">ALTO</span><span className="very-high">MUITO ALTO</span></div>
+        </section>
+
+        <div className="concept-two-card-grid">
+          {recommendations.slice(0, 2).map((item, index) => {
+            const operational = producerRow(item, areaHa);
+            return (
+              <section className="concept-recommendation-card" key={(item.inputType || "rec") + index}>
+                <span>0{index + 1} &nbsp; {recommendationShortLabel(item.inputType).toUpperCase()} / APROVADO</span>
+                <h3>{typeof item.quantity === "number" ? numberPt(item.quantity) : "—"} {item.unit || ""} {item.inputType ? "de " + item.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") : ""}</h3>
+                <p>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit + " equivalentes no talhão." : "Dose sustentada pelo motor para esta decisão."}</p>
+                <small>{item.rationale || "Justificativa técnica preservada no snapshot."}</small>
+              </section>
+            );
+          })}
+        </div>
+
+        <div className="concept-warning-box">
+          <strong>VALIDAR ANTES DE APLICAR</strong>
+          <span>{missingInformation.length ? missingInformation.join(" · ") : "As doses acima estão sustentadas pela evidência congelada. Conferir produto, teor e posicionamento antes da execução."}</span>
+        </div>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / 5</b></footer>
+      </section>
+
+      <section className="concept-report-page">
+        <div className="concept-section-header"><BrandLogo variant="light" /><span>02 / PLANO DE MANEJO</span></div>
+        <div className="concept-page-heading"><span>O QUE FAZER</span><h2>Quanto aplicar e por quê.</h2></div>
+
+        <div className="concept-action-list">
+          {operationalSummary.rows.length ? operationalSummary.rows.map((row, index) => {
+            const source = recommendations.find((item) => item.inputType === row.inputType);
+            return (
+              <article key={row.inputType + index}>
+                <b>{String(index + 1).padStart(2, "0")}</b>
+                <div><span>{row.label}</span><strong>{numberPt(row.doseQuantity)} {row.doseUnit}</strong><small>{source?.rationale || "Dose aprovada e congelada."}</small></div>
+                <em>{row.totalQuantity != null && row.totalUnit ? numberPt(row.totalQuantity) + " " + row.totalUnit + " na área" : "por hectare"}</em>
+              </article>
+            );
+          }) : <div className="concept-empty-state">Nenhuma dose uniforme foi liberada para esta área.</div>}
+        </div>
+
+        <div className="concept-management-grid">
+          <section>
+            <span>APLICAÇÃO / POSICIONAMENTO</span>
+            <h3>{applicationGuidance?.status === "PLACEMENT_REVIEW_REQUIRED" ? "Rever antes de executar" : "Orientação operacional"}</h3>
+            <p>{applicationGuidance?.guidance || "A recomendação não contém orientação adicional de posicionamento nesta versão."}</p>
+            {applicationGuidance?.costBenefitNote && <small>{applicationGuidance.costBenefitNote}</small>}
+          </section>
+          <section>
+            <span>PRODUTO COMERCIAL</span>
+            <h3>{commercial ? "Cenário congelado" : "Ainda não definido"}</h3>
+            {commercial ? commercial.rows.map((row, index) => (
+              <p key={row.productName + index}><strong>{row.productName}</strong> · {numberPt(row.doseQuantity, 4)} {row.doseUnit} · total {numberPt(row.totalQuantity, 4)} {row.totalUnit}</p>
+            )) : <p>A necessidade agronômica está separada do peso do fertilizante. Selecione e congele um cenário comercial para o produto aparecer aqui.</p>}
           </section>
         </div>
 
-        <section className="report-traceability">
-          <div className="report-visual-section-head"><div><span>RASTREABILIDADE</span><h2>Origem da decisão</h2></div></div>
-          <div className="report-trace-grid">
-            <div><span>Documento</span><strong>{props.viewingPublished ? "Snapshot oficial imutável" : "Versão atual / rascunho"}</strong></div>
-            <div><span>Revisão da interpretação</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
-            <div><span>Base técnica</span><strong>{props.technicalBase || "—"}</strong></div>
-            <div><span>Responsável técnico</span><strong>{props.responsibleName || "—"}</strong></div>
-            <div><span>Gerado/publicado em</span><strong>{props.publishedAt || props.generatedAt}</strong></div>
-            <div><span>Integridade</span><strong>{props.viewingPublished ? "Hash verificado" + (props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : "") : "Ainda não publicado"}</strong></div>
-          </div>
-          {sourceLabels.length > 0 && <p className="report-source-line"><strong>Fontes técnicas congeladas:</strong> {sourceLabels.length} fonte(s) registrada(s) no snapshot oficial.</p>}
-          {props.viewingPublished && props.publishedByName && <p className="report-source-line"><strong>Publicado por:</strong> {props.publishedByName}</p>}
+        {commercial?.hasFrozenCost && (
+          <div className="concept-cost-strip"><span>CUSTO CONGELADO</span><strong>{commercial.costPerHa!.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}/ha</strong><b>{commercial.totalCost!.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})} na área</b></div>
+        )}
+
+        <section className="concept-priorities">
+          <span>ORDEM DE AÇÃO</span>
+          <ol>{management.slice(0, 6).map((item, index) => <li key={index}><b>{index + 1}</b><p>{item}</p></li>)}</ol>
+        </section>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
+      </section>
+
+      <section className="concept-report-page">
+        <div className="concept-section-header"><BrandLogo variant="light" /><span>03 / PLANEJAMENTO DA SAFRA</span></div>
+        <div className="concept-page-heading"><span>OLHAR PARA FRENTE</span><h2>Decisão hoje. Solo acompanhado amanhã.</h2></div>
+
+        {fertilityPlan ? (
+          <section className="concept-fertility-card">
+            <div className="concept-fertility-head"><span>HORIZONTE DE FERTILIDADE</span><strong>{fertilityPlan.targetYieldDisplay || yieldGoalLabel}</strong></div>
+            {fertilityPlan.stages.map((stage) => (
+              <div className="concept-fertility-row" key={stage.kind + String(stage.cultivationOrder ?? "")}>
+                <div><strong>{stage.label}</strong><small>{stage.rationale}</small></div>
+                <b>{stage.status === "REANALYSIS_REQUIRED" ? "NOVA ANÁLISE" : [stage.p2o5KgPerHa != null ? "P₂O₅ " + numberPt(stage.p2o5KgPerHa) : null, stage.k2oKgPerHa != null ? "K₂O " + numberPt(stage.k2oKgPerHa) : null].filter(Boolean).join(" · ") || "PARCIAL"}</b>
+              </div>
+            ))}
+            <small>Reanálise após {fertilityPlan.reanalysisAfterCultivations} cultivo(s). Meta produtiva não é garantia de rendimento.</small>
+          </section>
+        ) : <div className="concept-empty-state">Plano plurianual não congelado nesta decisão.</div>}
+
+        <div className="concept-three-card-grid">
+          <section><span>MICRONUTRIENTES</span><h3>{soilComplementActions.length ? "Acompanhar pontos de atenção" : "Sem complemento geral automático"}</h3><p>{soilComplementActions.slice(0,3).map((item) => item.label + ": " + item.action).join(" · ") || "A RAIZ não inventou dose genérica para B, Zn, Cu ou Mn."}</p></section>
+          <section><span>BIOLOGIA DO SOLO</span><h3>{biologicalContext?.hasAnyBiology ? "Evidência registrada" : "Sem evidência congelada"}</h3><p>{biologicalContext?.summary || "Biologia isolada não reduz automaticamente N, P, K ou S."}</p></section>
+          <section><span>CLIMA / RISCO</span><h3>{agroclimateSnapshot?.status === "READY" ? "Contexto oficial completo" : agroclimateSnapshot?.status === "PARTIAL" ? "Contexto parcial" : "Sem pacote oficial completo"}</h3><p>{climateContext?.status === "PROVIDED" && climateContext.notes ? climateContext.notes : "Clima contextualiza risco e operação; não altera sozinho as doses determinísticas."}</p></section>
+        </div>
+
+        <div className="concept-trace-strip">
+          <div><span>BASE TÉCNICA</span><strong>{props.technicalBase || "Motor RAIZ versionado"}</strong></div>
+          <div><span>REVISÃO</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
+          <div><span>INTEGRIDADE</span><strong>{props.viewingPublished ? "Snapshot verificado" : "Versão atual"}</strong></div>
+        </div>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>4 / 5</b></footer>
+      </section>
+
+      <section className="concept-report-page concept-final-page">
+        <div className="concept-section-header"><BrandLogo variant="light" /><span>04 / PARECER AO PRODUTOR</span></div>
+        <div className="concept-page-heading"><span>O QUE FAZER NESTA SAFRA</span><h2>Uma orientação sem complicação.</h2></div>
+
+        <section className="concept-final-opinion">
+          <span>PARECER FINAL</span>
+          <p>{finalOpinion}</p>
+          {operationalSummary.rows.length > 0 && (
+            <div className="concept-final-dose-lines">
+              {operationalSummary.rows.map((row) => <strong key={row.inputType}>{row.label}: {numberPt(row.doseQuantity)} {row.doseUnit}{row.totalQuantity != null && row.totalUnit ? " · " + numberPt(row.totalQuantity) + " " + row.totalUnit + " equivalentes na área" : ""}</strong>)}
+            </div>
+          )}
+          {commercial && <p className="concept-final-commercial">Produto(s) comercial(is): {commercial.rows.map((row) => row.productName + " " + numberPt(row.doseQuantity,4) + " " + row.doseUnit).join(" · ")}.</p>}
         </section>
 
-        <div className="report-final-signature">
+        <section className="concept-yield-banner">
+          <span>META PRODUTIVA USADA NO PLANEJAMENTO</span>
+          <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas</b>}</div>
+          <small>Meta de cálculo e planejamento. Clima, cultivar, sanidade e manejo afetam a colheita; não é ganho garantido pela adubação.</small>
+        </section>
+
+        <section className="concept-identification-card">
+          <span>IDENTIFICAÇÃO / EMPRESA PARCEIRA</span>
+          <div className="concept-identification-grid">
+            <p><strong>Cliente:</strong> {props.context.clientName || "—"}</p>
+            <p><strong>Propriedade:</strong> {props.context.propertyName || "—"}</p>
+            <p><strong>Município / UF:</strong> {[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "—"}</p>
+            <p><strong>Empresa parceira:</strong> {props.branding.displayName || "—"}</p>
+            <p><strong>RAIZ Digital:</strong> motor agronômico e rastreabilidade</p>
+            <p><strong>Publicado em:</strong> {props.publishedAt || props.generatedAt}</p>
+          </div>
           <ReportSignature branding={props.branding} />
+        </section>
+
+        <div className="concept-final-integrity">
+          <Icon name="shield" size={14}/>
+          <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : "Rascunho técnico"}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
         </div>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>5 / 5</b></footer>
       </section>
     </article>
   );
