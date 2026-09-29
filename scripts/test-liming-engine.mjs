@@ -376,7 +376,7 @@ assert.equal(spatialEvidence.automaticUniformDoseAllowed, false);
 assert.equal(spatialEvidence.uniformDoseTonHaPrnt100, null);
 assert.equal(spatialEvidence.automaticGeneralDoseAllowed, true);
 assert.equal(spatialEvidence.operationalGeneralDoseTonHaPrnt100, 4.8);
-assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_WEIGHT_SAMPLE_MEAN");
+assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_AREA_GRID_MEAN");
 assert.deepEqual(spatialEvidence.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
 assert.equal(spatialEvidence.applicationMode, "INCORPORATED");
 assert.deepEqual(
