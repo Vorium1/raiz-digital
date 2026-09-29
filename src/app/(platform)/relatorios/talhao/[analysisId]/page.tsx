@@ -270,6 +270,7 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           publishedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : null}
           publishedHashPrefix={viewingPublished ? publishedInfo?.report.sha256.slice(0, 12) ?? null : null}
           commercialPlanSnapshot={viewingPublished ? publishedSnapshotV3?.commercialPlanSnapshot ?? null : null}
+          ndviSnapshot={viewingPublished ? publishedSnapshotV3?.ndviSnapshot ?? null : null}
         />
       </div>
     </>
