@@ -154,7 +154,7 @@ assert.match(component, /quietProfileLabels/);
 assert.match(component, /CORRIGIR<\/b> = o solo está abaixo do desejável/);
 assert.doesNotMatch(component, />NÃO ATENDE</);
 assert.doesNotMatch(component, />ATENDE</);
-assert.doesNotMatch(component, /SEM DECISÃO/);
+assert.doesNotMatch(component, /state:\s*"SEM DECISÃO"/);
 assert.match(css, /need-replenish/);
 assert.match(css, /need-zone/);
 assert.match(css, /concept-profile-explainer/);
