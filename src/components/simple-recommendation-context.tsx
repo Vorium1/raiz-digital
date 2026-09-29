@@ -5,6 +5,12 @@ import { Icon } from "@/components/icon";
 import { IrrigationApplicationsEditor } from "@/components/irrigation-applications-editor";
 import { parseIrrigationApplications, type IrrigationApplication } from "@/domain/irrigation-applications";
 import { MANAGEMENT_SYSTEM_OPTIONS, normalizeManagementSystem } from "@/domain/management-system";
+import {
+  EMPTY_LIMING_MANAGEMENT_CONTEXT,
+  EMPTY_LIMING_RESTRICTION_ASSESSMENT,
+  parseLimingManagementContext,
+  type LimingManagementContext,
+} from "@/domain/liming-management-context";
 import { EMPTY_WHEAT_BUYER_QUALITY_CONTEXT, parseWheatBuyerQualityContext, type WheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 import { displayYieldFromTonPerHa, manualYieldToTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
@@ -34,7 +40,7 @@ export function SimpleRecommendationContext({
   const needsYield = blockers.some((item) => item.startsWith("YIELD_GOAL") || item.startsWith("YIELD_UNIT"));
   const needsOrder = blockers.some((item) => item.startsWith("POST_ANALYSIS_CULTIVATION_ORDER"));
   const canonicalManagement = normalizeManagementSystem(managementSystem);
-  const showOptionalSoilPrep = cropProfileCode === "SOJA" && canonicalManagement === "OTHER";
+  const showOptionalSoilPrep = cropProfileCode === "SOJA";
   const yieldConfig = useMemo(() => yieldGoalPresetConfig(cropProfileCode), [cropProfileCode]);
 
   const [goalChoice, setGoalChoice] = useState("");
@@ -61,12 +67,17 @@ export function SimpleRecommendationContext({
   const [initialWheatBuyerQualityContext, setInitialWheatBuyerQualityContext] = useState<WheatBuyerQualityContext>({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
   const [initialWheatBuyerQualityContextRaw, setInitialWheatBuyerQualityContextRaw] = useState<unknown>(null);
   const [wheatBuyerReadError, setWheatBuyerReadError] = useState("");
+  const [limingContext, setLimingContext] = useState<LimingManagementContext>({ ...EMPTY_LIMING_MANAGEMENT_CONTEXT });
+  const [initialLimingContext, setInitialLimingContext] = useState<LimingManagementContext>({ ...EMPTY_LIMING_MANAGEMENT_CONTEXT });
+  const [initialLimingContextRaw, setInitialLimingContextRaw] = useState<unknown>(null);
+  const [limingContextReadError, setLimingContextReadError] = useState("");
 
   useEffect(() => {
     let alive = true;
     setPlannedLoaded(false);
     setIrrigationReadError("");
     setWheatBuyerReadError("");
+    setLimingContextReadError("");
     fetch(`/api/analyses/${analysisId}/planned-management`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
@@ -92,6 +103,17 @@ export function SimpleRecommendationContext({
           setWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
           setInitialWheatBuyerQualityContext({ ...EMPTY_WHEAT_BUYER_QUALITY_CONTEXT });
           setInitialWheatBuyerQualityContextRaw(planning.wheatBuyerQualityContext ?? null);
+        }
+        try {
+          const parsedLiming = parseLimingManagementContext(planning.limingContext);
+          setLimingContext(parsedLiming);
+          setInitialLimingContext(parsedLiming);
+          setInitialLimingContextRaw(planning.limingContext ?? null);
+        } catch {
+          setLimingContextReadError("Há um contexto antigo/inválido de calagem. Ele foi preservado; corrija este bloco antes de usá-lo numa decisão de calcário.");
+          setLimingContext({ ...EMPTY_LIMING_MANAGEMENT_CONTEXT });
+          setInitialLimingContext({ ...EMPTY_LIMING_MANAGEMENT_CONTEXT });
+          setInitialLimingContextRaw(planning.limingContext ?? null);
         }
         const notes = String(planning.plannedManagementNotes ?? "");
         const horizon = planning.fertilityPlanningHorizonYears == null ? "" : String(planning.fertilityPlanningHorizonYears);
@@ -132,8 +154,15 @@ export function SimpleRecommendationContext({
   const irrigationChanged = plannedLoaded && !irrigationReadError && JSON.stringify(irrigationApplications) !== JSON.stringify(parseIrrigationApplications(initialIrrigationApplications));
   const wheatBuyerChanged = plannedLoaded
     && JSON.stringify(wheatBuyerQualityContext) !== JSON.stringify(initialWheatBuyerQualityContext);
-  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged || wheatBuyerChanged;
+  const limingContextChanged = plannedLoaded
+    && !limingContextReadError
+    && JSON.stringify(limingContext) !== JSON.stringify(initialLimingContext);
+  const planningContextChanged = plannedManagementChanged || fertilityHorizonChanged || fertilityCyclePlanChanged || irrigationChanged || wheatBuyerChanged || limingContextChanged;
   const seasonContextChanged = yieldReadyToSave || orderReadyToSave || managementChanged;
+  const effectiveManagement = management || canonicalManagement;
+  const consolidatedManagement = effectiveManagement === "NO_TILL_CONSOLIDATED_UNSPECIFIED"
+    || effectiveManagement === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS"
+    || effectiveManagement === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS";
   const canSave = seasonContextChanged || planningContextChanged;
 
   async function save() {
@@ -160,6 +189,10 @@ export function SimpleRecommendationContext({
           planningPatch.wheatBuyerQualityContext = wheatBuyerQualityContext;
           planningPatch.expectedWheatBuyerQualityContext = initialWheatBuyerQualityContextRaw;
         }
+        if (limingContextChanged) {
+          planningPatch.limingContext = limingContext;
+          planningPatch.expectedLimingContext = initialLimingContextRaw;
+        }
 
         const plannedResponse = await fetch(`/api/analyses/${analysisId}/planned-management`, {
           method: "PATCH",
@@ -178,6 +211,12 @@ export function SimpleRecommendationContext({
           setWheatBuyerQualityContext(savedBuyerContext);
           setInitialWheatBuyerQualityContext(savedBuyerContext);
           setInitialWheatBuyerQualityContextRaw(saved.wheatBuyerQualityContext ?? null);
+        }
+        if (limingContextChanged) {
+          const savedLimingContext = parseLimingManagementContext(saved.limingContext);
+          setLimingContext(savedLimingContext);
+          setInitialLimingContext(savedLimingContext);
+          setInitialLimingContextRaw(saved.limingContext ?? null);
         }
         const savedNotes = String(saved.plannedManagementNotes ?? plannedManagement.trim());
         const savedHorizon = saved.fertilityPlanningHorizonYears == null ? "" : String(saved.fertilityPlanningHorizonYears);
@@ -418,16 +457,88 @@ export function SimpleRecommendationContext({
         )}
 
         {showOptionalSoilPrep && (
-          <label>
-            <span>Sistema de preparo do solo <small>(opcional)</small></span>
-            <select value={management} onChange={(event) => setManagement(event.target.value)}>
-              <option value="">Ainda não definido</option>
-              {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <small>Se ainda não estiver decidido, deixe em branco. O RAIZ mantém o parecer e refina a calagem depois.</small>
-          </label>
+          <>
+            <label>
+              <span>Sistema de preparo do solo <small>(opcional)</small></span>
+              <select value={management} onChange={(event) => setManagement(event.target.value)}>
+                <option value="">Ainda não definido</option>
+                {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <small>Em plantio direto consolidado, escolha “com” ou “sem restrição em 10–20 cm” somente quando isso estiver realmente avaliado. “Ainda não definida” mantém a calagem bloqueada, sem inferência.</small>
+            </label>
+
+            {consolidatedManagement && (
+              <label>
+                <span>Tempo desde a última calagem <small>(opcional)</small></span>
+                <div className="simple-context-input">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={limingContext.yearsSinceLastLiming ?? ""}
+                    disabled={!plannedLoaded || busy || Boolean(limingContextReadError)}
+                    onChange={(event) => setLimingContext((current) => ({
+                      ...current,
+                      yearsSinceLastLiming: event.target.value === "" ? null : Number(event.target.value),
+                    }))}
+                    placeholder="Ex.: 4"
+                  />
+                  <b>anos</b>
+                </div>
+                <small>Não informar é diferente de afirmar que a calagem não foi recente.</small>
+              </label>
+            )}
+
+            {effectiveManagement === "NO_TILL_CONSOLIDATED_UNSPECIFIED" && (
+              <p className="simple-review-help" style={{ gridColumn: "1 / -1" }}>
+                A condição de 10–20 cm ainda não foi classificada. A recomendação de calcário permanece sem dose automática até essa avaliação existir.
+              </p>
+            )}
+
+            {effectiveManagement === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS" && (
+              <div className="narrative-block muted" style={{ gridColumn: "1 / -1" }}>
+                <h4>Avaliação de restrições em 10–20 cm</h4>
+                <p className="report-empty-note">Responda somente o que foi efetivamente avaliado. “Não informado” permanece desconhecido e não é tratado como “não”.</p>
+                <div className="form-grid">
+                  {([
+                    ["yieldBelowLocalAverageEspeciallyInDrought", "Produtividade abaixo da média local, especialmente em seca"],
+                    ["compactionRestrictsRootGrowthAtDepth", "Compactação restringe raízes em profundidade"],
+                    ["phosphorus10To20BelowCritical", "P em 10–20 cm está abaixo do nível crítico"],
+                    ["agronomistConfirmedIncorporationDecision", "Validação profissional confirma a decisão de incorporação"],
+                  ] as const).map(([key, label]) => {
+                    const assessment = limingContext.restrictionAssessment ?? EMPTY_LIMING_RESTRICTION_ASSESSMENT;
+                    const value = assessment[key];
+                    return (
+                      <label key={key}>
+                        <span>{label}</span>
+                        <select
+                          value={value == null ? "" : String(value)}
+                          disabled={!plannedLoaded || busy || Boolean(limingContextReadError)}
+                          onChange={(event) => setLimingContext((current) => ({
+                            ...current,
+                            restrictionAssessment: {
+                              ...(current.restrictionAssessment ?? EMPTY_LIMING_RESTRICTION_ASSESSMENT),
+                              [key]: event.target.value === "" ? null : event.target.value === "true",
+                            },
+                          }))}
+                        >
+                          <option value="">Não informado / não avaliado</option>
+                          <option value="true">Sim</option>
+                          <option value="false">Não</option>
+                        </select>
+                        {key === "agronomistConfirmedIncorporationDecision" && <small>“Sim” exige perfil habilitado para validação profissional; o servidor rejeita confirmação por perfil técnico sem essa permissão.</small>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {limingContextReadError && <p role="status" style={{ gridColumn: "1 / -1" }}>{limingContextReadError}</p>}
+          </>
         )}
       </div>
 
