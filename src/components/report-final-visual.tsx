@@ -394,26 +394,62 @@ export function FinalVisualReport(props: Props) {
           <div className="concept-partner-brand">
             {props.branding.logoDataUrl
               ? <ReportBrand branding={props.branding} />
-              : <><strong>{props.branding.displayName || "Empresa parceira"}</strong><small>SUA MARCA ENTRA AQUI</small></>}
+              : <><strong>{props.branding.displayName || "Empresa parceira"}</strong><small>MARCA DA EMPRESA</small></>}
           </div>
           <div className="concept-raiz-brand"><BrandLogo variant="light" /></div>
         </div>
 
-        <div className="concept-cover-title">
-          <span>RELATÓRIO DE DECISÃO / {(props.context.currentCrop || "CULTURA").toUpperCase()} {props.context.seasonLabel || ""}</span>
-          <h1>Inteligência que vira ação.</h1>
-          <p>{props.context.fieldName || "Talhão"} <i>•</i> {props.context.clientName || "Cliente"} <i>•</i> {areaHa != null ? numberPt(areaHa) + " ha" : "área não informada"}</p>
+        <div className="concept-cover-title concept-cover-title-approved">
+          <span>RELATÓRIO</span>
+          <h1>AGRONÔMICO</h1>
+          <p>Do solo à decisão.</p>
         </div>
 
-        <div className="concept-map-shell">
-          <div className="concept-map-frame">
+        <div className="concept-cover-map">
+          <div className="concept-map-frame concept-map-frame-cover">
             {mapCanUseNdvi ? (
               <PublishedNdviMap
                 fieldId={props.context.fieldId!}
                 capturedAt={props.ndviSnapshot!.capturedAt}
                 boundary={props.boundary as any}
                 points={props.points}
-                height={390}
+                height={470}
+                showLegend={false}
+              />
+            ) : (
+              <SpatialOverview boundary={props.boundary} points={props.points} />
+            )}
+          </div>
+        </div>
+
+        <div className="concept-cover-meta">
+          <div><span>ÁREA</span><strong>{props.context.fieldName || "Talhão"}</strong></div>
+          <div><span>CULTURA / SAFRA</span><strong>{[props.context.currentCrop, props.context.seasonLabel].filter(Boolean).join(" ") || "—"}</strong></div>
+          <div><span>HECTARES</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
+        </div>
+
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / 5</b></footer>
+      </section>
+
+      <section className="concept-report-page">
+        <div className="concept-section-header">
+          <div className="concept-mini-brands">
+            <span>{props.branding.displayName || "Empresa parceira"}</span>
+            <BrandLogo variant="light" />
+          </div>
+          <span>01 / VISÃO GERAL</span>
+        </div>
+        <div className="concept-page-heading concept-page-heading-approved"><span>A ÁREA EM UMA</span><h2>VISÃO</h2></div>
+
+        <div className="concept-map-shell concept-map-shell-overview">
+          <div className="concept-map-frame concept-map-frame-overview">
+            {mapCanUseNdvi ? (
+              <PublishedNdviMap
+                fieldId={props.context.fieldId!}
+                capturedAt={props.ndviSnapshot!.capturedAt}
+                boundary={props.boundary as any}
+                points={props.points}
+                height={430}
                 showLegend={false}
               />
             ) : (
@@ -422,103 +458,109 @@ export function FinalVisualReport(props: Props) {
             {props.ndviSnapshot && (
               <>
                 <span className="concept-map-date">NDVI / {props.ndviSnapshot.capturedAt.slice(0, 10).split("-").reverse().join(".")}</span>
-                <span className="concept-map-ndvi"><small>VIGOR MÉDIO</small><strong>{numberPt(props.ndviSnapshot.meanNdvi, 2)}</strong></span>
+                <span className="concept-map-ndvi"><small>NDVI MÉDIO</small><strong>{numberPt(props.ndviSnapshot.meanNdvi, 2)}</strong></span>
               </>
             )}
           </div>
-          <div className="concept-stat-grid">
-            <div><span>ÁREA ANALISADA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong><small>{props.context.fieldName || "Talhão"}</small></div>
+
+          <div className="concept-stat-grid concept-stat-grid-approved">
+            <div><span>ÁREA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong><small>{props.context.fieldName || "Talhão"}</small></div>
             <div><span>AMOSTRAGEM</span><strong>{props.points.length} pontos</strong><small>{collectedCount ? collectedCount + " coletados" : "Coletas do snapshot"}</small></div>
-            <div><span>REFERÊNCIA</span><strong>{yieldGoalLabel}</strong><small>Meta usada no planejamento</small></div>
+            <div><span>NDVI</span><strong>{props.ndviSnapshot ? numberPt(props.ndviSnapshot.meanNdvi, 2) : "—"}</strong><small>{props.ndviSnapshot ? "Vigor médio congelado" : "Sem NDVI congelado"}</small></div>
           </div>
         </div>
 
-        <div className="concept-decision-hero">
-          <span>DECISÃO JÁ TRADUZIDA {primaryCommercialRow ? "EM PRODUTO" : "EM NECESSIDADE AGRONÔMICA"}</span>
+        <div className="concept-decision-hero concept-decision-hero-approved">
+          <span>DECISÃO EM {commercial ? "PRODUTO" : "NECESSIDADE AGRONÔMICA"}</span>
           {primaryCommercialRow ? (
-            <>
-              <div className="concept-decision-main"><strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit}</strong><em>de {primaryCommercialRow.productName}</em></div>
-              <b>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit} para toda a área</b>
-              <small>Produto, dose e total congelados junto com esta publicação.</small>
-            </>
+            <div className="concept-decision-split">
+              <div><strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit}</strong><small>{primaryCommercialRow.productName}</small></div>
+              <div><strong>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit}</strong><small>Total para a área</small></div>
+            </div>
+          ) : commercial && commercial.rows.length > 1 ? (
+            <div className="concept-decision-split">
+              <div><strong>{commercial.rows.length} produtos</strong><small>Plano comercial congelado</small></div>
+              <div><strong>{commercial.rows.map((row) => row.productName).join(" + ")}</strong><small>Doses detalhadas nas páginas seguintes</small></div>
+            </div>
           ) : primaryRecommendation ? (
-            <>
-              <div className="concept-decision-main"><strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit}</strong><em>de {primaryRecommendation.label}</em></div>
-              <b>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit + " equivalentes na área" : "Dose aprovada por hectare"}</b>
-              <small>Produto comercial ainda não congelado. A RAIZ não converte nutriente em fertilizante sem fonte definida.</small>
-            </>
+            <div className="concept-decision-split">
+              <div><strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit}</strong><small>{primaryRecommendation.label}</small></div>
+              <div><strong>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit : "—"}</strong><small>Equivalente na área</small></div>
+            </div>
           ) : (
-            <>
-              <div className="concept-decision-main"><strong>Sem dose uniforme</strong></div>
-              <small>A evidência disponível não sustentou uma quantidade geral para o talhão.</small>
-            </>
+            <div className="concept-decision-split">
+              <div><strong>Sem dose uniforme</strong><small>A evidência não sustentou uma taxa geral.</small></div>
+              <div><strong>VALIDAR</strong><small>Consulte os bloqueios antes da aplicação.</small></div>
+            </div>
           )}
+          {!commercial && primaryRecommendation && <small className="concept-hero-footnote">Ainda não é peso de fertilizante comercial: produto e teor precisam estar oficialmente definidos.</small>}
         </div>
 
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL • DECISÃO CONGELADA</span><b>1 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / 5</b></footer>
       </section>
 
       <section className="concept-report-page">
-        <div className="concept-section-header"><BrandLogo variant="light" /><span>01 / O SOLO E A RECOMENDAÇÃO</span></div>
-        <div className="concept-page-heading"><span>DIAGNÓSTICO VISUAL</span><h2>O solo mostra o caminho.</h2></div>
+        <div className="concept-section-header">
+          <div className="concept-mini-brands">
+            <span>{props.branding.displayName || "Empresa parceira"}</span>
+            <BrandLogo variant="light" />
+          </div>
+          <span>02 / DIAGNÓSTICO</span>
+        </div>
+        <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
 
-        <section className="concept-diagnostic-card">
-          <span>LEITURA DOS {props.points.length || "—"} PONTOS</span>
-          {diagnosticCodes.map((code) => {
+        <section className="concept-diagnostic-card concept-diagnostic-card-approved">
+          {diagnosticCodes.slice(0, 3).map((code) => {
             const distribution = distributionForParameter(props.interpretationRows, code);
             const total = distribution.reduce((sum, item) => sum + item.count, 0);
             return (
-              <div className="concept-diagnostic-row" key={code}>
-                <div className="concept-diagnostic-row-head">
-                  <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code}</strong>
-                  <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
-                </div>
-                <div className="concept-distribution-bar">
-                  {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
+              <div className="concept-diagnostic-row concept-diagnostic-row-approved" key={code}>
+                <div className="concept-parameter-badge">{code}</div>
+                <div className="concept-diagnostic-content">
+                  <div className="concept-diagnostic-row-head">
+                    <strong>{code === "P" ? "FÓSFORO" : code === "K" ? "POTÁSSIO" : code === "B" ? "BORO" : code}</strong>
+                    <small>{distribution.map((item) => item.count + " " + item.label.toLowerCase()).join(" • ") || "Sem classificação consolidada"}</small>
+                  </div>
+                  <div className="concept-distribution-bar">
+                    {distribution.map((item) => <i key={item.key} className={"tone-" + item.tone} style={{ width: total ? (item.count / total * 100) + "%" : "0%" }} />)}
+                  </div>
+                  <div className="concept-distribution-labels">{distribution.map((item) => <span key={item.key} className={item.tone}>{item.label.toUpperCase()}</span>)}</div>
                 </div>
               </div>
             );
           })}
-          <div className="concept-legend"><span className="low">BAIXO</span><span className="medium">MÉDIO</span><span className="high">ALTO</span><span className="very-high">MUITO ALTO</span></div>
         </section>
 
-        <div className="concept-two-card-grid">
+        <div className="concept-two-card-grid concept-two-card-grid-approved">
           {recommendations.slice(0, 2).map((item, index) => {
             const operational = producerRow(item, areaHa);
             return (
-              <section className="concept-recommendation-card" key={(item.inputType || "rec") + index}>
-                <span>0{index + 1} &nbsp; {recommendationShortLabel(item.inputType).toUpperCase()} / APROVADO</span>
-                <h3>{typeof item.quantity === "number" ? numberPt(item.quantity) : "—"} {item.unit || ""} {item.inputType ? "de " + item.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") : ""}</h3>
+              <section className="concept-recommendation-card concept-recommendation-card-approved" key={(item.inputType || "rec") + index}>
+                <span>{recommendationShortLabel(item.inputType).toUpperCase()}</span>
+                <h3>{typeof item.quantity === "number" ? numberPt(item.quantity) : "—"} {item.unit || ""}{item.inputType ? " de " + item.inputType.replace("CALCARIO_PRNT100", "PRNT 100%") : ""}</h3>
                 <p>{operational?.totalQuantity != null && operational.totalUnit ? numberPt(operational.totalQuantity) + " " + operational.totalUnit + " equivalentes no talhão." : "Dose sustentada pelo motor para esta decisão."}</p>
-                <small>{item.rationale || "Justificativa técnica preservada no snapshot."}</small>
+                <b>APROVADO</b>
               </section>
             );
           })}
         </div>
 
-        <div className="concept-warning-box">
-          <strong>VALIDAR ANTES DE APLICAR</strong>
-          <span>{missingInformation.length ? missingInformation.join(" · ") : "As doses acima estão sustentadas pela evidência congelada. Conferir produto, teor e posicionamento antes da execução."}</span>
+        <div className="concept-warning-box concept-warning-box-approved">
+          <div className="concept-warning-icon">!</div>
+          <div><strong>VALIDAR</strong><span>{missingInformation.length ? missingInformation.join(" · ") : "Conferir fonte comercial, teor e posicionamento antes da execução."}</span></div>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
       </section>
 
       <section className="concept-report-page">
-        <div className="concept-section-header"><BrandLogo variant="light" /><span>02 / PLANO DE MANEJO</span></div>
-        <div className="concept-page-heading"><span>O QUE FAZER</span><h2>Quanto aplicar e por quê.</h2></div>
-
-        <div className="concept-action-list">
-          {operationalSummary.rows.length ? operationalSummary.rows.map((row, index) => {
-            const source = recommendations.find((item) => item.inputType === row.inputType);
-            return (
-              <article key={row.inputType + index}>
-                <b>{String(index + 1).padStart(2, "0")}</b>
-                <div><span>{row.label}</span><strong>{numberPt(row.doseQuantity)} {row.doseUnit}</strong><small>{source?.rationale || "Dose aprovada e congelada."}</small></div>
-                <em>{row.totalQuantity != null && row.totalUnit ? numberPt(row.totalQuantity) + " " + row.totalUnit + " na área" : "por hectare"}</em>
-              </article>
-            );
-          }) : <div className="concept-empty-state">Nenhuma dose uniforme foi liberada para esta área.</div>}
+        <div className="concept-section-header">
+          <div className="concept-mini-brands">
+            <span>{props.branding.displayName || "Empresa parceira"}</span>
+            <BrandLogo variant="light" />
+          </div>
+          <span>03 / PLANEJAMENTO TÉCNICO</span>
         </div>
+        <div className="concept-page-heading"><span>COMO EXECUTAR E ACOMPANHAR</span><h2>Aplicação, fertilidade e risco.</h2></div>
 
         <div className="concept-management-grid">
           <section>
@@ -536,25 +578,10 @@ export function FinalVisualReport(props: Props) {
           </section>
         </div>
 
-        {commercial?.hasFrozenCost && (
-          <div className="concept-cost-strip"><span>CUSTO CONGELADO</span><strong>{commercial.costPerHa!.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}/ha</strong><b>{commercial.totalCost!.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})} na área</b></div>
-        )}
-
-        <section className="concept-priorities">
-          <span>ORDEM DE AÇÃO</span>
-          <ol>{management.slice(0, 6).map((item, index) => <li key={index}><b>{index + 1}</b><p>{item}</p></li>)}</ol>
-        </section>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
-      </section>
-
-      <section className="concept-report-page">
-        <div className="concept-section-header"><BrandLogo variant="light" /><span>03 / PLANEJAMENTO DA SAFRA</span></div>
-        <div className="concept-page-heading"><span>OLHAR PARA FRENTE</span><h2>Decisão hoje. Solo acompanhado amanhã.</h2></div>
-
         {fertilityPlan ? (
-          <section className="concept-fertility-card">
+          <section className="concept-fertility-card concept-fertility-card-compact">
             <div className="concept-fertility-head"><span>HORIZONTE DE FERTILIDADE</span><strong>{fertilityPlan.targetYieldDisplay || yieldGoalLabel}</strong></div>
-            {fertilityPlan.stages.map((stage) => (
+            {fertilityPlan.stages.slice(0, 3).map((stage) => (
               <div className="concept-fertility-row" key={stage.kind + String(stage.cultivationOrder ?? "")}>
                 <div><strong>{stage.label}</strong><small>{stage.rationale}</small></div>
                 <b>{stage.status === "REANALYSIS_REQUIRED" ? "NOVA ANÁLISE" : [stage.p2o5KgPerHa != null ? "P₂O₅ " + numberPt(stage.p2o5KgPerHa) : null, stage.k2oKgPerHa != null ? "K₂O " + numberPt(stage.k2oKgPerHa) : null].filter(Boolean).join(" · ") || "PARCIAL"}</b>
@@ -564,50 +591,81 @@ export function FinalVisualReport(props: Props) {
           </section>
         ) : <div className="concept-empty-state">Plano plurianual não congelado nesta decisão.</div>}
 
-        <div className="concept-three-card-grid">
-          <section><span>MICRONUTRIENTES</span><h3>{soilComplementActions.length ? "Acompanhar pontos de atenção" : "Sem complemento geral automático"}</h3><p>{soilComplementActions.slice(0,3).map((item) => item.label + ": " + item.action).join(" · ") || "A RAIZ não inventou dose genérica para B, Zn, Cu ou Mn."}</p></section>
-          <section><span>BIOLOGIA DO SOLO</span><h3>{biologicalContext?.hasAnyBiology ? "Evidência registrada" : "Sem evidência congelada"}</h3><p>{biologicalContext?.summary || "Biologia isolada não reduz automaticamente N, P, K ou S."}</p></section>
+        <div className="concept-three-card-grid concept-three-card-grid-compact">
+          <section><span>MICRONUTRIENTES</span><h3>{soilComplementActions.length ? "Pontos de atenção" : "Sem dose geral automática"}</h3><p>{soilComplementActions.slice(0,2).map((item) => item.label + ": " + item.action).join(" · ") || "A RAIZ não inventou dose genérica para B, Zn, Cu ou Mn."}</p></section>
+          <section><span>BIOLOGIA</span><h3>{biologicalContext?.hasAnyBiology ? "Evidência registrada" : "Sem evidência congelada"}</h3><p>{biologicalContext?.summary || "Biologia isolada não reduz automaticamente N, P, K ou S."}</p></section>
           <section><span>CLIMA / RISCO</span><h3>{agroclimateSnapshot?.status === "READY" ? "Contexto oficial completo" : agroclimateSnapshot?.status === "PARTIAL" ? "Contexto parcial" : "Sem pacote oficial completo"}</h3><p>{climateContext?.status === "PROVIDED" && climateContext.notes ? climateContext.notes : "Clima contextualiza risco e operação; não altera sozinho as doses determinísticas."}</p></section>
         </div>
+
+        <section className="concept-priorities concept-priorities-compact">
+          <span>ORDEM DE AÇÃO</span>
+          <ol>{management.slice(0, 4).map((item, index) => <li key={index}><b>{index + 1}</b><p>{item}</p></li>)}</ol>
+        </section>
 
         <div className="concept-trace-strip">
           <div><span>BASE TÉCNICA</span><strong>{props.technicalBase || "Motor RAIZ versionado"}</strong></div>
           <div><span>REVISÃO</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
-          <div><span>INTEGRIDADE</span><strong>{props.viewingPublished ? "Snapshot verificado" : "Versão atual"}</strong></div>
+          <div><span>INTEGRIDADE</span><strong>{props.viewingPublished ? "Snapshot verificado" : props.currentStatusLabel}</strong></div>
         </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>4 / 5</b></footer>
       </section>
 
       <section className="concept-report-page concept-final-page">
-        <div className="concept-section-header"><BrandLogo variant="light" /><span>04 / PARECER AO PRODUTOR</span></div>
-        <div className="concept-page-heading"><span>O QUE FAZER NESTA SAFRA</span><h2>Uma orientação sem complicação.</h2></div>
+        <div className="concept-section-header">
+          <div className="concept-mini-brands">
+            <span>{props.branding.displayName || "Empresa parceira"}</span>
+            <BrandLogo variant="light" />
+          </div>
+          <span>04 / PLANO AO PRODUTOR</span>
+        </div>
+        <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
 
-        <section className="concept-final-opinion">
+        <section className="concept-producer-apply-card">
+          <span>APLICAR</span>
+          {primaryCommercialRow ? (
+            <>
+              <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
+              <b>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit} na {props.context.fieldName || "área"}</b>
+            </>
+          ) : primaryRecommendation ? (
+            <>
+              <strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit} de {primaryRecommendation.label}</strong>
+              <b>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit + " equivalentes na área" : "Dose aprovada por hectare"}</b>
+              <small>Produto comercial ainda não congelado; não interpretar como peso de fertilizante.</small>
+            </>
+          ) : (
+            <>
+              <strong>Sem aplicação uniforme liberada</strong>
+              <b>Validar as pendências antes de definir produto e dose.</b>
+            </>
+          )}
+        </section>
+
+        <section className="concept-producer-validate-card">
+          <div className="concept-warning-icon">!</div>
+          <div><span>VALIDAR</span><strong>{missingInformation.length ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</strong></div>
+        </section>
+
+        <section className="concept-yield-banner concept-yield-banner-approved">
+          <span>CENÁRIO DE PLANEJAMENTO</span>
+          <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas</b>}</div>
+          <small>Meta usada no cálculo. Sujeita a clima, cultivar, sanidade e manejo.</small>
+        </section>
+
+        <section className="concept-final-opinion concept-final-opinion-compact">
           <span>PARECER FINAL</span>
           <p>{finalOpinion}</p>
-          {operationalSummary.rows.length > 0 && (
-            <div className="concept-final-dose-lines">
-              {operationalSummary.rows.map((row) => <strong key={row.inputType}>{row.label}: {numberPt(row.doseQuantity)} {row.doseUnit}{row.totalQuantity != null && row.totalUnit ? " · " + numberPt(row.totalQuantity) + " " + row.totalUnit + " equivalentes na área" : ""}</strong>)}
-            </div>
-          )}
-          {commercial && <p className="concept-final-commercial">Produto(s) comercial(is): {commercial.rows.map((row) => row.productName + " " + numberPt(row.doseQuantity,4) + " " + row.doseUnit).join(" · ")}.</p>}
         </section>
 
-        <section className="concept-yield-banner">
-          <span>META PRODUTIVA USADA NO PLANEJAMENTO</span>
-          <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas</b>}</div>
-          <small>Meta de cálculo e planejamento. Clima, cultivar, sanidade e manejo afetam a colheita; não é ganho garantido pela adubação.</small>
-        </section>
-
-        <section className="concept-identification-card">
-          <span>IDENTIFICAÇÃO / EMPRESA PARCEIRA</span>
+        <section className="concept-identification-card concept-identification-card-approved">
+          <span>IDENTIFICAÇÃO</span>
           <div className="concept-identification-grid">
             <p><strong>Cliente:</strong> {props.context.clientName || "—"}</p>
-            <p><strong>Propriedade:</strong> {props.context.propertyName || "—"}</p>
+            <p><strong>Área:</strong> {areaHa != null ? numberPt(areaHa) + " ha" : "—"}</p>
+            <p><strong>Empresa:</strong> {props.branding.displayName || "—"}</p>
             <p><strong>Município / UF:</strong> {[props.context.municipality, props.context.state].filter(Boolean).join(" / ") || "—"}</p>
-            <p><strong>Empresa parceira:</strong> {props.branding.displayName || "—"}</p>
-            <p><strong>RAIZ Digital:</strong> motor agronômico e rastreabilidade</p>
-            <p><strong>Publicado em:</strong> {props.publishedAt || props.generatedAt}</p>
+            <p><strong>Responsável técnico:</strong> {props.responsibleName || props.branding.responsibleName || "—"}</p>
+            <p><strong>Registro:</strong> {props.branding.responsibleRegistration || "—"}</p>
           </div>
           <ReportSignature branding={props.branding} />
         </section>
@@ -616,7 +674,7 @@ export function FinalVisualReport(props: Props) {
           <Icon name="shield" size={14}/>
           <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : props.currentStatusLabel}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>5 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • MOTOR AGRONÔMICO E RASTREABILIDADE</span><b>5 / 5</b></footer>
       </section>
     </article>
   );
