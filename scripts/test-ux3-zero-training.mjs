@@ -560,7 +560,8 @@ assert.match(deterministicPrescriptionProvider, /evidências separadas de 0–10
 assert.match(deterministicPrescriptionProvider, /Modo de aplicação: superficial/);
 assert.match(deterministicPrescriptionProvider, /Modo de aplicação: incorporada/);
 assert.match(deterministicPrescriptionProvider, /operationalGeneralDoseTonHaPrnt100/);
-assert.match(deterministicPrescriptionProvider, /média simples das necessidades/);
+assert.match(deterministicPrescriptionProvider, /grade com área equivalente por ponto/);
+assert.match(deterministicPrescriptionProvider, /não calculou uma dose geral por média simples/);
 assert.match(deterministicPrescriptionProvider, /Calagem por ponto/);
 assert.doesNotMatch(deterministicPrescriptionProvider, /PH_0_10_MISSING_OR_INVALID/);
 assert.doesNotMatch(deterministicPrescriptionProvider, /SMP_0_10_AND_10_20_REQUIRED/);
