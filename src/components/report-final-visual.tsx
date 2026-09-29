@@ -468,41 +468,11 @@ export function FinalVisualReport(props: Props) {
       .reduce((sum, item) => sum + item.count, 0);
     const classifiedCount = distribution.reduce((sum, item) => sum + item.count, 0);
 
-    const tone = lowCount > 0 ? "low" : mediumCount > 0 ? "medium" : classifiedCount > 0 ? "high" : "neutral";
-    const state = lowCount > 0 ? "NÃO ATENDE" : mediumCount > 0 ? "ATENÇÃO" : classifiedCount > 0 ? "ATENDE" : "SEM CLASSE";
-    const stateDetail = lowCount > 0
-      ? lowCount + " ponto(s) baixo(s)"
-      : mediumCount > 0
-        ? mediumCount + " ponto(s) médio(s)"
-        : classifiedCount > 0
-          ? "Sem deficiência classificada"
-          : summary.classification || "Sem classificação consolidada";
-
+    const soilTone = lowCount > 0 ? "low" : mediumCount > 0 ? "medium" : classifiedCount > 0 ? "high" : "neutral";
     const nutrientInput = nutrientInputByParameter[code] ?? code;
     const recommendation = recommendations.find((item) => (item.inputType ?? "").trim().toUpperCase() === nutrientInput);
     const spatial = spatialNutrientPlan?.nutrients.find((item) => item.nutrient === nutrientInput) ?? null;
     const complement = soilComplementActions.find((item) => item.parameterCode.toUpperCase() === code) ?? null;
-
-    let action = "Sem aplicação geral indicada.";
-    if (recommendation && typeof recommendation.quantity === "number" && recommendation.unit) {
-      action = "Aplicar " + numberPt(recommendation.quantity) + " " + recommendation.unit + " de " + (recommendation.inputType ?? nutrientInput).replace("CALCARIO_PRNT100", "PRNT 100%") + ".";
-    } else if (spatial?.status === "POINT_SPECIFIC") {
-      action = spatial.rangeKgPerHa
-        ? "Aplicar por ponto/zona: " + numberPt(spatial.rangeKgPerHa.min) + "–" + numberPt(spatial.rangeKgPerHa.max) + " kg/ha."
-        : "Aplicar conforme a decisão por ponto/zona.";
-    } else if (spatial?.status === "UNIFORM" && spatial.uniformDoseKgPerHa != null) {
-      action = "Aplicar " + numberPt(spatial.uniformDoseKgPerHa) + " kg/ha.";
-    } else if (complement) {
-      action = complement.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT"
-        ? "Sem aplicação geral."
-        : complement.action;
-    } else if (["PH", "CA", "MG"].includes(code) && limingDecision) {
-      action = "Ver decisão de calcário abaixo.";
-    } else if (tone === "medium") {
-      action = "Acompanhar; sem aplicação geral automática nesta decisão.";
-    } else if (tone === "low") {
-      action = "Correção precisa estar definida antes da publicação oficial.";
-    }
 
     const explicitDose = Boolean(
       recommendation
@@ -520,57 +490,115 @@ export function FinalVisualReport(props: Props) {
       && (complement.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
         || complement.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW")
     );
-    const lowNeedsAction = tone === "low" && !["PH", "CA", "MG"].includes(code);
+    const needsAction = explicitDose || spatialDose || complementNeedsAction;
+
+    let action = "";
+    if (recommendation && typeof recommendation.quantity === "number" && recommendation.unit) {
+      action = "Aplicar " + numberPt(recommendation.quantity) + " " + recommendation.unit + " de " + (recommendation.inputType ?? nutrientInput).replace("CALCARIO_PRNT100", "PRNT 100%") + ".";
+    } else if (spatial?.status === "POINT_SPECIFIC") {
+      action = spatial.rangeKgPerHa
+        ? "Aplicar por ponto/zona: " + numberPt(spatial.rangeKgPerHa.min) + "–" + numberPt(spatial.rangeKgPerHa.max) + " kg/ha."
+        : "Aplicar conforme a decisão por ponto/zona.";
+    } else if (spatial?.status === "UNIFORM" && spatial.uniformDoseKgPerHa != null) {
+      action = "Aplicar " + numberPt(spatial.uniformDoseKgPerHa) + " kg/ha.";
+    } else if (complementNeedsAction && complement) {
+      action = complement.action;
+    }
+
+    let needLabel = "";
+    let needDetail = "";
+    let actionTone: "correct" | "complement" | "replenish" | "zone" = "replenish";
+    if (spatial?.status === "POINT_SPECIFIC") {
+      needLabel = soilTone === "low" || soilTone === "medium" ? "CORRIGIR POR ZONA" : "REPOR POR ZONA";
+      needDetail = "A necessidade varia entre os pontos do talhão.";
+      actionTone = "zone";
+    } else if (complementNeedsAction) {
+      needLabel = soilTone === "low" ? "CORRIGIR" : "COMPLEMENTAR";
+      needDetail = lowCount > 0
+        ? lowCount + " ponto(s) abaixo do desejável."
+        : "Há diferença entre pontos que exige complemento direcionado.";
+      actionTone = soilTone === "low" ? "correct" : "complement";
+    } else if (explicitDose || spatialDose) {
+      if (soilTone === "low") {
+        needLabel = "CORRIGIR";
+        needDetail = lowCount + " ponto(s) abaixo do desejável.";
+        actionTone = "correct";
+      } else if (soilTone === "medium") {
+        needLabel = "COMPLEMENTAR";
+        needDetail = mediumCount + " ponto(s) em nível médio para a cultura.";
+        actionTone = "complement";
+      } else {
+        needLabel = "REPOR PARA A SAFRA";
+        needDetail = "Reposição/manutenção para " + cropSeasonLabel + (yieldGoalLabel ? " · meta " + yieldGoalLabel : "") + ".";
+        actionTone = "replenish";
+      }
+    }
 
     return {
       code: summary.code,
       label: parameterDisplayLabel(summary.code),
-      tone,
-      state,
-      stateDetail,
+      soilTone,
+      needLabel,
+      needDetail,
       action,
-      needsAction: explicitDose || spatialDose || complementNeedsAction || lowNeedsAction,
+      actionTone,
+      needsAction,
     };
-  }).sort((a, b) => {
-    const rank: Record<string, number> = { low: 0, medium: 1, neutral: 2, high: 3 };
-    return (rank[a.tone] ?? 9) - (rank[b.tone] ?? 9) || a.label.localeCompare(b.label, "pt-BR");
   });
 
-  const fertilityActionRows = fertilityProfileRows.filter((item) => item.needsAction);
+  const fertilityActionRows = fertilityProfileRows
+    .filter((item) => item.needsAction)
+    .sort((a, b) => {
+      const rank: Record<string, number> = { correct: 0, zone: 1, complement: 2, replenish: 3 };
+      return (rank[a.actionTone] ?? 9) - (rank[b.actionTone] ?? 9) || a.label.localeCompare(b.label, "pt-BR");
+    });
   const fertilityQuietRows = fertilityProfileRows.filter((item) => !item.needsAction);
   const quietNutrientLabels = fertilityQuietRows.map((item) => item.label);
   const nextCropForProfile = currentCropLabel || "a cultura desta safra";
 
   const limeRecommendation = recommendations.find((item) => /CALCAR|LIME/i.test(item.inputType ?? "")) ?? null;
-  const limeProfileRow = (() => {
+  const limeActionRow = (() => {
     if (limeRecommendation && typeof limeRecommendation.quantity === "number" && limeRecommendation.unit) {
       return {
-        tone: "low",
-        state: "NÃO ATENDE",
-        stateDetail: "Necessita correção",
+        code: "Ca",
+        label: "Calcário",
+        needLabel: "CORRIGIR ACIDEZ",
+        needDetail: "A calagem foi indicada para esta safra.",
         action: "Aplicar " + numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit + " de " + (limeRecommendation.inputType ?? "CALCARIO_PRNT100").replace("CALCARIO_PRNT100", "PRNT 100%") + ".",
+        actionTone: "correct" as const,
       };
-    }
-    if (limingDecision?.status === "UNIFORM_NO_APPLY") {
-      return { tone: "high", state: "ATENDE", stateDetail: "Sem necessidade de calagem", action: "Não aplicar calcário nesta decisão." };
     }
     if (limingDecision?.status === "SPATIAL") {
       const dose = limingDecision.doseRangeTonHaPrnt100
         ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%"
         : "dose definida por ponto";
-      return { tone: "low", state: "NÃO ATENDE", stateDetail: "Correção espacial", action: "Aplicar calcário por ponto/zona: " + dose + "." };
+      return {
+        code: "Ca",
+        label: "Calcário",
+        needLabel: "CORRIGIR POR ZONA",
+        needDetail: "A necessidade de calagem varia dentro do talhão.",
+        action: "Aplicar calcário por ponto/zona: " + dose + ".",
+        actionTone: "zone" as const,
+      };
     }
     if (limingDecision?.status === "UNIFORM_APPLY") {
       const dose = limingDecision.operationalGeneralDoseTonHaPrnt100 ?? limingDecision.uniformDoseTonHaPrnt100;
       return {
-        tone: "low",
-        state: "NÃO ATENDE",
-        stateDetail: "Necessita correção",
-        action: dose != null ? "Aplicar " + numberPt(dose) + " t/ha PRNT 100%." : "Aplicar calcário conforme a dose determinística congelada.",
+        code: "Ca",
+        label: "Calcário",
+        needLabel: "CORRIGIR ACIDEZ",
+        needDetail: "A calagem foi indicada para esta safra.",
+        action: dose != null ? "Aplicar " + numberPt(dose) + " t/ha PRNT 100%." : "Aplicar a dose determinística congelada de calcário.",
+        actionTone: "correct" as const,
       };
     }
-    return { tone: "neutral", state: "SEM DECISÃO", stateDetail: "Laudo final não deve sair assim", action: "Fechar a decisão de calagem antes da publicação oficial." };
+    return null;
   })();
+  const profileActionRows = limeActionRow ? [...fertilityActionRows, limeActionRow] : fertilityActionRows;
+  const quietProfileLabels = [
+    ...quietNutrientLabels,
+    limingDecision?.status === "UNIFORM_NO_APPLY" ? "Calcário (sem necessidade de aplicação)" : null,
+  ].filter((item): item is string => Boolean(item));
 
   const producerPlanRows: Array<{
     key: string;
@@ -792,52 +820,46 @@ export function FinalVisualReport(props: Props) {
           <ConceptMiniBrands branding={props.branding} />
           <span>02 / DIAGNÓSTICO</span>
         </div>
-        <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
+        <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SEU SOLO</span><h2>PEDE</h2></div>
 
         <div className="concept-diagnostic-intro">
-          <strong>EM DESTAQUE: O QUE EXIGE AÇÃO NESTA SAFRA</strong>
-          <span>Para {currentCropLabel || "a cultura atual"}, o RAIZ mostra abaixo somente nutrientes e corretivos que precisam de decisão ou correção. Os demais parâmetros também foram avaliados e aparecem resumidos ao final.</span>
+          <strong>NECESSIDADES PARA {cropSeasonLabel.toUpperCase()}</strong>
+          <span>Aqui aparecem somente os nutrientes e corretivos que precisam de aplicação, correção ou reposição nesta safra. Se um item não precisa de ação, ele não ocupa espaço no quadro.</span>
         </div>
 
         <section className="concept-fertility-profile">
           <div className="concept-profile-header">
-            <span>ANÁLISE</span>
-            <span>ESTADO</span>
-            <span>DECISÃO</span>
+            <span>O QUE</span>
+            <span>POR QUE APARECE</span>
+            <span>O QUE FAZER</span>
           </div>
 
-          {fertilityActionRows.map((item) => (
-            <div className={"concept-profile-row profile-" + item.tone} key={item.code}>
+          {profileActionRows.map((item) => (
+            <div className={"concept-profile-row need-" + item.actionTone} key={item.code}>
               <div className="concept-profile-item">
                 <b>{item.code}</b>
-                <div><strong>{item.label}</strong><small>Baseado nos pontos analisados</small></div>
+                <div><strong>{item.label}</strong><small>Necessidade da próxima cultura</small></div>
               </div>
               <div className="concept-profile-state">
-                <strong>{item.state}</strong>
-                <small>{item.stateDetail}</small>
+                <strong>{item.needLabel}</strong>
+                <small>{item.needDetail}</small>
               </div>
               <div className="concept-profile-action">{item.action}</div>
             </div>
           ))}
 
-          <div className={"concept-profile-row concept-profile-lime profile-" + limeProfileRow.tone}>
-            <div className="concept-profile-item">
-              <b>Ca</b>
-              <div><strong>Calcário</strong><small>Correção da acidez</small></div>
-            </div>
-            <div className="concept-profile-state">
-              <strong>{limeProfileRow.state}</strong>
-              <small>{limeProfileRow.stateDetail}</small>
-            </div>
-            <div className="concept-profile-action">{limeProfileRow.action}</div>
-          </div>
-
-          {quietNutrientLabels.length > 0 && (
+          {quietProfileLabels.length > 0 && (
             <div className="concept-profile-legend">
-              <strong>DEMAIS PARÂMETROS AVALIADOS</strong>
-              <span>{quietNutrientLabels.join(", ")} não aparecem em destaque porque, para {nextCropForProfile}, a análise não indicou correção geral neste cultivo.</span>
+              <strong>AVALIADOS SEM AÇÃO GERAL NESTA SAFRA</strong>
+              <span>{quietProfileLabels.join(", ")}. Esses itens foram avaliados, mas não precisam aparecer como recomendação de aplicação para {nextCropForProfile}.</span>
             </div>
           )}
+
+          <div className="concept-profile-explainer">
+            <span><b>CORRIGIR</b> = o solo está abaixo do desejável.</span>
+            <span><b>REPOR PARA A SAFRA</b> = o solo pode estar adequado, mas a cultura e a meta produtiva exigem reposição/manutenção.</span>
+            <span><b>POR ZONA</b> = a necessidade varia dentro do talhão.</span>
+          </div>
         </section>
 
         <div className="concept-scope-strip"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>

@@ -1037,3 +1037,30 @@
   .concept-diagnostic-intro{margin:-1.5mm 0 2.5mm;padding:2mm 2.5mm}
   .concept-diagnostic-intro strong,.concept-diagnostic-intro span{font-size:5.2pt}
 }
+
+/* Página 3 — semântica de ação para o produtor */
+.concept-profile-row.need-correct:before{background:#df704f}
+.concept-profile-row.need-complement:before{background:#e9ae42}
+.concept-profile-row.need-replenish:before{background:#2c8259}
+.concept-profile-row.need-zone:before{background:#3478a8}
+.concept-profile-row.need-correct .concept-profile-state strong{color:#b95138}
+.concept-profile-row.need-complement .concept-profile-state strong{color:#9a6811}
+.concept-profile-row.need-replenish .concept-profile-state strong{color:#24714c}
+.concept-profile-row.need-zone .concept-profile-state strong{color:#2d6f9b}
+.concept-profile-explainer{
+  background:#f8faf8;
+  border-top:1px solid #e1e9e3;
+  display:grid;
+  gap:4px;
+  padding:9px 12px 10px;
+}
+.concept-profile-explainer span{
+  color:#65766d;
+  font-size:6.5px;
+  line-height:1.4;
+}
+.concept-profile-explainer b{color:#355f49}
+@media print{
+  .concept-profile-explainer{gap:1mm;padding:1.8mm 3mm 2mm}
+  .concept-profile-explainer span{font-size:4.8pt}
+}

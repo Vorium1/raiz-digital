@@ -144,3 +144,17 @@ assert.match(css, /concept-ndvi-explainer/);
 assert.match(css, /concept-ndvi-scale/);
 assert.match(css, /zone-very-high/);
 assert.match(css, /concept-diagnostic-intro/);
+
+assert.match(component, /O QUE O SEU SOLO/);
+assert.match(component, /<h2>PEDE<\/h2>/);
+assert.match(component, /POR QUE APARECE/);
+assert.match(component, /REPOR PARA A SAFRA/);
+assert.match(component, /profileActionRows\.map/);
+assert.match(component, /quietProfileLabels/);
+assert.match(component, /CORRIGIR<\/b> = o solo está abaixo do desejável/);
+assert.doesNotMatch(component, />NÃO ATENDE</);
+assert.doesNotMatch(component, />ATENDE</);
+assert.doesNotMatch(component, /SEM DECISÃO/);
+assert.match(css, /need-replenish/);
+assert.match(css, /need-zone/);
+assert.match(css, /concept-profile-explainer/);
