@@ -551,7 +551,7 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         sources,
         fertilityPlan: evidence.fertilityHorizonPlan ?? null,
         soilComplementActions: evidence.soilComplementActions ?? [],
-        climateContext: evidence.analysis.climateContext ?? null,
+        climateContext: evidence.analysis?.climateContext ?? null,
         biologicalContext: evidence.biologicalReportContext ?? null,
         applicationGuidance: evidence.applicationGuidance ?? null,
       },
