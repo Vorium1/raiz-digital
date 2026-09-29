@@ -27,6 +27,11 @@ const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variabl
 export const metadata: Metadata = {
   title: { default: "Raiz Digital", template: "%s · Raiz Digital" },
   description: "Inteligência agronômica do solo à decisão.",
+  icons: {
+    icon: [{ url: "/brand/symbol-light.png", type: "image/png" }],
+    shortcut: "/brand/symbol-light.png",
+    apple: "/brand/symbol-light.png",
+  },
 };
 
 export const viewport: Viewport = {
