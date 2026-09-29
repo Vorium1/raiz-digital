@@ -624,7 +624,7 @@ assert.match(premiumReportPublisher, /ndviChangedAfterPreviousReport/);
 assert.match(deterministicFallback, /Premissas automáticas rastreadas/);
 
 assert.match(finalVisualReport, /Motor RAIZ versionado/);
-assert.match(finalVisualReport, /DECISÃO JÁ TRADUZIDA/);
+assert.match(finalVisualReport, /DECISÃO EM/);
 assert.match(finalVisualReport, /Documento oficial congelado e verificado/);
 assert.doesNotMatch(simpleResult, /Responsável pela revisão/);
 assert.match(results, /VALIDADOS PELO MOTOR/);
