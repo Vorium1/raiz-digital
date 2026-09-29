@@ -344,6 +344,17 @@ function producerRow(item: Recommendation, areaHa: number | null) {
   }).rows[0] ?? null;
 }
 
+function ConceptMiniBrands({ branding }: { branding: TenantBranding }) {
+  return (
+    <div className="concept-mini-brands">
+      <div className="concept-mini-partner">
+        {branding.logoDataUrl ? <ReportBrand branding={branding} /> : <strong>{branding.displayName || "Empresa parceira"}</strong>}
+      </div>
+      <div className="concept-mini-raiz"><BrandLogo variant="light" /></div>
+    </div>
+  );
+}
+
 export function FinalVisualReport(props: Props) {
   const summaries = parameterSummaries(props.facts, props.interpretationRows);
   const prescription = props.prescription ?? null;
@@ -428,6 +439,7 @@ export function FinalVisualReport(props: Props) {
                 height={470}
                 showLegend={false}
                 eager
+                showHint={false}
               />
             ) : (
               <SpatialOverview boundary={props.boundary} points={props.points} />
@@ -446,10 +458,7 @@ export function FinalVisualReport(props: Props) {
 
       <section className="concept-report-page">
         <div className="concept-section-header">
-          <div className="concept-mini-brands">
-            <span>{props.branding.displayName || "Empresa parceira"}</span>
-            <BrandLogo variant="light" />
-          </div>
+          <ConceptMiniBrands branding={props.branding} />
           <span>01 / VISÃO GERAL</span>
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>A ÁREA EM UMA</span><h2>VISÃO</h2></div>
@@ -465,6 +474,7 @@ export function FinalVisualReport(props: Props) {
                 height={430}
                 showLegend={false}
                 eager
+                showHint={false}
               />
             ) : (
               <SpatialOverview boundary={props.boundary} points={props.points} />
@@ -515,10 +525,7 @@ export function FinalVisualReport(props: Props) {
 
       <section className="concept-report-page">
         <div className="concept-section-header">
-          <div className="concept-mini-brands">
-            <span>{props.branding.displayName || "Empresa parceira"}</span>
-            <BrandLogo variant="light" />
-          </div>
+          <ConceptMiniBrands branding={props.branding} />
           <span>02 / DIAGNÓSTICO</span>
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
@@ -568,10 +575,7 @@ export function FinalVisualReport(props: Props) {
 
       <section className="concept-report-page">
         <div className="concept-section-header">
-          <div className="concept-mini-brands">
-            <span>{props.branding.displayName || "Empresa parceira"}</span>
-            <BrandLogo variant="light" />
-          </div>
+          <ConceptMiniBrands branding={props.branding} />
           <span>03 / PLANEJAMENTO TÉCNICO</span>
         </div>
         <div className="concept-page-heading"><span>COMO EXECUTAR E ACOMPANHAR</span><h2>Aplicação, fertilidade e risco.</h2></div>
@@ -626,10 +630,7 @@ export function FinalVisualReport(props: Props) {
 
       <section className="concept-report-page concept-final-page">
         <div className="concept-section-header">
-          <div className="concept-mini-brands">
-            <span>{props.branding.displayName || "Empresa parceira"}</span>
-            <BrandLogo variant="light" />
-          </div>
+          <ConceptMiniBrands branding={props.branding} />
           <span>04 / PLANO AO PRODUTOR</span>
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
