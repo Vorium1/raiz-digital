@@ -12,6 +12,7 @@ import type {
   ReportBiologicalContext,
   ReportClimateContext,
 } from "@/domain/report-context-blocks";
+import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
 
 type StructuredFact = {
   sampleCode: string;
@@ -79,6 +80,7 @@ type Prescription = {
   climateContext?: ReportClimateContext | null;
   biologicalContext?: ReportBiologicalContext | null;
   applicationGuidance?: ReportApplicationGuidance | null;
+  agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
 type Props = {
@@ -304,6 +306,7 @@ export function FinalVisualReport(props: Props) {
   const climateContext = prescription?.climateContext ?? null;
   const biologicalContext = prescription?.biologicalContext ?? null;
   const applicationGuidance = prescription?.applicationGuidance ?? null;
+  const agroclimateSnapshot = prescription?.agroclimateSnapshot ?? null;
   const pending = summaries.filter((item) => item.pendingCode);
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
@@ -474,6 +477,58 @@ export function FinalVisualReport(props: Props) {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {agroclimateSnapshot && (
+          <section className="report-visual-panel">
+            <div className="report-visual-section-head">
+              <div><span>CLIMA OFICIAL CONGELADO</span><h2>INMET · CPTEC/INPE · ZARC</h2></div>
+              <strong>{agroclimateSnapshot.status === "READY" ? "Completo" : agroclimateSnapshot.status === "PARTIAL" ? "Parcial" : "Indisponível"}</strong>
+            </div>
+            <div className="report-commercial-rows">
+              <div>
+                <strong>INMET</strong>
+                <span>{agroclimateSnapshot.observed.status}</span>
+                <span>{agroclimateSnapshot.observed.station ? agroclimateSnapshot.observed.station.name + " · " + numberPt(agroclimateSnapshot.observed.station.distanceKm, 1) + " km do talhão" : "Estação aplicável não consolidada"}</span>
+                <span>{agroclimateSnapshot.observed.observedDateUtc ? "Observação: " + agroclimateSnapshot.observed.observedDateUtc : "Sem data observada"}</span>
+              </div>
+              <div>
+                <strong>CPTEC/INPE</strong>
+                <span>{agroclimateSnapshot.forecast.status}</span>
+                <span>Previsão de curto prazo · até 7 dias</span>
+                <span>{agroclimateSnapshot.forecast.retrievedAt ? "Coletado: " + agroclimateSnapshot.forecast.retrievedAt : "Sem coleta disponível"}</span>
+              </div>
+              <div>
+                <strong>ZARC</strong>
+                <span>{agroclimateSnapshot.zarc.status}</span>
+                <span>{agroclimateSnapshot.zarc.resource?.name || "Janela oficial não consolidada para esta safra"}</span>
+                <span>Zoneamento de risco de plantio; não é previsão meteorológica.</span>
+              </div>
+            </div>
+            {agroclimateSnapshot.observed.summaries.length > 0 && (
+              <>
+                <p className="report-visual-note"><strong>Observação regional:</strong></p>
+                <div className="report-sampling-stats">
+                  {agroclimateSnapshot.observed.summaries.map((item) => (
+                    <span key={"obs-" + item.metric}><strong>{item.min === item.max ? numberPt(item.min, 1) : numberPt(item.min, 1) + "–" + numberPt(item.max, 1)}</strong> {item.unit} · {item.label}</span>
+                  ))}
+                </div>
+              </>
+            )}
+            {agroclimateSnapshot.forecast.summaries.length > 0 && (
+              <>
+                <p className="report-visual-note"><strong>Faixa prevista no período:</strong></p>
+                <div className="report-sampling-stats">
+                  {agroclimateSnapshot.forecast.summaries.map((item) => (
+                    <span key={"fc-" + item.metric}><strong>{item.min === item.max ? numberPt(item.min, 1) : numberPt(item.min, 1) + "–" + numberPt(item.max, 1)}</strong> {item.unit} · {item.label}</span>
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="report-visual-note">
+              Coleta congelada em {agroclimateSnapshot.collectedAt}. Contexto climático oficial é evidência de risco e operação; não altera automaticamente P, K, S ou calcário.
+            </p>
           </section>
         )}
 
