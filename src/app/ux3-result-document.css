@@ -258,3 +258,10 @@
   .concept-decision-hero{margin-top:5mm}
   .concept-report-page *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+.concept-result-host{max-width:980px}
+.concept-result-toolbar{align-items:center;display:flex;justify-content:space-between;margin:0 auto 18px;max-width:900px}
+.concept-result-toolbar>a{align-items:center;color:#65756b;display:inline-flex;font-size:10px;font-weight:850;gap:7px;text-decoration:none}
+.concept-result-toolbar>a:first-child svg{transform:rotate(180deg)}
+.concept-result-toolbar>div{align-items:center;display:flex;gap:10px}
+@media(max-width:820px){.concept-result-toolbar{align-items:flex-start;flex-direction:column;gap:12px}.concept-result-toolbar>div{flex-wrap:wrap}}
