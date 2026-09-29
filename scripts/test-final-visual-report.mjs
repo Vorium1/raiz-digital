@@ -35,6 +35,9 @@ assert.match(component, /totalQuantity \* 1000/);
 assert.match(component, /plainProducerOpinion/);
 assert.match(component, /Isso ainda não representa o peso de um fertilizante comercial/);
 assert.match(component, /hasValidationPending \? "VALIDAR" : "CONFERIR"/);
+assert.match(component, /commercial \? "APLICAR" : operationalSummary\.rows\.length \? "NECESSIDADE APROVADA" : "VALIDAR"/);
+assert.match(component, /Definir a fonte comercial antes de converter estas necessidades em produto/);
+assert.match(component, /operationalSummary\.rows\.map/);
 
 assert.match(component, /effectivePointCoordinates\(point\)/);
 assert.match(component, /PublishedNdviMap/);
