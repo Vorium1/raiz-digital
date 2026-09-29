@@ -130,7 +130,7 @@ const currentPPoints = computeDeterministicPkPointDoseEnvelope({
   yieldGoalUnit: "t/ha",
   cultivationOrderAfterSoilAnalysis: 1,
   nutrient: "P2O5",
-  allowEqualWeightOperationalAverage: true,
+  allowEqualWeightOperationalAverage: false,
 });
 const currentKPoints = computeDeterministicPkPointDoseEnvelope({
   cropCode: "SOJA",
@@ -139,7 +139,7 @@ const currentKPoints = computeDeterministicPkPointDoseEnvelope({
   yieldGoalUnit: "t/ha",
   cultivationOrderAfterSoilAnalysis: 1,
   nutrient: "K2O",
-  allowEqualWeightOperationalAverage: true,
+  allowEqualWeightOperationalAverage: false,
 });
 const currentPUniform = computeDeterministicPkDose({
   cropCode: "SOJA",
@@ -165,7 +165,6 @@ const cabedaHorizon = buildReportFertilityHorizon({
   targetYieldTonPerHa: 4.8,
   targetYieldUnit: "t/ha",
   cultivationOrderAfterSoilAnalysis: 1,
-  allowEqualWeightOperationalAverage: true,
   currentPkPointDoses: { P2O5: currentPPoints, K2O: currentKPoints },
   currentPkDoses: { P2O5: currentPUniform, K2O: currentKUniform },
 });
@@ -173,9 +172,14 @@ assert.ok(cabedaHorizon);
 assert.equal(cabedaHorizon.horizonYears, 5);
 assert.equal(cabedaHorizon.targetYieldDisplay, "80 sc/ha (4,8 t/ha)");
 assert.equal(cabedaHorizon.reanalysisAfterCultivations, 2);
-assert.equal(cabedaHorizon.stages[0].p2o5KgPerHa, 94.5);
-assert.equal(cabedaHorizon.stages[0].k2oKgPerHa, 91.9);
-assert.equal(cabedaHorizon.stages[1].p2o5KgPerHa, 79.5);
+assert.equal(cabedaHorizon.stages[0].status, "SPATIAL_READY");
+assert.equal(cabedaHorizon.stages[0].p2o5KgPerHa, null);
+assert.deepEqual(cabedaHorizon.stages[0].p2o5RangeKgPerHa, { min: 72, max: 122 });
+assert.equal(cabedaHorizon.stages[0].k2oKgPerHa, 120);
+assert.match(cabedaHorizon.stages[0].rationale, /sem promover média/i);
+assert.equal(cabedaHorizon.stages[1].status, "SPATIAL_READY");
+assert.equal(cabedaHorizon.stages[1].p2o5KgPerHa, null);
+assert.deepEqual(cabedaHorizon.stages[1].p2o5RangeKgPerHa, { min: 72, max: 102 });
 assert.equal(cabedaHorizon.stages[1].k2oKgPerHa, 120);
 assert.equal(cabedaHorizon.stages[2].status, "REANALYSIS_REQUIRED");
 assert.equal(cabedaHorizon.stages[3].p2o5KgPerHa, null);
@@ -239,11 +243,16 @@ assert.match(biologyContext.summary ?? "", /não gera crédito automático/i);
 const cabedaPlacement = buildSoybeanApplicationGuidance({
   cropCode: "SOJA",
   state: "RS",
-  p2o5KgPerHa: 94.5,
-  k2oKgPerHa: 91.9,
+  p2o5KgPerHa: null,
+  k2oKgPerHa: null,
+  p2o5RangeKgPerHa: { min: 72, max: 122 },
+  k2oRangeKgPerHa: { min: 45, max: 120 },
 });
 assert.equal(cabedaPlacement.status, "PLACEMENT_REVIEW_REQUIRED");
+assert.equal(cabedaPlacement.assessmentBasis, "POINT_RANGE_MAX");
+assert.ok(cabedaPlacement.blockers.includes("FURROW_P2O5_EXCEEDS_120_WITHOUT_SAFE_OFFSET"));
 assert.ok(cabedaPlacement.blockers.includes("FURROW_K2O_EXCEEDS_80_WITHOUT_SAFE_OFFSET"));
+assert.match(cabedaPlacement.guidance, /maior valor da faixa por ponto/i);
 assert.match(cabedaPlacement.guidance, /80 kg K₂O\/ha/);
 assert.match(cabedaPlacement.costBenefitNote, /produto, preço, concentração, equipamento e logística/i);
 
