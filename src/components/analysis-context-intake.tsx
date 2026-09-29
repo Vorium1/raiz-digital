@@ -146,15 +146,17 @@ export function AnalysisContextIntake({
             )}
 
             <label>
-              <span>Sistema de preparo do solo <small>(opcional)</small></span>
+              <span>Sistema de manejo para calagem *</span>
               <select
                 value={value.tillageSystem.trim() ? normalizeManagementSystem(value.tillageSystem) : ""}
                 onChange={(event) => update({ tillageSystem: event.target.value })}
               >
-                <option value="">Ainda não definido</option>
-                {MANAGEMENT_SYSTEM_OPTIONS.filter((option) => option.value !== "OTHER").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <option value="">Selecione antes de calcular</option>
+                {MANAGEMENT_SYSTEM_OPTIONS
+                  .filter((option) => option.value !== "OTHER" && option.value !== "NO_TILL_CONSOLIDATED_UNSPECIFIED")
+                  .map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-              <small>Refina a calagem quando conhecido, mas não bloqueia o parecer do RAIZ.</small>
+              <small>Obrigatório para fechar a regra de calagem: convencional, implantação do plantio direto ou plantio direto consolidado com a condição de 10–20 cm definida.</small>
             </label>
             <IrrigationApplicationsEditor value={value.irrigationApplications ?? []} onChange={(irrigationApplications) => update({ irrigationApplications })}/>
             <label>
