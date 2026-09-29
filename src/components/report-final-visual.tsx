@@ -773,7 +773,7 @@ export function FinalVisualReport(props: Props) {
             </div>
             <div className="concept-ndvi-scale">
               {NDVI_REPORT_SCALE.map((item) => {
-                const pct = props.ndviSnapshot.zoneBreakdownPct?.[item.zone];
+                const pct = props.ndviSnapshot?.zoneBreakdownPct?.[item.zone];
                 return (
                   <div className={item.cssClass} key={item.zone}>
                     <i />
