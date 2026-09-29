@@ -14,7 +14,8 @@ const printButton = read("src/components/print-button.tsx");
 assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
 assert.match(component, /RELATÓRIO/);
 assert.match(component, /A ÁREA EM UMA/);
-assert.match(component, /O QUE O SOLO/);
+assert.match(component, /O QUE O SEU SOLO/);
+assert.match(component, /<h2>PEDE<\/h2>/);
 assert.match(component, /EXECUÇÃO DA SAFRA/);
 assert.match(component, /O PLANO PARA O/);
 
