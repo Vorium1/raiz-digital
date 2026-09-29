@@ -480,3 +480,22 @@
   .concept-diagnostic-row-approved{padding:3.2mm 0}
   .concept-producer-apply-card,.concept-producer-validate-card{box-shadow:none}
 }
+
+.concept-mini-brands{align-items:center;display:flex;gap:12px}
+.concept-mini-partner,.concept-mini-raiz{
+  align-items:center;
+  background:rgba(255,255,255,.82);
+  border:1px solid #c5dccb;
+  border-radius:10px;
+  display:flex;
+  height:38px;
+  justify-content:center;
+  padding:4px 10px;
+}
+.concept-mini-partner{min-width:132px}
+.concept-mini-partner>strong{font-size:9px;letter-spacing:.04em;text-transform:uppercase}
+.concept-mini-partner .report-brand{gap:6px}
+.concept-mini-partner .report-brand-logo{max-height:27px;max-width:88px}
+.concept-mini-partner .report-brand-name{font-size:7px}
+.concept-mini-raiz{min-width:84px}
+.concept-mini-raiz .brand-logo{max-height:28px;max-width:76px}
