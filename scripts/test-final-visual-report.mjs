@@ -15,7 +15,7 @@ assert.equal((component.match(/<section className="concept-report-page/g) ?? [])
 assert.match(component, /RELATÓRIO/);
 assert.match(component, /A ÁREA EM UMA/);
 assert.match(component, /O QUE O SOLO/);
-assert.match(component, /PLANEJAMENTO TÉCNICO/);
+assert.match(component, /EXECUÇÃO DA SAFRA/);
 assert.match(component, /O PLANO PARA O/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
@@ -64,6 +64,10 @@ assert.match(component, /ESTADO/);
 assert.match(component, /DECISÃO/);
 assert.match(component, /limeProfileRow/);
 assert.match(component, /VIGÊNCIA DA RECOMENDAÇÃO/);
+assert.match(component, /Esta dose vale para esta safra/);
+assert.doesNotMatch(component, /Plano plurianual não congelado/);
+assert.doesNotMatch(component, /HORIZONTE DE FERTILIDADE/);
+assert.doesNotMatch(component, /Horizonte de .* anos é planejamento/);
 assert.doesNotMatch(component, />VALIDAR</);
 
 assert.match(component, /effectivePointCoordinates\(point\)/);
@@ -80,7 +84,6 @@ assert.match(printButton, /document\.fonts\.ready/);
 assert.match(printButton, /real-field-map-deferred/);
 assert.match(printButton, /document\.images/);
 
-assert.match(component, /HORIZONTE DE FERTILIDADE/);
 assert.match(component, /MICRONUTRIENTES/);
 assert.match(component, /BIOLOGIA/);
 assert.match(component, /CLIMA \/ RISCO/);

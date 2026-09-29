@@ -435,13 +435,9 @@ export function FinalVisualReport(props: Props) {
     && props.context.fieldId
     && props.boundary,
   );
-  const currentFertilityStage = fertilityPlan?.stages.find((stage) => stage.kind === "CURRENT_CULTIVATION") ?? null;
-  const fertilityScopeText = fertilityPlan
-    ? "Escopo das doses: " + (currentFertilityStage?.label ?? "cultivo atual")
-      + ". O 2º cultivo usa a regra específica correspondente e uma nova análise é obrigatória após "
-      + fertilityPlan.reanalysisAfterCultivations + " cultivos. Horizonte de " + fertilityPlan.horizonYears
-      + " anos é planejamento, não repetição automática desta dose."
-    : "Escopo das doses: cultivo atual desta análise. Mudança de safra, cultura ou evidência exige novo cálculo.";
+  const fertilityScopeText = "Recomendação válida para " + cropSeasonLabel
+    + (props.context.yieldGoal != null ? " com meta de " + yieldGoalLabel : "")
+    + ". Esta dose vale para esta safra e não deve ser repetida automaticamente em cultivos futuros. Mudança de cultura, meta produtiva, safra ou nova análise exige novo cálculo.";
   const nutrientInputByParameter: Record<string, string> = { P: "P2O5", K: "K2O", S: "S", N: "N" };
   const fertilityProfileRows = diagnosticSummaries.map((summary) => {
     const code = summary.code.toUpperCase();
@@ -727,9 +723,9 @@ export function FinalVisualReport(props: Props) {
       <section className="concept-report-page">
         <div className="concept-section-header">
           <ConceptMiniBrands branding={props.branding} />
-          <span>03 / PLANEJAMENTO TÉCNICO</span>
+          <span>03 / EXECUÇÃO DA SAFRA</span>
         </div>
-        <div className="concept-page-heading"><span>COMO EXECUTAR E ACOMPANHAR</span><h2>Aplicação, fertilidade e risco.</h2></div>
+        <div className="concept-page-heading"><span>COMO EXECUTAR E ACOMPANHAR</span><h2>Aplicação, fertilidade e risco da safra.</h2></div>
 
         <div className="concept-management-grid">
           <section>
@@ -746,19 +742,6 @@ export function FinalVisualReport(props: Props) {
             )) : <p>A necessidade agronômica está separada do peso do fertilizante. Selecione e congele um cenário comercial para o produto aparecer aqui.</p>}
           </section>
         </div>
-
-        {fertilityPlan ? (
-          <section className="concept-fertility-card concept-fertility-card-compact">
-            <div className="concept-fertility-head"><span>HORIZONTE DE FERTILIDADE</span><strong>{fertilityPlan.targetYieldDisplay || yieldGoalLabel}</strong></div>
-            {fertilityPlan.stages.slice(0, 3).map((stage) => (
-              <div className="concept-fertility-row" key={stage.kind + String(stage.cultivationOrder ?? "")}>
-                <div><strong>{stage.label}</strong><small>{stage.rationale}</small></div>
-                <b>{stage.status === "REANALYSIS_REQUIRED" ? "NOVA ANÁLISE" : [stage.p2o5KgPerHa != null ? "P₂O₅ " + numberPt(stage.p2o5KgPerHa) : null, stage.k2oKgPerHa != null ? "K₂O " + numberPt(stage.k2oKgPerHa) : null].filter(Boolean).join(" · ") || "PARCIAL"}</b>
-              </div>
-            ))}
-            <small>Reanálise após {fertilityPlan.reanalysisAfterCultivations} cultivo(s). Meta produtiva não é garantia de rendimento.</small>
-          </section>
-        ) : <div className="concept-empty-state">Plano plurianual não congelado nesta decisão.</div>}
 
         <div className="concept-three-card-grid concept-three-card-grid-compact">
           <section><span>MICRONUTRIENTES</span><h3>{soilComplementActions.length ? "Pontos de atenção" : "Sem dose geral automática"}</h3><p>{soilComplementActions.slice(0,2).map((item) => item.label + ": " + item.action).join(" · ") || "A RAIZ não inventou dose genérica para B, Zn, Cu ou Mn."}</p></section>
