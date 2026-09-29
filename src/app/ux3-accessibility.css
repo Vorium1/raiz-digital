@@ -130,6 +130,13 @@
   font-size: 11px;
 }
 
+/* O relatório conceitual é uma peça editorial A4, não um controle de aplicação.
+   Mantém tipografia própria para preservar hierarquia e evitar overflow no PDF. */
+.simple-result-page .concept-report small {
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 @media (max-width: 700px) {
   :where(
     .simple-home,
@@ -163,6 +170,11 @@
 @media print {
   .simple-result-page small {
     font-size: 10.5px;
+  }
+
+  .simple-result-page .concept-report small {
+    font-size: 8.5px;
+    line-height: 1.4;
   }
 
   .simple-result-page .simple-result-hero > span,
