@@ -12,6 +12,14 @@ import { recommendationInputLabel } from "@/domain/recommendation-display";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
 import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
 import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
+import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import type { SoilComplementAction } from "@/domain/soil-complement-actions";
+import type {
+  ReportApplicationGuidance,
+  ReportBiologicalContext,
+  ReportClimateContext,
+} from "@/domain/report-context-blocks";
+import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -34,6 +42,12 @@ type Prescription = {
   recommendations?: Array<{ inputType: string; quantity: number; unit: string; rationale?: string }>;
   managementPractices?: string[];
   missingInformation?: string[];
+  fertilityPlan?: ReportFertilityHorizon | null;
+  soilComplementActions?: SoilComplementAction[];
+  climateContext?: ReportClimateContext | null;
+  biologicalContext?: ReportBiologicalContext | null;
+  applicationGuidance?: ReportApplicationGuidance | null;
+  agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
 const PARAMETER_LABEL: Record<string, string> = {
@@ -142,6 +156,10 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
   };
   const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []);
   const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
+  const producerComplementActions = (prescription?.soilComplementActions ?? []).filter((item) =>
+    item.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
+    || item.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW"
+  );
   const producerSummary = prescription
     ? buildProducerResultSummary({
         areaHa: Number(context.areaHa),
@@ -311,6 +329,131 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
           </section>
         ) : (
           <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
+        )}
+
+        {prescription?.fertilityPlan && (
+          <section className="simple-result-section">
+            <div className="simple-result-section-head">
+              <span>PLANO DE FERTILIDADE</span>
+              <h2>Como manter a área nos próximos anos</h2>
+              <p>
+                {prescription.fertilityPlan.targetYieldDisplay
+                  ? `Meta de manejo: ${prescription.fertilityPlan.targetYieldDisplay}. A meta não é promessa de produtividade.`
+                  : "O plano separa a recomendação atual da necessidade de reavaliar o solo nas próximas safras."}
+              </p>
+            </div>
+            <div className="simple-result-producer-summary-list">
+              {prescription.fertilityPlan.stages.map((stage) => (
+                <article key={stage.kind + String(stage.cultivationOrder ?? "")}>
+                  <div>
+                    <strong>{stage.label}</strong>
+                    <small>{stage.rationale}</small>
+                  </div>
+                  <b>
+                    {stage.status === "REANALYSIS_REQUIRED"
+                      ? "Fazer nova análise"
+                      : [
+                          stage.p2o5KgPerHa != null ? `P₂O₅ ${stage.p2o5KgPerHa.toLocaleString("pt-BR")} kg/ha` : null,
+                          stage.k2oKgPerHa != null ? `K₂O ${stage.k2oKgPerHa.toLocaleString("pt-BR")} kg/ha` : null,
+                        ].filter(Boolean).join(" · ") || "Dose parcial"}
+                  </b>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {(prescription?.agroclimateSnapshot || prescription?.climateContext?.status === "PROVIDED") && (
+          <section className="simple-result-section">
+            <div className="simple-result-section-head">
+              <span>CLIMA</span>
+              <h2>Condições que ajudam a planejar a safra</h2>
+              <p>O clima entra como contexto de risco e operação. Ele não muda sozinho as doses de P, K, S ou calcário.</p>
+            </div>
+
+            {prescription.agroclimateSnapshot && (
+              <>
+                <div className="simple-result-ndvi-grid">
+                  <div><small>INMET</small><strong>{prescription.agroclimateSnapshot.observed.status}</strong></div>
+                  <div><small>CPTEC/INPE</small><strong>{prescription.agroclimateSnapshot.forecast.status}</strong></div>
+                  <div><small>ZARC</small><strong>{prescription.agroclimateSnapshot.zarc.status}</strong></div>
+                  <div><small>Coleta congelada</small><strong>{formatSnapshotDate(prescription.agroclimateSnapshot.collectedAt)}</strong></div>
+                </div>
+                {(prescription.agroclimateSnapshot.observed.summaries.length > 0
+                  || prescription.agroclimateSnapshot.forecast.summaries.length > 0) && (
+                  <div className="simple-result-findings">
+                    {prescription.agroclimateSnapshot.observed.summaries.map((item) => (
+                      <div key={"obs-" + item.metric}>
+                        <span>{item.label} · observado</span>
+                        <strong>{item.min === item.max ? item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : `${item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${item.max.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`} {item.unit}</strong>
+                        <small>{prescription.agroclimateSnapshot?.observed.station?.name || "Estação regional"}</small>
+                      </div>
+                    ))}
+                    {prescription.agroclimateSnapshot.forecast.summaries.map((item) => (
+                      <div key={"forecast-" + item.metric}>
+                        <span>{item.label} · próximos dias</span>
+                        <strong>{item.min === item.max ? item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : `${item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${item.max.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`} {item.unit}</strong>
+                        <small>Faixa de curto prazo; não é previsão de produtividade.</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {prescription.climateContext?.status === "PROVIDED" && prescription.climateContext.notes && (
+              <div className="simple-result-producer-summary-note">
+                <p><strong>Observação do manejo:</strong> {prescription.climateContext.notes}</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {prescription?.biologicalContext?.hasAnyBiology && (
+          <section className="simple-result-section">
+            <div className="simple-result-section-head">
+              <span>BIOLOGIA DO SOLO</span>
+              <h2>O que a análise biológica mostrou</h2>
+              <p>{prescription.biologicalContext.summary || "Há evidência biológica registrada nesta análise."}</p>
+            </div>
+            <div className="simple-result-producer-summary-note">
+              <p><strong>Importante:</strong> resultado biológico isolado não vira desconto automático de N, P, K ou S.</p>
+            </div>
+          </section>
+        )}
+
+        {producerComplementActions.length > 0 && (
+          <section className="simple-result-section">
+            <div className="simple-result-section-head">
+              <span>COMPLEMENTOS</span>
+              <h2>Micronutrientes e matéria orgânica que pedem atenção</h2>
+              <p>Quando existe necessidade, ela aparece aqui. A RAIZ não inventa uma dose geral onde a regra regional ainda exige definição técnica.</p>
+            </div>
+            <div className="simple-result-producer-summary-list">
+              {producerComplementActions.map((item) => (
+                <article key={item.parameterCode}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.action}</small>
+                  </div>
+                  <b>{item.lowCount} de {item.evaluatedCount} ponto(s) baixo(s)</b>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {prescription?.applicationGuidance && prescription.applicationGuidance.status !== "NOT_APPLICABLE" && (
+          <section className="simple-result-section">
+            <div className="simple-result-section-head">
+              <span>APLICAÇÃO</span>
+              <h2>Pode aplicar tudo de uma vez?</h2>
+              <p>{prescription.applicationGuidance.guidance}</p>
+            </div>
+            <div className="simple-result-producer-summary-note">
+              <p><strong>Custo-benefício:</strong> {prescription.applicationGuidance.costBenefitNote}</p>
+            </div>
+          </section>
         )}
 
         {producerSummary && (
