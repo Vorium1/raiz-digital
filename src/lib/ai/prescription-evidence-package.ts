@@ -76,6 +76,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   spatialNutrientPlan: ReportSpatialNutrientPlan;
   applicationGuidance: ReportApplicationGuidance;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
+  limingManagementEvidence: ReturnType<typeof evaluateStoredLimingManagementContext>;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
@@ -831,6 +832,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       spatialNutrientPlan,
       applicationGuidance,
       deterministicSulfurDose,
+      limingManagementEvidence: storedLimingContext,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
       biologicalSoilEvidence,
