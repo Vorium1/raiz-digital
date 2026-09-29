@@ -39,6 +39,10 @@ import {
   buildReportSpatialNutrientPlan,
   type ReportSpatialNutrientPlan,
 } from "@/domain/report-spatial-nutrient-plan";
+import {
+  evaluateStoredLimingManagementContext,
+  limingManagementContextFromAnalysisContext,
+} from "@/domain/liming-management-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -721,12 +725,20 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       currentPkDoses: deterministicPkDoses,
     });
 
+    const storedLimingContext = evaluateStoredLimingManagementContext(
+      limingManagementContextFromAnalysisContext(base.analysisContext),
+    );
     const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
       cropCode: base.cropProfileCode,
       state: base.state,
       managementSystem: base.managementSystem ?? analysisContextTillageSystem(base.analysisContext),
       results: resultsResult.rows,
       allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      yearsSinceLastLiming: storedLimingContext.context.yearsSinceLastLiming,
+      restrictionAssessment: storedLimingContext.context.restrictionAssessment,
+      contextValidationBlockers: storedLimingContext.status === "INVALID_OPTIONAL_EVIDENCE"
+        ? ["LIMING_MANAGEMENT_CONTEXT_INVALID"]
+        : [],
     });
 
     const soilMicrobiologyEvidence = evaluateSoilMicrobiologyEvidence({
