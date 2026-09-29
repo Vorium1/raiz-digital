@@ -61,6 +61,13 @@ assert.match(resultPage, /<FinalVisualReport/);
 assert.match(resultPage, /ndviSnapshot=\{v3\?\.ndviSnapshot \?\? null\}/);
 assert.match(resultPage, /commercialPlanSnapshot=\{v3\?\.commercialPlanSnapshot \?\? null\}/);
 assert.doesNotMatch(resultPage, /summarizeSimpleInterpretation|recommendationTotalForArea/);
+assert.match(component, /showTechnicalAppendix\?: boolean/);
+assert.match(component, /ANEXO TÉCNICO/);
+assert.match(component, /props\.facts\.map/);
+assert.match(component, /recommendations\.map/);
+assert.match(component, /props\.points\.map/);
+assert.match(technicalPage, /showTechnicalAppendix/);
+assert.doesNotMatch(resultPage, /showTechnicalAppendix/);
 
 assert.match(technicalPage, /const publishedTechnicalBase = viewingPublished && snapshotOutput\?\.trace/);
 assert.match(technicalPage, /technicalBase=\{viewingPublished \? publishedTechnicalBase : interpretation\?\.cropProfileName \?\? null\}/);
