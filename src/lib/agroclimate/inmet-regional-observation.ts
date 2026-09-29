@@ -75,6 +75,7 @@ export async function collectInmetRegionalObservation(input: {
     longitude: number;
   }) => Promise<TechnicalRegionApplicabilityRef[]>;
   maxDistanceKm?: number | null;
+  sourceTimeoutMs?: number;
   nearestFetcher?: NearestFetcher;
   observationFetcher?: ObservationFetcher;
   now?: () => Date;
@@ -100,6 +101,7 @@ export async function collectInmetRegionalObservation(input: {
     nearest = await (input.nearestFetcher ?? fetchNearestInmetAutomaticStation)({
       latitude: input.fieldLatitude!,
       longitude: input.fieldLongitude!,
+      timeoutMs: input.sourceTimeoutMs,
     });
   } catch (error) {
     return {
@@ -181,6 +183,7 @@ export async function collectInmetRegionalObservation(input: {
       dateFrom: observationWindowFromUtc,
       dateTo: observationWindowToUtc,
       now: () => now,
+      timeoutMs: input.sourceTimeoutMs,
     });
     const aggregate = aggregateInmetAutomaticStationDay({
       observations: fetched.observations,
