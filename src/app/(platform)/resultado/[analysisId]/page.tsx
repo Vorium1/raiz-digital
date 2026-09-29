@@ -1,25 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FinalVisualReport } from "@/components/report-final-visual";
 import { Icon } from "@/components/icon";
 import { PrintButton } from "@/components/print-button";
 import { SimplePublishResultButton } from "@/components/simple-publish-result-button";
-import { RealFieldMap } from "@/components/real-field-map";
-import { PublishedNdviMap } from "@/components/published-ndvi-map";
-import { pointPositionKind } from "@/components/spatial-map-types";
-import { ReportBrand, ReportSignature } from "@/components/report-brand";
-import { humanClassification } from "@/domain/simple-ux-labels";
-import { recommendationInputLabel } from "@/domain/recommendation-display";
-import { buildProducerResultSummary } from "@/domain/producer-result-summary";
-import { buildProducerCommercialPlanSummary } from "@/domain/official-commercial-plan";
-import { summarizeSimpleInterpretation } from "@/domain/simple-interpretation-summary";
-import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
-import type { SoilComplementAction } from "@/domain/soil-complement-actions";
-import type {
-  ReportApplicationGuidance,
-  ReportBiologicalContext,
-  ReportClimateContext,
-} from "@/domain/report-context-blocks";
-import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
+import type { MapPoint } from "@/components/spatial-map-types";
 import { requirePlatformSession } from "@/lib/auth/session";
 import { getPublishedReportSnapshot, type ReportSnapshotV2 } from "@/lib/repositories/reports";
 import type { PremiumReportSnapshotV3 } from "@/lib/repositories/premium-report-publication";
@@ -28,84 +13,44 @@ export const metadata = { title: "Resultado" };
 
 const TECHNICAL_DETAIL_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST", "FIELD_TECH"]);
 
-type Finding = {
-  sampleCode?: string;
-  parameterCode?: string;
-  interpretable?: boolean;
-  classification?: string;
-  classificationRole?: "TARGET" | "AUXILIARY";
+type StructuredOutput = {
+  facts?: Array<{
+    sampleCode: string;
+    parameterCode: string;
+    value: number;
+    unit: string;
+    method: string;
+    source?: string;
+  }>;
+  interpretation?: Array<{
+    sampleCode: string;
+    parameterCode: string;
+    interpretable: boolean;
+    classification?: string;
+    reason?: string;
+  }>;
+  confidence?: { score: number; level: string };
+  trace?: {
+    cropProfileCode?: string | null;
+    cropProfileVersion?: string | null;
+    generatedAt?: string | null;
+  };
 };
-
-type Prescription = {
-  summary?: string;
-  diagnosis?: Array<{ parameterCode?: string; interpretation?: string }>;
-  recommendations?: Array<{ inputType: string; quantity: number; unit: string; rationale?: string }>;
-  managementPractices?: string[];
-  missingInformation?: string[];
-  fertilityPlan?: ReportFertilityHorizon | null;
-  soilComplementActions?: SoilComplementAction[];
-  climateContext?: ReportClimateContext | null;
-  biologicalContext?: ReportBiologicalContext | null;
-  applicationGuidance?: ReportApplicationGuidance | null;
-  agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
-};
-
-const PARAMETER_LABEL: Record<string, string> = {
-  PH: "pH",
-  P: "Fósforo",
-  K: "Potássio",
-  CA: "Cálcio",
-  MG: "Magnésio",
-  AL: "Alumínio",
-  H_AL: "Acidez potencial",
-  V: "Saturação por bases",
-  MO: "Matéria orgânica",
-  S: "Enxofre",
-  B: "Boro",
-  ZN: "Zinco",
-  CU: "Cobre",
-  MN: "Manganês",
-  FE: "Ferro",
-};
-
-function parameterLabel(code: string | undefined) {
-  if (!code) return "Parâmetro";
-  return PARAMETER_LABEL[code.toUpperCase()] ?? code;
-}
-
-function recommendationTotalForArea(
-  recommendation: { inputType: string; quantity: number; unit: string },
-  areaHa: number,
-) {
-  const normalizedUnit = recommendation.unit.trim().toLowerCase();
-  if (normalizedUnit === "kg/ha") {
-    return {
-      quantity: recommendation.quantity * areaHa,
-      unit: "kg",
-      label: recommendationInputLabel(recommendation.inputType),
-    };
-  }
-  if (normalizedUnit === "t/ha" || normalizedUnit === "ton/ha") {
-    return {
-      quantity: recommendation.quantity * areaHa,
-      unit: "t",
-      label: recommendationInputLabel(recommendation.inputType),
-    };
-  }
-  return null;
-}
 
 function isV3(value: unknown): value is PremiumReportSnapshotV3 {
-  return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 3);
-}
-
-function formatSnapshotDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+  return Boolean(
+    value
+    && typeof value === "object"
+    && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 3
+  );
 }
 
 function isV2(value: unknown): value is ReportSnapshotV2 {
-  return Boolean(value && typeof value === "object" && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 2);
+  return Boolean(
+    value
+    && typeof value === "object"
+    && (value as { reportSnapshotVersion?: number }).reportSnapshotVersion === 2
+  );
 }
 
 export default async function ResultadoPage({ params }: { params: Promise<{ analysisId: string }> }) {
@@ -121,7 +66,10 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         <div className="simple-result-back"><Link href="/resultados"><Icon name="arrow" size={15}/> Resultados</Link></div>
         <section className="simple-result-integrity-error">
           <span><Icon name="warning" size={28}/></span>
-          <div><h1>Não foi possível validar este resultado.</h1><p>Por segurança, a RAIZ não mostra uma versão oficial quando não consegue confirmar que o arquivo publicado está íntegro.</p></div>
+          <div>
+            <h1>Não foi possível validar este resultado.</h1>
+            <p>Por segurança, a RAIZ não mostra uma versão oficial quando não consegue confirmar que o arquivo publicado está íntegro.</p>
+          </div>
           {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Ver detalhes técnicos</Link>}
         </section>
       </div>
@@ -139,46 +87,21 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
         <div className="simple-result-back"><Link href="/resultados"><Icon name="arrow" size={15}/> Resultados</Link></div>
         <section className="simple-result-integrity-error legacy">
           <span><Icon name="file" size={28}/></span>
-          <div><h1>Resultado de uma versão anterior.</h1><p>Este documento foi publicado antes do formato atual e não contém contexto suficiente para montar a visualização simples sem misturar dados novos.</p></div>
+          <div>
+            <h1>Resultado de uma versão anterior.</h1>
+            <p>Este documento foi publicado antes do formato atual e não contém contexto suficiente para reproduzir o relatório conceitual sem misturar dados novos.</p>
+          </div>
           {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}>Abrir versão técnica publicada</Link>}
         </section>
       </div>
     );
   }
 
-  const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as {
-    interpretation?: Finding[];
-    trace?: {
-      cropProfileCode?: string;
-      cropProfileVersion?: string;
-      generatedAt?: string;
-    };
-  };
-  const findingSummaries = summarizeSimpleInterpretation(structured.interpretation ?? []);
-  const prescription = (v3?.approvedPrescription.responsePayload?.prescription ?? null) as Prescription | null;
-  const producerComplementActions = (prescription?.soilComplementActions ?? []).filter((item) =>
-    item.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
-    || item.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW"
-  );
-  const producerSummary = prescription
-    ? buildProducerResultSummary({
-        areaHa: Number(context.areaHa),
-        recommendations: prescription.recommendations ?? [],
-      })
-    : null;
-  const commercialSummary = v3?.commercialPlanSnapshot
-    ? buildProducerCommercialPlanSummary(v3.commercialPlanSnapshot)
-    : null;
-  const reviewer = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
-  const engineValidated = Boolean(
-    v3?.approvedPrescription.provider === "raiz-deterministic-limited"
-    && v3?.approvedPrescription.model === "agronomic-engine",
-  );
-  const validationLabel = engineValidated ? "Motor RAIZ" : reviewer;
+  const structured = (v3?.structuredOutput ?? v2?.structuredOutput ?? {}) as StructuredOutput;
   const branding = v3?.brandingSnapshot ?? v2!.brandingSnapshot;
-  const publishedBoundary = v3?.publishedContext.fieldBoundary ?? null;
-  const ndvi = v3?.ndviSnapshot ?? null;
-  const publishedPoints = (v3?.pointsSnapshot ?? []).map((point) => ({
+  const prescription = v3?.approvedPrescription?.responsePayload?.prescription ?? null;
+  const narrative = v3?.approvedNarrative?.responsePayload?.narrative ?? null;
+  const points: MapPoint[] = (v3?.pointsSnapshot ?? []).map((point) => ({
     id: point.id,
     code: point.code,
     sequence: null,
@@ -195,399 +118,55 @@ export default async function ResultadoPage({ params }: { params: Promise<{ anal
     notes: null,
     labResultCount: 0,
   }));
-  const plannedPointCount = publishedPoints.filter((point) => pointPositionKind(point) === "PLANNED").length;
+
+  const technicalBase = structured.trace
+    ? [structured.trace.cropProfileCode, structured.trace.cropProfileVersion].filter(Boolean).join(" · ") || null
+    : null;
+  const responsibleName = v3?.approvedPrescription.reviewedByName ?? published.report.publishedByName ?? null;
+  const publishedAt = new Date(published.report.publishedAt).toLocaleString("pt-BR");
 
   return (
-    <div className="simple-result-page">
-      <div className="simple-result-back no-print"><Link href="/resultados"><Icon name="arrow" size={15}/> Resultados</Link></div>
+    <div className="simple-result-page concept-result-host">
+      <div className="concept-result-toolbar no-print">
+        <Link href="/resultados"><Icon name="arrow" size={15}/> Resultados</Link>
+        <div>
+          <PrintButton/>
+          {canViewTechnical && (
+            <SimplePublishResultButton
+              analysisId={analysisId}
+              label="Atualizar laudo com dados atuais"
+              busyLabel="Atualizando laudo…"
+              initialCommercialPlanSnapshotId={v3?.commercialPlanSnapshot?.id ?? ""}
+            />
+          )}
+          {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}
+        </div>
+      </div>
 
-      <article className="simple-result-document">
-        <header className="simple-result-document-head">
-          <ReportBrand branding={branding}/>
-          <div className="simple-result-published"><Icon name="check" size={15}/><span><strong>Resultado oficial</strong><small>{new Date(published.report.publishedAt).toLocaleDateString("pt-BR")}</small></span></div>
-        </header>
-
-        <section className="simple-result-hero">
-          <span>RESULTADO AGRONÔMICO</span>
-          <h1>{context.fieldName}</h1>
-          <p>{context.clientName} · {context.propertyName}</p>
-          <div className="simple-result-context">
-            <div><small>Área</small><strong>{Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</strong></div>
-            <div><small>Safra</small><strong>{context.seasonLabel}</strong></div>
-            <div><small>Cultura</small><strong>{context.currentCrop || context.nextCrop || context.cropProfileName || "Não informada"}</strong></div>
-            {publishedPoints.length > 0 && <div><small>Pontos de coleta</small><strong>{publishedPoints.length}</strong></div>}
-            {validationLabel && <div><small>Validação</small><strong>{validationLabel}</strong></div>}
-          </div>
-        </section>
-
-        {Boolean(publishedBoundary) && (
-          <section className="simple-result-map">
-            <RealFieldMap boundary={publishedBoundary as any} points={publishedPoints} height={310} hint={publishedPoints.length ? `Área e ${publishedPoints.length} ponto(s) de coleta desta decisão` : "Área deste resultado"}/>
-            {plannedPointCount > 0 && (
-              <div className="simple-result-map-note">
-                <Icon name="location" size={14}/>
-                <span>{plannedPointCount === publishedPoints.length
-                  ? "As posições dos pontos são aproximadas ou não possuem evidência observada congelada neste snapshot."
-                  : "Alguns pontos usam posição planejada/estimada ou não possuem evidência observada congelada neste snapshot."}</span>
-              </div>
-            )}
-          </section>
-        )}
-
-        {ndvi && (
-          <section className="simple-result-section satellite">
-            <div className="simple-result-section-head">
-              <span>SATÉLITE</span>
-              <h2>Vigor da área</h2>
-              <p>Leitura NDVI congelada junto com esta decisão. A RAIZ não transforma esse índice em recomendação por si só.</p>
-            </div>
-            <div className="simple-result-ndvi-grid">
-              <div><small>Data da leitura</small><strong>{formatSnapshotDate(ndvi.capturedAt)}</strong></div>
-              <div><small>NDVI médio</small><strong>{ndvi.meanNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
-              <div><small>Faixa observada</small><strong>{ndvi.minNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–{ndvi.maxNdvi.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
-              <div><small>Evidência visual</small><strong>{ndvi.rasterArchived ? "Imagem arquivada" : "Resumo disponível"}</strong></div>
-            </div>
-            {ndvi.rasterArchived && publishedBoundary && (
-              <PublishedNdviMap fieldId={context.fieldId} capturedAt={ndvi.capturedAt} boundary={publishedBoundary as any}/>
-            )}
-          </section>
-        )}
-
-        {findingSummaries.length > 0 && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>O QUE ENCONTRAMOS</span>
-              <h2>Como está a área</h2>
-              <p>Resumo por parâmetro da decisão publicada. Não é interpolação nem mapa de fertilidade.</p>
-            </div>
-            <div className="simple-result-findings">
-              {findingSummaries.map((summary) => {
-                const headline = summary.uniformClassification
-                  ? humanClassification(summary.uniformClassification)
-                  : summary.predominantClassification
-                    ? `Predomina ${humanClassification(summary.predominantClassification)}`
-                    : "Varia entre os pontos";
-                const breakdown = summary.classificationCounts
-                  .map((item) => `${item.count} ${humanClassification(item.classification).toLowerCase()}`)
-                  .join(" · ");
-                return (
-                  <div key={summary.parameterCode}>
-                    <span>{parameterLabel(summary.parameterCode)}</span>
-                    <strong>{headline}</strong>
-                    <small>{breakdown}</small>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {prescription ? (
-          <section className="simple-result-section recommendation">
-            <div className="simple-result-section-head">
-              <span>{(prescription.recommendations?.length ?? 0) > 0 ? "O QUE FAZER" : "CONCLUSÃO TÉCNICA"}</span>
-              <h2>{(prescription.recommendations?.length ?? 0) > 0 ? (engineValidated ? "Recomendação validada pelo motor RAIZ" : "Recomendação validada") : (engineValidated ? "Conclusão validada pelo motor RAIZ" : "Conclusão técnica validada")}</h2>
-              {prescription.summary && <p>{prescription.summary}</p>}
-            </div>
-            {(prescription.recommendations?.length ?? 0) === 0 && (
-              <div className="simple-result-completed-limited">
-                <Icon name="check" size={17}/>
-                <span>
-                  <strong>Relatório concluído com os dados disponíveis</strong>
-                  <small>A RAIZ não estimou doses ou manejos que não tinham evidência suficiente. Isso não impede a conclusão deste resultado.</small>
-                </span>
-              </div>
-            )}
-            {(prescription.recommendations?.length ?? 0) > 0 && (
-              <div className="simple-result-recommendations">
-                {prescription.recommendations!.map((item, index) => {
-                  const areaTotal = recommendationTotalForArea(item, Number(context.areaHa));
-                  return (
-                    <article key={`${item.inputType}-${index}`}>
-                      <div>
-                        <strong>{recommendationInputLabel(item.inputType)}</strong>
-                        {item.rationale && <small>{item.rationale}</small>}
-                        {areaTotal && (
-                          <small>
-                            Total para {Number(context.areaHa).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha:{" "}
-                            {areaTotal.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {areaTotal.unit} de {areaTotal.label}
-                          </small>
-                        )}
-                      </div>
-                      <b>{item.quantity.toLocaleString("pt-BR")} {item.unit}</b>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-            {(prescription.managementPractices?.length ?? 0) > 0 && (
-              <div className="simple-result-management"><strong>Manejo</strong><ul>{prescription.managementPractices!.map((item, index) => <li key={index}>{item}</li>)}</ul></div>
-            )}
-            {(prescription.missingInformation?.length ?? 0) > 0 && (
-              <div className="simple-result-limitation"><Icon name="shield" size={17}/><span><strong>Critérios preservados pelo motor</strong><small>{prescription.missingInformation!.join(" · ")}</small></span></div>
-            )}
-          </section>
-        ) : (
-          <section className="simple-result-legacy-note"><Icon name="shield" size={18}/><span><strong>Recomendação não congelada neste formato antigo.</strong><small>A versão técnica publicada continua disponível sem completar informações com dados atuais.</small></span></section>
-        )}
-
-        {prescription?.fertilityPlan && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>PLANO DE FERTILIDADE</span>
-              <h2>Como manter a área nos próximos anos</h2>
-              <p>
-                {prescription.fertilityPlan.targetYieldDisplay
-                  ? `Meta de manejo: ${prescription.fertilityPlan.targetYieldDisplay}. A meta não é promessa de produtividade.`
-                  : "O plano separa a recomendação atual da necessidade de reavaliar o solo nas próximas safras."}
-              </p>
-            </div>
-            <div className="simple-result-producer-summary-list">
-              {prescription.fertilityPlan.stages.map((stage) => (
-                <article key={stage.kind + String(stage.cultivationOrder ?? "")}>
-                  <div>
-                    <strong>{stage.label}</strong>
-                    <small>{stage.rationale}</small>
-                  </div>
-                  <b>
-                    {stage.status === "REANALYSIS_REQUIRED"
-                      ? "Fazer nova análise"
-                      : [
-                          stage.p2o5KgPerHa != null ? `P₂O₅ ${stage.p2o5KgPerHa.toLocaleString("pt-BR")} kg/ha` : null,
-                          stage.k2oKgPerHa != null ? `K₂O ${stage.k2oKgPerHa.toLocaleString("pt-BR")} kg/ha` : null,
-                        ].filter(Boolean).join(" · ") || "Dose parcial"}
-                  </b>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {(prescription?.agroclimateSnapshot || prescription?.climateContext?.status === "PROVIDED") && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>CLIMA</span>
-              <h2>Condições que ajudam a planejar a safra</h2>
-              <p>O clima entra como contexto de risco e operação. Ele não muda sozinho as doses de P, K, S ou calcário.</p>
-            </div>
-
-            {prescription.agroclimateSnapshot && (
-              <>
-                <div className="simple-result-ndvi-grid">
-                  <div><small>INMET</small><strong>{prescription.agroclimateSnapshot.observed.status}</strong></div>
-                  <div><small>CPTEC/INPE</small><strong>{prescription.agroclimateSnapshot.forecast.status}</strong></div>
-                  <div><small>ZARC</small><strong>{prescription.agroclimateSnapshot.zarc.status}</strong></div>
-                  <div><small>Coleta congelada</small><strong>{formatSnapshotDate(prescription.agroclimateSnapshot.collectedAt)}</strong></div>
-                </div>
-                {(prescription.agroclimateSnapshot.observed.summaries.length > 0
-                  || prescription.agroclimateSnapshot.forecast.summaries.length > 0) && (
-                  <div className="simple-result-findings">
-                    {prescription.agroclimateSnapshot.observed.summaries.map((item) => (
-                      <div key={"obs-" + item.metric}>
-                        <span>{item.label} · observado</span>
-                        <strong>{item.min === item.max ? item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : `${item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${item.max.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`} {item.unit}</strong>
-                        <small>{prescription.agroclimateSnapshot?.observed.station?.name || "Estação regional"}</small>
-                      </div>
-                    ))}
-                    {prescription.agroclimateSnapshot.forecast.summaries.map((item) => (
-                      <div key={"forecast-" + item.metric}>
-                        <span>{item.label} · próximos dias</span>
-                        <strong>{item.min === item.max ? item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : `${item.min.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}–${item.max.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`} {item.unit}</strong>
-                        <small>Faixa de curto prazo; não é previsão de produtividade.</small>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {prescription.climateContext?.status === "PROVIDED" && prescription.climateContext.notes && (
-              <div className="simple-result-producer-summary-note">
-                <p><strong>Observação do manejo:</strong> {prescription.climateContext.notes}</p>
-              </div>
-            )}
-          </section>
-        )}
-
-        {prescription?.biologicalContext?.hasAnyBiology && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>BIOLOGIA DO SOLO</span>
-              <h2>O que a análise biológica mostrou</h2>
-              <p>{prescription.biologicalContext.summary || "Há evidência biológica registrada nesta análise."}</p>
-            </div>
-            <div className="simple-result-producer-summary-note">
-              <p><strong>Importante:</strong> resultado biológico isolado não vira desconto automático de N, P, K ou S.</p>
-            </div>
-          </section>
-        )}
-
-        {producerComplementActions.length > 0 && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>COMPLEMENTOS</span>
-              <h2>Micronutrientes e matéria orgânica que pedem atenção</h2>
-              <p>Quando existe necessidade, ela aparece aqui. A RAIZ não inventa uma dose geral onde a regra regional ainda exige definição técnica.</p>
-            </div>
-            <div className="simple-result-producer-summary-list">
-              {producerComplementActions.map((item) => (
-                <article key={item.parameterCode}>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <small>{item.action}</small>
-                  </div>
-                  <b>{item.lowCount} de {item.evaluatedCount} ponto(s) baixo(s)</b>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {prescription?.applicationGuidance && prescription.applicationGuidance.status !== "NOT_APPLICABLE" && (
-          <section className="simple-result-section">
-            <div className="simple-result-section-head">
-              <span>APLICAÇÃO</span>
-              <h2>Pode aplicar tudo de uma vez?</h2>
-              <p>{prescription.applicationGuidance.guidance}</p>
-            </div>
-            <div className="simple-result-producer-summary-note">
-              <p><strong>Custo-benefício:</strong> {prescription.applicationGuidance.costBenefitNote}</p>
-            </div>
-          </section>
-        )}
-
-        {producerSummary && (
-          <section className="simple-result-section producer-summary">
-            <div className="simple-result-section-head">
-              <span>RESUMO FINAL</span>
-              <h2>Resumo para o produtor</h2>
-              <p>
-                Para esta área de {producerSummary.areaHa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha,
-                veja abaixo somente o que já foi aprovado neste laudo.
-              </p>
-            </div>
-
-            {producerSummary.hasUniformRecommendations ? (
-              <div className="simple-result-producer-summary-list">
-                {producerSummary.rows.map((row, index) => (
-                  <article key={`${row.inputType}-${index}`}>
-                    <div>
-                      <strong>{row.label}</strong>
-                      <small>
-                        Dose aprovada: {row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {row.doseUnit}
-                      </small>
-                    </div>
-                    <b>
-                      {row.totalQuantity != null && row.totalUnit
-                        ? `Total da área: ${row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${row.totalUnit}`
-                        : "Usar a dose aprovada por hectare/unidade"}
-                    </b>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="simple-result-producer-summary-empty">
-                <strong>Nenhuma dose uniforme foi liberada para esta área.</strong>
-                <small>O laudo continua concluído; o RAIZ apenas evitou transformar evidência insuficiente em uma quantidade inventada.</small>
-              </div>
-            )}
-
-            {(producerSummary.showsNutrientEquivalentNote || producerSummary.showsLimeEquivalentNote) && (
-              <div className="simple-result-producer-summary-note">
-                {producerSummary.showsNutrientEquivalentNote && (
-                  <p><strong>Nutrientes:</strong> N, P₂O₅, K₂O e S são quantidades equivalentes do nutriente. Isso não é, automaticamente, o peso do fertilizante comercial.</p>
-                )}
-                {producerSummary.showsLimeEquivalentNote && (
-                  <p><strong>Calcário:</strong> PRNT 100% é uma necessidade equivalente. A quantidade do produto comercial depende do PRNT informado para o corretivo escolhido.</p>
-                )}
-              </div>
-            )}
-
-            {commercialSummary ? (
-              <>
-                <div className="simple-result-producer-summary-note">
-                  <p>
-                    <strong>Plano comercial congelado:</strong>{" "}
-                    {commercialSummary.label || "cenário selecionado na publicação"}. Esta camada apenas converte a necessidade agronômica aprovada em produto comercial; ela não altera a dose técnica.
-                  </p>
-                </div>
-                <div className="simple-result-producer-summary-list">
-                  {commercialSummary.rows.map((row, index) => (
-                    <article key={`${row.productName}-${index}`}>
-                      <div>
-                        <strong>{row.productName}</strong>
-                        <small>
-                          Dose do produto: {row.doseQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.doseUnit}
-                          {row.pricePerTon != null
-                            ? ` · preço congelado: ${row.pricePerTon.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/t`
-                            : " · preço não cadastrado no cenário"}
-                        </small>
-                      </div>
-                      <b>Total da área: {row.totalQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} {row.totalUnit}</b>
-                    </article>
-                  ))}
-                </div>
-                <div className="simple-result-producer-summary-cost">
-                  <strong>Custo comercial</strong>
-                  <span>
-                    {commercialSummary.hasFrozenCost
-                      ? `${commercialSummary.costPerHa!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/ha · total da área: ${commercialSummary.totalCost!.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-                      : "Produto e quantidade foram congelados, mas o cenário não possuía preço suficiente para calcular custo."}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="simple-result-producer-summary-cost">
-                <strong>Custo comercial</strong>
-                <span>Não incluído neste laudo oficial porque nenhum cenário comercial foi selecionado e congelado junto com esta decisão.</span>
-              </div>
-            )}
-          </section>
-        )}
-
-        <details className="simple-result-advanced">
-          <summary><Icon name="shield" size={15}/> Como o RAIZ chegou a este resultado</summary>
-          <section className="simple-result-section traceability">
-            <div className="simple-result-section-head">
-              <span>RASTREABILIDADE</span>
-              <h2>Base técnica desta decisão</h2>
-              <p>A versão oficial guarda a base agronômica e o motor usados neste resultado.</p>
-            </div>
-            <div className="simple-result-ndvi-grid">
-              <div><small>Versão</small><strong>Rev. {v3?.revision ?? published.report.revision}</strong></div>
-              <div>
-                <small>Base agronômica</small>
-                <strong>
-                  {structured.trace?.cropProfileCode ?? context.currentCrop ?? context.cropProfileName ?? "Perfil corrente"}
-                  {structured.trace?.cropProfileVersion ? ` · v${structured.trace.cropProfileVersion}` : ""}
-                </strong>
-              </div>
-              <div><small>Motor</small><strong>{engineValidated ? "Motor RAIZ" : (v3?.approvedPrescription.model ?? "Motor registrado")}</strong></div>
-              <div><small>Versão do motor</small><strong>{v3?.approvedPrescription.promptVersion ?? "Snapshot publicado"}</strong></div>
-            </div>
-          </section>
-        </details>
-
-        <section className="simple-result-signature">
-          <ReportSignature branding={branding}/>
-        </section>
-
-        <footer className="simple-result-footer">
-          <div><span><Icon name="shield" size={16}/> Validado e publicado</span><small>Este conteúdo vem da versão oficial congelada no momento da publicação.</small></div>
-          <div className="no-print">
-            <PrintButton/>
-            {canViewTechnical && (
-              <SimplePublishResultButton
-                analysisId={analysisId}
-                label="Atualizar laudo com dados atuais"
-                busyLabel="Atualizando laudo…"
-                initialCommercialPlanSnapshotId={v3?.commercialPlanSnapshot?.id ?? ""}
-              />
-            )}
-            {canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`} className="simple-result-technical-link">Detalhes técnicos</Link>}
-          </div>
-        </footer>
-      </article>
+      <FinalVisualReport
+        context={context}
+        branding={branding}
+        facts={structured.facts ?? []}
+        interpretationRows={structured.interpretation ?? []}
+        points={points}
+        boundary={v3?.publishedContext.fieldBoundary ?? null}
+        narrativeSummary={narrative?.summary ?? null}
+        prescription={prescription}
+        interpretationStatus="APPROVED"
+        prescriptionStatus={v3?.approvedPrescription.status ?? null}
+        confidence={structured.confidence ?? null}
+        viewingPublished={true}
+        currentStatusLabel="Publicado"
+        generatedAt={publishedAt}
+        interpretationRevision={v3?.revision ?? v2?.revision ?? published.report.revision}
+        responsibleName={responsibleName}
+        technicalBase={technicalBase}
+        publishedByName={published.report.publishedByName ?? null}
+        publishedAt={publishedAt}
+        publishedHashPrefix={published.report.sha256.slice(0, 12)}
+        commercialPlanSnapshot={v3?.commercialPlanSnapshot ?? null}
+        ndviSnapshot={v3?.ndviSnapshot ?? null}
+      />
     </div>
   );
 }
