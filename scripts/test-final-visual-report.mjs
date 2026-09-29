@@ -35,6 +35,8 @@ assert.match(css, /profile-low:before/);
 assert.match(css, /profile-high:before/);
 assert.match(css, /concept-profile-legend/);
 assert.match(css, /concept-producer-plan-card/);
+assert.match(css, /concept-yield-banner-primary/);
+assert.match(css, /concept-producer-plan-intro/);
 assert.match(css, /concept-cover-meta-identified/);
 
 
@@ -51,7 +53,9 @@ assert.match(component, /totalQuantity \* 1000/);
 assert.match(component, /plainProducerOpinion/);
 assert.match(component, /producerPlanRows/);
 assert.match(component, /PLANO DA SAFRA/);
-assert.match(component, /META DA SAFRA/);
+assert.match(component, /META PRODUTIVA/);
+assert.match(component, /NECESSIDADES PARA BUSCAR ESTA META/);
+assert.match(component, /Considerando a análise do solo e as exigências de/);
 assert.match(component, /concept-cover-meta-identified/);
 assert.match(component, /PRODUTOR/);
 assert.match(component, /TALHÃO/);

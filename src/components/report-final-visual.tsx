@@ -847,8 +847,17 @@ export function FinalVisualReport(props: Props) {
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
 
+        <section className="concept-yield-banner concept-yield-banner-approved concept-yield-banner-primary">
+          <span>META PRODUTIVA · {cropSeasonLabel}</span>
+          <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas na área</b>}</div>
+          <small>Meta usada no cálculo desta safra. O rendimento final depende também de clima, cultivar, sanidade e manejo.</small>
+        </section>
+
         <section className="concept-producer-plan-card">
-          <span>PLANO DA SAFRA</span>
+          <span>NECESSIDADES PARA BUSCAR ESTA META</span>
+          <p className="concept-producer-plan-intro">
+            Considerando a análise do solo e as exigências de {currentCropLabel || "esta cultura"}, estas são as correções e reposições indicadas para a safra atual.
+          </p>
           <div className="concept-producer-plan-list">
             {producerPlanRows.map((row) => (
               <div className={"concept-producer-plan-row plan-" + row.tone} key={row.key}>
@@ -865,12 +874,6 @@ export function FinalVisualReport(props: Props) {
           {!commercial && operationalSummary.rows.some((row) => row.quantityKind === "NUTRIENT_EQUIVALENT") && (
             <small>As doses de nutrientes são necessidades agronômicas. A quantidade do fertilizante comercial depende do teor da fonte escolhida.</small>
           )}
-        </section>
-
-        <section className="concept-yield-banner concept-yield-banner-approved">
-          <span>META DA SAFRA</span>
-          <div><strong>{yieldGoalLabel}</strong>{totalYieldBags != null && <b>{totalYieldBags.toLocaleString("pt-BR")} sacas</b>}</div>
-          <small>Meta usada no cálculo. Sujeita a clima, cultivar, sanidade e manejo.</small>
         </section>
 
         <section className="concept-final-opinion concept-final-opinion-compact">
