@@ -644,7 +644,7 @@ export function FinalVisualReport(props: Props) {
         <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
 
         <section className="concept-producer-apply-card">
-          <span>APLICAR</span>
+          <span>{commercial ? "APLICAR" : operationalSummary.rows.length ? "NECESSIDADE APROVADA" : "VALIDAR"}</span>
           {primaryCommercialRow ? (
             <>
               <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
@@ -655,11 +655,11 @@ export function FinalVisualReport(props: Props) {
               <strong>{commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" + ")}</strong>
               <b>{commercial.rows.map((row) => row.productName + ": " + commercialTotalDisplay(row.totalQuantity, row.totalUnit)).join(" · ")}</b>
             </>
-          ) : primaryRecommendation ? (
+          ) : operationalSummary.rows.length ? (
             <>
-              <strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit} de {primaryRecommendation.label}</strong>
-              <b>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit + " equivalentes na área" : "Dose aprovada por hectare"}</b>
-              <small>Produto comercial ainda não congelado; não interpretar como peso de fertilizante.</small>
+              <strong>{operationalSummary.rows.map((row) => numberPt(row.doseQuantity) + " " + row.doseUnit + " de " + row.label).join(" · ")}</strong>
+              <b>Definir a fonte comercial antes de converter estas necessidades em produto e quantidade a comprar.</b>
+              <small>Estas quantidades são necessidades agronômicas equivalentes; não interpretar como peso de fertilizante comercial.</small>
             </>
           ) : (
             <>
