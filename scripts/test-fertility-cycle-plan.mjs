@@ -245,6 +245,6 @@ const cabedaPlacement = buildSoybeanApplicationGuidance({
 assert.equal(cabedaPlacement.status, "PLACEMENT_REVIEW_REQUIRED");
 assert.ok(cabedaPlacement.blockers.includes("FURROW_K2O_EXCEEDS_80_WITHOUT_SAFE_OFFSET"));
 assert.match(cabedaPlacement.guidance, /80 kg K₂O\/ha/);
-assert.match(cabedaPlacement.costBenefitNote, /produto, preço, equipamento e logística/i);
+assert.match(cabedaPlacement.costBenefitNote, /produto, preço, concentração, equipamento e logística/i);
 
 console.log("fertility-cycle-plan: correção multi-ano, manutenção e cenário sem reinvestimento validados");
