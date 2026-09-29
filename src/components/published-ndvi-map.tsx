@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RealFieldMap, type MapImageOverlay, type MapLegendEntry, type SpatialGeometry } from "@/components/real-field-map";
+import { RealFieldMap, type MapImageOverlay, type MapLegendEntry, type MapPoint, type SpatialGeometry } from "@/components/real-field-map";
 import type { VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 import { enhanceArchivedNdviRasterForDisplay, NDVI_DISPLAY_ZONE_COLOR } from "@/lib/ndvi-display-palette";
@@ -27,10 +27,16 @@ export function PublishedNdviMap({
   fieldId,
   capturedAt,
   boundary,
+  points = [],
+  height = 300,
+  showLegend = true,
 }: {
   fieldId: string;
   capturedAt: string;
   boundary: SpatialGeometry;
+  points?: MapPoint[];
+  height?: number;
+  showLegend?: boolean;
 }) {
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -92,9 +98,9 @@ export function PublishedNdviMap({
     <div className="simple-result-ndvi-map">
       <RealFieldMap
         boundary={boundary}
-        points={[]}
-        height={300}
-        legend={VIGOR_LEGEND}
+        points={points}
+        height={height}
+        legend={showLegend ? VIGOR_LEGEND : undefined}
         hint="Raster NDVI arquivado e verificado · mesma data congelada no laudo"
         imageOverlay={overlay}
       />
