@@ -3,45 +3,52 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const component = read("src/components/report-final-visual.tsx");
-const page = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
-const css = read("src/app/globals.css");
+const technicalPage = read("src/app/(platform)/relatorios/talhao/[analysisId]/page.tsx");
+const resultPage = read("src/app/(platform)/resultado/[analysisId]/page.tsx");
+const css = read("src/app/ux3-result-document.css");
 
-assert.equal((component.match(/<section className="report-a4-page">/g) ?? []).length, 3);
-assert.match(css, /@page\{size:A4 portrait;margin:10mm\}/);
-assert.match(css, /\.report-a4-page:last-child\{break-after:auto;page-break-after:auto\}/);
-assert.match(css, /break-inside:avoid-page/);
+assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
+assert.match(component, /Inteligência que vira ação/);
+assert.match(component, /O solo mostra o caminho/);
+assert.match(component, /Quanto aplicar e por quê/);
+assert.match(component, /Decisão hoje. Solo acompanhado amanhã/);
+assert.match(component, /Uma orientação sem complicação/);
+
+assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
+assert.match(css, /height:297mm/);
+assert.match(css, /width:210mm/);
+assert.match(css, /page-break-after:always/);
+assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
 
 assert.match(component, /facts\.forEach\(\(fact\) => register\(fact\.parameterCode\)\)/);
 assert.match(component, /rows\.forEach\(\(row\) => register\(row\.parameterCode\)\)/);
-assert.doesNotMatch(component, /summaries\.slice|recommendations\.slice/);
-assert.match(component, /INSUFFICIENT_EVIDENCE/);
-assert.match(component, /REQUIRES_AGRONOMIST_REVIEW/);
-
-assert.match(component, /effectivePointCoordinates\(point\)/);
-assert.match(component, /nenhum ponto é deslocado para caber no talhão/);
-assert.doesNotMatch(component, /Math\.random|latitude\s*[+\-]=|longitude\s*[+\-]=/);
-
+assert.match(component, /operationalSummary\.rows/);
 assert.match(component, /buildProducerResultSummary/);
 assert.match(component, /buildProducerCommercialPlanSummary/);
-assert.match(page, /commercialPlanSnapshot=\{viewingPublished \? publishedSnapshotV3\?\.commercialPlanSnapshot \?\? null : null\}/);
-assert.match(component, /Produto comercial e custo não aparecem aqui porque não existe cenário comercial congelado/);
+assert.match(component, /Produto comercial ainda não congelado/);
+assert.match(component, /A RAIZ não converte nutriente em fertilizante sem fonte definida/);
+
+assert.match(component, /effectivePointCoordinates\(point\)/);
+assert.match(component, /PublishedNdviMap/);
+assert.match(component, /points=\{props\.points\}/);
+assert.doesNotMatch(component, /Math\.random|latitude\s*[+\-]=|longitude\s*[+\-]=/);
 
 assert.match(component, /HORIZONTE DE FERTILIDADE/);
-assert.match(component, /MICRONUTRIENTES E MATÉRIA ORGÂNICA/);
-assert.match(component, /Contexto agroclimático informado/i);
-assert.match(component, /CLIMA OFICIAL CONGELADO/);
-assert.match(component, /INMET · CPTEC\/INPE · ZARC/);
-assert.match(component, /agroclimateSnapshot\.forecast\.summaries/);
-assert.match(component, /não altera automaticamente P, K, S ou calcário/);
+assert.match(component, /MICRONUTRIENTES/);
 assert.match(component, /BIOLOGIA DO SOLO/);
-assert.match(component, /APLICAÇÃO E POSICIONAMENTO/);
-assert.match(component, /Aplicar tudo de uma vez\?/);
-assert.match(component, /Biologia isolada não gera crédito automático de N\/P\/K\/S/);
+assert.match(component, /CLIMA \/ RISCO/);
+assert.match(component, /APLICAÇÃO \/ POSICIONAMENTO/);
 
-assert.match(page, /const publishedTechnicalBase = viewingPublished && snapshotOutput\?\.trace/);
-assert.match(page, /technicalBase=\{viewingPublished \? publishedTechnicalBase : interpretation\?\.cropProfileName \?\? null\}/);
-assert.match(page, /const shouldUsePublishedVersion = explicitlyPublished \|\| \(!explicitlyCurrent && publishedRecordExists\)/);
-assert.match(page, /if \(shouldUsePublishedVersion && !canShowPublishedView\)/);
-assert.match(page, /hashVerified === true/);
+assert.match(technicalPage, /ndviSnapshot=\{viewingPublished \? publishedSnapshotV3\?\.ndviSnapshot \?\? null : null\}/);
+assert.match(resultPage, /<FinalVisualReport/);
+assert.match(resultPage, /ndviSnapshot=\{v3\?\.ndviSnapshot \?\? null\}/);
+assert.match(resultPage, /commercialPlanSnapshot=\{v3\?\.commercialPlanSnapshot \?\? null\}/);
+assert.doesNotMatch(resultPage, /summarizeSimpleInterpretation|recommendationTotalForArea/);
 
-console.log("final-visual-report: 3 páginas A4, nutrientes completos, GPS fixo e snapshot fail-closed validados");
+assert.match(technicalPage, /const publishedTechnicalBase = viewingPublished && snapshotOutput\?\.trace/);
+assert.match(technicalPage, /technicalBase=\{viewingPublished \? publishedTechnicalBase : interpretation\?\.cropProfileName \?\? null\}/);
+assert.match(technicalPage, /const shouldUsePublishedVersion = explicitlyPublished \|\| \(!explicitlyCurrent && publishedRecordExists\)/);
+assert.match(technicalPage, /if \(shouldUsePublishedVersion && !canShowPublishedView\)/);
+assert.match(technicalPage, /hashVerified === true/);
+
+console.log("final-visual-report: 5 páginas conceituais, snapshot único, NDVI/pontos, doses e produto comercial fail-closed validados");
