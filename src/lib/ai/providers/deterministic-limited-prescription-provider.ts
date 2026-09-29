@@ -197,10 +197,26 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     } else if (liming.status === "BLOCKED") {
       if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
         limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
+      } else if (liming.blockers.includes("NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED")) {
+        limitations.push("Calagem em plantio direto consolidado: falta classificar a condição real de 10–20 cm como com ou sem restrições. A RAIZ não escolhe esse subcaso por inferência.");
+      } else if (liming.blockers.includes("LIMING_MANAGEMENT_CONTEXT_INVALID")) {
+        limitations.push("Calagem: o contexto persistido de histórico/restrições está inválido. A decisão de calcário ficou isoladamente bloqueada até o contexto ser corrigido; o restante do laudo não é completado por suposição.");
+      } else if (
+        liming.blockers.some((code) =>
+          code === "RESTRICTION_ASSESSMENT_10_20_MISSING"
+          || code === "YIELD_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "COMPACTION_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "PHOSPHORUS_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "INCORPORATION_DECISION_NOT_ASSESSED",
+        )
+      ) {
+        limitations.push("Calagem em plantio direto consolidado com restrições: a avaliação estruturada de 10–20 cm ainda está incompleta. Campos não avaliados permanecem desconhecidos e não são tratados como ausência de restrição.");
+      } else if (liming.blockers.includes("INCORPORATION_DECISION_REQUIRES_AGRONOMIST_CONFIRMATION")) {
+        limitations.push("Calagem em plantio direto consolidado com restrições: a evidência laboratorial está no domínio da regra, mas a incorporação exige confirmação profissional explícita antes de liberar dose.");
       } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS") {
-        limitations.push("Calagem em plantio direto consolidado: a regra oficial usa a camada 0–10 cm. O laudo atual não possui essa camada separada; uma amostra composta de 0–20 cm não é dividida artificialmente pela RAIZ.");
+        limitations.push("Calagem em plantio direto consolidado sem restrições: a regra oficial usa a camada 0–10 cm. O laudo atual não possui evidência suficiente nessa camada; uma amostra composta de 0–20 cm não é dividida artificialmente pela RAIZ.");
       } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS") {
-        limitations.push("Calagem em plantio direto consolidado com restrições: a decisão exige evidências separadas de 0–10 e 10–20 cm. O laudo atual não contém essas duas camadas; a RAIZ preserva a amostragem real em vez de fabricar valores por profundidade.");
+        limitations.push("Calagem em plantio direto consolidado com restrições: a regra exige evidências separadas de 0–10 e 10–20 cm. O laudo atual não sustenta todas as entradas necessárias; a RAIZ preserva a amostragem real em vez de fabricar valores por profundidade.");
       } else {
         limitations.push("Calagem: a evidência atual não sustenta uma dose oficial uniforme para este sistema de manejo. A RAIZ manteve a decisão sem dose em vez de estimar um valor sem base técnica.");
       }
