@@ -42,3 +42,219 @@
 @media print{.simple-shell .simple-sidebar,.simple-mobile-nav,.simple-result-back,.no-print{display:none!important}.simple-result-advanced>summary{display:none!important}.simple-result-advanced>.simple-result-section{display:block!important}.simple-shell .main-content{margin-left:0!important}.simple-result-page{max-width:none;padding:0}.simple-result-document{border:0;box-shadow:none}.simple-result-document-head{padding-left:0;padding-right:0}}
 
 .simple-result-ndvi-map{margin-top:14px}.simple-result-ndvi-map-state{background:#fff;border:1px solid #e3eae1;border-radius:14px;color:#68786e;font-size:10px;line-height:1.5;margin-top:14px;padding:12px 14px}
+
+
+/* RAIZ — relatório final baseado nas artes conceituais aprovadas */
+.concept-report{
+  --concept-ink:#0d442f;
+  --concept-green:#0f5b3f;
+  --concept-green-2:#1d7650;
+  --concept-lime:#b6d94b;
+  --concept-soft:#f4faf5;
+  --concept-line:#b9d7c3;
+  --concept-muted:#6f7e75;
+  display:flex;
+  flex-direction:column;
+  gap:28px;
+  margin:0 auto;
+  max-width:900px;
+}
+.concept-report-page{
+  background:
+    radial-gradient(circle at 5% 8%,rgba(185,229,194,.24),transparent 28%),
+    radial-gradient(circle at 94% 92%,rgba(206,239,211,.22),transparent 31%),
+    #fbfdfb;
+  border:1px solid #d8e9dc;
+  border-radius:24px;
+  box-shadow:0 20px 56px rgba(16,76,51,.10);
+  box-sizing:border-box;
+  color:var(--concept-ink);
+  min-height:1122px;
+  overflow:hidden;
+  padding:34px 38px 32px;
+  position:relative;
+}
+.concept-brand-row,.concept-section-header{
+  align-items:center;
+  display:flex;
+  justify-content:space-between;
+}
+.concept-partner-brand{
+  align-items:flex-start;
+  background:rgba(255,255,255,.86);
+  border:1px solid #9dcab0;
+  border-radius:15px;
+  box-shadow:0 10px 26px rgba(26,95,62,.10);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-height:68px;
+  min-width:240px;
+  padding:12px 16px;
+}
+.concept-partner-brand .report-brand{display:flex;gap:10px}
+.concept-partner-brand .report-brand-logo{max-height:42px;max-width:180px}
+.concept-partner-brand .report-brand-name{font-size:11px}
+.concept-partner-brand>strong{font-size:22px;letter-spacing:-.03em;text-transform:uppercase}
+.concept-partner-brand>small{color:var(--concept-green-2);font-size:9px;font-weight:850;letter-spacing:.08em;margin-top:6px}
+.concept-raiz-brand{
+  align-items:center;
+  background:rgba(255,255,255,.9);
+  border:1px solid #a8cfb5;
+  border-radius:15px;
+  box-shadow:0 10px 26px rgba(26,95,62,.10);
+  display:flex;
+  min-height:68px;
+  min-width:132px;
+  padding:8px 14px;
+}
+.concept-raiz-brand .brand-logo{max-width:116px}
+.concept-cover-title{margin:34px 0 26px}
+.concept-cover-title>span,.concept-page-heading>span,.concept-diagnostic-card>span,.concept-recommendation-card>span,.concept-warning-box>strong,.concept-section-header>span,.concept-priorities>span,.concept-final-opinion>span,.concept-identification-card>span,.concept-yield-banner>span{
+  color:var(--concept-green-2);
+  display:block;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.concept-cover-title h1,.concept-page-heading h2{
+  color:#0a3c2a;
+  font-family:var(--font-heading);
+  font-size:43px;
+  letter-spacing:-.045em;
+  line-height:1.02;
+  margin:10px 0 8px;
+}
+.concept-cover-title p{color:#6d7e75;font-size:15px;margin:0}.concept-cover-title p i{font-style:normal;margin:0 9px}
+.concept-map-shell{
+  background:rgba(238,249,241,.78);
+  border:1.3px solid #72b58b;
+  border-radius:22px;
+  box-shadow:0 18px 36px rgba(18,92,58,.13);
+  padding:13px;
+}
+.concept-map-frame{
+  background:#dfe9e0;
+  border:2px solid #fff;
+  border-radius:16px;
+  box-shadow:inset 0 0 0 1px #83b795;
+  height:390px;
+  overflow:hidden;
+  position:relative;
+}
+.concept-map-frame .simple-result-ndvi-map{height:100%;margin:0}
+.concept-map-frame .simple-result-ndvi-map .real-field-map{border-radius:14px!important;min-height:390px}
+.concept-map-frame .report-visual-map{height:100%;margin:0}
+.concept-map-frame .report-visual-map svg{height:100%;width:100%}
+.concept-map-frame .report-map-legend{bottom:8px;left:10px;position:absolute}
+.concept-map-date,.concept-map-ndvi{
+  background:rgba(249,253,250,.91);
+  border:1px solid rgba(19,79,51,.18);
+  border-radius:11px;
+  color:#164f37;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.06em;
+  padding:10px 12px;
+  position:absolute;
+  top:12px;
+  z-index:5;
+}
+.concept-map-date{left:12px}
+.concept-map-ndvi{right:12px;text-align:left}.concept-map-ndvi small,.concept-map-ndvi strong{display:block}.concept-map-ndvi small{font-size:8px}.concept-map-ndvi strong{font-size:24px;letter-spacing:-.04em;margin-top:4px}
+.concept-stat-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr);padding:14px 6px 6px}
+.concept-stat-grid>div{
+  background:#fff;
+  border:1px solid #dbe9de;
+  border-radius:14px;
+  box-shadow:0 7px 18px rgba(18,78,52,.06);
+  min-height:88px;
+  padding:14px 16px;
+}
+.concept-stat-grid span,.concept-stat-grid strong,.concept-stat-grid small{display:block}.concept-stat-grid span{color:var(--concept-green-2);font-size:8px;font-weight:900;letter-spacing:.07em}.concept-stat-grid strong{font-size:24px;letter-spacing:-.03em;margin:9px 0 4px}.concept-stat-grid small{color:#88948d;font-size:9px}
+.concept-decision-hero{
+  background:linear-gradient(135deg,#0f5a3d 0%,#0b4c35 58%,#165f43 100%);
+  border-radius:20px;
+  box-shadow:0 16px 36px rgba(13,75,50,.18);
+  color:#fff;
+  margin-top:18px;
+  min-height:140px;
+  overflow:hidden;
+  padding:20px 24px;
+  position:relative;
+}
+.concept-decision-hero:after{background:rgba(255,255,255,.04);content:"";height:220px;position:absolute;right:-54px;top:-100px;transform:rotate(34deg);width:180px}
+.concept-decision-hero>span{color:#c7e864;font-size:9px;font-weight:900;letter-spacing:.08em}
+.concept-decision-main{align-items:baseline;display:flex;gap:14px;margin:11px 0 9px}.concept-decision-main strong{font-size:34px;letter-spacing:-.04em}.concept-decision-main em{font-size:12px;font-style:normal;opacity:.9}.concept-decision-hero>b{color:#c7e864;display:block;font-size:17px}.concept-decision-hero>small{display:block;font-size:9px;margin-top:10px;opacity:.78}
+.concept-section-header{border-bottom:1px solid #cfe1d4;padding-bottom:16px}.concept-section-header .brand-logo{max-width:110px}.concept-section-header>span{font-size:9px}
+.concept-page-heading{margin:28px 0 22px}.concept-page-heading h2{font-size:36px}
+.concept-diagnostic-card,.concept-final-opinion,.concept-identification-card,.concept-fertility-card{
+  background:rgba(255,255,255,.88);
+  border:1.3px solid #89c09c;
+  border-radius:20px;
+  box-shadow:0 16px 38px rgba(18,90,58,.10);
+  padding:20px;
+}
+.concept-diagnostic-row{margin-top:22px}.concept-diagnostic-row-head{align-items:flex-end;display:flex;justify-content:space-between;gap:20px}.concept-diagnostic-row-head strong{font-size:12px}.concept-diagnostic-row-head small{color:#738078;font-size:9px;text-align:right}
+.concept-distribution-bar{display:flex;gap:3px;height:20px;margin-top:8px;overflow:hidden}.concept-distribution-bar i{border-radius:7px;display:block;min-width:4px}
+.tone-low,.concept-legend .low{background:#e56a4f;color:#bf4e37}.tone-medium,.concept-legend .medium{background:#f4b64f;color:#a46c15}.tone-high,.concept-legend .high{background:#31845b;color:#2c7d56}.tone-very-high,.concept-legend .very-high{background:#0d5038;color:#0d5038}.tone-neutral{background:#a8b6ad}
+.concept-legend{display:flex;gap:38px;margin-top:22px}.concept-legend span{background:none!important;font-size:8px;font-weight:900}
+.concept-two-card-grid{display:grid;gap:18px;grid-template-columns:1fr 1fr;margin-top:24px}
+.concept-recommendation-card{background:#fff;border:1px solid #a8cfb5;border-radius:18px;box-shadow:0 12px 28px rgba(18,83,55,.07);min-height:210px;padding:20px}.concept-recommendation-card h3{font-size:24px;letter-spacing:-.03em;line-height:1.15;margin:22px 0 14px}.concept-recommendation-card p{font-size:12px;line-height:1.55;margin:0 0 16px}.concept-recommendation-card small{color:#78867e;display:block;font-size:9px;line-height:1.55}
+.concept-warning-box{background:#fff7e7;border:1px solid #e7c27d;border-radius:16px;margin-top:22px;padding:15px 18px}.concept-warning-box>strong{color:#b16c17}.concept-warning-box>span{color:#725b37;display:block;font-size:10px;line-height:1.5;margin-top:7px}
+.concept-action-list{display:flex;flex-direction:column;gap:12px}.concept-action-list article{align-items:center;background:#fff;border:1px solid #b9d7c3;border-radius:17px;display:grid;gap:15px;grid-template-columns:42px minmax(0,1fr) auto;padding:15px 17px}.concept-action-list article>b{align-items:center;background:#e7f3e9;border-radius:12px;color:#26754d;display:flex;font-size:11px;height:42px;justify-content:center}.concept-action-list article div span,.concept-action-list article div strong,.concept-action-list article div small{display:block}.concept-action-list article div span{color:#607269;font-size:9px;font-weight:900;letter-spacing:.05em}.concept-action-list article div strong{font-size:20px;margin:5px 0}.concept-action-list article div small{color:#79877f;font-size:8px;line-height:1.5}.concept-action-list article em{color:#1d6f49;font-size:11px;font-style:normal;font-weight:850;white-space:nowrap}
+.concept-management-grid{display:grid;gap:16px;grid-template-columns:1fr 1fr;margin-top:22px}.concept-management-grid>section,.concept-three-card-grid>section{background:#fff;border:1px solid #c5ddcb;border-radius:17px;min-height:150px;padding:18px}.concept-management-grid span,.concept-three-card-grid span{color:#33815a;display:block;font-size:8px;font-weight:900;letter-spacing:.07em}.concept-management-grid h3,.concept-three-card-grid h3{font-size:17px;margin:10px 0 9px}.concept-management-grid p,.concept-three-card-grid p{color:#65756d;font-size:9px;line-height:1.6;margin:0}.concept-management-grid small{color:#8a958f;display:block;font-size:8px;line-height:1.5;margin-top:8px}
+.concept-cost-strip,.concept-trace-strip{align-items:center;background:#12573e;border-radius:16px;color:#fff;display:grid;gap:16px;grid-template-columns:1fr auto auto;margin-top:18px;padding:16px 18px}.concept-cost-strip span{color:#c6e961;font-size:8px;font-weight:900}.concept-cost-strip strong{font-size:20px}.concept-cost-strip b{color:#c6e961;font-size:13px}
+.concept-priorities{margin-top:24px}.concept-priorities ol{display:grid;gap:9px;grid-template-columns:1fr 1fr;list-style:none;margin:14px 0 0;padding:0}.concept-priorities li{align-items:flex-start;background:#eef6ef;border-radius:13px;display:flex;gap:10px;padding:12px}.concept-priorities li>b{align-items:center;background:#fff;border-radius:8px;color:#2b754f;display:flex;height:25px;justify-content:center;min-width:25px}.concept-priorities li p{color:#53675c;font-size:9px;line-height:1.45;margin:2px 0 0}
+.concept-fertility-card{padding:18px}.concept-fertility-head{align-items:center;border-bottom:1px solid #dce9df;display:flex;justify-content:space-between;padding-bottom:13px}.concept-fertility-head span{color:#2e7c55;font-size:9px;font-weight:900}.concept-fertility-head strong{font-size:13px}.concept-fertility-row{align-items:center;border-bottom:1px solid #edf2ee;display:grid;gap:20px;grid-template-columns:minmax(0,1fr) auto;padding:13px 0}.concept-fertility-row div strong,.concept-fertility-row div small{display:block}.concept-fertility-row div strong{font-size:11px}.concept-fertility-row div small{color:#7b8881;font-size:8px;line-height:1.45;margin-top:4px}.concept-fertility-row>b{color:#1d6d49;font-size:10px}.concept-fertility-card>small{color:#809087;display:block;font-size:8px;margin-top:12px}
+.concept-three-card-grid{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);margin-top:22px}.concept-three-card-grid>section{min-height:190px}
+.concept-trace-strip{background:#eef6ef;color:#164a34;grid-template-columns:repeat(3,1fr);margin-top:22px}.concept-trace-strip div span,.concept-trace-strip div strong{display:block}.concept-trace-strip div span{color:#73847a;font-size:8px;font-weight:900}.concept-trace-strip div strong{font-size:11px;margin-top:5px}
+.concept-final-opinion{min-height:270px;padding:24px}.concept-final-opinion>p{color:#314f40;font-size:14px;line-height:1.9;margin:20px 0}.concept-final-dose-lines{display:flex;flex-direction:column;gap:8px}.concept-final-dose-lines strong{font-size:13px}.concept-final-commercial{background:#eef7ef;border-radius:11px;padding:10px 12px}
+.concept-yield-banner{background:linear-gradient(135deg,#0e593d,#115239);border-radius:19px;color:#fff;margin-top:24px;padding:20px 22px}.concept-yield-banner>span{color:#c6e961}.concept-yield-banner>div{align-items:center;display:flex;justify-content:space-between;margin:15px 0}.concept-yield-banner>div strong{font-size:30px}.concept-yield-banner>div b{color:#c6e961;font-size:28px}.concept-yield-banner>small{font-size:9px;line-height:1.6;opacity:.85}
+.concept-identification-card{margin-top:24px}.concept-identification-grid{display:grid;gap:13px 26px;grid-template-columns:1fr 1fr;margin-top:20px}.concept-identification-grid p{color:#65756d;font-size:10px;margin:0}.concept-identification-grid strong{color:#234d37}.concept-identification-card .report-brand-signature{margin-top:24px;max-width:360px}
+.concept-final-integrity{align-items:center;color:#577065;display:flex;font-size:8px;gap:7px;margin-top:18px}
+.concept-empty-state{background:#f0f6f1;border:1px dashed #b8d0bf;border-radius:16px;color:#63756b;font-size:10px;line-height:1.5;padding:16px}
+.concept-page-footer{align-items:center;border-top:1px solid #d6e5da;bottom:22px;color:#73847a;display:flex;font-size:7px;font-weight:850;justify-content:space-between;left:38px;letter-spacing:.05em;padding-top:10px;position:absolute;right:38px}
+.concept-page-footer b{color:#294f3a}
+
+@media(max-width:820px){
+  .concept-report{gap:18px}
+  .concept-report-page{border-radius:18px;min-height:auto;padding:24px 20px 72px}
+  .concept-partner-brand{min-width:0;width:55%}.concept-raiz-brand{min-width:0}
+  .concept-cover-title h1,.concept-page-heading h2{font-size:32px}
+  .concept-map-frame{height:300px}.concept-map-frame .simple-result-ndvi-map .real-field-map{min-height:300px}
+  .concept-stat-grid,.concept-three-card-grid{grid-template-columns:1fr}
+  .concept-two-card-grid,.concept-management-grid{grid-template-columns:1fr}
+  .concept-action-list article{grid-template-columns:38px minmax(0,1fr)}.concept-action-list article em{grid-column:2;white-space:normal}
+  .concept-priorities ol{grid-template-columns:1fr}
+  .concept-identification-grid{grid-template-columns:1fr}
+  .concept-page-footer{bottom:18px;left:20px;right:20px}
+}
+@media print{
+  @page{size:A4 portrait;margin:0}
+  .concept-report{display:block;max-width:none}
+  .concept-report-page{
+    background:#fbfdfb!important;
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+    break-after:page;
+    height:297mm;
+    margin:0;
+    min-height:297mm;
+    overflow:hidden;
+    padding:14mm 15mm 13mm;
+    page-break-after:always;
+    width:210mm;
+  }
+  .concept-report-page:last-child{break-after:auto;page-break-after:auto}
+  .concept-page-footer{bottom:8mm;left:15mm;right:15mm}
+  .concept-map-shell,.concept-diagnostic-card,.concept-recommendation-card,.concept-final-opinion,.concept-identification-card,.concept-fertility-card{box-shadow:none}
+  .concept-map-frame{height:95mm}
+  .concept-map-frame .simple-result-ndvi-map .real-field-map{min-height:95mm!important}
+  .concept-cover-title{margin:8mm 0 6mm}
+  .concept-cover-title h1{font-size:30pt}
+  .concept-page-heading{margin:7mm 0 6mm}.concept-page-heading h2{font-size:25pt}
+  .concept-decision-hero{margin-top:5mm}
+  .concept-report-page *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
