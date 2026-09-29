@@ -424,7 +424,7 @@ assert.match(finalVisualReport, /<ReportSignature branding=\{props\.branding\}\s
 assert.ok(simpleResult.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);"));
 assert.ok(simpleResult.includes("{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}"));
 assert.match(simpleResult, /ndviSnapshot=\{v3\?\.ndviSnapshot \?\? null\}/);
-assert.match(finalVisualReport, /VIGOR MÉDIO/);
+assert.match(finalVisualReport, /NDVI MÉDIO/);
 assert.match(finalVisualReport, /PublishedNdviMap/);
 assert.match(finalVisualReport, /props\.ndviSnapshot\.rasterArchived/);
 assert.match(finalVisualReport, /HORIZONTE DE FERTILIDADE/);
