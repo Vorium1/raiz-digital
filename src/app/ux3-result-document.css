@@ -57,7 +57,8 @@
   flex-direction:column;
   gap:28px;
   margin:0 auto;
-  max-width:900px;
+  max-width:794px;
+  width:100%;
 }
 .concept-report-page{
   background:
@@ -69,7 +70,7 @@
   box-shadow:0 20px 56px rgba(16,76,51,.10);
   box-sizing:border-box;
   color:var(--concept-ink);
-  min-height:1122px;
+  min-height:1123px;
   overflow:hidden;
   padding:34px 38px 32px;
   position:relative;
@@ -260,7 +261,7 @@
 }
 
 .concept-result-host{max-width:980px}
-.concept-result-toolbar{align-items:center;display:flex;justify-content:space-between;margin:0 auto 18px;max-width:900px}
+.concept-result-toolbar{align-items:center;display:flex;justify-content:space-between;margin:0 auto 18px;max-width:794px}
 .concept-result-toolbar>a{align-items:center;color:#65756b;display:inline-flex;font-size:10px;font-weight:850;gap:7px;text-decoration:none}
 .concept-result-toolbar>a:first-child svg{transform:rotate(180deg)}
 .concept-result-toolbar>div{align-items:center;display:flex;gap:10px}
