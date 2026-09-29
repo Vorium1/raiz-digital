@@ -127,6 +127,13 @@ function numberPt(value: number, maximumFractionDigits = 2) {
   return value.toLocaleString("pt-BR", { maximumFractionDigits });
 }
 
+function commercialTotalDisplay(totalQuantity: number, totalUnit: string) {
+  if (totalUnit === "t" && totalQuantity > 0 && totalQuantity < 1) {
+    return numberPt(totalQuantity * 1000, 0) + " kg";
+  }
+  return numberPt(totalQuantity, 2) + " " + totalUnit;
+}
+
 const CLASSIFICATION_ORDER = ["MUITO_BAIXO", "BAIXO", "MEDIO", "ALTO", "MUITO_ALTO"];
 
 function normalizedClassification(value: string) {
@@ -381,11 +388,16 @@ export function FinalVisualReport(props: Props) {
     && props.context.fieldId
     && props.boundary,
   );
-  const finalOpinion = prescription?.summary
-    || props.narrativeSummary
-    || (operationalSummary.rows.length
-      ? "A recomendação abaixo reúne somente doses sustentadas e congeladas nesta decisão."
-      : "O relatório foi concluído sem promover doses que ainda não possuem evidência suficiente.");
+  const hasValidationPending = missingInformation.length > 0;
+  const plainProducerOpinion = commercial?.rows.length
+    ? "Para " + (props.context.fieldName || "esta área") + ", o plano comercial congelado usa "
+      + commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" e ")
+      + ". " + (hasValidationPending ? "Antes de aplicar, resolva os itens marcados para validação." : "Antes da operação, apenas confira produto, teor e posicionamento.")
+    : operationalSummary.rows.length
+      ? "Para " + (props.context.fieldName || "esta área") + ", a necessidade aprovada é "
+        + operationalSummary.rows.map((row) => numberPt(row.doseQuantity) + " " + row.doseUnit + " de " + row.label).join(" e ")
+        + ". Isso ainda não representa o peso de um fertilizante comercial."
+      : "Ainda não existe uma dose geral segura para " + (props.context.fieldName || "esta área") + ". Resolva as pendências indicadas antes de definir produto e quantidade.";
 
   return (
     <article className="concept-report">
@@ -475,7 +487,7 @@ export function FinalVisualReport(props: Props) {
           {primaryCommercialRow ? (
             <div className="concept-decision-split">
               <div><strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit}</strong><small>{primaryCommercialRow.productName}</small></div>
-              <div><strong>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit}</strong><small>Total para a área</small></div>
+              <div><strong>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)}</strong><small>Total para a área</small></div>
             </div>
           ) : commercial && commercial.rows.length > 1 ? (
             <div className="concept-decision-split">
@@ -547,7 +559,7 @@ export function FinalVisualReport(props: Props) {
 
         <div className="concept-warning-box concept-warning-box-approved">
           <div className="concept-warning-icon">!</div>
-          <div><strong>VALIDAR</strong><span>{missingInformation.length ? missingInformation.join(" · ") : "Conferir fonte comercial, teor e posicionamento antes da execução."}</span></div>
+          <div><strong>{hasValidationPending ? "VALIDAR" : "CONFERIR"}</strong><span>{hasValidationPending ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</span></div>
         </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
       </section>
@@ -573,7 +585,7 @@ export function FinalVisualReport(props: Props) {
             <span>PRODUTO COMERCIAL</span>
             <h3>{commercial ? "Cenário congelado" : "Ainda não definido"}</h3>
             {commercial ? commercial.rows.map((row, index) => (
-              <p key={row.productName + index}><strong>{row.productName}</strong> · {numberPt(row.doseQuantity, 4)} {row.doseUnit} · total {numberPt(row.totalQuantity, 4)} {row.totalUnit}</p>
+              <p key={row.productName + index}><strong>{row.productName}</strong> · {numberPt(row.doseQuantity, 4)} {row.doseUnit} · total {commercialTotalDisplay(row.totalQuantity, row.totalUnit)}</p>
             )) : <p>A necessidade agronômica está separada do peso do fertilizante. Selecione e congele um cenário comercial para o produto aparecer aqui.</p>}
           </section>
         </div>
@@ -625,7 +637,7 @@ export function FinalVisualReport(props: Props) {
           {primaryCommercialRow ? (
             <>
               <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
-              <b>{numberPt(primaryCommercialRow.totalQuantity, 4)} {primaryCommercialRow.totalUnit} na {props.context.fieldName || "área"}</b>
+              <b>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)} na {props.context.fieldName || "área"}</b>
             </>
           ) : primaryRecommendation ? (
             <>
@@ -643,7 +655,7 @@ export function FinalVisualReport(props: Props) {
 
         <section className="concept-producer-validate-card">
           <div className="concept-warning-icon">!</div>
-          <div><span>VALIDAR</span><strong>{missingInformation.length ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</strong></div>
+          <div><span>{hasValidationPending ? "VALIDAR" : "CONFERIR"}</span><strong>{hasValidationPending ? missingInformation.join(" · ") : "Fonte comercial, teor e posicionamento antes da execução."}</strong></div>
         </section>
 
         <section className="concept-yield-banner concept-yield-banner-approved">
@@ -654,7 +666,7 @@ export function FinalVisualReport(props: Props) {
 
         <section className="concept-final-opinion concept-final-opinion-compact">
           <span>PARECER FINAL</span>
-          <p>{finalOpinion}</p>
+          <p>{plainProducerOpinion}</p>
         </section>
 
         <section className="concept-identification-card concept-identification-card-approved">
