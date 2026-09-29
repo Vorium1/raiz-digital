@@ -17,6 +17,7 @@ import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommend
 import { getAnalysisPlanningContext } from "@/lib/repositories/analyses";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { calculateNitrogenRecommendation, getNitrogenRecommendationWorkspace, NitrogenRecommendationError } from "@/lib/repositories/nitrogen-recommendation";
+import { collectAnalysisAgroclimateSnapshot } from "@/lib/agroclimate/analysis-snapshot";
 
 function interpretationItems(structuredOutput: unknown) {
   if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
@@ -126,6 +127,13 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     );
   }
 
+  const agroclimateSnapshotPromise = collectAnalysisAgroclimateSnapshot({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    analysisId: input.analysisId,
+    sourceTimeoutMs: 3_000,
+  }).catch(() => null);
+
   let result;
   try {
     result = await provider.prescribe({ evidence });
@@ -137,8 +145,10 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     result = await provider.prescribe({ evidence });
   }
 
-  // O horizonte de fertilidade é calculado pelo servidor a partir dos mesmos gates determinísticos.
-  // Mesmo quando a narrativa vem de LLM, ela não pode omitir nem reescrever este bloco.
+  const collectedAgroclimate = await agroclimateSnapshotPromise;
+
+  // Horizonte, complementos, clima, biologia e posicionamento são blocos calculados/coletados pelo servidor.
+  // Mesmo quando a narrativa vem de LLM, o provedor não pode omitir nem reescrever esses blocos.
   result = {
     ...result,
     prescription: {
@@ -148,6 +158,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       climateContext: evidence.analysis.climateContext,
       biologicalContext: evidence.biologicalReportContext,
       applicationGuidance: evidence.applicationGuidance,
+      agroclimateSnapshot: collectedAgroclimate?.reportSnapshot ?? null,
     },
   };
 
