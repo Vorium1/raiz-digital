@@ -29,6 +29,10 @@ assert.match(component, /Produto comercial e custo não aparecem aqui porque nã
 assert.match(component, /HORIZONTE DE FERTILIDADE/);
 assert.match(component, /MICRONUTRIENTES E MATÉRIA ORGÂNICA/);
 assert.match(component, /CONTEXTO AGROCLIMÁTICO INFORMADO/);
+assert.match(component, /CLIMA OFICIAL CONGELADO/);
+assert.match(component, /INMET · CPTEC\/INPE · ZARC/);
+assert.match(component, /agroclimateSnapshot\.forecast\.summaries/);
+assert.match(component, /não altera automaticamente P, K, S ou calcário/);
 assert.match(component, /BIOLOGIA DO SOLO/);
 assert.match(component, /APLICAÇÃO E POSICIONAMENTO/);
 assert.match(component, /Aplicar tudo de uma vez\?/);
