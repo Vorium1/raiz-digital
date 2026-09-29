@@ -25,6 +25,11 @@ assert.match(css, /page-break-after:always/);
 assert.match(css, /-webkit-text-fill-color:#075c3b/);
 assert.match(css, /concept-map-frame-cover[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
 assert.match(css, /concept-map-frame-overview[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
+assert.match(css, /concept-map-shell-overview[\s\S]*padding:0/);
+assert.match(css, /concept-page-heading-approved>span[\s\S]*line-height:1\.18/);
+assert.match(css, /gm-style-pbc/);
+assert.match(css, /gm-style-pbt/);
+
 
 assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
 

@@ -337,7 +337,15 @@
 }
 .concept-mini-brands .brand-logo{max-height:34px;max-width:95px}
 .concept-page-heading-approved{margin:30px 0 18px}
-.concept-page-heading-approved>span{color:#173d2b;font-size:26px;font-weight:400;letter-spacing:-.025em}
+.concept-page-heading-approved>span{
+  color:#173d2b;
+  font-size:26px;
+  font-weight:400;
+  letter-spacing:-.025em;
+  line-height:1.18;
+  overflow:visible;
+  padding:.08em 0 .02em;
+}
 .concept-page-heading-approved h2{
   background:none;
   color:#075c3b;
@@ -350,8 +358,15 @@
   overflow:visible;
   padding:.10em 0 .04em;
 }
-.concept-map-shell-overview{padding:13px}
-.concept-map-frame-overview{height:390px}
+.concept-map-shell-overview{
+  overflow:hidden;
+  padding:0;
+}
+.concept-map-frame-overview{
+  border:0;
+  border-radius:20px 20px 0 0;
+  height:410px;
+}
 .concept-map-frame-overview .simple-result-ndvi-map,
 .concept-map-frame-overview .real-field-map,
 .concept-map-frame-overview .real-field-map>div:first-child,
@@ -360,6 +375,9 @@
   min-height:100%!important;
   margin:0!important;
   width:100%!important;
+}
+.concept-stat-grid-approved{
+  padding:12px;
 }
 .concept-stat-grid-approved>div{text-align:center}
 .concept-stat-grid-approved>div strong{font-size:23px}
@@ -591,4 +609,27 @@
   .concept-technical-table th{font-size:6.2pt}
   .concept-technical-list article{break-inside:avoid}
   .concept-technical-block h3{break-after:avoid}
+}
+
+@media print{
+  /* Google cooperative-gesture helper is interactive UI; never print it in the report. */
+  .concept-report .gm-style-pbc,
+  .concept-report .gm-style-pbt,
+  .concept-report [class*="gm-style-pb"]{
+    display:none!important;
+    opacity:0!important;
+    visibility:hidden!important;
+  }
+  .concept-map-frame-overview{
+    overflow:hidden!important;
+  }
+  .concept-map-frame-overview .simple-result-ndvi-map,
+  .concept-map-frame-overview .real-field-map,
+  .concept-map-frame-overview .real-field-map>div:first-child,
+  .concept-map-frame-overview .real-field-map-canvas,
+  .concept-map-frame-overview .gm-style{
+    height:100%!important;
+    min-height:100%!important;
+    width:100%!important;
+  }
 }
