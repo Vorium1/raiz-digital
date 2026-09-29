@@ -11,7 +11,7 @@ export type ReportFertilityHorizonStage = {
   kind: "CURRENT_CULTIVATION" | "SECOND_CULTIVATION" | "REANALYSIS_CHECKPOINT" | "POST_REANALYSIS_HORIZON";
   label: string;
   cultivationOrder: number | null;
-  status: "NUMERIC_READY" | "PARTIAL" | "REANALYSIS_REQUIRED";
+  status: "NUMERIC_READY" | "SPATIAL_READY" | "PARTIAL" | "REANALYSIS_REQUIRED";
   p2o5KgPerHa: number | null;
   k2oKgPerHa: number | null;
   p2o5RangeKgPerHa: { min: number; max: number } | null;
@@ -47,17 +47,6 @@ function resolveDose(
   pointEnvelope: DeterministicPkPointDoseEnvelope | null | undefined,
   uniform: DeterministicPkDoseDecision | null | undefined,
 ) {
-  if (
-    pointEnvelope?.ready
-    && pointEnvelope.operationalAverageAllowed
-    && pointEnvelope.operationalAverageKgPerHa != null
-  ) {
-    return {
-      dose: rounded(pointEnvelope.operationalAverageKgPerHa),
-      range: rangeFromEnvelope(pointEnvelope),
-      basis: "POINT_AVERAGE" as const,
-    };
-  }
   if (uniform?.ready && uniform.expected && !uniform.expected.isDiscretionaryRange) {
     return {
       dose: rounded(uniform.expected.doseKgPerHa),
@@ -66,6 +55,14 @@ function resolveDose(
         max: rounded(uniform.expected.maximumKgPerHa) as number,
       },
       basis: "UNIFORM_CLASS" as const,
+    };
+  }
+  const pointRange = rangeFromEnvelope(pointEnvelope);
+  if (pointEnvelope?.ready && pointRange) {
+    return {
+      dose: null,
+      range: pointRange,
+      basis: "POINT_RANGE" as const,
     };
   }
   return { dose: null, range: null, basis: null };
@@ -93,7 +90,6 @@ export function buildReportFertilityHorizon(input: {
   targetYieldTonPerHa: number | null | undefined;
   targetYieldUnit: string | null | undefined;
   cultivationOrderAfterSoilAnalysis: number | null | undefined;
-  allowEqualWeightOperationalAverage: boolean;
   currentPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
   currentPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
 }): ReportFertilityHorizon | null {
@@ -110,13 +106,17 @@ export function buildReportFertilityHorizon(input: {
     kind: "CURRENT_CULTIVATION",
     label: currentOrder === 2 ? "Cultivo atual · 2º após a análise" : "Cultivo atual · 1º após a análise",
     cultivationOrder: currentOrder === 1 || currentOrder === 2 ? currentOrder : null,
-    status: currentP.dose != null && currentK.dose != null ? "NUMERIC_READY" : "PARTIAL",
+    status: currentP.dose != null && currentK.dose != null
+      ? "NUMERIC_READY"
+      : (currentP.dose != null || currentP.range) && (currentK.dose != null || currentK.range)
+        ? "SPATIAL_READY"
+        : "PARTIAL",
     p2o5KgPerHa: currentP.dose,
     k2oKgPerHa: currentK.dose,
     p2o5RangeKgPerHa: currentP.range,
     k2oRangeKgPerHa: currentK.range,
-    rationale: currentP.basis === "POINT_AVERAGE" || currentK.basis === "POINT_AVERAGE"
-      ? "A regulagem do talhão vem da média das doses determinísticas por ponto com suporte amostral equivalente; a variação por ponto permanece preservada."
+    rationale: currentP.basis === "POINT_RANGE" || currentK.basis === "POINT_RANGE"
+      ? "A evidência não sustenta taxa uniforme para todos os nutrientes. O plano preserva a faixa determinística por ponto/zona, sem promover média de amostras como dose uniforme."
       : "A dose corrente usa a decisão determinística uniforme disponível para o talhão.",
   });
 
@@ -128,7 +128,7 @@ export function buildReportFertilityHorizon(input: {
       yieldGoalUnit: input.targetYieldUnit,
       cultivationOrderAfterSoilAnalysis: 2,
       nutrient: "P2O5",
-      allowEqualWeightOperationalAverage: input.allowEqualWeightOperationalAverage,
+      allowEqualWeightOperationalAverage: false,
     });
     const secondKPoints = computeDeterministicPkPointDoseEnvelope({
       cropCode,
@@ -137,7 +137,7 @@ export function buildReportFertilityHorizon(input: {
       yieldGoalUnit: input.targetYieldUnit,
       cultivationOrderAfterSoilAnalysis: 2,
       nutrient: "K2O",
-      allowEqualWeightOperationalAverage: input.allowEqualWeightOperationalAverage,
+      allowEqualWeightOperationalAverage: false,
     });
     const secondPUniform = computeDeterministicPkDose({
       cropCode,
@@ -162,7 +162,11 @@ export function buildReportFertilityHorizon(input: {
       kind: "SECOND_CULTIVATION",
       label: "2º cultivo após esta análise",
       cultivationOrder: 2,
-      status: secondP.dose != null && secondK.dose != null ? "NUMERIC_READY" : "PARTIAL",
+      status: secondP.dose != null && secondK.dose != null
+        ? "NUMERIC_READY"
+        : (secondP.dose != null || secondP.range) && (secondK.dose != null || secondK.range)
+          ? "SPATIAL_READY"
+          : "PARTIAL",
       p2o5KgPerHa: secondP.dose,
       k2oKgPerHa: secondK.dose,
       p2o5RangeKgPerHa: secondP.range,
