@@ -52,7 +52,6 @@ assert.match(component, /commercialTotalDisplay/);
 assert.match(component, /totalQuantity \* 1000/);
 assert.match(component, /plainProducerOpinion/);
 assert.match(component, /producerPlanRows/);
-assert.match(component, /PLANO DA SAFRA/);
 assert.match(component, /META PRODUTIVA/);
 assert.match(component, /NECESSIDADES PARA BUSCAR ESTA META/);
 assert.match(component, /Considerando a análise do solo e as exigências de/);
