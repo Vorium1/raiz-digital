@@ -726,6 +726,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       state: base.state,
       managementSystem: base.managementSystem ?? analysisContextTillageSystem(base.analysisContext),
       results: resultsResult.rows,
+      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
     });
 
     const soilMicrobiologyEvidence = evaluateSoilMicrobiologyEvidence({
