@@ -92,6 +92,13 @@ assert.doesNotMatch(component, />VALIDAR</);
 
 assert.match(component, /effectivePointCoordinates\(point\)/);
 assert.match(component, /PublishedNdviMap/);
+assert.match(component, /NDVI MÉDIO/);
+assert.match(component, /COMO LER O NDVI/);
+assert.match(component, /Escala teórica de -1 a \+1/);
+assert.match(component, /classifyNdviValue/);
+assert.match(component, /zoneBreakdownPct/);
+assert.match(component, /fieldTotalLabel/);
+assert.match(component, /EM DESTAQUE: O QUE EXIGE AÇÃO NESTA SAFRA/);
 assert.match(component, /points=\{props\.points\}/);
 assert.doesNotMatch(component, /Math\.random|latitude\s*[+\-]=|longitude\s*[+\-]=/);
 assert.match(component, /showLegend=\{false\}[\s\S]*?eager/);
@@ -132,3 +139,8 @@ assert.match(technicalPage, /if \(shouldUsePublishedVersion && !canShowPublished
 assert.match(technicalPage, /hashVerified === true/);
 
 console.log("final-visual-report: 5 páginas conceituais, snapshot único, NDVI/pontos, doses e produto comercial fail-closed validados");
+
+assert.match(css, /concept-ndvi-explainer/);
+assert.match(css, /concept-ndvi-scale/);
+assert.match(css, /zone-very-high/);
+assert.match(css, /concept-diagnostic-intro/);

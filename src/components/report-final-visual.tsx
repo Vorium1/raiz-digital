@@ -17,6 +17,15 @@ import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snap
 import type { FrozenNdviSnapshot } from "@/lib/repositories/premium-report-publication";
 import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient-plan";
 import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import { classifyNdviValue, VIGOR_ZONE_LABELS, type VigorZone } from "@/domain/ndvi-engine";
+
+const NDVI_REPORT_SCALE: Array<{ zone: VigorZone; range: string; cssClass: string }> = [
+  { zone: "SEM_VEGETACAO", range: "< 0,20", cssClass: "zone-bare" },
+  { zone: "BAIXO", range: "0,20–0,39", cssClass: "zone-low" },
+  { zone: "MODERADO", range: "0,40–0,59", cssClass: "zone-moderate" },
+  { zone: "ALTO", range: "0,60–0,79", cssClass: "zone-high" },
+  { zone: "MUITO_ALTO", range: "≥ 0,80", cssClass: "zone-very-high" },
+];
 
 type StructuredFact = {
   sampleCode: string;
@@ -438,6 +447,12 @@ export function FinalVisualReport(props: Props) {
     && props.context.fieldId
     && props.boundary,
   );
+  const ndviMeanZone = props.ndviSnapshot ? classifyNdviValue(props.ndviSnapshot.meanNdvi) : null;
+  const ndviMeanZoneLabel = ndviMeanZone ? VIGOR_ZONE_LABELS[ndviMeanZone] : null;
+  const ndviObservedRange = props.ndviSnapshot
+    ? numberPt(props.ndviSnapshot.minNdvi, 2) + " a " + numberPt(props.ndviSnapshot.maxNdvi, 2)
+    : null;
+  const fieldTotalLabel = props.context.fieldName ? "No talhão · " + props.context.fieldName : "No talhão";
   const fertilityScopeText = "Recomendação válida para " + cropSeasonLabel
     + (props.context.yieldGoal != null ? " com meta de " + yieldGoalLabel : "")
     + ". Esta dose vale para esta safra e não deve ser repetida automaticamente em cultivos futuros. Mudança de cultura, meta produtiva, safra ou nova análise exige novo cálculo.";
@@ -714,16 +729,41 @@ export function FinalVisualReport(props: Props) {
           <div className="concept-stat-grid concept-stat-grid-approved">
             <div><span>ÁREA</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong><small>{props.context.fieldName || "Talhão"}</small></div>
             <div><span>AMOSTRAGEM</span><strong>{props.points.length} pontos</strong><small>{collectedCount ? collectedCount + " coletados" : "Coletas do snapshot"}</small></div>
-            <div><span>NDVI</span><strong>{props.ndviSnapshot ? numberPt(props.ndviSnapshot.meanNdvi, 2) : "—"}</strong><small>{props.ndviSnapshot ? "Vigor médio congelado" : "Sem NDVI congelado"}</small></div>
+            <div><span>NDVI MÉDIO</span><strong>{props.ndviSnapshot ? numberPt(props.ndviSnapshot.meanNdvi, 2) : "—"}</strong><small>{props.ndviSnapshot ? (ndviMeanZoneLabel ?? "Vigor médio congelado") : "Sem NDVI congelado"}</small></div>
           </div>
         </div>
+
+        {props.ndviSnapshot && (
+          <section className="concept-ndvi-explainer">
+            <div className="concept-ndvi-summary">
+              <div>
+                <span>COMO LER O NDVI</span>
+                <strong>{numberPt(props.ndviSnapshot.meanNdvi, 2)} = {ndviMeanZoneLabel?.replace("Vigor ", "vigor ")}</strong>
+                <small>Escala teórica de -1 a +1 · faixa observada neste talhão: {ndviObservedRange}.</small>
+              </div>
+              <p>Quanto maior o NDVI, maior tende a ser a densidade e o vigor da vegetação naquele momento. O índice não mede produtividade sozinho: cultura, estágio, clima e manejo precisam ser considerados.</p>
+            </div>
+            <div className="concept-ndvi-scale">
+              {NDVI_REPORT_SCALE.map((item) => {
+                const pct = props.ndviSnapshot.zoneBreakdownPct?.[item.zone];
+                return (
+                  <div className={item.cssClass} key={item.zone}>
+                    <i />
+                    <strong>{VIGOR_ZONE_LABELS[item.zone].replace("Vigor ", "")}</strong>
+                    <span>{item.range}{typeof pct === "number" && pct > 0 ? " · " + numberPt(pct, 0) + "%" : ""}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <div className="concept-decision-hero concept-decision-hero-approved">
           <span>DECISÃO EM {commercial ? "PRODUTO" : "NECESSIDADE AGRONÔMICA"}</span>
           {primaryCommercialRow ? (
             <div className="concept-decision-split">
               <div><strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit}</strong><small>{primaryCommercialRow.productName}</small></div>
-              <div><strong>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)}</strong><small>Total para a área</small></div>
+              <div><strong>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)}</strong><small>{fieldTotalLabel}</small></div>
             </div>
           ) : commercial && commercial.rows.length > 1 ? (
             <div className="concept-decision-split">
@@ -733,7 +773,7 @@ export function FinalVisualReport(props: Props) {
           ) : primaryRecommendation ? (
             <div className="concept-decision-split">
               <div><strong>{numberPt(primaryRecommendation.doseQuantity)} {primaryRecommendation.doseUnit}</strong><small>{primaryRecommendation.label}</small></div>
-              <div><strong>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit : "—"}</strong><small>Equivalente na área</small></div>
+              <div><strong>{primaryRecommendation.totalQuantity != null && primaryRecommendation.totalUnit ? numberPt(primaryRecommendation.totalQuantity) + " " + primaryRecommendation.totalUnit : "—"}</strong><small>{fieldTotalLabel}</small></div>
             </div>
           ) : (
             <div className="concept-decision-split">
@@ -753,6 +793,11 @@ export function FinalVisualReport(props: Props) {
           <span>02 / DIAGNÓSTICO</span>
         </div>
         <div className="concept-page-heading concept-page-heading-approved"><span>O QUE O SOLO</span><h2>REVELA</h2></div>
+
+        <div className="concept-diagnostic-intro">
+          <strong>EM DESTAQUE: O QUE EXIGE AÇÃO NESTA SAFRA</strong>
+          <span>Para {currentCropLabel || "a cultura atual"}, o RAIZ mostra abaixo somente nutrientes e corretivos que precisam de decisão ou correção. Os demais parâmetros também foram avaliados e aparecem resumidos ao final.</span>
+        </div>
 
         <section className="concept-fertility-profile">
           <div className="concept-profile-header">

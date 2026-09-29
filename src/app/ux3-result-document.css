@@ -993,3 +993,47 @@
   .concept-cover-identification + .concept-cover-map{margin-top:3mm}
   .concept-cover-page .concept-map-frame-cover{height:80mm}
 }
+
+/* Página 2 — NDVI explicado para o produtor */
+.concept-ndvi-explainer{background:#f7fbf8;border:1px solid #b9d7c3;border-radius:15px;margin-top:12px;padding:11px 13px}
+.concept-ndvi-summary{align-items:start;display:grid;gap:12px;grid-template-columns:.95fr 1.35fr}
+.concept-ndvi-summary>div span,.concept-ndvi-summary>div strong,.concept-ndvi-summary>div small{display:block}
+.concept-ndvi-summary>div span{color:#2a7952;font-size:7px;font-weight:950;letter-spacing:.08em}
+.concept-ndvi-summary>div strong{color:#103f2a;font-size:13px;margin-top:4px}
+.concept-ndvi-summary>div small{color:#73847a;font-size:6.7px;line-height:1.35;margin-top:3px}
+.concept-ndvi-summary>p{color:#53675c;font-size:7.2px;line-height:1.45;margin:0}
+.concept-ndvi-scale{display:grid;gap:5px;grid-template-columns:repeat(5,1fr);margin-top:9px}
+.concept-ndvi-scale>div{min-width:0}
+.concept-ndvi-scale i{border-radius:4px;display:block;height:7px;width:100%}
+.concept-ndvi-scale strong,.concept-ndvi-scale span{display:block}
+.concept-ndvi-scale strong{color:#324d3e;font-size:6.2px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.concept-ndvi-scale span{color:#7a8980;font-size:5.8px;margin-top:1px}
+.concept-ndvi-scale .zone-bare i{background:#7A5538}
+.concept-ndvi-scale .zone-low i{background:#E52222}
+.concept-ndvi-scale .zone-moderate i{background:#FFB000}
+.concept-ndvi-scale .zone-high i{background:#2DBE4F}
+.concept-ndvi-scale .zone-very-high i{background:#0B5D2A}
+
+/* Página 3 — explica por que só alguns itens aparecem */
+.concept-diagnostic-intro{background:#eef6ef;border-left:4px solid #2f8058;border-radius:10px;display:grid;gap:4px;margin:-6px 0 11px;padding:9px 11px}
+.concept-diagnostic-intro strong{color:#246d4b;font-size:7px;letter-spacing:.07em}
+.concept-diagnostic-intro span{color:#607269;font-size:7px;line-height:1.45}
+@media(max-width:820px){
+  .concept-ndvi-summary{grid-template-columns:1fr}
+  .concept-ndvi-scale{grid-template-columns:1fr 1fr}
+}
+@media print{
+  .concept-map-frame-overview{height:80mm}
+  .concept-ndvi-explainer{margin-top:2.5mm;padding:2.2mm 2.5mm}
+  .concept-ndvi-summary{gap:2.5mm;grid-template-columns:.95fr 1.35fr}
+  .concept-ndvi-summary>div span{font-size:5.2pt}
+  .concept-ndvi-summary>div strong{font-size:8.7pt}
+  .concept-ndvi-summary>div small{font-size:5pt}
+  .concept-ndvi-summary>p{font-size:5.2pt}
+  .concept-ndvi-scale{gap:1mm;margin-top:1.8mm}
+  .concept-ndvi-scale i{height:1.8mm}
+  .concept-ndvi-scale strong{font-size:4.6pt}
+  .concept-ndvi-scale span{font-size:4.3pt}
+  .concept-diagnostic-intro{margin:-1.5mm 0 2.5mm;padding:2mm 2.5mm}
+  .concept-diagnostic-intro strong,.concept-diagnostic-intro span{font-size:5.2pt}
+}
