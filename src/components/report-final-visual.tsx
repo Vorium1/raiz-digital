@@ -427,6 +427,7 @@ export function FinalVisualReport(props: Props) {
                 points={props.points}
                 height={470}
                 showLegend={false}
+                eager
               />
             ) : (
               <SpatialOverview boundary={props.boundary} points={props.points} />
@@ -463,6 +464,7 @@ export function FinalVisualReport(props: Props) {
                 points={props.points}
                 height={430}
                 showLegend={false}
+                eager
               />
             ) : (
               <SpatialOverview boundary={props.boundary} points={props.points} />
