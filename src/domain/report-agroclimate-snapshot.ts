@@ -129,6 +129,7 @@ function summarizeMetrics(values: ReportAgroclimateMetric[]): ReportAgroclimateM
     grouped.set(item.metric, group);
   }
   return [...grouped.entries()]
+    .filter(([metric]) => Boolean(METRIC_PRESENTATION[metric]))
     .map(([metric, items]) => {
       const valuesOnly = items.map((item) => item.value);
       const from = items.map((item) => item.validFrom).sort()[0];
