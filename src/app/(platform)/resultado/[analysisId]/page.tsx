@@ -89,7 +89,7 @@ function recommendationTotalForArea(
     return {
       quantity: recommendation.quantity * areaHa,
       unit: "t",
-      label: recommendation.inputType,
+      label: recommendationInputLabel(recommendation.inputType),
     };
   }
   return null;
