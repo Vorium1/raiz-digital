@@ -76,9 +76,9 @@ assert.doesNotMatch(component, /concept-identification-card concept-identificati
 assert.doesNotMatch(component, /const priorityParameterCodes = \["P", "K", "B"\]/);
 assert.doesNotMatch(component, /diagnosticCodes\.slice\(0, 3\)/);
 assert.doesNotMatch(component, /recommendations\.slice\(0, 2\)/);
-assert.match(component, /fertilityActionRows\.map/);
+assert.match(component, /profileActionRows\.map/);
 assert.match(component, /fertilityProfileRows\.filter\(\(item\) => item\.needsAction\)/);
-assert.match(component, /quietNutrientLabels\.join/);
+assert.match(component, /quietProfileLabels\.join/);
 assert.match(component, /não aparecem em destaque porque/);
 assert.match(component, /ANÁLISE/);
 assert.match(component, /ESTADO/);
