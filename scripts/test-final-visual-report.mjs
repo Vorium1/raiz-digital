@@ -27,6 +27,11 @@ assert.match(component, /buildProducerResultSummary/);
 assert.match(component, /buildProducerCommercialPlanSummary/);
 assert.match(component, /Produto comercial ainda não congelado/);
 assert.match(component, /A RAIZ não converte nutriente em fertilizante sem fonte definida/);
+assert.match(component, /commercialTotalDisplay/);
+assert.match(component, /totalQuantity \* 1000/);
+assert.match(component, /plainProducerOpinion/);
+assert.match(component, /Isso ainda não representa o peso de um fertilizante comercial/);
+assert.match(component, /hasValidationPending \? "VALIDAR" : "CONFERIR"/);
 
 assert.match(component, /effectivePointCoordinates\(point\)/);
 assert.match(component, /PublishedNdviMap/);
