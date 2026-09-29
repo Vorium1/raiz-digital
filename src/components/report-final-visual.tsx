@@ -110,6 +110,7 @@ type Props = {
   publishedHashPrefix?: string | null;
   commercialPlanSnapshot?: FrozenCommercialPlanSnapshot | null;
   ndviSnapshot?: FrozenNdviSnapshot | null;
+  showTechnicalAppendix?: boolean;
 };
 
 type ParameterSummary = {
@@ -703,6 +704,123 @@ export function FinalVisualReport(props: Props) {
         </div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • MOTOR AGRONÔMICO E RASTREABILIDADE</span><b>5 / 5</b></footer>
       </section>
+
+      {props.showTechnicalAppendix && (
+        <section className="concept-technical-appendix">
+          <header className="concept-technical-appendix-head">
+            <ConceptMiniBrands branding={props.branding} />
+            <div>
+              <span>ANEXO TÉCNICO</span>
+              <h2>Evidências e rastreabilidade completas</h2>
+              <p>Este anexo existe somente na visualização técnica. As cinco páginas anteriores permanecem como a entrega simples ao produtor.</p>
+            </div>
+          </header>
+
+          <div className="concept-technical-meta">
+            <div><span>Base técnica</span><strong>{props.technicalBase || "Motor RAIZ versionado"}</strong></div>
+            <div><span>Revisão</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
+            <div><span>Confiança</span><strong>{props.confidence ? numberPt(props.confidence.score) + " · " + props.confidence.level : "—"}</strong></div>
+            <div><span>Estado</span><strong>{props.viewingPublished ? "Snapshot publicado" : props.currentStatusLabel}</strong></div>
+          </div>
+
+          <section className="concept-technical-block">
+            <h3>Resultados laboratoriais e interpretação</h3>
+            <div className="concept-technical-table-wrap">
+              <table className="concept-technical-table">
+                <thead><tr><th>Amostra</th><th>Parâmetro</th><th>Resultado</th><th>Método</th><th>Interpretação</th></tr></thead>
+                <tbody>
+                  {props.facts.map((fact, index) => {
+                    const interpreted = props.interpretationRows.find((row) => row.sampleCode === fact.sampleCode && row.parameterCode === fact.parameterCode);
+                    return (
+                      <tr key={fact.sampleCode + fact.parameterCode + index}>
+                        <td>{fact.sampleCode}</td>
+                        <td>{fact.parameterCode}</td>
+                        <td>{numberPt(fact.value)} {fact.unit}</td>
+                        <td>{fact.method || "—"}</td>
+                        <td>{interpreted?.interpretable ? interpreted.classification || "Interpretável" : interpreted?.reason || "Sem classificação congelada"}</td>
+                      </tr>
+                    );
+                  })}
+                  {!props.facts.length && <tr><td colSpan={5}>Nenhum resultado laboratorial congelado neste documento.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="concept-technical-block">
+            <h3>Recomendações completas</h3>
+            <div className="concept-technical-list">
+              {recommendations.map((item, index) => (
+                <article key={(item.inputType || "recomendacao") + index}>
+                  <div><strong>{recommendationShortLabel(item.inputType)}</strong><b>{typeof item.quantity === "number" ? numberPt(item.quantity) + " " + (item.unit || "") : "Sem dose quantitativa"}</b></div>
+                  <p>{item.rationale || "Sem justificativa adicional congelada."}</p>
+                  <small>{[item.timing || item.applicationTiming || item.stage || item.when || item.period, item.via || item.applicationMethod || item.method || item.placement].filter(Boolean).join(" · ") || "Sem orientação operacional adicional."}</small>
+                </article>
+              ))}
+              {!recommendations.length && <p className="concept-technical-empty">Nenhuma recomendação quantitativa congelada.</p>}
+            </div>
+          </section>
+
+          <div className="concept-technical-columns">
+            <section className="concept-technical-block">
+              <h3>Manejo completo</h3>
+              {management.length ? <ol>{management.map((item, index) => <li key={index}>{item}</li>)}</ol> : <p className="concept-technical-empty">Sem práticas adicionais congeladas.</p>}
+            </section>
+            <section className="concept-technical-block">
+              <h3>Limitações / dados pendentes</h3>
+              {missingInformation.length ? <ul>{missingInformation.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="concept-technical-empty">Nenhuma pendência adicional registrada.</p>}
+            </section>
+          </div>
+
+          {soilComplementActions.length > 0 && (
+            <section className="concept-technical-block">
+              <h3>Micronutrientes, matéria orgânica e complementos</h3>
+              <div className="concept-technical-list">
+                {soilComplementActions.map((item, index) => (
+                  <article key={item.label + index}><div><strong>{item.label}</strong></div><p>{item.action}</p></article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="concept-technical-block">
+            <h3>Pontos de amostragem</h3>
+            <div className="concept-technical-table-wrap">
+              <table className="concept-technical-table">
+                <thead><tr><th>Ponto</th><th>Coordenada efetiva</th><th>Profundidade</th><th>Origem</th><th>Coleta</th></tr></thead>
+                <tbody>
+                  {props.points.map((point) => {
+                    const coordinates = effectivePointCoordinates(point);
+                    const kind = pointPositionKind(point);
+                    return (
+                      <tr key={point.id}>
+                        <td>{point.code}</td>
+                        <td>{coordinates.latitude.toFixed(6)}, {coordinates.longitude.toFixed(6)}</td>
+                        <td>{numberPt(point.depthFromCm)}–{numberPt(point.depthToCm)} cm</td>
+                        <td>{kind === "OBSERVED" ? "Observada" : kind === "AUDITED_SOURCE" ? "Fonte auditada" : "Planejada / estimada"}</td>
+                        <td>{point.collectedAt ? new Date(point.collectedAt).toLocaleDateString("pt-BR") : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                  {!props.points.length && <tr><td colSpan={5}>Nenhum ponto congelado neste documento.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="concept-technical-block">
+            <h3>Fontes declaradas na prescrição</h3>
+            {prescription?.sources?.length ? (
+              <ul>{prescription.sources.map((source, index) => <li key={index}>{[source.title, source.institution].filter(Boolean).join(" — ") || "Fonte sem rótulo"}</li>)}</ul>
+            ) : <p className="concept-technical-empty">Nenhuma fonte adicional declarada no payload da prescrição.</p>}
+          </section>
+
+          <footer className="concept-technical-footer">
+            <span>{props.viewingPublished ? "Snapshot oficial congelado" : "Versão técnica atual"}</span>
+            <span>{props.publishedHashPrefix ? "SHA-256 " + props.publishedHashPrefix + "…" : "Sem hash de publicação nesta visualização"}</span>
+          </footer>
+        </section>
+      )}
     </article>
   );
 }
