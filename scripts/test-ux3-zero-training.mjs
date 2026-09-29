@@ -420,7 +420,7 @@ assert.match(simpleResult, /<FinalVisualReport/);
 assert.doesNotMatch(simpleResult, /summarizeSimpleInterpretation|recommendationTotalForArea/);
 assert.match(finalVisualReport, /O solo mostra o caminho/);
 assert.match(finalVisualReport, /RELATÓRIO DE DECISÃO/);
-assert.match(finalVisualReport, /<ReportSignature branding=\{props\.branding\}\/>/);
+assert.match(finalVisualReport, /<ReportSignature branding=\{props\.branding\}\s*\/>/);
 assert.ok(simpleResult.includes("const canViewTechnical = TECHNICAL_DETAIL_ROLES.has(session.role);"));
 assert.ok(simpleResult.includes("{canViewTechnical && <Link href={`/relatorios/talhao/${analysisId}?versao=publicada`}"));
 assert.match(simpleResult, /ndviSnapshot=\{v3\?\.ndviSnapshot \?\? null\}/);
@@ -471,7 +471,7 @@ assert.match(simpleResult, /observedLatitude: point\.observedLatitude \?\? null/
 assert.match(finalVisualReport, /Planejada\/estimada/);
 assert.match(technicalReportSurface, /effectivePointCoordinates/);
 assert.match(technicalReportSurface, /pointPositionKind/);
-assert.match(finalVisualReport, /nenhum ponto é deslocado para caber no talhão/);
+assert.match(finalVisualReport, /sem deslocamento de coordenadas/);
 assert.match(collectionReport, /effectivePointCoordinates/);
 assert.match(collectionReport, /pointPositionKind/);
 assert.doesNotMatch(collectionReport, /includes\("BROWSER_GPS"\)/);
@@ -637,7 +637,7 @@ assert.doesNotMatch(attentionPage, /href="\/revisar"/);
 
 assert.match(finalVisualReport, /operationalSummary\.rows/);
 assert.match(finalVisualReport, /para toda a área|na área/);
-assert.match(finalVisualReport, /kg\/ha|t\/ha/);
+assert.match(finalVisualReport, /doseUnit|item\.unit/);
 
 assert.match(finalVisualReport, /BASE TÉCNICA/);
 assert.match(finalVisualReport, /Motor RAIZ versionado/);
