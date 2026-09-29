@@ -385,6 +385,13 @@ export function FinalVisualReport(props: Props) {
   const diagnosticCodes = [...priorityParameterCodes, ...summaries.map((item) => item.code).filter((code) => !priorityParameterCodes.includes(code))].slice(0, 5);
   const primaryCommercialRow = commercial?.rows.length === 1 ? commercial.rows[0] : null;
   const primaryRecommendation = operationalSummary.rows[0] ?? null;
+  const currentCropLabel = (props.context.currentCrop || "").trim();
+  const seasonLabel = (props.context.seasonLabel || "").trim();
+  const cropSeasonLabel = currentCropLabel && seasonLabel
+    ? seasonLabel.toLocaleLowerCase("pt-BR").includes(currentCropLabel.toLocaleLowerCase("pt-BR"))
+      ? seasonLabel
+      : currentCropLabel + " " + seasonLabel
+    : currentCropLabel || seasonLabel || "—";
   const yieldGoalLabel = props.context.yieldGoal != null
     ? numberPt(Number(props.context.yieldGoal)) + (props.context.yieldGoalUnit ? " " + props.context.yieldGoalUnit : "")
     : "Meta não congelada";
@@ -449,7 +456,7 @@ export function FinalVisualReport(props: Props) {
 
         <div className="concept-cover-meta">
           <div><span>ÁREA</span><strong>{props.context.fieldName || "Talhão"}</strong></div>
-          <div><span>CULTURA / SAFRA</span><strong>{[props.context.currentCrop, props.context.seasonLabel].filter(Boolean).join(" ") || "—"}</strong></div>
+          <div><span>CULTURA / SAFRA</span><strong>{cropSeasonLabel}</strong></div>
           <div><span>HECTARES</span><strong>{areaHa != null ? numberPt(areaHa) + " ha" : "—"}</strong></div>
         </div>
 
@@ -641,6 +648,11 @@ export function FinalVisualReport(props: Props) {
             <>
               <strong>{numberPt(primaryCommercialRow.doseQuantity, 4)} {primaryCommercialRow.doseUnit} de {primaryCommercialRow.productName}</strong>
               <b>{commercialTotalDisplay(primaryCommercialRow.totalQuantity, primaryCommercialRow.totalUnit)} na {props.context.fieldName || "área"}</b>
+            </>
+          ) : commercial && commercial.rows.length > 1 ? (
+            <>
+              <strong>{commercial.rows.map((row) => numberPt(row.doseQuantity, 4) + " " + row.doseUnit + " de " + row.productName).join(" + ")}</strong>
+              <b>{commercial.rows.map((row) => row.productName + ": " + commercialTotalDisplay(row.totalQuantity, row.totalUnit)).join(" · ")}</b>
             </>
           ) : primaryRecommendation ? (
             <>
