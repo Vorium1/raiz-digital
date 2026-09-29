@@ -13,6 +13,17 @@ export type ReportAgroclimateMetric = {
   validUntil: string;
 };
 
+export type ReportAgroclimateMetricSummary = {
+  metric: string;
+  label: string;
+  unit: string;
+  min: number;
+  max: number;
+  sampleCount: number;
+  validFrom: string;
+  validUntil: string;
+};
+
 export type ReportAgroclimateSnapshot = {
   status: "READY" | "PARTIAL" | "UNAVAILABLE";
   collectedAt: string;
@@ -38,6 +49,7 @@ export type ReportAgroclimateSnapshot = {
     retrievedAt: string | null;
     sourceUpdatedOn: string | null;
     metrics: ReportAgroclimateMetric[];
+    summaries: ReportAgroclimateMetricSummary[];
   };
   observed: {
     status: string;
@@ -51,6 +63,7 @@ export type ReportAgroclimateSnapshot = {
       sourceUrl: string;
     } | null;
     metrics: ReportAgroclimateMetric[];
+    summaries: ReportAgroclimateMetricSummary[];
   };
   zarc: {
     status: string;
@@ -100,6 +113,35 @@ function mapMetrics(values: AgroclimateMetricEvidence[]): ReportAgroclimateMetri
         issuedAt: item.issuedAt,
         validFrom: item.validFrom,
         validUntil: item.validUntil,
+      };
+    })
+    .sort((a, b) => {
+      const priority = metricPresentation(a.metric).priority - metricPresentation(b.metric).priority;
+      return priority || a.metric.localeCompare(b.metric);
+    });
+}
+
+function summarizeMetrics(values: ReportAgroclimateMetric[]): ReportAgroclimateMetricSummary[] {
+  const grouped = new Map<string, ReportAgroclimateMetric[]>();
+  for (const item of values) {
+    const group = grouped.get(item.metric) ?? [];
+    group.push(item);
+    grouped.set(item.metric, group);
+  }
+  return [...grouped.entries()]
+    .map(([metric, items]) => {
+      const valuesOnly = items.map((item) => item.value);
+      const from = items.map((item) => item.validFrom).sort()[0];
+      const until = items.map((item) => item.validUntil).sort().at(-1)!;
+      return {
+        metric,
+        label: items[0].label,
+        unit: items[0].unit,
+        min: Math.min(...valuesOnly),
+        max: Math.max(...valuesOnly),
+        sampleCount: items.length,
+        validFrom: from,
+        validUntil: until,
       };
     })
     .sort((a, b) => {
@@ -184,6 +226,7 @@ export function buildReportAgroclimateSnapshot(input: {
       retrievedAt: input.enrichment.cptec.retrievedAt,
       sourceUpdatedOn: input.enrichment.cptec.sourceUpdatedOn,
       metrics: mapMetrics(input.enrichment.metricEvidence),
+      summaries: summarizeMetrics(mapMetrics(input.enrichment.metricEvidence)),
     },
     observed: {
       status: input.inmetObservation.status,
@@ -199,6 +242,7 @@ export function buildReportAgroclimateSnapshot(input: {
           }
         : null,
       metrics: mapMetrics(input.inmetObservation.metricEvidence),
+      summaries: summarizeMetrics(mapMetrics(input.inmetObservation.metricEvidence)),
     },
     zarc: {
       status: input.enrichment.zarc.status,
