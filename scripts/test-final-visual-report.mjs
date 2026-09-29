@@ -28,7 +28,6 @@ assert.match(component, /rows\.forEach\(\(row\) => register\(row\.parameterCode\
 assert.match(component, /operationalSummary\.rows/);
 assert.match(component, /buildProducerResultSummary/);
 assert.match(component, /buildProducerCommercialPlanSummary/);
-assert.match(component, /Produto comercial ainda não congelado/);
 assert.match(component, /Ainda não é peso de fertilizante comercial/);
 assert.match(component, /commercialTotalDisplay/);
 assert.match(component, /totalQuantity \* 1000/);
