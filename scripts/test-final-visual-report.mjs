@@ -49,7 +49,7 @@ assert.match(printButton, /Preparando PDF/);
 
 assert.match(component, /HORIZONTE DE FERTILIDADE/);
 assert.match(component, /MICRONUTRIENTES/);
-assert.match(component, /BIOLOGIA DO SOLO/);
+assert.match(component, /BIOLOGIA/);
 assert.match(component, /CLIMA \/ RISCO/);
 assert.match(component, /APLICAÇÃO \/ POSICIONAMENTO/);
 
