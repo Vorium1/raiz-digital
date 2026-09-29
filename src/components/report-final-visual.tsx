@@ -2,7 +2,6 @@ import { Icon } from "@/components/icon";
 import { BrandLogo } from "@/components/brand-logo";
 import { PublishedNdviMap } from "@/components/published-ndvi-map";
 import { ReportBrand, ReportSignature } from "@/components/report-brand";
-import { ClassificationBadge } from "@/components/ui";
 import { effectivePointCoordinates, pointPositionKind, type MapPoint } from "@/components/spatial-map-types";
 import { buildProducerCommercialPlanSummary, type FrozenCommercialPlanSnapshot } from "@/domain/official-commercial-plan";
 import { buildProducerResultSummary } from "@/domain/producer-result-summary";
@@ -190,10 +189,6 @@ function recommendationShortLabel(inputType: string | undefined) {
   return inputType || "Recomendação";
 }
 
-function textValue(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 function unique(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim()))));
 }
@@ -329,14 +324,6 @@ function SpatialOverview({ boundary, points }: { boundary: unknown | null; point
   );
 }
 
-function firstText(item: Recommendation, keys: Array<keyof Recommendation>) {
-  for (const key of keys) {
-    const value = textValue(item[key]);
-    if (value) return value;
-  }
-  return null;
-}
-
 function producerRow(item: Recommendation, areaHa: number | null) {
   if (
     typeof item.inputType !== "string"
@@ -348,19 +335,6 @@ function producerRow(item: Recommendation, areaHa: number | null) {
     areaHa: areaHa ?? 0,
     recommendations: [{ inputType: item.inputType, quantity: item.quantity, unit: item.unit }],
   }).rows[0] ?? null;
-}
-
-function ReportPageHeader({ branding, page, title, code }: { branding: TenantBranding; page: number; title: string; code?: string | null }) {
-  return (
-    <header className="report-visual-page-header">
-      <ReportBrand branding={branding} />
-      <div>
-        <span>Página {page}/3</span>
-        <strong>{title}</strong>
-        <small>{code || "Relatório RAIZ"}</small>
-      </div>
-    </header>
-  );
 }
 
 export function FinalVisualReport(props: Props) {
@@ -375,19 +349,9 @@ export function FinalVisualReport(props: Props) {
   const biologicalContext = prescription?.biologicalContext ?? null;
   const applicationGuidance = prescription?.applicationGuidance ?? null;
   const agroclimateSnapshot = prescription?.agroclimateSnapshot ?? null;
-  const pending = summaries.filter((item) => item.pendingCode);
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
-  const observedCount = props.points.filter((point) => pointPositionKind(point) === "OBSERVED").length;
-  const auditedCount = props.points.filter((point) => pointPositionKind(point) === "AUDITED_SOURCE").length;
-  const plannedCount = props.points.filter((point) => pointPositionKind(point) === "PLANNED").length;
   const collectedCount = props.points.filter((point) => Boolean(point.collectedAt)).length;
-  const depthLabels = unique(props.points.map((point) => point.depthFromCm + "–" + point.depthToCm + " cm"));
-  const producerSummary = prescription?.summary || props.narrativeSummary || "Sem síntese técnica aprovada disponível para este documento.";
-  const sourceLabels = (prescription?.sources ?? [])
-    .map((source) => [source.title, source.institution].filter(Boolean).join(" — "))
-    .filter(Boolean);
-
   const operationalSummary = buildProducerResultSummary({
     areaHa: areaHa ?? 0,
     recommendations: recommendations
