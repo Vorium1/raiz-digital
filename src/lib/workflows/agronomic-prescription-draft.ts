@@ -160,6 +160,8 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       applicationGuidance: evidence.applicationGuidance,
       spatialNutrientPlan: evidence.spatialNutrientPlan,
       limingDecision: evidence.deterministicLimingDecision ?? null,
+      limingMethodSelection: evidence.limingMethodSelection,
+      limingLayerRequirement: evidence.integrated020LimingLayerRequirement,
       agroclimateSnapshot: collectedAgroclimate?.reportSnapshot ?? null,
     },
   };

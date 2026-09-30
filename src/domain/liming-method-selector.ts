@@ -238,3 +238,151 @@ export function scale020RequirementTo030ForPerennialEstablishment(dose020TonHaPr
     },
   };
 }
+
+
+export type Integrated020LimingLayerRequirement = {
+  methodId: typeof LIMING_METHOD_IDS.cqfsRsSc2016Integrated020;
+  samplingProfile: "INTEGRATED_0_20";
+  scope: "LAYER_REQUIREMENT";
+  targetPh: LimingTargetPh;
+  targetPhBasis: string;
+  status: "BLOCKED" | "UNIFORM" | "SPATIAL";
+  sampleRequirements: Array<{
+    sampleCode: string;
+    smpIndex: number;
+    doseTonHaPrnt100: number;
+    interpolated: boolean;
+  }>;
+  uniformDoseTonHaPrnt100: number | null;
+  operationalGeneralDoseTonHaPrnt100: number | null;
+  generalDoseBasis: "UNIFORM" | "EQUAL_AREA_GRID_MEAN" | null;
+  doseRangeTonHaPrnt100: { min: number; max: number } | null;
+  blockers: string[];
+  warnings: string[];
+  source: typeof CQFS_2016_SOURCE;
+};
+
+export function cqfs2016ReferencePhForCrop(cropCode: string | null | undefined): LimingTargetPh | null {
+  const crop = (cropCode ?? "").trim().toUpperCase();
+  if (crop === "SOJA") return "6.0";
+  return null;
+}
+
+/**
+ * Calcula a necessidade equivalente da própria camada integrada 0-20 cm,
+ * ponto por ponto, usando SMP. Não divide artificialmente a amostra e não
+ * converte este resultado em regra moderna de aplicação superficial.
+ */
+export function evaluateIntegrated020LimingLayerRequirement(input: {
+  cropCode: string | null;
+  results: Array<ResultDepth & { sampleCode: string; value: number }>;
+  allowEqualWeightOperationalAverage?: boolean;
+}): Integrated020LimingLayerRequirement {
+  const targetPh = cqfs2016ReferencePhForCrop(input.cropCode);
+  if (!targetPh) {
+    return {
+      methodId: LIMING_METHOD_IDS.cqfsRsSc2016Integrated020,
+      samplingProfile: "INTEGRATED_0_20",
+      scope: "LAYER_REQUIREMENT",
+      targetPh: "6.0",
+      targetPhBasis: "UNRESOLVED_FOR_CROP",
+      status: "BLOCKED",
+      sampleRequirements: [],
+      uniformDoseTonHaPrnt100: null,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      blockers: ["CQFS_2016_REFERENCE_PH_NOT_MAPPED_FOR_CROP"],
+      warnings: [],
+      source: CQFS_2016_SOURCE,
+    };
+  }
+
+  const grouped = new Map<string, Array<ResultDepth & { sampleCode: string; value: number }>>();
+  for (const row of input.results) {
+    if (!row.sampleCode?.trim()) continue;
+    const list = grouped.get(row.sampleCode) ?? [];
+    list.push(row);
+    grouped.set(row.sampleCode, list);
+  }
+
+  const blockers: string[] = [];
+  const sampleRequirements: Integrated020LimingLayerRequirement["sampleRequirements"] = [];
+  for (const [sampleCode, rows] of grouped) {
+    const smpRows = rows.filter((row) =>
+      row.parameterCode.trim().toUpperCase() === "SMP"
+      && row.depthFromCm === 0
+      && row.depthToCm === 20
+    );
+    if (smpRows.length === 0) {
+      blockers.push(`SMP_0_20_MISSING:${sampleCode}`);
+      continue;
+    }
+    const first = smpRows[0].value;
+    if (!Number.isFinite(first) || first < 0 || first > 14) {
+      blockers.push(`SMP_0_20_INVALID:${sampleCode}`);
+      continue;
+    }
+    if (smpRows.some((row) => Math.abs(row.value - first) > 1e-9)) {
+      blockers.push(`SMP_0_20_DUPLICATE_CONFLICT:${sampleCode}`);
+      continue;
+    }
+    const requirement = computeIntegrated020SmpRequirement({ smpIndex: first, targetPh });
+    sampleRequirements.push({
+      sampleCode,
+      smpIndex: first,
+      doseTonHaPrnt100: requirement.doseTonHaPrnt100,
+      interpolated: requirement.interpolated,
+    });
+  }
+
+  if (grouped.size === 0) blockers.push("LIMING_SAMPLE_RESULTS_REQUIRED");
+  if (blockers.length || sampleRequirements.length !== grouped.size) {
+    return {
+      methodId: LIMING_METHOD_IDS.cqfsRsSc2016Integrated020,
+      samplingProfile: "INTEGRATED_0_20",
+      scope: "LAYER_REQUIREMENT",
+      targetPh,
+      targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+      status: "BLOCKED",
+      sampleRequirements,
+      uniformDoseTonHaPrnt100: null,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      blockers: [...new Set(blockers)],
+      warnings: [],
+      source: CQFS_2016_SOURCE,
+    };
+  }
+
+  const doses = sampleRequirements.map((item) => item.doseTonHaPrnt100);
+  const min = Math.min(...doses);
+  const max = Math.max(...doses);
+  const uniform = Math.abs(max - min) < 1e-9;
+  const operationalAverage = input.allowEqualWeightOperationalAverage
+    ? Math.round((doses.reduce((sum, value) => sum + value, 0) / doses.length) * 100) / 100
+    : null;
+
+  return {
+    methodId: LIMING_METHOD_IDS.cqfsRsSc2016Integrated020,
+    samplingProfile: "INTEGRATED_0_20",
+    scope: "LAYER_REQUIREMENT",
+    targetPh,
+    targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+    status: uniform ? "UNIFORM" : "SPATIAL",
+    sampleRequirements,
+    uniformDoseTonHaPrnt100: uniform ? doses[0] : null,
+    operationalGeneralDoseTonHaPrnt100: uniform ? doses[0] : operationalAverage,
+    generalDoseBasis: uniform ? "UNIFORM" : operationalAverage != null ? "EQUAL_AREA_GRID_MEAN" : null,
+    doseRangeTonHaPrnt100: { min, max },
+    blockers: [],
+    warnings: uniform || operationalAverage != null
+      ? ["LAYER_REQUIREMENT_DOES_NOT_REPLACE_MANAGEMENT_SPECIFIC_APPLICATION_RULE"]
+      : [
+          "LAYER_REQUIREMENT_DOES_NOT_REPLACE_MANAGEMENT_SPECIFIC_APPLICATION_RULE",
+          "GENERAL_DOSE_REQUIRES_EQUAL_AREA_GRID",
+        ],
+    source: CQFS_2016_SOURCE,
+  };
+}

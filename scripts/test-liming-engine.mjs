@@ -19,6 +19,7 @@ import {
   detectLimingSamplingProfile,
   selectLimingMethod,
   computeIntegrated020SmpRequirement,
+  evaluateIntegrated020LimingLayerRequirement,
   scale020RequirementTo030ForPerennialEstablishment,
 } from "../src/domain/liming-method-selector.ts";
 import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
@@ -584,5 +585,31 @@ assert.ok(direct030Selection.blockers.includes("NO_VALIDATED_RS_SC_DIRECT_0_30_L
 const perennial030 = scale020RequirementTo030ForPerennialEstablishment(4);
 assert.equal(perennial030.doseTonHaPrnt100, 6);
 assert.equal(perennial030.multiplier, 1.5);
+
+
+// 27e. A necessidade 0-20 é calculada ponto a ponto e só vira média geral com grade equivalente.
+const integrated020SpatialRequirement = evaluateIntegrated020LimingLayerRequirement({
+  cropCode: "SOJA",
+  allowEqualWeightOperationalAverage: true,
+  results: [
+    { sampleCode: "P1", parameterCode: "SMP", value: 5.5, depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "P2", parameterCode: "SMP", value: 5.8, depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020SpatialRequirement.targetPh, "6.0");
+assert.equal(integrated020SpatialRequirement.status, "SPATIAL");
+assert.deepEqual(integrated020SpatialRequirement.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(integrated020SpatialRequirement.operationalGeneralDoseTonHaPrnt100, 5.15);
+assert.equal(integrated020SpatialRequirement.generalDoseBasis, "EQUAL_AREA_GRID_MEAN");
+
+const integrated020NoAverage = evaluateIntegrated020LimingLayerRequirement({
+  cropCode: "SOJA",
+  results: [
+    { sampleCode: "P1", parameterCode: "SMP", value: 5.5, depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "P2", parameterCode: "SMP", value: 5.8, depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020NoAverage.operationalGeneralDoseTonHaPrnt100, null);
+assert.ok(integrated020NoAverage.warnings.includes("GENERAL_DOSE_REQUIRES_EQUAL_AREA_GRID"));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");

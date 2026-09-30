@@ -139,6 +139,32 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
   }
 
   const liming = evidence.deterministicLimingDecision;
+  const limingLayerRequirement = evidence.integrated020LimingLayerRequirement;
+  if (
+    evidence.season.cropProfileCode === "SOJA"
+    && limingLayerRequirement
+    && limingLayerRequirement.status !== "BLOCKED"
+  ) {
+    const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+    const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
+      ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
+    managementPractices.push(
+      general != null
+        ? `Calagem — amostra integrada 0–20 cm: necessidade equivalente calculada pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}) = ${general.toLocaleString("pt-BR")} t/ha PRNT 100%${range && Math.abs(range.max - range.min) > 1e-9 ? `; faixa entre pontos ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha` : ""}. Este cálculo representa a camada 0–20 recebida no laudo e não divide artificialmente o perfil.`
+        : `Calagem — amostra integrada 0–20 cm: o motor calculou as necessidades por ponto pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}), sem transformar a variação em média geral porque a grade equivalente não está comprovada.`,
+    );
+    if (liming?.status === "BLOCKED") {
+      limitations.push(
+        "Calagem: existe cálculo técnico rastreável para a camada integrada 0–20 cm, mas ele não foi convertido silenciosamente na regra moderna de aplicação do plantio direto consolidado. O relatório preserva o método e a profundidade que realmente chegaram do laboratório.",
+      );
+    }
+  }
+  if (evidence.limingMethodSelection?.samplingProfile === "INTEGRATED_0_30") {
+    limitations.push(
+      "Calagem: a profundidade integrada 0–30 cm foi reconhecida, mas a RAIZ não reutiliza automaticamente a tabela SMP calibrada para 0–20 cm. Uma metodologia específica para 0–30 precisa estar cadastrada e validada para o contexto.",
+    );
+  }
+
   if (evidence.season.cropProfileCode === "SOJA" && liming) {
     if (liming.status === "UNIFORM_APPLY" && liming.automaticUniformDoseAllowed && liming.uniformDoseTonHaPrnt100 != null) {
       const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";

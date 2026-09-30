@@ -17,6 +17,7 @@ import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snap
 import type { FrozenNdviSnapshot } from "@/lib/repositories/premium-report-publication";
 import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient-plan";
 import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import type { Integrated020LimingLayerRequirement, LimingMethodSelection } from "@/domain/liming-method-selector";
 import { classifyNdviValue, VIGOR_ZONE_LABELS, type VigorZone } from "@/domain/ndvi-engine";
 
 const NDVI_REPORT_SCALE: Array<{ zone: VigorZone; range: string; cssClass: string }> = [
@@ -99,6 +100,8 @@ type Prescription = {
   applicationGuidance?: ReportApplicationGuidance | null;
   spatialNutrientPlan?: ReportSpatialNutrientPlan | null;
   limingDecision?: SoybeanLimingUniformDecision | null;
+  limingMethodSelection?: LimingMethodSelection | null;
+  limingLayerRequirement?: Integrated020LimingLayerRequirement | null;
   agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
@@ -407,6 +410,8 @@ export function FinalVisualReport(props: Props) {
   const agroclimateSnapshot = prescription?.agroclimateSnapshot ?? null;
   const spatialNutrientPlan = prescription?.spatialNutrientPlan ?? null;
   const limingDecision = prescription?.limingDecision ?? null;
+  const limingMethodSelection = prescription?.limingMethodSelection ?? null;
+  const limingLayerRequirement = prescription?.limingLayerRequirement ?? null;
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
   const collectedCount = props.points.filter((point) => Boolean(point.collectedAt)).length;
@@ -619,6 +624,23 @@ export function FinalVisualReport(props: Props) {
         detail: "A decisão agronômica congelada concluiu que não há aplicação geral de calcário nesta safra.",
       };
     }
+    if (limingDecision?.status === "BLOCKED" && limingLayerRequirement && limingLayerRequirement.status !== "BLOCKED") {
+      const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
+        ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
+      const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+      return {
+        tone: "pending" as const,
+        status: "REFERÊNCIA TÉCNICA · CAMADA 0–20",
+        dose: general != null
+          ? numberPt(general) + " t/ha PRNT 100%"
+          : range
+            ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
+            : "Necessidade por ponto calculada",
+        detail: "Cálculo SMP para a camada integrada 0–20 cm, meta pH " + limingLayerRequirement.targetPh
+          + ". Método: " + (limingMethodSelection?.selectedMethodId ?? limingLayerRequirement.methodId)
+          + ". A profundidade real do laudo foi preservada; esta referência não é convertida silenciosamente em regra moderna de aplicação.",
+      };
+    }
     if (limingDecision?.status === "BLOCKED") {
       return {
         tone: "pending" as const,
@@ -693,6 +715,26 @@ export function FinalVisualReport(props: Props) {
       dose: "Não aplicar nesta safra",
       detail: "A decisão de calagem está fechada sem necessidade de aplicação.",
       tone: "none",
+    });
+  } else if (
+    !hasLimePlanRow
+    && limingDecision?.status === "BLOCKED"
+    && limingLayerRequirement
+    && limingLayerRequirement.status !== "BLOCKED"
+  ) {
+    const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
+      ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
+    const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+    producerPlanRows.push({
+      key: "lime-integrated-020-reference",
+      label: "Calcário · referência 0–20",
+      dose: general != null
+        ? numberPt(general) + " t/ha PRNT 100%"
+        : range
+          ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
+          : "Necessidade por ponto calculada",
+      detail: "Necessidade equivalente da camada integrada 0–20 cm pelo SMP. O método de aplicação do manejo atual permanece identificado separadamente.",
+      tone: "pending",
     });
   } else if (
     !hasLimePlanRow

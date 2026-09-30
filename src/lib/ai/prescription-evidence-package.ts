@@ -10,6 +10,13 @@ import {
 import { withTenant } from "@/lib/db";
 import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision } from "@/domain/sulfur-dose-engine";
 import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import {
+  LIMING_METHOD_IDS,
+  evaluateIntegrated020LimingLayerRequirement,
+  selectLimingMethod,
+  type Integrated020LimingLayerRequirement,
+  type LimingMethodSelection,
+} from "@/domain/liming-method-selector";
 import { adaptLabResultsToSoilMicrobiology } from "@/domain/soil-microbiology-lab-adapter";
 import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evidence";
 import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type BiologicalSoilRegionScope } from "@/domain/biological-soil-analysis";
@@ -77,6 +84,8 @@ export type AgronomicPrescriptionEvidencePackage = {
   applicationGuidance: ReportApplicationGuidance;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
   limingManagementEvidence: ReturnType<typeof evaluateStoredLimingManagementContext>;
+  limingMethodSelection: LimingMethodSelection;
+  integrated020LimingLayerRequirement: Integrated020LimingLayerRequirement | null;
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
@@ -729,10 +738,26 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
     const storedLimingContext = evaluateStoredLimingManagementContext(
       limingManagementContextFromAnalysisContext(base.analysisContext),
     );
+    const limingManagementSystem = base.managementSystem ?? analysisContextTillageSystem(base.analysisContext);
+    const limingMethodSelection = selectLimingMethod({
+      state: base.state,
+      cropCode: base.cropProfileCode,
+      managementSystem: limingManagementSystem,
+      results: resultsResult.rows,
+    });
+    const integrated020LimingLayerRequirement =
+      limingMethodSelection.selectedMethodId === LIMING_METHOD_IDS.cqfsRsSc2016Integrated020
+        ? evaluateIntegrated020LimingLayerRequirement({
+            cropCode: base.cropProfileCode,
+            results: resultsResult.rows,
+            allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+          })
+        : null;
+
     const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
       cropCode: base.cropProfileCode,
       state: base.state,
-      managementSystem: base.managementSystem ?? analysisContextTillageSystem(base.analysisContext),
+      managementSystem: limingManagementSystem,
       results: resultsResult.rows,
       allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
       yearsSinceLastLiming: storedLimingContext.context.yearsSinceLastLiming,
@@ -833,6 +858,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       applicationGuidance,
       deterministicSulfurDose,
       limingManagementEvidence: storedLimingContext,
+      limingMethodSelection,
+      integrated020LimingLayerRequirement,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
       biologicalSoilEvidence,
