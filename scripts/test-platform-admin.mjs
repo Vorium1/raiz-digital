@@ -25,6 +25,10 @@ for (const route of [listRoute, statusRoute, adminRoute]) {
 }
 assert.match(page, /if \(!session\.isPlatformAdmin\) notFound\(\)/);
 assert.match(repository, /"activeAdmins"/);
+assert.match(repository, /withTenant\(\{ tenantId: tenant\.id \}/);
+assert.doesNotMatch(repository, /FROM clients c/);
+assert.doesNotMatch(repository, /FROM properties p/);
+assert.doesNotMatch(repository, /FROM fields f/);
 assert.match(repository, /role IN \('SUPER_ADMIN','TENANT_ADMIN'\)/);
 assert.match(manager, /tenant\.activeAdmins === 0/);
 assert.match(repository, /platform_audit_events/);
