@@ -47,6 +47,7 @@ export const navigationSections: NavSection[] = [
     label: "RECURSOS TÉCNICOS",
     items: [
       { href: "/inteligencia", label: "Inteligência Agronômica", icon: "sparkles" },
+      { href: "/calculadoras", label: "Calculadoras", icon: "flask" },
       { href: "/biblioteca-tecnica", label: "Biblioteca Técnica", icon: "shield", roles: ["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"] },
       { href: "/configuracoes#equipe", label: "Usuários & Permissões", icon: "users", roles: ["SUPER_ADMIN", "TENANT_ADMIN"] },
       { href: "/operacao-sistema", label: "Saúde do sistema", icon: "shield", platformCuratorOnly: true },
