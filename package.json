@@ -11,6 +11,7 @@
     "test:security": "node --experimental-strip-types scripts/test-security.mjs",
     "test:client-master": "node --experimental-strip-types scripts/test-client-master.mjs",
     "test:platform-admin": "node --experimental-strip-types scripts/test-platform-admin.mjs",
+    "test:team-privacy": "node --experimental-strip-types scripts/test-team-privacy.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "audit:migrations:homologation": "node scripts/audit-migration-ledger-homologation.mjs",
     "check:production-readiness": "node scripts/check-production-readiness.mjs",
