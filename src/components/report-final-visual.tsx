@@ -623,7 +623,9 @@ export function FinalVisualReport(props: Props) {
         tone: "pending" as const,
         status: "CALAGEM NÃO CONCLUÍDA",
         dose: "Dose não liberada",
-        detail: "A versão oficial não possui dose de calcário tecnicamente fechada. Isso não significa ausência de necessidade.",
+        detail: limingMissingInformation
+          ? limingMissingInformation + " Isso não significa ausência de necessidade."
+          : "A versão oficial não possui dose de calcário tecnicamente fechada. Isso não significa ausência de necessidade.",
       };
     }
     if (limingDecision?.status === "NOT_APPLICABLE") {
@@ -638,10 +640,13 @@ export function FinalVisualReport(props: Props) {
       tone: "pending" as const,
       status: "DECISÃO NÃO REGISTRADA NESTA VERSÃO",
       dose: "Sem dose congelada",
-      detail: "Esta publicação não contém uma decisão de calagem. A ausência de dose não significa que o talhão não precise de calcário.",
+      detail: limingMissingInformation
+        ? limingMissingInformation + " A ausência de dose não significa que o talhão não precise de calcário."
+        : "Esta publicação não contém uma decisão de calagem. A ausência de dose não significa que o talhão não precise de calcário.",
     };
   })();
   const quietProfileLabels = quietNutrientLabels;
+  const limingMissingInformation = missingInformation.find((item) => /^calagem\b/i.test(item.trim())) ?? null;
 
   const producerPlanRows: Array<{
     key: string;
@@ -699,9 +704,11 @@ export function FinalVisualReport(props: Props) {
       dose: limingDecision?.status === "BLOCKED"
         ? "Decisão de calagem não concluída"
         : "Decisão não registrada nesta versão",
-      detail: limingDecision?.status === "BLOCKED"
-        ? "A ausência de dose não significa ausência de necessidade; esta decisão precisa ser concluída no fluxo técnico."
-        : "Esta publicação não possui uma decisão de calagem congelada. A ausência de dose não significa ausência de necessidade.",
+      detail: limingMissingInformation
+        ? limingMissingInformation + " A ausência de dose não significa ausência de necessidade."
+        : limingDecision?.status === "BLOCKED"
+          ? "A ausência de dose não significa ausência de necessidade; esta decisão precisa ser concluída no fluxo técnico."
+          : "Esta publicação não possui uma decisão de calagem congelada. A ausência de dose não significa ausência de necessidade.",
       tone: "pending",
     });
   }

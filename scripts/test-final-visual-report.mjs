@@ -87,6 +87,8 @@ assert.match(component, /concept-soil-needs-summary/);
 assert.match(component, /concept-needs-card-grid/);
 assert.match(component, /CORREÇÃO DA ACIDEZ · CALAGEM/);
 assert.match(component, /limingFeature/);
+assert.match(component, /limingMissingInformation/);
+assert.match(component, /missingInformation\.find\(\(item\) => \/\^calagem/);
 assert.match(component, /DECISÃO NÃO REGISTRADA NESTA VERSÃO/);
 assert.match(component, /A ausência de dose não significa que o talhão não precise de calcário/);
 assert.match(component, /VIGÊNCIA DA RECOMENDAÇÃO/);
