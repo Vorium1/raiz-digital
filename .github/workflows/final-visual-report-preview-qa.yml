@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "feature/frozen-decision-delivery"
+      - "feature/report-dose-completeness"
     paths:
       - ".github/workflows/final-visual-report-preview-qa.yml"
       - "e2e/final-visual-report-preview.spec.ts"
