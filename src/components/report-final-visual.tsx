@@ -1270,6 +1270,42 @@ export function FinalVisualReport(props: Props) {
             </section>
           )}
 
+          {spatialNutrientPlan && (
+            <section className="concept-technical-block">
+              <h3>Plano espacial de nutrientes</h3>
+              <div className="concept-technical-list">
+                {spatialNutrientPlan.nutrients.map((item) => {
+                  const mainDose = item.status === "UNIFORM" && item.uniformDoseKgPerHa != null
+                    ? numberPt(item.uniformDoseKgPerHa) + " kg/ha"
+                    : item.status === "POINT_SPECIFIC" && item.rangeKgPerHa
+                      ? numberPt(item.rangeKgPerHa.min) + "–" + numberPt(item.rangeKgPerHa.max) + " kg/ha"
+                      : item.status === "POINT_SPECIFIC"
+                        ? "Dose por ponto/zona"
+                        : "Sem dose quantitativa fechada";
+                  const pointText = item.points
+                    .map((point) => point.sampleCode + ": " + numberPt(point.doseKgPerHa) + " kg/ha")
+                    .join("; ");
+                  return (
+                    <article key={"technical-spatial-" + item.nutrient}>
+                      <div>
+                        <strong>{recommendationShortLabel(item.nutrient)}</strong>
+                        <b>{mainDose}</b>
+                      </div>
+                      <p>{item.note}</p>
+                      {pointText && <small>Por ponto: {pointText}.</small>}
+                      {item.purchaseEquivalent && (
+                        <small>
+                          Equivalência de compra/logística da grade: {numberPt(item.purchaseEquivalent.kgPerHaEquivalent)} kg/ha equivalentes · {numberPt(item.purchaseEquivalent.totalKg)} kg na área. Não é taxa uniforme de aplicação.
+                        </small>
+                      )}
+                      {item.blockers.length > 0 && <small>Restrições técnicas: {item.blockers.join(", ")}.</small>}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <section className="concept-technical-block">
             <h3>Recomendações completas</h3>
             <div className="concept-technical-list">
