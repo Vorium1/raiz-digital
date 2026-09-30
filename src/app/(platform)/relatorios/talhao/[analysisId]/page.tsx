@@ -27,7 +27,17 @@ const REVIEW_ROLES = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 export const metadata = { title: "Relatório técnico de decisão agronômica" };
 
 type StructuredInterpretation = { sampleCode: string; parameterCode: string; interpretable: boolean; classification?: string; reason?: string };
-type StructuredFact = { sampleCode: string; parameterCode: string; value: number; unit: string; method: string; source?: string };
+type StructuredFact = {
+  sampleCode: string;
+  parameterCode: string;
+  value: number;
+  unit: string;
+  method: string;
+  sampleType?: string | null;
+  depthFromCm?: number | null;
+  depthToCm?: number | null;
+  source?: string;
+};
 type StructuredOutput = { facts?: StructuredFact[]; interpretation?: StructuredInterpretation[]; confidence?: { score: number; level: string }; trace?: { cropProfileCode: string | null; cropProfileVersion: string | null } };
 
 type DisplayPoint = {
@@ -270,6 +280,8 @@ export default async function FieldAnalysisReportPage({ params, searchParams }: 
           publishedAt={viewingPublished ? new Date(publishedInfo!.report.publishedAt).toLocaleString("pt-BR") : null}
           publishedHashPrefix={viewingPublished ? publishedInfo?.report.sha256.slice(0, 12) ?? null : null}
           commercialPlanSnapshot={viewingPublished ? publishedSnapshotV3?.commercialPlanSnapshot ?? null : null}
+          ndviSnapshot={viewingPublished ? publishedSnapshotV3?.ndviSnapshot ?? null : null}
+          showTechnicalAppendix
         />
       </div>
     </>

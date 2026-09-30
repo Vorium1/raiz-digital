@@ -7,6 +7,7 @@ import ts from "typescript";
 import * as irrigation from "../src/domain/irrigation-applications.ts";
 import * as wheatBuyerContext from "../src/domain/wheat-buyer-quality-context.ts";
 import * as spatialInterpolationContext from "../src/domain/spatial-interpolation-context.ts";
+import * as limingManagementContext from "../src/domain/liming-management-context.ts";
 import { evaluateIrrigationWaterEvidence } from "../src/domain/irrigation-water-assessment.ts";
 import { deterministicLimitedPrescriptionProvider } from "../src/lib/ai/providers/deterministic-limited-prescription-provider.ts";
 
@@ -73,6 +74,8 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/repositor
   if (name.includes("irrigation-applications")) return irrigation;
   if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
   if (name.includes("spatial-interpolation-context")) return spatialInterpolationContext;
+  if (name.includes("liming-management-context")) return limingManagementContext;
+  if (name.includes("management-system")) return { normalizeManagementSystem: value => value === "PLANTIO_DIRETO_CONSOLIDADO" ? "NO_TILL_CONSOLIDATED" : "OTHER" };
   if (name === "@/lib/db") return { withTenant: async (scope, run) => {
     assert.equal(scope.tenantId, "tenant-a"); assert.equal(scope.userId, "user-a"); return run(client);
   } };
@@ -157,6 +160,7 @@ async function loadedContext(fetchImpl) {
     if (name.includes("irrigation-applications")) return irrigation;
     if (name.includes("wheat-buyer-quality-context")) return wheatBuyerContext;
     if (name.includes("management-system")) return { normalizeManagementSystem: () => "OTHER", MANAGEMENT_SYSTEM_OPTIONS: [] };
+    if (name.includes("liming-management-context")) return limingManagementContext;
     if (name.includes("yield-goal-presets")) return { yieldGoalPresetConfig: () => null };
     if (name.includes("icon")) return { Icon: "ICON" };
     throw new Error(name);

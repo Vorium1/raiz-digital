@@ -1,6 +1,7 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
 import { withTenant } from "@/lib/db";
 import { evaluateReportPublicationGate, type ReportPublicationReadiness } from "@/domain/report-publication-gate";
+import { evaluateOfficialResultCompleteness, officialResultCompletenessReason } from "@/domain/official-result-completeness";
 
 export type { ReportPublicationReadiness } from "@/domain/report-publication-gate";
 
@@ -38,6 +39,7 @@ export async function getReportPublicationReadiness(
               rule_state.latest_rule_updated_at::text AS "latestRuleUpdatedAt",
               prescription.id::text AS "prescriptionId",
               prescription.status::text AS "prescriptionStatus",
+              prescription.response_payload AS "prescriptionResponsePayload",
               CASE
                 WHEN prescription.id IS NULL THEN false
                 ELSE prescription.created_at >= cs.updated_at
@@ -65,7 +67,7 @@ export async function getReportPublicationReadiness(
          WHERE cpp.crop_profile_id = cp.id
        ) rule_state ON cp.id IS NOT NULL
        LEFT JOIN LATERAL (
-         SELECT ag.id, ag.status, ag.created_at
+         SELECT ag.id, ag.status, ag.created_at, ag.response_payload
          FROM ai_generations ag
          WHERE ag.tenant_id=i.tenant_id
            AND ag.interpretation_id=i.id
@@ -87,6 +89,7 @@ export async function getReportPublicationReadiness(
           latestRuleUpdatedAt: row.latestRuleUpdatedAt,
         })
       : { current: false };
+    const completeness = evaluateOfficialResultCompleteness(row?.prescriptionResponsePayload ?? null);
     return evaluateReportPublicationGate({
       interpretationExists: Boolean(row),
       interpretationStatus: row?.interpretationStatus ?? null,
@@ -97,6 +100,8 @@ export async function getReportPublicationReadiness(
       prescriptionCurrent: row?.prescriptionCurrent ?? false,
       sourceVerificationRequired: row?.sourceVerificationRequired ?? false,
       sourceHumanVerified: row?.sourceHumanVerified ?? false,
+      prescriptionCompletenessReady: completeness.ready,
+      prescriptionCompletenessReason: officialResultCompletenessReason(completeness),
     });
   });
 }

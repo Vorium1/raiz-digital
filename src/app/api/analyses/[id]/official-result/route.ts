@@ -9,6 +9,7 @@ import { publishPremiumFieldAnalysisReport } from "@/lib/repositories/premium-re
 import { AiGenerationError } from "@/lib/repositories/ai-generations";
 import { InterpretationError } from "@/lib/repositories/interpretations";
 import { ReportError } from "@/lib/repositories/reports";
+import { hasCurrentOfficialResultContract } from "@/domain/official-result-completeness";
 
 const allowedRoles = new Set(["SUPER_ADMIN", "TENANT_ADMIN", "AGRONOMIST"]);
 
@@ -97,7 +98,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         })
       : null;
 
-    if (!prescription || prescription.status !== "APPROVED" || prescriptionFreshness?.current !== true) {
+    if (
+      !prescription
+      || prescription.status !== "APPROVED"
+      || prescriptionFreshness?.current !== true
+      || !hasCurrentOfficialResultContract(prescription.responsePayload)
+    ) {
       await prepareAgronomicPrescriptionDraft({
         tenantId: session.tenantId,
         userId: session.userId,

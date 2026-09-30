@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { normalizeManagementSystem } from "@/domain/management-system";
 import { isDeepStrictEqual } from "node:util";
 import type { AnalysisDepthId } from "@/domain/analysis-depths";
 import { withTenant } from "@/lib/db";
@@ -6,10 +7,21 @@ import { writeAudit } from "@/lib/repositories/audit";
 import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
 import { parseWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-context";
 import { parseSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
+import { limingManagementContextFromAnalysisContext, parseLimingManagementContext } from "@/domain/liming-management-context";
 
 function analysisCode() {
   const year = new Date().getFullYear();
   return `AN-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+function reusableManagementFromAnalysisContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const draft = (value as { draft?: unknown }).draft;
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return null;
+  const raw = (draft as { tillageSystem?: unknown }).tillageSystem;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const normalized = normalizeManagementSystem(raw);
+  return normalized === "OTHER" ? null : normalized;
 }
 
 export class AnalysisContextError extends Error {
@@ -28,6 +40,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       irrigationApplications: [],
       wheatBuyerQualityContext: null as unknown,
       spatialInterpolationValidations: [] as unknown,
+      limingContext: null as unknown,
     };
   }
   const draft = (value as { draft?: unknown }).draft;
@@ -39,6 +52,7 @@ function planningContextFromAnalysisContext(value: unknown) {
       irrigationApplications: [],
       wheatBuyerQualityContext: null as unknown,
       spatialInterpolationValidations: [] as unknown,
+      limingContext: null as unknown,
     };
   }
 
@@ -48,6 +62,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     fertilityCyclePlanNotes?: unknown;
     wheatBuyerQualityContext?: unknown;
     spatialInterpolationValidations?: unknown;
+    limingContext?: unknown;
   };
   const horizon = Number(source.fertilityPlanningHorizonYears);
   return {
@@ -57,6 +72,7 @@ function planningContextFromAnalysisContext(value: unknown) {
     irrigationApplications: irrigationApplicationsFromContext(value) ?? [],
     wheatBuyerQualityContext: source.wheatBuyerQualityContext ?? null,
     spatialInterpolationValidations: source.spatialInterpolationValidations ?? spatialInterpolationValidationsFromAnalysisContext(value),
+    limingContext: source.limingContext ?? limingManagementContextFromAnalysisContext(value) ?? null,
   };
 }
 
@@ -122,13 +138,37 @@ export async function createAnalysis(input: {
       ],
     );
     const created = result.rows[0];
+
+    // Contexto estrutural informado na própria análise não deve se perder numa segunda tela.
+    // Só promovemos para a safra quando ela ainda não possui um manejo explícito; nunca sobrescrevemos
+    // um valor já cadastrado. O JSON original continua preservado para rastreabilidade.
+    const reusableManagement = reusableManagementFromAnalysisContext(input.analysisContext);
+    let promotedManagementSystem: string | null = null;
+    if (reusableManagement) {
+      const promoted = await client.query(
+        `UPDATE crop_seasons
+         SET management_system = $3,
+             updated_at = now()
+         WHERE tenant_id = $1::uuid
+           AND id = $2::uuid
+           AND (management_system IS NULL OR btrim(management_system) = '' OR management_system = 'OTHER')
+         RETURNING management_system AS "managementSystem"`,
+        [input.tenantId, input.cropSeasonId, reusableManagement],
+      );
+      promotedManagementSystem = promoted.rows[0]?.managementSystem ?? null;
+    }
+
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
       action: "ANALYSIS_CREATED",
       entityType: "analysis",
       entityId: created.id,
-      metadata: { code, analysisDepth: input.analysisDepth ?? null },
+      metadata: {
+        code,
+        analysisDepth: input.analysisDepth ?? null,
+        promotedManagementSystem,
+      },
     });
     return created;
   });
@@ -210,7 +250,18 @@ export async function updateAnalysisPlanningContext(input: {
   expectedWheatBuyerQualityContext?: unknown;
   spatialInterpolationValidations?: unknown;
   expectedSpatialInterpolationValidations?: unknown;
+  limingContext?: unknown;
+  expectedLimingContext?: unknown;
 }) {
+  let nextLimingContext: ReturnType<typeof parseLimingManagementContext> | undefined;
+  if (input.limingContext !== undefined) {
+    try { nextLimingContext = parseLimingManagementContext(input.limingContext); }
+    catch (error) { throw new AnalysisContextError(error instanceof Error ? error.message : "Contexto de calagem inválido.", 400); }
+    if (input.expectedLimingContext === undefined) {
+      throw new AnalysisContextError("Recarregue o contexto antes de editar a calagem.", 409);
+    }
+  }
+
   let nextBuyerQualityContext: ReturnType<typeof parseWheatBuyerQualityContext> | undefined;
   if (input.wheatBuyerQualityContext !== undefined) {
     try { nextBuyerQualityContext = parseWheatBuyerQualityContext(input.wheatBuyerQualityContext); }
@@ -261,6 +312,7 @@ export async function updateAnalysisPlanningContext(input: {
     && input.irrigationApplications === undefined
     && input.wheatBuyerQualityContext === undefined
     && input.spatialInterpolationValidations === undefined
+    && input.limingContext === undefined
   ) {
     throw new AnalysisContextError("Nenhum campo de planejamento foi informado.", 400);
   }
@@ -292,10 +344,17 @@ export async function updateAnalysisPlanningContext(input: {
     ) {
       throw new AnalysisContextError("As validações espaciais foram alteradas em outra sessão. Recarregue antes de salvar.", 409);
     }
+    if (
+      nextLimingContext !== undefined
+      && !isDeepStrictEqual(input.expectedLimingContext, current.limingContext)
+    ) {
+      throw new AnalysisContextError("O contexto de calagem foi alterado em outra sessão. Recarregue antes de salvar.", 409);
+    }
     const next = {
       irrigationApplications: nextApplications ?? current.irrigationApplications,
       wheatBuyerQualityContext: nextBuyerQualityContext ?? current.wheatBuyerQualityContext,
       spatialInterpolationValidations: nextSpatialInterpolationValidations ?? current.spatialInterpolationValidations,
+      limingContext: nextLimingContext ?? current.limingContext,
       plannedManagementNotes: input.plannedManagementNotes === undefined
         ? current.plannedManagementNotes
         : (nextPlannedManagement ?? ""),
@@ -311,6 +370,7 @@ export async function updateAnalysisPlanningContext(input: {
     if (!isDeepStrictEqual(next.irrigationApplications, current.irrigationApplications)) changedFields.push("irrigationApplications");
     if (!isDeepStrictEqual(next.wheatBuyerQualityContext, current.wheatBuyerQualityContext)) changedFields.push("wheatBuyerQualityContext");
     if (!isDeepStrictEqual(next.spatialInterpolationValidations, current.spatialInterpolationValidations)) changedFields.push("spatialInterpolationValidations");
+    if (!isDeepStrictEqual(next.limingContext, current.limingContext)) changedFields.push("limingContext");
     if (next.plannedManagementNotes !== current.plannedManagementNotes.trim()) changedFields.push("plannedManagementNotes");
     if (next.fertilityPlanningHorizonYears !== current.fertilityPlanningHorizonYears) changedFields.push("fertilityPlanningHorizonYears");
     if (next.fertilityCyclePlanNotes !== current.fertilityCyclePlanNotes.trim()) changedFields.push("fertilityCyclePlanNotes");
@@ -333,6 +393,7 @@ export async function updateAnalysisPlanningContext(input: {
     if (nextApplications !== undefined) (draft as Record<string, unknown>).irrigationApplications = nextApplications;
     if (nextBuyerQualityContext !== undefined) (draft as Record<string, unknown>).wheatBuyerQualityContext = nextBuyerQualityContext;
     if (nextSpatialInterpolationValidations !== undefined) (draft as Record<string, unknown>).spatialInterpolationValidations = nextSpatialInterpolationValidations;
+    if (nextLimingContext !== undefined) (draft as Record<string, unknown>).limingContext = nextLimingContext;
     (root as Record<string, unknown>).draft = draft;
 
     await client.query(
@@ -366,6 +427,7 @@ export async function updateAnalysisPlanningContext(input: {
         spatialInterpolationValidationCount: Array.isArray(next.spatialInterpolationValidations)
           ? next.spatialInterpolationValidations.length
           : null,
+        limingContextUpdated: changedFields.includes("limingContext"),
         fertilityPlanningHorizonYears: next.fertilityPlanningHorizonYears,
         hasCyclePlan: next.fertilityCyclePlanNotes.length > 0,
         hasPlannedManagement: next.plannedManagementNotes.length > 0,

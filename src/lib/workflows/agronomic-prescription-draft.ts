@@ -17,6 +17,7 @@ import { getRecommendationContextByAnalysis } from "@/lib/repositories/recommend
 import { getAnalysisPlanningContext } from "@/lib/repositories/analyses";
 import { getTenantPrescriptionUsage } from "@/lib/repositories/tenant-plan";
 import { calculateNitrogenRecommendation, getNitrogenRecommendationWorkspace, NitrogenRecommendationError } from "@/lib/repositories/nitrogen-recommendation";
+import { collectAnalysisAgroclimateSnapshot } from "@/lib/agroclimate/analysis-snapshot";
 
 function interpretationItems(structuredOutput: unknown) {
   if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) return [];
@@ -126,6 +127,13 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     );
   }
 
+  const agroclimateSnapshotPromise = collectAnalysisAgroclimateSnapshot({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    analysisId: input.analysisId,
+    sourceTimeoutMs: 3_000,
+  }).catch(() => null);
+
   let result;
   try {
     result = await provider.prescribe({ evidence });
@@ -136,6 +144,28 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     provider = deterministicLimitedPrescriptionProvider;
     result = await provider.prescribe({ evidence });
   }
+
+  const collectedAgroclimate = await agroclimateSnapshotPromise;
+
+  // Horizonte, complementos, clima, biologia e posicionamento são blocos calculados/coletados pelo servidor.
+  // Mesmo quando a narrativa vem de LLM, o provedor não pode omitir nem reescrever esses blocos.
+  result = {
+    ...result,
+    prescription: {
+      ...result.prescription,
+      fertilityPlan: evidence.fertilityHorizonPlan,
+      soilComplementActions: evidence.soilComplementActions,
+      climateContext: evidence.analysis.climateContext,
+      biologicalContext: evidence.biologicalReportContext,
+      applicationGuidance: evidence.applicationGuidance,
+      spatialNutrientPlan: evidence.spatialNutrientPlan,
+      limingDecision: evidence.deterministicLimingDecision ?? null,
+      limingMethodSelection: evidence.limingMethodSelection,
+      limingLayerRequirement: evidence.integrated020LimingLayerRequirement,
+      limingReferenceScenarios: evidence.integrated020LimingReferenceScenarios,
+      agroclimateSnapshot: collectedAgroclimate?.reportSnapshot ?? null,
+    },
+  };
 
   const [interpretationAfterProvider, contextAfterProvider, evidenceAfterProvider, planningAfterProvider] = await Promise.all([
     getLatestInterpretation(input.tenantId, input.analysisId, input.userId),
@@ -187,6 +217,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
     yieldGoal: contextAfterProvider.yieldGoal,
     yieldGoalUnit: contextAfterProvider.yieldGoalUnit,
     cultivationOrderAfterSoilAnalysis: contextAfterProvider.cultivationOrderAfterSoilAnalysis,
+    pointDoseEnvelopes: evidence.deterministicPkPointDoses,
   });
   if (!providerPkValidation.allowed) {
     const details = providerPkValidation.failures.map((failure) => ({

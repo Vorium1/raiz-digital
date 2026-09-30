@@ -22,19 +22,31 @@ async function authenticate(page: Page) {
   }]);
 }
 
-async function openPublishedReport(page: Page) {
+async function openPublishedTechnicalReport(page: Page) {
   await authenticate(page);
-  // Item 9: havendo publicação íntegra, a visão técnica deve abrir a entrega congelada SEM depender
-  // de query string manual. Isso mantém produtor e técnico na mesma decisão por padrão.
   await page.goto("/relatorios/talhao/" + ANALYSIS_ID, {
     waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
   await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
-  await expect(page.locator(".report-final-pages")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".concept-report")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/snapshot IMUTÁVEL publicado/i)).toBeVisible();
   await expect(page.locator(".report-version-toggle a.active")).toContainText("Versão publicada");
-  return page.locator(".report-final-pages");
+  return page.locator(".concept-report");
+}
+
+async function openProducerReport(page: Page) {
+  await authenticate(page);
+  await page.goto("/resultado/" + ANALYSIS_ID, {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
+  const report = page.locator(".concept-report");
+  await expect(report).toBeVisible({ timeout: 20_000 });
+  const pageCount = await report.locator(".concept-report-page").count();
+  expect([4, 5]).toContain(pageCount);
+  return report;
 }
 
 async function assertNoHorizontalOverflow(page: Page) {
@@ -44,81 +56,97 @@ async function assertNoHorizontalOverflow(page: Page) {
   ).toBeLessThanOrEqual(1);
 }
 
-test.describe("Item 9 · entrega oficial congelada", () => {
+function fieldNameLocator(report: ReturnType<Page["locator"]>) {
+  return report
+    .locator(".concept-cover-meta-identified > div")
+    .filter({ hasText: "TALHÃO" })
+    .locator("strong");
+}
+
+test.describe("Relatório final visual · decisão congelada", () => {
   test.setTimeout(120_000);
 
   test("visão técnica usa publicação por padrão e versão atual exige escolha explícita", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
-    await openPublishedReport(page);
+    await openPublishedTechnicalReport(page);
 
     await page.getByRole("link", { name: "Versão atual" }).click();
     await expect(page).toHaveURL(/versao=atual/);
     await expect(page.locator(".report-version-toggle a.active")).toContainText("Versão atual");
-    await expect(page.locator(".report-visual-status-card")).toContainText(/versão atual \/ rascunho/i);
+    await expect(page.locator(".concept-report")).toBeVisible();
     await expect(page.getByText(/snapshot IMUTÁVEL publicado/i)).toHaveCount(0);
   });
 
-  test("produtor e técnico publicado usam o mesmo contexto e recomendações congeladas", async ({ page }) => {
+  test("produtor e técnico publicado usam o mesmo snapshot e a mesma paginação", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
-    const technical = await openPublishedReport(page);
+    const technical = await openPublishedTechnicalReport(page);
+    const technicalField = (await fieldNameLocator(technical).innerText()).trim();
+    expect(technicalField).toBeTruthy();
+    const technicalPageCount = await technical.locator(".concept-report-page").count();
+    expect([4, 5]).toContain(technicalPageCount);
+    await expect(technical.locator(".concept-technical-appendix")).toBeVisible();
 
-    const technicalTitle = (await technical.locator(".report-visual-title-row h1").first().innerText()).trim();
-    const fieldName = technicalTitle.split(" · ")[0]?.trim();
-    expect(fieldName).toBeTruthy();
-
-    const technicalLabels = await technical.locator(".report-recommendation-table tbody tr td:first-child strong").allInnerTexts();
-
-    await page.goto("/resultado/" + ANALYSIS_ID, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await expect(page.locator(".simple-result-document")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator(".simple-result-hero h1")).toHaveText(fieldName!);
-    await expect(page.getByText("Resultado oficial", { exact: true })).toBeVisible();
-
-    const producerLabels = await page.locator(".simple-result-recommendations article > div > strong").allInnerTexts();
-    expect(producerLabels).toEqual(technicalLabels);
+    const producer = await openProducerReport(page);
+    const producerField = (await fieldNameLocator(producer).innerText()).trim();
+    expect(producerField).toBe(technicalField);
+    expect(await producer.locator(".concept-report-page").count()).toBe(technicalPageCount);
+    await expect(producer.locator(".concept-technical-appendix")).toHaveCount(0);
+    await expect(producer.getByText("PARECER FINAL", { exact: true })).toBeVisible();
   });
 
-  test("desktop renderiza três páginas com diagnóstico, manejo e fechamento", async ({ page }) => {
+  test("desktop omite execução vazia e mantém as páginas conceituais sem overflow", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
-    const report = await openPublishedReport(page);
+    const report = await openProducerReport(page);
+    const pages = report.locator(".concept-report-page");
 
-    const pages = report.locator(".report-a4-page");
-    await expect(pages).toHaveCount(3);
-    await expect(pages.nth(0)).toContainText("Diagnóstico visual");
-    await expect(pages.nth(0)).toContainText("Talhão e pontos");
-    await expect(pages.nth(0)).toContainText("Indicadores e nutrientes");
-    await expect(pages.nth(1)).toContainText("Recomendação e manejo");
-    await expect(pages.nth(1)).toContainText("Necessidade agronômica");
-    await expect(pages.nth(2)).toContainText("Fechamento para o produtor");
-    await expect(pages.nth(2)).toContainText(/Rastreabilidade/i);
-    await expect(pages.nth(2)).toContainText(/Hash verificado/i);
+    const pageCount = await pages.count();
+    const executionCount = await report.getByText("03 / EXECUÇÃO DA SAFRA", { exact: true }).count();
 
-    expect(await pages.nth(0).locator(".report-parameter-card").count(), "o diagnóstico precisa expor os parâmetros congelados").toBeGreaterThan(0);
-    const recommendationRows = await pages.nth(1).locator(".report-recommendation-table tbody tr").count();
-    const explicitNoDose = await pages.nth(1).getByText(/Sem dose inventada/i).count();
-    expect(recommendationRows + explicitNoDose, "recomendação deve mostrar dose aprovada ou ausência explícita").toBeGreaterThan(0);
+    await expect(pages.nth(0)).toContainText("RELATÓRIO");
+    await expect(pages.nth(0)).toContainText("AGRONÔMICO");
+    await expect(pages.nth(0)).toContainText("IDENTIFICAÇÃO DA ÁREA");
+    await expect(pages.nth(1)).toContainText("A ÁREA EM UMA");
+    await expect(pages.nth(1)).toContainText("VISÃO");
+    await expect(pages.nth(2)).toContainText("O QUE O SEU SOLO");
+    await expect(pages.nth(2)).toContainText("PEDE");
+
+    if (executionCount) {
+      expect(pageCount).toBe(5);
+      await expect(pages.nth(3)).toContainText("EXECUÇÃO DA SAFRA");
+      await expect(pages.nth(3)).toContainText("APLICAÇÃO / POSICIONAMENTO");
+    } else {
+      expect(pageCount).toBe(4);
+    }
+
+    const finalPage = report.locator(".concept-final-page");
+    await expect(finalPage).toContainText("PLANO PARA");
+    await expect(finalPage).toContainText("PARECER FINAL");
+    await expect(finalPage).toContainText("Responsável técnico");
 
     await assertNoHorizontalOverflow(page);
     await mkdir(EVIDENCE_DIR, { recursive: true });
-    await pages.nth(0).screenshot({ path: join(EVIDENCE_DIR, "page-1-diagnostico.png") });
-    await pages.nth(1).screenshot({ path: join(EVIDENCE_DIR, "page-2-manejo.png") });
-    await pages.nth(2).screenshot({ path: join(EVIDENCE_DIR, "page-3-fechamento.png") });
+    for (let index = 0; index < pageCount; index++) {
+      await pages.nth(index).screenshot({ path: join(EVIDENCE_DIR, `pagina-${index + 1}.png`) });
+    }
   });
 
   test("mobile permanece legível e sem overflow horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    const report = await openPublishedReport(page);
-    await expect(report.locator(".report-a4-page")).toHaveCount(3);
+    const report = await openProducerReport(page);
+    expect([4, 5]).toContain(await report.locator(".concept-report-page").count());
     await assertNoHorizontalOverflow(page);
 
     await mkdir(EVIDENCE_DIR, { recursive: true });
     await page.screenshot({ path: join(EVIDENCE_DIR, "mobile-390x844.png"), fullPage: true });
   });
 
-  test("impressão A4 gera exatamente três páginas", async ({ page }) => {
+  test("impressão do relatório do produtor usa somente páginas A4 com conteúdo", async ({ page }) => {
     await page.setViewportSize({ width: 1240, height: 1754 });
-    const report = await openPublishedReport(page);
+    const report = await openProducerReport(page);
     await page.emulateMedia({ media: "print" });
-    await expect(report.locator(".report-a4-page")).toHaveCount(3);
+    const pages = report.locator(".concept-report-page");
+    const expectedPageCount = await pages.count();
+    expect([4, 5]).toContain(expectedPageCount);
 
     const pdf = await page.pdf({
       format: "A4",
@@ -126,19 +154,22 @@ test.describe("Item 9 · entrega oficial congelada", () => {
       preferCSSPageSize: true,
     });
     await mkdir(EVIDENCE_DIR, { recursive: true });
-    await writeFile(join(EVIDENCE_DIR, "relatorio-final-a4.pdf"), pdf);
+    await writeFile(join(EVIDENCE_DIR, `relatorio-produtor-${expectedPageCount}-paginas-a4.pdf`), pdf);
 
-    const metrics = await report.locator(".report-a4-page").evaluateAll((pages) =>
-      pages.map((element) => ({
+    const metrics = await pages.evaluateAll((elements) =>
+      elements.map((element) => ({
         clientHeight: element.clientHeight,
         scrollHeight: element.scrollHeight,
         renderedHeight: Math.round(element.getBoundingClientRect().height),
       })),
     );
     console.log("PRINT_PAGE_METRICS", JSON.stringify(metrics));
+    for (const metric of metrics) {
+      expect(metric.scrollHeight - metric.clientHeight, "página conceitual não pode estourar verticalmente").toBeLessThanOrEqual(2);
+    }
 
     const ascii = pdf.toString("latin1");
     const pageObjects = ascii.match(/\/Type\s*\/Page\b/g) ?? [];
-    expect(pageObjects.length, "PDF A4 não pode ganhar página vazia/extra por overflow").toBe(3);
+    expect(pageObjects.length, "PDF do produtor não pode ganhar página vazia/extra por overflow").toBe(expectedPageCount);
   });
 });

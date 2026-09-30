@@ -1,6 +1,7 @@
 export const MANAGEMENT_SYSTEM_OPTIONS = [
   { value: "CONVENTIONAL", label: "Preparo convencional" },
   { value: "NO_TILL_ESTABLISHMENT", label: "Implantação do plantio direto" },
+  { value: "NO_TILL_CONSOLIDATED_UNSPECIFIED", label: "Plantio direto consolidado · condição 10–20 cm ainda não definida" },
   { value: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS", label: "Plantio direto consolidado · sem restrição em 10–20 cm" },
   { value: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS", label: "Plantio direto consolidado · com restrição em 10–20 cm" },
   { value: "OTHER", label: "Outro sistema / ainda não classificado" },
@@ -46,6 +47,14 @@ export function normalizeManagementSystem(value: string | null | undefined): Can
     (text.includes("10_20") || text.includes("10_A_20"))
   ) {
     return "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS";
+  }
+  if (
+    text === "PLANTIO_DIRETO_CONSOLIDADO"
+    || text === "SPD_CONSOLIDADO"
+    || text === "NO_TILL_CONSOLIDATED"
+    || text === "NO_TILL_CONSOLIDATED_UNSPECIFIED"
+  ) {
+    return "NO_TILL_CONSOLIDATED_UNSPECIFIED";
   }
   return "OTHER";
 }

@@ -192,7 +192,17 @@ type ExistingDecisionPublication = {
   storageKey: string;
   publishedAt: string;
   commercialPlanSnapshotId: string | null;
+  brandingFingerprint: string | null;
 };
+
+function reportBrandingFingerprint(branding: TenantBranding) {
+  return createHash("sha256").update(JSON.stringify({
+    displayName: branding.displayName,
+    logoDataUrl: branding.logoDataUrl,
+    responsibleName: branding.responsibleName,
+    responsibleRegistration: branding.responsibleRegistration,
+  })).digest("hex");
+}
 
 async function getLatestDecisionPublication(
   client: PoolClient,
@@ -200,7 +210,8 @@ async function getLatestDecisionPublication(
 ): Promise<ExistingDecisionPublication | null> {
   const existing = await client.query<ExistingDecisionPublication>(
     `SELECT r.id::text, r.revision, r.storage_key AS "storageKey", r.published_at::text AS "publishedAt",
-            nullif(published_event.metadata->>'commercialPlanSnapshotId', '') AS "commercialPlanSnapshotId"
+            nullif(published_event.metadata->>'commercialPlanSnapshotId', '') AS "commercialPlanSnapshotId",
+            nullif(published_event.metadata->>'brandingFingerprint', '') AS "brandingFingerprint"
      FROM reports r
      LEFT JOIN LATERAL (
        SELECT ae.metadata
@@ -413,6 +424,9 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
     );
     const ndviSnapshot = ndviResult.rows[0] ?? null;
 
+    const brandingSnapshot = await getTenantBranding(input.tenantId);
+    const brandingFingerprint = reportBrandingFingerprint(brandingSnapshot);
+
     const previousReport = await getLatestDecisionPublication(client, {
       tenantId: input.tenantId,
       interpretationId: interpretation.id,
@@ -429,7 +443,8 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       const ndviChangedAfterPreviousReport = ndviEvidenceTimes.some((value) => value > previousPublishedAt);
       const requestedCommercialPlanSnapshotId = commercialPlanSnapshot?.id ?? null;
       const commercialPlanChangedAfterPreviousReport = previousReport.commercialPlanSnapshotId !== requestedCommercialPlanSnapshotId;
-      if (!ndviChangedAfterPreviousReport && !commercialPlanChangedAfterPreviousReport) {
+      const brandingChangedAfterPreviousReport = previousReport.brandingFingerprint !== brandingFingerprint;
+      if (!ndviChangedAfterPreviousReport && !commercialPlanChangedAfterPreviousReport && !brandingChangedAfterPreviousReport) {
         return { ...previousReport, alreadyCurrent: true as const };
       }
     }
@@ -443,7 +458,6 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
       expectedPrescriptionId: approvedPrescription.id,
     });
 
-    const brandingSnapshot = await getTenantBranding(input.tenantId);
     const publishedAt = new Date().toISOString();
     const snapshotPayload: PremiumReportSnapshotV3 = {
       reportSnapshotVersion: PREMIUM_REPORT_SNAPSHOT_VERSION,
@@ -508,6 +522,10 @@ export async function publishPremiumFieldAnalysisReport(input: { tenantId: strin
         commercialPlanChangedAfterPreviousReport: previousReport
           ? previousReport.commercialPlanSnapshotId !== (commercialPlanSnapshot?.id ?? null)
           : Boolean(commercialPlanSnapshot),
+        brandingFingerprint,
+        brandingChangedAfterPreviousReport: previousReport
+          ? previousReport.brandingFingerprint !== brandingFingerprint
+          : true,
       },
     });
     return { ...report, alreadyCurrent: false as const };

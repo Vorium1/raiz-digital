@@ -248,6 +248,7 @@ export const SOYBEAN_PK_RS_SC_2025_POLICY = Object.freeze({
   referenceYieldTonPerHa: 3,
   extraPerTonKgHa: { P2O5: 15, K2O: 25 },
   maintenanceAtReferenceYieldKgHa: { P2O5: 45, K2O: 75 },
+  soilReanalysisAfterCultivations: 2,
   totalCorrectionReferenceKgHa: {
     "Muito Baixo": { P2O5: 160, K2O: 120 },
     Baixo: { P2O5: 80, K2O: 60 },

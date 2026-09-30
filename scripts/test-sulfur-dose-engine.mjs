@@ -103,6 +103,28 @@ assert.deepEqual(soybeanArea01.dose, { kind: "EXACT", kgSPerHa: 20 });
 assert.equal(soybeanArea01.basis, "STRICT_PREDOMINANCE");
 assert.equal(soybeanArea01.matchingCount, 5);
 
+const soybeanArea01Operational = computeSoybeanSulfurRecommendation({
+  cropCode: "SOJA",
+  observations: [9.8, 8.4, 12.2, 6.9, 12.8, 8.4, 12.1, 8.9].map((sulfurMgDm3, index) => ({
+    sampleCode: `A1-${index + 1}`,
+    sulfurMgDm3,
+    method: soybeanMethod,
+    depthFromCm: 0,
+    depthToCm: 20,
+  })),
+  allowEqualWeightOperationalAverage: true,
+});
+assert.equal(soybeanArea01Operational.operationalDoseKgSPerHa, 12.5);
+assert.deepEqual(soybeanArea01Operational.operationalDoseRangeKgSPerHa, { min: 0, max: 20 });
+assert.equal(soybeanArea01Operational.operationalBasis, "EQUAL_WEIGHT_SAMPLE_MEAN");
+
+const sulfurOperationalOk = validatePrescriptionSulfurRecommendation({
+  recommendations: [{ inputType: "S", quantity: 12.5, unit: "kg/ha" }],
+  deterministicDecision: soybeanArea01Operational,
+});
+assert.equal(sulfurOperationalOk.allowed, true);
+assert.equal(sulfurOperationalOk.expectedKgSPerHa, 12.5);
+
 const soybeanArea03Tie = computeSoybeanSulfurRecommendation({
   cropCode: "SOJA",
   observations: [9.5, 6.0, 14.2, 13.7].map((sulfurMgDm3, index) => ({

@@ -37,7 +37,7 @@ export function Sidebar({ userName, role }: SidebarProps) {
   return (
     <aside className="simple-sidebar" aria-label="Navegação principal">
       <Link className="simple-brand" href="/inicio" aria-label="RAIZ Digital - Início">
-        <BrandLogo variant="light" height={40} priority />
+        <BrandLogo variant="light" height={48} priority className="simple-brand-logo" />
       </Link>
 
       <nav className="simple-nav">

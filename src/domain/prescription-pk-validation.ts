@@ -1,6 +1,8 @@
 import { canonicalCommercialTarget } from "./commercial-recommendation-targets.ts";
 import {
   validateDeterministicPkRecommendation,
+  validateOperationalPkPointAverageRecommendation,
+  type DeterministicPkPointDoseEnvelope,
   type DeterministicPkRecommendationValidation,
   type UniformPkTarget,
 } from "./uniform-pk-readiness.ts";
@@ -62,6 +64,7 @@ export function validatePrescriptionPkRecommendations(input: {
   yieldGoal: number | null | undefined;
   yieldGoalUnit: string | null | undefined;
   cultivationOrderAfterSoilAnalysis: number | null | undefined;
+  pointDoseEnvelopes?: Record<UniformPkTarget, DeterministicPkPointDoseEnvelope>;
 }): PrescriptionPkValidationResult {
   const validated: ValidatedPrescriptionPkRecommendation[] = [];
   const failures: PrescriptionPkValidationFailure[] = [];
@@ -121,11 +124,20 @@ export function validatePrescriptionPkRecommendations(input: {
     });
 
     if (!validation.allowed) {
+      const operationalValidation = validateOperationalPkPointAverageRecommendation({
+        envelope: input.pointDoseEnvelopes?.[nutrient],
+        quantity: recommendation.quantity,
+        unit: recommendation.unit,
+      });
+      if (operationalValidation.allowed) {
+        validated.push({ index, inputType: recommendation.inputType, nutrient, validation: operationalValidation });
+        continue;
+      }
       failures.push({
         index,
         inputType: recommendation.inputType,
         nutrient,
-        blockers: [...validation.blockers],
+        blockers: [...new Set([...validation.blockers, ...operationalValidation.blockers])],
         validation,
       });
       continue;

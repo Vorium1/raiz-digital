@@ -17,7 +17,8 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json() as Record<string, unknown>;
-    const input: { logoDataUrl?: string | null; responsibleName?: string | null; responsibleRegistration?: string | null } = {};
+    const input: { displayName?: string | null; logoDataUrl?: string | null; responsibleName?: string | null; responsibleRegistration?: string | null } = {};
+    if ("displayName" in body) input.displayName = typeof body.displayName === "string" && body.displayName.trim() ? body.displayName.trim() : null;
     if ("logoDataUrl" in body) input.logoDataUrl = typeof body.logoDataUrl === "string" && body.logoDataUrl ? body.logoDataUrl : null;
     if ("responsibleName" in body) input.responsibleName = typeof body.responsibleName === "string" && body.responsibleName.trim() ? body.responsibleName.trim() : null;
     if ("responsibleRegistration" in body) input.responsibleRegistration = typeof body.responsibleRegistration === "string" && body.responsibleRegistration.trim() ? body.responsibleRegistration.trim() : null;

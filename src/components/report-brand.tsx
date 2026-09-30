@@ -13,19 +13,17 @@ export function ReportBrand({ branding }: { branding: TenantBranding }) {
     <span className="report-brand">
       {/* eslint-disable-next-line @next/next/no-img-element -- logo enviado pelo cliente (data URI), não é asset estático do projeto */}
       <img src={branding.logoDataUrl} alt={branding.displayName} className="report-brand-logo" />
-      <strong className="report-brand-name">{branding.displayName}</strong>
     </span>
   );
 }
 
 export function ReportSignature({ branding }: { branding: TenantBranding }) {
-  if (!branding.responsibleName) return null;
   return (
     <footer className="report-brand-signature">
       <div className="report-brand-signature-line" />
-      <strong>{branding.responsibleName}</strong>
+      <strong>{branding.responsibleName || "Assinatura do responsável técnico"}</strong>
       {branding.responsibleRegistration && <small>{branding.responsibleRegistration}</small>}
-      <small>Responsável técnico · {branding.displayName}</small>
+      <small>Responsável técnico · {branding.displayName || "Empresa parceira"}</small>
     </footer>
   );
 }

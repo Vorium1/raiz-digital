@@ -273,6 +273,12 @@ export type DeterministicPkRecommendationValidation = {
   allowed: boolean;
   blockers: string[];
   expected: DeterministicPkDoseDecision["expected"];
+  operationalExpected?: {
+    doseKgPerHa: number;
+    minimumKgPerHa: number | null;
+    maximumKgPerHa: number | null;
+    basis: "EQUAL_WEIGHT_SAMPLE_MEAN";
+  } | null;
 };
 
 export function validateDeterministicPkRecommendation(input: {
@@ -300,4 +306,192 @@ export function validateDeterministicPkRecommendation(input: {
   if (!quantityMatches) blockers.push("PK_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE");
 
   return { allowed: blockers.length === 0, blockers, expected: dose.expected };
+}
+
+
+export type DeterministicPkPointDose = {
+  sampleCode: string;
+  soilLevel: SoilNutrientLevel;
+  doseKgPerHa: number;
+  minimumKgPerHa: number;
+  maximumKgPerHa: number;
+  isDiscretionaryRange: boolean;
+};
+
+export type DeterministicPkPointDoseEnvelope = {
+  ready: boolean;
+  nutrient: UniformPkTarget;
+  ruleId: string | null;
+  rows: DeterministicPkPointDose[];
+  minimumKgPerHa: number | null;
+  maximumKgPerHa: number | null;
+  operationalAverageAllowed: boolean;
+  operationalAverageKgPerHa: number | null;
+  operationalAverageRangeKgPerHa: { min: number; max: number } | null;
+  operationalBasis: "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
+  assumptions: string[];
+  blockers: string[];
+  source: string | null;
+};
+
+/**
+ * Resolve doses por ponto quando cada amostra tem classificação determinística válida,
+ * mesmo que não exista predominância suficiente para promover UMA dose uniforme do talhão.
+ *
+ * Isto NÃO autoriza taxa variável nem cria média do talhão: apenas traduz cada classificação
+ * individual pela mesma tabela oficial e contexto usados pelo motor uniforme.
+ */
+export function computeDeterministicPkPointDoseEnvelope(input: {
+  cropCode: string | null | undefined;
+  interpretation: unknown;
+  yieldGoal: number | null | undefined;
+  yieldGoalUnit: string | null | undefined;
+  cultivationOrderAfterSoilAnalysis: number | null | undefined;
+  nutrient: UniformPkTarget;
+  allowEqualWeightOperationalAverage?: boolean;
+}): DeterministicPkPointDoseEnvelope {
+  const blockers: string[] = [];
+  const assumptions: string[] = [];
+  const uniform = evaluateUniformPkReadiness({ cropCode: input.cropCode, interpretation: input.interpretation });
+  const cropCode = uniform.cropCode;
+  const table = cropCode ? DOSE_TABLE_BY_CROP[cropCode] : null;
+  if (!uniform.ruleReady || !uniform.ruleId) blockers.push(...uniform.blockers.filter((code) => code.startsWith("PK_")));
+  if (!table) blockers.push("PK_DETERMINISTIC_TABLE_NOT_IMPLEMENTED");
+
+  const usingReferenceYield = input.yieldGoal == null && Boolean(table);
+  const usingFirstCultivationDefault = input.cultivationOrderAfterSoilAnalysis == null;
+  const context = evaluatePkDoseReadiness({
+    yieldGoal: usingReferenceYield ? table?.referenceYieldTonPerHa : input.yieldGoal,
+    yieldGoalUnit: usingReferenceYield ? "t/ha" : input.yieldGoalUnit,
+    cultivationOrderAfterSoilAnalysis: usingFirstCultivationDefault ? 1 : input.cultivationOrderAfterSoilAnalysis,
+  });
+  if (!context.ready) blockers.push(...context.blockers.map((code) => `PK_CONTEXT:${code}`));
+  if (usingReferenceYield && table) assumptions.push(`YIELD_GOAL_DEFAULTED_TO_CROP_REFERENCE:${table.referenceYieldTonPerHa}_T_HA`);
+  if (usingFirstCultivationDefault) assumptions.push("CULTIVATION_ORDER_DEFAULTED_TO_FIRST_AFTER_ANALYSIS");
+
+  const parameterCode = input.nutrient === "P2O5" ? "P" : "K";
+  const perSample = new Map<string, Set<string>>();
+  for (const item of interpretableItems(input.interpretation)) {
+    if (item.interpretable !== true || item.classificationRole === "AUXILIARY") continue;
+    if (typeof item.parameterCode !== "string" || item.parameterCode.trim().toUpperCase() !== parameterCode) continue;
+    if (typeof item.sampleCode !== "string" || !item.sampleCode.trim() || typeof item.classification !== "string") continue;
+    const current = perSample.get(item.sampleCode) ?? new Set<string>();
+    current.add(item.classification);
+    perSample.set(item.sampleCode, current);
+  }
+
+  if (perSample.size === 0) blockers.push(`${parameterCode}_NO_CLASSIFIED_OBSERVATION`);
+
+  const cultivationYear = context.normalized.cultivationYear;
+  const yieldGoalTonPerHa = context.normalized.yieldGoalTonPerHa;
+  const rows: DeterministicPkPointDose[] = [];
+
+  if (table && cultivationYear && yieldGoalTonPerHa != null) {
+    for (const [sampleCode, classes] of perSample) {
+      if (classes.size !== 1) {
+        blockers.push(`${parameterCode}_SAMPLE_CLASSIFICATION_AMBIGUOUS:${sampleCode}`);
+        continue;
+      }
+      const level = soilLevel([...classes][0]);
+      if (!level) {
+        blockers.push(`${parameterCode}_CLASSIFICATION_UNSUPPORTED_FOR_DOSE:${sampleCode}`);
+        continue;
+      }
+      const result = computeGrainFertilizerDose(table, input.nutrient as Nutrient, level, cultivationYear, yieldGoalTonPerHa);
+      rows.push({
+        sampleCode,
+        soilLevel: level,
+        doseKgPerHa: result.doseKgPerHa,
+        minimumKgPerHa: result.isDiscretionaryRange ? result.yieldAdjustmentKgPerHa : result.doseKgPerHa,
+        maximumKgPerHa: result.isDiscretionaryRange
+          ? (result.discretionaryRangeMax ?? result.doseKgPerHa)
+          : result.doseKgPerHa,
+        isDiscretionaryRange: result.isDiscretionaryRange,
+      });
+    }
+  }
+
+  const uniqueBlockers = [...new Set(blockers)];
+  if (uniqueBlockers.length > 0 || rows.length !== perSample.size || rows.length === 0) {
+    return {
+      ready: false,
+      nutrient: input.nutrient,
+      ruleId: uniform.ruleId,
+      rows,
+      minimumKgPerHa: rows.length ? Math.min(...rows.map((row) => row.minimumKgPerHa)) : null,
+      maximumKgPerHa: rows.length ? Math.max(...rows.map((row) => row.maximumKgPerHa)) : null,
+      operationalAverageAllowed: false,
+      operationalAverageKgPerHa: null,
+      operationalAverageRangeKgPerHa: null,
+      operationalBasis: null,
+      assumptions,
+      blockers: uniqueBlockers,
+      source: table?.source ?? null,
+    };
+  }
+
+  const operationalAverageAllowed = input.allowEqualWeightOperationalAverage === true
+    && rows.every((row) => !row.isDiscretionaryRange);
+  const operationalAverageKgPerHa = operationalAverageAllowed
+    ? Math.round((rows.reduce((sum, row) => sum + row.doseKgPerHa, 0) / rows.length) * 10) / 10
+    : null;
+  const operationalAverageRangeKgPerHa = input.allowEqualWeightOperationalAverage === true
+    ? {
+        min: Math.round((rows.reduce((sum, row) => sum + row.minimumKgPerHa, 0) / rows.length) * 10) / 10,
+        max: Math.round((rows.reduce((sum, row) => sum + row.maximumKgPerHa, 0) / rows.length) * 10) / 10,
+      }
+    : null;
+
+  return {
+    ready: true,
+    nutrient: input.nutrient,
+    ruleId: uniform.ruleId,
+    rows,
+    minimumKgPerHa: Math.min(...rows.map((row) => row.minimumKgPerHa)),
+    maximumKgPerHa: Math.max(...rows.map((row) => row.maximumKgPerHa)),
+    operationalAverageAllowed,
+    operationalAverageKgPerHa,
+    operationalAverageRangeKgPerHa,
+    operationalBasis: input.allowEqualWeightOperationalAverage === true ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
+    assumptions,
+    blockers: [],
+    source: table?.source ?? null,
+  };
+}
+
+
+export function validateOperationalPkPointAverageRecommendation(input: {
+  envelope: DeterministicPkPointDoseEnvelope | null | undefined;
+  quantity: number;
+  unit: string;
+}): DeterministicPkRecommendationValidation {
+  const blockers: string[] = [];
+  const envelope = input.envelope;
+  if (!envelope?.ready || !envelope.operationalAverageAllowed || envelope.operationalAverageKgPerHa == null) {
+    blockers.push("PK_OPERATIONAL_AVERAGE_NOT_READY");
+  }
+  if (!Number.isFinite(input.quantity) || input.quantity < 0) blockers.push("PK_QUANTITY_INVALID");
+  if (!isKgPerHa(input.unit)) blockers.push("PK_UNIT_MUST_BE_KG_PER_HA");
+
+  if (
+    blockers.length === 0
+    && envelope?.operationalAverageKgPerHa != null
+    && Math.abs(input.quantity - envelope.operationalAverageKgPerHa) > 0.11
+  ) {
+    blockers.push("PK_QUANTITY_DOES_NOT_MATCH_OPERATIONAL_POINT_AVERAGE");
+  }
+
+  return {
+    allowed: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    expected: null,
+    operationalExpected: envelope?.operationalAverageKgPerHa != null && envelope.operationalBasis === "EQUAL_WEIGHT_SAMPLE_MEAN"
+      ? {
+          doseKgPerHa: envelope.operationalAverageKgPerHa,
+          minimumKgPerHa: envelope.minimumKgPerHa,
+          maximumKgPerHa: envelope.maximumKgPerHa,
+          basis: "EQUAL_WEIGHT_SAMPLE_MEAN",
+        }
+      : null,
+  };
 }

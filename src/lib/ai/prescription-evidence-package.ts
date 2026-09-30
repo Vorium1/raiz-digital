@@ -1,13 +1,24 @@
 import { evaluatePkDoseReadiness, type PkDoseReadiness } from "@/domain/recommendation-context";
 import {
   computeDeterministicPkDose,
+  computeDeterministicPkPointDoseEnvelope,
   evaluateUniformPkReadiness,
   type DeterministicPkDoseDecision,
+  type DeterministicPkPointDoseEnvelope,
   type UniformPkReadiness,
 } from "@/domain/uniform-pk-readiness";
 import { withTenant } from "@/lib/db";
 import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision } from "@/domain/sulfur-dose-engine";
 import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import { resolveSelectedLimingDecision } from "@/domain/liming-method-decision";
+import {
+  LIMING_METHOD_IDS,
+  buildIntegrated020LimingReferenceScenarios,
+  evaluateIntegrated020LimingLayerRequirement,
+  selectLimingMethod,
+  type Integrated020LimingLayerRequirement,
+  type LimingMethodSelection,
+} from "@/domain/liming-method-selector";
 import { adaptLabResultsToSoilMicrobiology } from "@/domain/soil-microbiology-lab-adapter";
 import { evaluateSoilMicrobiologyEvidence } from "@/domain/soil-microbiology-evidence";
 import { evaluateBiologicalSoilEvidence, type BiologicalSoilCropGroup, type BiologicalSoilRegionScope } from "@/domain/biological-soil-analysis";
@@ -23,6 +34,24 @@ import { evaluateSpatialEvidenceEnvelope, type SampleDistribution } from "@/doma
 import { evaluateSpatialAttributeEvidence } from "@/domain/spatial-attribute-evidence";
 import { evaluateStoredSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 import { compareAllValidatedSpatialMethods } from "@/domain/spatial-interpolation-comparison";
+import { buildReportFertilityHorizon, type ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import { buildSoilComplementActions, type SoilComplementAction } from "@/domain/soil-complement-actions";
+import {
+  buildReportBiologicalContext,
+  buildSoybeanApplicationGuidance,
+  climateContextFromAnalysisContext,
+  type ReportApplicationGuidance,
+  type ReportBiologicalContext,
+  type ReportClimateContext,
+} from "@/domain/report-context-blocks";
+import {
+  buildReportSpatialNutrientPlan,
+  type ReportSpatialNutrientPlan,
+} from "@/domain/report-spatial-nutrient-plan";
+import {
+  evaluateStoredLimingManagementContext,
+  limingManagementContextFromAnalysisContext,
+} from "@/domain/liming-management-context";
 
 /**
  * Pacote de evidências para a IA de PRESCRIÇÃO.
@@ -49,7 +78,17 @@ export type AgronomicPrescriptionEvidencePackage = {
   pkDoseReadiness: PkDoseReadiness;
   uniformPkReadiness: UniformPkReadiness;
   deterministicPkDoses: Record<"P2O5" | "K2O", DeterministicPkDoseDecision>;
+  deterministicPkPointDoses: Record<"P2O5" | "K2O", DeterministicPkPointDoseEnvelope>;
+  fertilityHorizonPlan: ReportFertilityHorizon | null;
+  soilComplementActions: SoilComplementAction[];
+  biologicalReportContext: ReportBiologicalContext;
+  spatialNutrientPlan: ReportSpatialNutrientPlan;
+  applicationGuidance: ReportApplicationGuidance;
   deterministicSulfurDose?: SoybeanSulfurUniformDecision;
+  limingManagementEvidence: ReturnType<typeof evaluateStoredLimingManagementContext>;
+  limingMethodSelection: LimingMethodSelection;
+  integrated020LimingLayerRequirement: Integrated020LimingLayerRequirement | null;
+  integrated020LimingReferenceScenarios: Integrated020LimingLayerRequirement[];
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
@@ -74,6 +113,7 @@ export type AgronomicPrescriptionEvidencePackage = {
     plannedManagementNotes: string | null;
     fertilityPlanningHorizonYears: 2 | 3 | 4 | 5 | null;
     fertilityCyclePlanNotes: string | null;
+    climateContext: ReportClimateContext;
     irrigationContext: {
       waterRegime: "SEQUEIRO" | "IRRIGADO" | null;
       system: string | null;
@@ -304,6 +344,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa",
               (f.boundary IS NOT NULL AND NOT ST_IsEmpty(f.boundary)) AS "hasFieldBoundary",
               a.collection_order_id::text AS "collectionOrderId",
+              co.sampling_strategy AS "samplingStrategy",
+              co.grid_area_ha::float8 AS "gridAreaHa",
               a.analysis_context AS "analysisContext",
               cs.id::text AS "seasonId", cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop",
               cs.next_crop AS "nextCrop", cs.next_cultivar AS "nextCultivar", cs.cultivar,
@@ -323,6 +365,8 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
        JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
        JOIN clients c ON c.tenant_id = p.tenant_id AND c.id = p.client_id
        LEFT JOIN crop_profiles cp ON cp.id = cs.crop_profile_id
+       LEFT JOIN collection_orders co
+         ON co.tenant_id = a.tenant_id AND co.id = a.collection_order_id
        LEFT JOIN nitrogen_recommendation_contexts nc
          ON nc.tenant_id = cs.tenant_id AND nc.crop_season_id = cs.id
        WHERE a.tenant_id = $1::uuid AND a.id = $2::uuid
@@ -617,12 +661,18 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
 
     const deterministicInterpretation = interpretationResult.rows[0] ?? null;
     const interpreted = interpretationItems(deterministicInterpretation?.structuredOutput);
+    const soilComplementActions = buildSoilComplementActions(interpreted);
     const pkDoseReadiness = evaluatePkDoseReadiness({
       yieldGoal: base.yieldGoal,
       yieldGoalUnit: base.yieldGoalUnit,
       cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
     });
     const uniformPkReadiness = evaluateUniformPkReadiness({ cropCode: base.cropProfileCode, interpretation: interpreted });
+    const equalWeightSamplingSupport = base.samplingStrategy === "GRID"
+      && typeof base.gridAreaHa === "number"
+      && Number.isFinite(base.gridAreaHa)
+      && base.gridAreaHa > 0;
+
     const deterministicPkDoses = {
       P2O5: computeDeterministicPkDose({
         cropCode: base.cropProfileCode,
@@ -641,6 +691,26 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         nutrient: "K2O",
       }),
     };
+    const deterministicPkPointDoses = {
+      P2O5: computeDeterministicPkPointDoseEnvelope({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "P2O5",
+        allowEqualWeightOperationalAverage: false,
+      }),
+      K2O: computeDeterministicPkPointDoseEnvelope({
+        cropCode: base.cropProfileCode,
+        interpretation: interpreted,
+        yieldGoal: base.yieldGoal,
+        yieldGoalUnit: base.yieldGoalUnit,
+        cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+        nutrient: "K2O",
+        allowEqualWeightOperationalAverage: false,
+      }),
+    };
 
     const deterministicSulfurDose = computeSoybeanSulfurRecommendation({
       cropCode: base.cropProfileCode,
@@ -653,13 +723,67 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
           depthFromCm: row.depthFromCm ?? null,
           depthToCm: row.depthToCm ?? null,
         })),
+      allowEqualWeightOperationalAverage: false,
     });
 
-    const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
+    const fertilityPlanning = analysisContextFertilityPlanning(base.analysisContext);
+    const fertilityHorizonPlan = buildReportFertilityHorizon({
+      horizonYears: fertilityPlanning.horizonYears,
+      cropCode: base.cropProfileCode,
+      interpretation: interpreted,
+      targetYieldTonPerHa: base.yieldGoal,
+      targetYieldUnit: base.yieldGoalUnit,
+      cultivationOrderAfterSoilAnalysis: base.cultivationOrderAfterSoilAnalysis,
+      currentPkPointDoses: deterministicPkPointDoses,
+      currentPkDoses: deterministicPkDoses,
+    });
+
+    const storedLimingContext = evaluateStoredLimingManagementContext(
+      limingManagementContextFromAnalysisContext(base.analysisContext),
+    );
+    const limingManagementSystem = base.managementSystem ?? analysisContextTillageSystem(base.analysisContext);
+    const limingMethodSelection = selectLimingMethod({
+      state: base.state,
+      cropCode: base.cropProfileCode,
+      managementSystem: limingManagementSystem,
+      results: resultsResult.rows,
+    });
+    const integrated020LimingLayerRequirement =
+      limingMethodSelection.selectedMethodId === LIMING_METHOD_IDS.cqfsRsSc2016Integrated020
+        ? evaluateIntegrated020LimingLayerRequirement({
+            cropCode: base.cropProfileCode,
+            results: resultsResult.rows,
+            allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+          })
+        : null;
+    const integrated020LimingReferenceScenarios =
+      limingMethodSelection.samplingProfile === "INTEGRATED_0_20"
+        ? buildIntegrated020LimingReferenceScenarios({
+            results: resultsResult.rows,
+            allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+          })
+        : [];
+
+    const modernLimingDecision = evaluateSoybeanLimingFromEvidence({
       cropCode: base.cropProfileCode,
       state: base.state,
-      managementSystem: base.managementSystem ?? analysisContextTillageSystem(base.analysisContext),
+      managementSystem: limingManagementSystem,
       results: resultsResult.rows,
+      allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+      yearsSinceLastLiming: storedLimingContext.context.yearsSinceLastLiming,
+      restrictionAssessment: storedLimingContext.context.restrictionAssessment,
+      contextValidationBlockers: storedLimingContext.status === "INVALID_OPTIONAL_EVIDENCE"
+        ? ["LIMING_MANAGEMENT_CONTEXT_INVALID"]
+        : [],
+    });
+    const deterministicLimingDecision = resolveSelectedLimingDecision({
+      cropCode: base.cropProfileCode,
+      state: base.state,
+      managementSystem: limingManagementSystem,
+      results: resultsResult.rows,
+      methodSelection: limingMethodSelection,
+      integrated020Requirement: integrated020LimingLayerRequirement,
+      modernDecision: modernLimingDecision,
     });
 
     const soilMicrobiologyEvidence = evaluateSoilMicrobiologyEvidence({
@@ -689,6 +813,29 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       ),
       sourceVersion: bioAsRows.map((row) => row.protocol ?? row.method).find((value) => value?.trim()) ?? null,
     });
+
+    const biologicalReportContext = buildReportBiologicalContext({
+      biologicalSoilEvidence,
+      soilMicrobiologyEvidence,
+    });
+    const spatialNutrientPlan = buildReportSpatialNutrientPlan({
+      areaHa: base.areaHa,
+      equalAreaGrid: equalWeightSamplingSupport,
+      pkDoses: deterministicPkDoses,
+      pkPointDoses: deterministicPkPointDoses,
+      sulfurDecision: deterministicSulfurDose,
+    });
+    const pSpatial = spatialNutrientPlan.nutrients.find((item) => item.nutrient === "P2O5");
+    const kSpatial = spatialNutrientPlan.nutrients.find((item) => item.nutrient === "K2O");
+    const applicationGuidance = buildSoybeanApplicationGuidance({
+      cropCode: base.cropProfileCode,
+      state: base.state,
+      p2o5KgPerHa: pSpatial?.uniformDoseKgPerHa ?? null,
+      k2oKgPerHa: kSpatial?.uniformDoseKgPerHa ?? null,
+      p2o5RangeKgPerHa: pSpatial?.rangeKgPerHa ?? null,
+      k2oRangeKgPerHa: kSpatial?.rangeKgPerHa ?? null,
+    });
+    const climateContext = climateContextFromAnalysisContext(base.analysisContext);
 
     const rawIrrigation = analysisContextIrrigation(base.analysisContext);
     const irrigationEvidence = evaluateIrrigationContext({
@@ -722,7 +869,17 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       pkDoseReadiness,
       uniformPkReadiness,
       deterministicPkDoses,
+      deterministicPkPointDoses,
+      fertilityHorizonPlan,
+      soilComplementActions,
+      biologicalReportContext,
+      spatialNutrientPlan,
+      applicationGuidance,
       deterministicSulfurDose,
+      limingManagementEvidence: storedLimingContext,
+      limingMethodSelection,
+      integrated020LimingLayerRequirement,
+      integrated020LimingReferenceScenarios,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
       biologicalSoilEvidence,
@@ -751,8 +908,9 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
         createdAt: base.createdAt,
         contextFingerprint: base.analysisContextFingerprint,
         plannedManagementNotes: analysisContextPlannedManagementNotes(base.analysisContext),
-        fertilityPlanningHorizonYears: analysisContextFertilityPlanning(base.analysisContext).horizonYears,
-        fertilityCyclePlanNotes: analysisContextFertilityPlanning(base.analysisContext).cyclePlanNotes,
+        fertilityPlanningHorizonYears: fertilityPlanning.horizonYears,
+        fertilityCyclePlanNotes: fertilityPlanning.cyclePlanNotes,
+        climateContext,
         irrigationContext: analysisContextIrrigation(base.analysisContext),
       },
       deterministicInterpretation,

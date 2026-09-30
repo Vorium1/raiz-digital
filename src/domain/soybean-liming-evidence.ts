@@ -42,7 +42,7 @@ export type SoybeanLimingUniformDecision = {
   uniformDoseTonHaPrnt100: number | null;
   automaticGeneralDoseAllowed: boolean;
   operationalGeneralDoseTonHaPrnt100: number | null;
-  generalDoseBasis: "UNIFORM" | "EQUAL_WEIGHT_SAMPLE_MEAN" | null;
+  generalDoseBasis: "UNIFORM" | "EQUAL_AREA_GRID_MEAN" | null;
   doseRangeTonHaPrnt100: { min: number; max: number } | null;
   applicationMode: "INCORPORATED" | "SURFACE" | null;
   incorporatedDepthCm: { from: number; to: number } | null;
@@ -242,7 +242,7 @@ function evaluateSample(input: {
   sampleCode: string;
   rows: SoybeanLimingLabResult[];
   region: "RS" | "SC" | "OTHER";
-  system: Exclude<CanonicalManagementSystem, "OTHER">;
+  system: Exclude<CanonicalManagementSystem, "OTHER" | "NO_TILL_CONSOLIDATED_UNSPECIFIED">;
   yearsSinceLastLiming?: number | null;
   restrictionAssessment?: SoybeanLimingRestrictionAssessment | null;
 }) {
@@ -372,19 +372,21 @@ function sameIncorporationDepth(
  *   na mesma amostra e profundidade, com unidades compatíveis.
  * - Dose uniforme só é liberada quando TODOS os pontos têm a mesma decisão,
  *   mesma dose e mesmo modo de aplicação.
- * - Quando os pontos válidos diferem, a decisão permanece SPATIAL para transparência,
- *   mas também calcula uma dose operacional geral como média simples das necessidades
- *   por ponto (peso igual). Essa média é para aplicação uniforme do talhão quando cada
- *   ponto representa a mesma fração da área; ela não substitui uma futura média ponderada
- *   por zonas/polígonos quando essa geometria estiver disponível.
+ * - Quando os pontos válidos diferem, a decisão permanece SPATIAL e preserva a faixa
+ *   e as doses por ponto.
+ * - Uma dose operacional geral por média simples só é liberada quando o chamador
+ *   comprova explicitamente uma grade com área equivalente por ponto. Sem esse suporte,
+ *   a média não é calculada/promovida e a prescrição permanece espacial.
  */
 export function evaluateSoybeanLimingFromEvidence(input: {
   cropCode: string | null;
   state: string | null;
   managementSystem: string | null;
   results: SoybeanLimingLabResult[];
+  allowEqualWeightOperationalAverage?: boolean;
   yearsSinceLastLiming?: number | null;
   restrictionAssessment?: SoybeanLimingRestrictionAssessment | null;
+  contextValidationBlockers?: string[];
 }): SoybeanLimingUniformDecision {
   const region = regionFromState(input.state);
   const managementSystem = normalizeManagementSystem(input.managementSystem);
@@ -445,6 +447,50 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       incorporatedDepthCm: null,
       sampleDecisions: [],
       blockers: ["MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING"],
+      warnings: [],
+    };
+  }
+
+  if (managementSystem === "NO_TILL_CONSOLIDATED_UNSPECIFIED") {
+    return {
+      cropCode: input.cropCode,
+      region,
+      managementSystem,
+      status: "BLOCKED",
+      automaticUniformDoseAllowed: false,
+      uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      applicationMode: null,
+      incorporatedDepthCm: null,
+      sampleDecisions: [],
+      blockers: ["NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED"],
+      warnings: [],
+    };
+  }
+
+  if (
+    (managementSystem === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS"
+      || managementSystem === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS")
+    && (input.contextValidationBlockers?.length ?? 0) > 0
+  ) {
+    return {
+      cropCode: input.cropCode,
+      region,
+      managementSystem,
+      status: "BLOCKED",
+      automaticUniformDoseAllowed: false,
+      uniformDoseTonHaPrnt100: null,
+      automaticGeneralDoseAllowed: false,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      applicationMode: null,
+      incorporatedDepthCm: null,
+      sampleDecisions: [],
+      blockers: unique(input.contextValidationBlockers ?? []),
       warnings: [],
     };
   }
@@ -571,14 +617,24 @@ export function evaluateSoybeanLimingFromEvidence(input: {
       .filter((mode): mode is "INCORPORATED" | "SURFACE" => mode === "INCORPORATED" || mode === "SURFACE"),
   )];
   const operationalApplicationMode = applyModes.length === 1 ? applyModes[0] : null;
-  const operationalGeneralDoseTonHaPrnt100 = allOperationalDosesAvailable
+  const candidateOperationalGeneralDoseTonHaPrnt100 = allOperationalDosesAvailable
     ? round(operationalDoses.reduce((sum, value) => sum + value, 0) / operationalDoses.length, 2)
     : null;
   const doseRangeTonHaPrnt100 = allOperationalDosesAvailable
     ? { min: Math.min(...operationalDoses), max: Math.max(...operationalDoses) }
     : null;
-  const automaticGeneralDoseAllowed = operationalGeneralDoseTonHaPrnt100 != null
+  const equalAreaSupport = input.allowEqualWeightOperationalAverage === true;
+  const automaticGeneralDoseAllowed = equalAreaSupport
+    && candidateOperationalGeneralDoseTonHaPrnt100 != null
     && (applyModes.length <= 1);
+  const operationalGeneralDoseTonHaPrnt100 = automaticGeneralDoseAllowed
+    ? candidateOperationalGeneralDoseTonHaPrnt100
+    : null;
+  const spatialBlockers = automaticGeneralDoseAllowed
+    ? []
+    : !equalAreaSupport && candidateOperationalGeneralDoseTonHaPrnt100 != null && applyModes.length <= 1
+      ? ["LIMING_EQUAL_WEIGHT_AVERAGE_REQUIRES_EQUAL_AREA_GRID"]
+      : ["LIMING_GENERAL_DOSE_NOT_READY"];
 
   return {
     cropCode: input.cropCode,
@@ -589,14 +645,14 @@ export function evaluateSoybeanLimingFromEvidence(input: {
     uniformDoseTonHaPrnt100: null,
     automaticGeneralDoseAllowed,
     operationalGeneralDoseTonHaPrnt100,
-    generalDoseBasis: automaticGeneralDoseAllowed ? "EQUAL_WEIGHT_SAMPLE_MEAN" : null,
+    generalDoseBasis: automaticGeneralDoseAllowed ? "EQUAL_AREA_GRID_MEAN" : null,
     doseRangeTonHaPrnt100,
     applicationMode: automaticGeneralDoseAllowed ? operationalApplicationMode : null,
     incorporatedDepthCm: null,
     sampleDecisions,
-    blockers: automaticGeneralDoseAllowed ? [] : ["LIMING_GENERAL_DOSE_NOT_READY"],
+    blockers: spatialBlockers,
     warnings: automaticGeneralDoseAllowed
-      ? unique([...warnings, "LIMING_GENERAL_DOSE_EQUAL_WEIGHT_SAMPLE_MEAN"])
+      ? unique([...warnings, "LIMING_GENERAL_DOSE_EQUAL_AREA_GRID_MEAN"])
       : warnings,
   };
 }

@@ -31,8 +31,16 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   for (const nutrient of ["P2O5", "K2O"] as const) {
     const dose = evidence.deterministicPkDoses[nutrient];
+    const pointEnvelope = evidence.deterministicPkPointDoses?.[nutrient];
+
     if (!dose.ready || !dose.expected) {
-      limitations.push(`Dose de ${nutrient} não incluída: ${dose.blockers.join(", ") || "evidência insuficiente para uma dose uniforme segura"}.`);
+      if (pointEnvelope?.ready && pointEnvelope.rows.length > 0) {
+        limitations.push(
+          `${nutrient}: sem taxa uniforme segura; o plano espacial preserva ${pointEnvelope.rows.length} dose(s) por ponto, faixa ${pointEnvelope.minimumKgPerHa}–${pointEnvelope.maximumKgPerHa} kg/ha.`,
+        );
+      } else {
+        limitations.push(`Dose de ${nutrient} não incluída: ${dose.blockers.join(", ") || "evidência insuficiente para uma dose uniforme segura"}.`);
+      }
       continue;
     }
     if (dose.expected.isDiscretionaryRange) {
@@ -83,6 +91,35 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     limitations.push("Nitrogênio: a execução persistida não passou nas verificações de rastreabilidade e foi isolada sem afetar as demais conclusões.");
   }
 
+  const complementActions = evidence.soilComplementActions ?? [];
+  const complementReview = complementActions.filter((item) =>
+    item.status === "LOW_REQUIRES_COMPLEMENT_REVIEW"
+    || item.status === "HETEROGENEOUS_REQUIRES_COMPLEMENT_REVIEW"
+  );
+  if (complementReview.length) {
+    for (const item of complementReview) managementPractices.push(item.action);
+  } else {
+    const micro = complementActions.filter((item) => new Set(["B", "ZN", "CU", "MN"]).has(item.parameterCode));
+    if (micro.length && micro.every((item) => item.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT")) {
+      managementPractices.push("Micronutrientes B, Zn, Cu e Mn: nenhum ponto classificado como baixo; não há indicação para aplicação geral automática neste momento.");
+    }
+    const organicMatter = complementActions.find((item) => item.parameterCode === "MO");
+    if (organicMatter?.status === "SUFFICIENT_NO_GENERAL_COMPLEMENT") {
+      managementPractices.push(organicMatter.action);
+    }
+  }
+
+  const climateContext = evidence.analysis?.climateContext;
+  if (climateContext?.status === "PROVIDED" && climateContext.notes) {
+    managementPractices.push(`Contexto climático informado: ${climateContext.notes} O clima contextualiza risco e operação, mas não altera automaticamente as doses determinísticas.`);
+  }
+  if (evidence.biologicalReportContext?.hasAnyBiology && evidence.biologicalReportContext.summary) {
+    managementPractices.push(evidence.biologicalReportContext.summary);
+  }
+  if (evidence.applicationGuidance?.status === "PLACEMENT_REVIEW_REQUIRED") {
+    managementPractices.push(evidence.applicationGuidance.guidance);
+  }
+
   const sulfur = evidence.deterministicSulfurDose;
   if (evidence.season.cropProfileCode === "SOJA" && sulfur) {
     if (sulfur.dose.kind === "EXACT") {
@@ -102,14 +139,54 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
   }
 
   const liming = evidence.deterministicLimingDecision;
+  const limingLayerRequirement = evidence.integrated020LimingLayerRequirement;
+  const limingReferenceScenarios = evidence.integrated020LimingReferenceScenarios ?? [];
+  const limingScenario55 = limingReferenceScenarios.find((item) => item.targetPh === "5.5" && item.status !== "BLOCKED") ?? null;
+  const limingScenario60 = limingReferenceScenarios.find((item) => item.targetPh === "6.0" && item.status !== "BLOCKED") ?? null;
+  const scenarioDose = (scenario: typeof limingLayerRequirement) =>
+    scenario ? scenario.operationalGeneralDoseTonHaPrnt100 ?? scenario.uniformDoseTonHaPrnt100 : null;
+  if (
+    evidence.season.cropProfileCode === "SOJA"
+    && limingLayerRequirement
+    && limingLayerRequirement.status !== "BLOCKED"
+  ) {
+    const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+    const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
+      ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
+    const dose55 = scenarioDose(limingScenario55);
+    const dose60 = scenarioDose(limingScenario60);
+    managementPractices.push(
+      dose55 != null && dose60 != null
+        ? `Calagem — amostra integrada 0–20 cm: o mesmo laudo sustenta cenários SMP diferentes conforme o pH-alvo: ${dose55.toLocaleString("pt-BR")} t/ha PRNT 100% para pH 5,5 e ${dose60.toLocaleString("pt-BR")} t/ha PRNT 100% para pH 6,0. O pH-alvo faz parte do método e não é escolhido para aproximar uma dose esperada.`
+        : general != null
+          ? `Calagem — amostra integrada 0–20 cm: necessidade equivalente calculada pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}) = ${general.toLocaleString("pt-BR")} t/ha PRNT 100%${range && Math.abs(range.max - range.min) > 1e-9 ? `; faixa entre pontos ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha` : ""}. Este cálculo representa a camada 0–20 recebida no laudo e não divide artificialmente o perfil.`
+          : `Calagem — amostra integrada 0–20 cm: o motor calculou as necessidades por ponto pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}), sem transformar a variação em média geral porque a grade equivalente não está comprovada.`,
+    );
+    if (liming?.status === "BLOCKED") {
+      limitations.push(
+        "Calagem: existe cálculo técnico rastreável para a camada integrada 0–20 cm, mas ele não foi convertido silenciosamente na regra moderna de aplicação do plantio direto consolidado. O relatório preserva o método e a profundidade que realmente chegaram do laboratório.",
+      );
+    }
+  }
+  if (evidence.limingMethodSelection?.samplingProfile === "INTEGRATED_0_30") {
+    limitations.push(
+      "Calagem: a profundidade integrada 0–30 cm foi reconhecida, mas a RAIZ não reutiliza automaticamente a tabela SMP calibrada para 0–20 cm. Uma metodologia específica para 0–30 precisa estar cadastrada e validada para o contexto.",
+    );
+  }
+
   if (evidence.season.cropProfileCode === "SOJA" && liming) {
     if (liming.status === "UNIFORM_APPLY" && liming.automaticUniformDoseAllowed && liming.uniformDoseTonHaPrnt100 != null) {
-      const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+      const methodId = evidence.limingMethodSelection?.selectedMethodId ?? "motor determinístico de calagem";
+      const mode = liming.applicationMode === "SURFACE"
+        ? "aplicação superficial"
+        : liming.applicationMode === "INCORPORATED"
+          ? "aplicação incorporada"
+          : "modo de aplicação não inferido pela profundidade do laudo";
       recommendations.push({
         inputType: "CALCARIO_PRNT100",
         quantity: liming.uniformDoseTonHaPrnt100,
         unit: "t/ha",
-        rationale: `Necessidade uniforme calculada pelo motor determinístico de calagem da soja RS/SC 2025, equivalente a PRNT 100%, com ${mode}. A RAIZ não escolhe produto comercial nem converte PRNT sem o valor declarado do corretivo.`,
+        rationale: `Necessidade uniforme calculada pelo método ${methodId}, equivalente a PRNT 100%, com ${mode}. A RAIZ preserva a profundidade e o pH-alvo do método e não escolhe produto comercial nem converte PRNT sem o valor declarado do corretivo.`,
       });
     } else if (liming.status === "UNIFORM_NO_APPLY") {
       managementPractices.push("Calagem: não indicada pelo critério determinístico atual para os pontos avaliados.");
@@ -119,13 +196,18 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
         && liming.operationalGeneralDoseTonHaPrnt100 != null
         && liming.operationalGeneralDoseTonHaPrnt100 > 0
       ) {
-        const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+        const methodId = evidence.limingMethodSelection?.selectedMethodId ?? "motor determinístico de calagem";
+        const mode = liming.applicationMode === "SURFACE"
+          ? "aplicação superficial"
+          : liming.applicationMode === "INCORPORATED"
+            ? "aplicação incorporada"
+            : "modo de aplicação não inferido pela profundidade do laudo";
         const range = liming.doseRangeTonHaPrnt100;
         recommendations.push({
           inputType: "CALCARIO_PRNT100",
           quantity: liming.operationalGeneralDoseTonHaPrnt100,
           unit: "t/ha",
-          rationale: `Dose geral operacional do talhão calculada pelo motor como média simples das necessidades dos ${liming.sampleDecisions.length} pontos, equivalentes a PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A média assume representatividade equivalente entre os pontos; quando houver zonas/polígonos com área conhecida, a RAIZ deve preferir ponderação por área.`,
+          rationale: `Dose geral operacional do talhão calculada pelo método ${methodId} a partir de ${liming.sampleDecisions.length} pontos de uma grade com área equivalente por ponto, em PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A consolidação por média só é autorizada porque a evidência de amostragem confirma representatividade espacial equivalente.`,
         });
       }
       const bySample = liming.sampleDecisions
@@ -148,16 +230,38 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
             ? " Modo de aplicação: superficial."
             : " Modo de aplicação: incorporada."
           : "";
-        managementPractices.push(`Calagem por ponto: ${bySample.join("; ")}. A recomendação principal do talhão usa a média operacional dos pontos; os valores individuais permanecem visíveis para auditoria e futura taxa variável.${modeText}`);
+        managementPractices.push(
+          liming.automaticGeneralDoseAllowed
+            ? `Calagem por ponto: ${bySample.join("; ")}. A recomendação principal do talhão usa a média operacional somente porque a grade confirma área equivalente por ponto; os valores individuais permanecem visíveis para auditoria e futura taxa variável.${modeText}`
+            : `Calagem por ponto: ${bySample.join("; ")}. Não foi criada dose geral para o talhão porque a representatividade de área equivalente entre os pontos não está comprovada; os valores individuais e a faixa permanecem preservados.${modeText}`,
+        );
       }
-      if (liming.generalDoseBasis === "EQUAL_WEIGHT_SAMPLE_MEAN") limitations.push("Calagem: a dose geral considera peso igual entre os pontos de amostragem. Se a área representada por cada ponto for diferente, refaça a consolidação com ponderação por zona/área.");
+      if (liming.blockers.includes("LIMING_EQUAL_WEIGHT_AVERAGE_REQUIRES_EQUAL_AREA_GRID")) {
+        limitations.push("Calagem: os pontos sustentam necessidades individuais, mas a amostragem não comprova área equivalente por ponto; por segurança, o RAIZ não calculou uma dose geral por média simples.");
+      }
     } else if (liming.status === "BLOCKED") {
       if (liming.blockers.includes("MANAGEMENT_SYSTEM_REQUIRED_FOR_LIMING")) {
         limitations.push("Calagem: informe o sistema de manejo do solo para escolher a regra correta sem assumir preparo convencional ou estágio do plantio direto.");
+      } else if (liming.blockers.includes("NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED")) {
+        limitations.push("Calagem em plantio direto consolidado: falta classificar a condição real de 10–20 cm como com ou sem restrições. A RAIZ não escolhe esse subcaso por inferência.");
+      } else if (liming.blockers.includes("LIMING_MANAGEMENT_CONTEXT_INVALID")) {
+        limitations.push("Calagem: o contexto persistido de histórico/restrições está inválido. A decisão de calcário ficou isoladamente bloqueada até o contexto ser corrigido; o restante do laudo não é completado por suposição.");
+      } else if (
+        liming.blockers.some((code) =>
+          code === "RESTRICTION_ASSESSMENT_10_20_MISSING"
+          || code === "YIELD_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "COMPACTION_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "PHOSPHORUS_RESTRICTION_10_20_NOT_ASSESSED"
+          || code === "INCORPORATION_DECISION_NOT_ASSESSED",
+        )
+      ) {
+        limitations.push("Calagem em plantio direto consolidado com restrições: a avaliação estruturada de 10–20 cm ainda está incompleta. Campos não avaliados permanecem desconhecidos e não são tratados como ausência de restrição.");
+      } else if (liming.blockers.includes("INCORPORATION_DECISION_REQUIRES_AGRONOMIST_CONFIRMATION")) {
+        limitations.push("Calagem em plantio direto consolidado com restrições: a evidência laboratorial está no domínio da regra, mas a incorporação exige confirmação profissional explícita antes de liberar dose.");
       } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS") {
-        limitations.push("Calagem em plantio direto consolidado: a regra oficial usa a camada 0–10 cm. O laudo atual não possui essa camada separada; uma amostra composta de 0–20 cm não é dividida artificialmente pela RAIZ.");
+        limitations.push("Calagem em plantio direto consolidado sem restrições: a regra oficial usa a camada 0–10 cm. O laudo atual não possui evidência suficiente nessa camada; uma amostra composta de 0–20 cm não é dividida artificialmente pela RAIZ.");
       } else if (liming.managementSystem === "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS") {
-        limitations.push("Calagem em plantio direto consolidado com restrições: a decisão exige evidências separadas de 0–10 e 10–20 cm. O laudo atual não contém essas duas camadas; a RAIZ preserva a amostragem real em vez de fabricar valores por profundidade.");
+        limitations.push("Calagem em plantio direto consolidado com restrições: a regra exige evidências separadas de 0–10 e 10–20 cm. O laudo atual não sustenta todas as entradas necessárias; a RAIZ preserva a amostragem real em vez de fabricar valores por profundidade.");
       } else {
         limitations.push("Calagem: a evidência atual não sustenta uma dose oficial uniforme para este sistema de manejo. A RAIZ manteve a decisão sem dose em vez de estimar um valor sem base técnica.");
       }
@@ -495,6 +599,12 @@ export const deterministicLimitedPrescriptionProvider: AgronomicPrescriptionProv
         managementPractices: deterministic.managementPractices,
         missingInformation,
         sources,
+        fertilityPlan: evidence.fertilityHorizonPlan ?? null,
+        soilComplementActions: evidence.soilComplementActions ?? [],
+        climateContext: evidence.analysis?.climateContext ?? null,
+        biologicalContext: evidence.biologicalReportContext ?? null,
+        applicationGuidance: evidence.applicationGuidance ?? null,
+        spatialNutrientPlan: evidence.spatialNutrientPlan ?? null,
       },
       provider: "raiz-deterministic-limited",
       model: "agronomic-engine",

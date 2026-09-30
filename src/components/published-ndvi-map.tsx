@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RealFieldMap, type MapImageOverlay, type MapLegendEntry, type SpatialGeometry } from "@/components/real-field-map";
+import { RealFieldMap, type MapImageOverlay, type MapLegendEntry, type MapPoint, type SpatialGeometry } from "@/components/real-field-map";
 import type { VigorZone } from "@/domain/ndvi-engine";
 import { VIGOR_ZONE_LABELS } from "@/domain/ndvi-engine";
 import { enhanceArchivedNdviRasterForDisplay, NDVI_DISPLAY_ZONE_COLOR } from "@/lib/ndvi-display-palette";
@@ -27,10 +27,20 @@ export function PublishedNdviMap({
   fieldId,
   capturedAt,
   boundary,
+  points = [],
+  height = 300,
+  showLegend = true,
+  eager = false,
+  showHint = true,
 }: {
   fieldId: string;
   capturedAt: string;
   boundary: SpatialGeometry;
+  points?: MapPoint[];
+  height?: number;
+  showLegend?: boolean;
+  eager?: boolean;
+  showHint?: boolean;
 }) {
   const [overlay, setOverlay] = useState<MapImageOverlay | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -81,22 +91,23 @@ export function PublishedNdviMap({
   }, [fieldId, capturedAt]);
 
   if (state === "loading") {
-    return <div className="simple-result-ndvi-map-state">Carregando a evidência visual arquivada…</div>;
+    return <div className="simple-result-ndvi-map-state" data-report-ndvi-state="loading">Carregando a evidência visual arquivada…</div>;
   }
 
   if (state === "unavailable" || !overlay) {
-    return <div className="simple-result-ndvi-map-state">A imagem arquivada não pôde ser aberta nesta sessão. O resumo NDVI acima continua sendo o snapshot oficial congelado.</div>;
+    return <div className="simple-result-ndvi-map-state" data-report-ndvi-state="unavailable">A imagem arquivada não pôde ser aberta nesta sessão. O resumo NDVI acima continua sendo o snapshot oficial congelado.</div>;
   }
 
   return (
-    <div className="simple-result-ndvi-map">
+    <div className="simple-result-ndvi-map" data-report-ndvi-state="ready">
       <RealFieldMap
         boundary={boundary}
-        points={[]}
-        height={300}
-        legend={VIGOR_LEGEND}
-        hint="Raster NDVI arquivado e verificado · mesma data congelada no laudo"
+        points={points}
+        height={height}
+        legend={showLegend ? VIGOR_LEGEND : undefined}
+        hint={showHint ? "Raster NDVI arquivado e verificado · mesma data congelada no laudo" : undefined}
         imageOverlay={overlay}
+        renderImmediately={eager}
       />
     </div>
   );

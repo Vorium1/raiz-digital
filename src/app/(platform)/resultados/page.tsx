@@ -36,6 +36,17 @@ export default async function ResultadosPage() {
       && delivery.prescriptionCurrent === true
       && analysis.latestInterpretationStatus === "APPROVED"
       && delivery.prescriptionStatus === "APPROVED"
+      && analysis.officialResultReady === true
+      && delivery.currentReportCount === 0;
+  });
+
+  const needsTechnicalClosure = analyses.filter((analysis: any) => {
+    const delivery = deliveryByAnalysis.get(String(analysis.id));
+    return delivery?.interpretationCurrent === true
+      && delivery.prescriptionCurrent === true
+      && analysis.latestInterpretationStatus === "APPROVED"
+      && delivery.prescriptionStatus === "APPROVED"
+      && analysis.officialResultReady === false
       && delivery.currentReportCount === 0;
   });
 
@@ -45,7 +56,7 @@ export default async function ResultadosPage() {
       && analysis.latestInterpretationStatus === "CALCULATED";
   });
 
-  const hasAnyState = latestResults.length + stale.length + publishReady.length + limited.length > 0;
+  const hasAnyState = latestResults.length + stale.length + publishReady.length + needsTechnicalClosure.length + limited.length > 0;
 
   return (
     <div className="simple-home simple-results-page">
@@ -92,6 +103,29 @@ export default async function ResultadosPage() {
               <Link href={`/analise/${analysis.id}`} key={analysis.id} className="simple-result-card publish-ready">
                 <span className="simple-result-icon"><Icon name="check" size={23}/></span>
                 <div><strong>{analysis.fieldName}</strong><small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small><time>{canPublishOfficial ? "Validado pelo motor · gerar resultado" : "Validado pelo motor"}</time></div>
+                <Icon name="arrow" size={17}/>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {needsTechnicalClosure.length > 0 && (
+        <section className="simple-results-section">
+          <div className="simple-results-section-head">
+            <span>FECHAMENTO TÉCNICO</span>
+            <h2>Antes de emitir o laudo</h2>
+            <p>A análise e a conclusão já estão atuais, mas ainda existe uma decisão essencial que precisa estar tecnicamente fechada. O produtor não recebe mensagens de validação ou códigos internos.</p>
+          </div>
+          <div className="simple-results-grid">
+            {needsTechnicalClosure.map((analysis: any) => (
+              <Link href={`/analise/${analysis.id}`} key={analysis.id} className="simple-result-card limited">
+                <span className="simple-result-icon"><Icon name="shield" size={23}/></span>
+                <div>
+                  <strong>{analysis.fieldName}</strong>
+                  <small>{analysis.clientName} · {analysis.propertyName} · Safra {analysis.seasonLabel}</small>
+                  <time>Conclusão pronta · falta fechar uma decisão para emissão oficial</time>
+                </div>
                 <Icon name="arrow" size={17}/>
               </Link>
             ))}

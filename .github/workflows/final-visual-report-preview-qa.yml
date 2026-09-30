@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - "feature/frozen-decision-delivery"
+      - "feature/report-dose-completeness"
     paths:
       - ".github/workflows/final-visual-report-preview-qa.yml"
       - "e2e/final-visual-report-preview.spec.ts"
       - "src/components/report-final-visual.tsx"
       - "src/app/(platform)/relatorios/talhao/**"
       - "src/app/globals.css"
+      - "src/app/ux3-result-document.css"
       - "src/domain/producer-result-summary.ts"
       - "src/domain/official-commercial-plan.ts"
   workflow_dispatch:
@@ -56,27 +58,52 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
+            const qaOnlyFiles = new Set([
+              ".github/workflows/final-visual-report-preview-qa.yml",
+              "e2e/final-visual-report-preview.spec.ts",
+            ]);
+
+            // Vercel pode não criar novo deployment quando o commit altera apenas
+            // o próprio gate/E2E. Nesse caso é seguro testar o deployment do
+            // ancestral imediato que contém o MESMO código da aplicação.
+            const candidateShas = [context.sha];
+            let cursor = context.sha;
+            for (let depth = 0; depth < 8; depth++) {
+              const commit = await github.rest.repos.getCommit({ owner, repo, ref: cursor });
+              const files = commit.data.files ?? [];
+              const qaOnly = files.length > 0 && files.every((file) => qaOnlyFiles.has(file.filename));
+              if (!qaOnly) break;
+              const parent = commit.data.parents?.[0]?.sha;
+              if (!parent) break;
+              candidateShas.push(parent);
+              cursor = parent;
+            }
+
             for (let attempt = 0; attempt < 60; attempt++) {
-              const deployments = await github.rest.repos.listDeployments({
-                owner, repo, sha: context.sha, per_page: 20,
-              });
-              for (const deployment of deployments.data) {
-                const statuses = await github.rest.repos.listDeploymentStatuses({
-                  owner, repo, deployment_id: deployment.id, per_page: 20,
+              for (const sha of candidateShas) {
+                const deployments = await github.rest.repos.listDeployments({
+                  owner, repo, sha, per_page: 20,
                 });
-                const ready = statuses.data.find((status) =>
-                  status.state === "success"
-                  && typeof status.environment_url === "string"
-                  && status.environment_url.startsWith("https://")
-                );
-                if (ready) {
-                  core.setOutput("url", ready.environment_url);
-                  return;
+                for (const deployment of deployments.data) {
+                  const statuses = await github.rest.repos.listDeploymentStatuses({
+                    owner, repo, deployment_id: deployment.id, per_page: 20,
+                  });
+                  const ready = statuses.data.find((status) =>
+                    status.state === "success"
+                    && typeof status.environment_url === "string"
+                    && status.environment_url.startsWith("https://")
+                  );
+                  if (ready) {
+                    core.info(`Preview selecionado para SHA ${sha} (HEAD do gate: ${context.sha}).`);
+                    core.setOutput("url", ready.environment_url);
+                    core.setOutput("deployment_sha", sha);
+                    return;
+                  }
                 }
               }
               await new Promise((resolve) => setTimeout(resolve, 5000));
             }
-            core.setFailed("Nenhum environment_url de Preview ficou pronto para o SHA atual.");
+            core.setFailed(`Nenhum environment_url de Preview ficou pronto para os SHAs elegíveis: ${candidateShas.join(", ")}.`);
 
       - name: Instalar dependências
         run: npm ci

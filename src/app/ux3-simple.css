@@ -27,7 +27,7 @@
   display: flex;
   flex-direction: column;
   left: 0;
-  padding: 20px 12px 16px;
+  padding: 18px 7px 16px;
   position: fixed;
   top: 0;
   width: 108px;
@@ -37,12 +37,17 @@
 .simple-brand {
   align-items: center;
   display: flex;
-  height: 54px;
+  height: 64px;
   justify-content: center;
-  margin-bottom: 24px;
-  overflow: hidden;
-  width: 82px;
+  margin-bottom: 20px;
+  overflow: visible;
+  width: 94px;
 }
+.simple-brand .simple-brand-logo {
+  flex-shrink: 0;
+  max-width: 94px;
+}
+.simple-brand .simple-brand-logo img { flex-shrink: 0; }
 
 .simple-nav {
   display: flex;
@@ -553,4 +558,29 @@
   .simple-alert-button { height: 46px; width: 46px; }
   .simple-section-head { flex-direction: column; gap: 8px; }
   .simple-map-hint { bottom: 10px; font-size: 9px; }
+}
+
+@media (min-width: 821px) and (max-height: 760px) {
+  .simple-sidebar { padding-top: 10px; padding-bottom: 10px; }
+  .simple-brand { height: 52px; margin-bottom: 10px; }
+  .simple-brand .simple-brand-logo { height: 42px !important; font-size: 13.44px !important; }
+  .simple-nav { gap: 4px; }
+  .simple-nav a { min-height: 62px; }
+  .simple-sidebar-bottom { gap: 6px; padding-top: 8px; }
+  .simple-sidebar-bottom a { min-height: 50px; }
+}
+
+@media (max-width: 380px) {
+  .simple-mobile-nav > a { font-size: 8px; }
+  .simple-mobile-send > span { height: 42px; width: 42px; }
+}
+
+@media (max-width: 820px) and (max-height: 560px) {
+  .simple-shell .main-content { padding-bottom: 82px; }
+  .simple-mobile-nav {
+    height: calc(68px + env(safe-area-inset-bottom));
+    padding-top: 4px;
+  }
+  .simple-mobile-send { transform: translateY(-1px); }
+  .simple-mobile-send > span { height: 40px; width: 40px; }
 }

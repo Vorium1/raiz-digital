@@ -1,3 +1,15 @@
+import type { ReportFertilityHorizon } from "@/domain/report-fertility-horizon";
+import type { SoilComplementAction } from "@/domain/soil-complement-actions";
+import type {
+  ReportApplicationGuidance,
+  ReportBiologicalContext,
+  ReportClimateContext,
+} from "@/domain/report-context-blocks";
+import type { ReportAgroclimateSnapshot } from "@/domain/report-agroclimate-snapshot";
+import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient-plan";
+import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
+import type { Integrated020LimingLayerRequirement, LimingMethodSelection } from "@/domain/liming-method-selector";
+
 /**
  * Formato obrigatório de uma prescrição gerada por IA. Ao contrário de
  * `AgronomicNarrative` (que só explica um fato já calculado), este formato
@@ -36,6 +48,18 @@ export type AgronomicPrescription = {
   managementPractices: string[];
   missingInformation: string[];
   sources: AgronomicPrescriptionSource[];
+  /** Estrutura calculada pelo servidor; provedores externos não precisam gerá-la. */
+  fertilityPlan?: ReportFertilityHorizon | null;
+  soilComplementActions?: SoilComplementAction[];
+  climateContext?: ReportClimateContext | null;
+  biologicalContext?: ReportBiologicalContext | null;
+  applicationGuidance?: ReportApplicationGuidance | null;
+  spatialNutrientPlan?: ReportSpatialNutrientPlan | null;
+  limingDecision?: SoybeanLimingUniformDecision | null;
+  limingMethodSelection?: LimingMethodSelection | null;
+  limingLayerRequirement?: Integrated020LimingLayerRequirement | null;
+  limingReferenceScenarios?: Integrated020LimingLayerRequirement[];
+  agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
 function isString(value: unknown): value is string {

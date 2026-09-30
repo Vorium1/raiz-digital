@@ -205,6 +205,11 @@ export function NewAnalysisFlow({
       setStep(1);
       return;
     }
+    if (!evidence.tillageSystem) {
+      setFinishError("Informe o sistema de manejo para calagem antes de processar. Em plantio direto consolidado, defina também se há restrição na camada de 10–20 cm.");
+      setStep(2);
+      return;
+    }
 
     if (!databaseMode) {
       alert(`Fluxo UX 2.0 validado. A RAIZ processaria ${totalImportRows} resultado(s) e prepararia o diagnóstico para revisão.`);
@@ -282,7 +287,8 @@ export function NewAnalysisFlow({
 
   const nextDisabled = finishing
     || (step === 0 && !importReady)
-    || (step === 1 && !contextReady);
+    || (step === 1 && !contextReady)
+    || (step === 2 && !evidence.tillageSystem);
 
   return (
     <div className="wizard-shell ux2-wizard-shell">

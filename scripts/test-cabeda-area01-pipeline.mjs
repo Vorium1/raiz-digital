@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { runAgronomicEngine } from "../src/domain/agronomic-engine.ts";
 import { computeLimingDoseBySmpIndex } from "../src/domain/liming-engine.ts";
+import { selectLimingMethod, evaluateIntegrated020LimingLayerRequirement } from "../src/domain/liming-method-selector.ts";
+import { resolveSelectedLimingDecision } from "../src/domain/liming-method-decision.ts";
+import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
 import { computeParameterPredominance } from "../src/domain/parameter-predominance.ts";
 import { computeDeterministicPkDose, evaluateUniformPkReadiness } from "../src/domain/uniform-pk-readiness.ts";
 import { normalizeAnalyticalMethod, normalizeUnit } from "../src/domain/lab-method-normalization.ts";
@@ -171,6 +174,58 @@ const limeMean = limePh6.reduce((sum, value) => sum + value, 0) / limePh6.length
 assert.equal(Math.round(limeMean * 100) / 100, 4.74);
 assert.equal(Math.min(...limePh6), 4.2);
 assert.equal(Math.max(...limePh6), 6.1);
+
+// O fluxo real de 0–20 da Área 01 não precisa fabricar 0–10/10–20 para
+// produzir uma decisão quantitativa do método clássico selecionado.
+const cabedaLimingRows = AREA_01.flatMap((row, index) => {
+  const sampleCode = `P${index + 1}`;
+  return [
+    { sampleCode, parameterCode: "PH", value: row.ph, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode, parameterCode: "SMP", value: row.smp, unit: "", depthFromCm: 0, depthToCm: 20 },
+  ];
+});
+const cabedaLimingMethod = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: null,
+  results: cabedaLimingRows,
+});
+assert.equal(cabedaLimingMethod.selectedMethodId, "CQFS-RS-SC-2016-INTEGRATED-0-20");
+
+const cabedaLayerRequirement = evaluateIntegrated020LimingLayerRequirement({
+  cropCode: "SOJA",
+  results: cabedaLimingRows,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.equal(cabedaLayerRequirement.targetPh, "6.0");
+assert.equal(cabedaLayerRequirement.operationalGeneralDoseTonHaPrnt100, 4.74);
+
+const modernWithoutManagement = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaLimingRows,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.equal(modernWithoutManagement.status, "BLOCKED");
+
+const selectedCabedaLiming = resolveSelectedLimingDecision({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaLimingRows,
+  methodSelection: cabedaLimingMethod,
+  integrated020Requirement: cabedaLayerRequirement,
+  modernDecision: modernWithoutManagement,
+});
+assert.equal(selectedCabedaLiming.status, "SPATIAL");
+assert.equal(selectedCabedaLiming.operationalGeneralDoseTonHaPrnt100, 4.74);
+assert.deepEqual(selectedCabedaLiming.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(selectedCabedaLiming.applicationMode, null);
+assert.deepEqual(
+  selectedCabedaLiming.sampleDecisions.map((item) => item.recommendedDoseTonHaPrnt100),
+  [5.4, 6.1, 4.2, 4.2, 4.2, 4.2, 4.8, 4.8],
+);
 
 const sulfurBelow10 = AREA_01.filter((row) => row.s < 10).length;
 assert.equal(sulfurBelow10, 5);

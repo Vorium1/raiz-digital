@@ -94,9 +94,8 @@ const REQUIREMENTS: Array<{
   {
     layer: 2,
     code: "TILLAGE_SYSTEM_MISSING",
-    label: "Sistema de preparo do solo (quando conhecido)",
+    label: "Sistema de manejo para calagem, com condição 10–20 cm definida quando o plantio direto for consolidado",
     test: (evidence) => evidence.tillageSystem,
-    blocks: "CALCULATION_ONLY",
   },
   {
     layer: 2,
@@ -159,9 +158,6 @@ function declaredLimitations(evidence: AnalysisEvidence) {
   const limitations: string[] = [];
   if (!evidence.yieldGoal || !evidence.yieldUnit) {
     limitations.push("Meta de produtividade ainda não definida; o parecer do solo continua válido, mas doses dependentes da expectativa de rendimento ficam como recomendação base até a meta ser informada.");
-  }
-  if (!evidence.tillageSystem) {
-    limitations.push("Sistema de preparo do solo ainda não definido; o parecer continua disponível e a calagem pode ser refinada quando o sistema for informado.");
   }
   if (!evidence.waterRegime) {
     limitations.push("Regime hídrico ainda não informado; o parecer do solo continua válido e riscos ligados à irrigação, déficit ou excesso de água ficam sem refinamento.");

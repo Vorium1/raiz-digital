@@ -14,7 +14,22 @@ import {
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
 import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
+import { resolveSelectedLimingDecision } from "../src/domain/liming-method-decision.ts";
+import {
+  LIMING_METHOD_IDS,
+  detectLimingSamplingProfile,
+  selectLimingMethod,
+  computeIntegrated020SmpRequirement,
+  buildIntegrated020LimingReferenceScenarios,
+  evaluateIntegrated020LimingLayerRequirement,
+  evaluateIntegrated020LimingLayerRequirementForTarget,
+  scale020RequirementTo030ForPerennialEstablishment,
+} from "../src/domain/liming-method-selector.ts";
 import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
+import {
+  evaluateStoredLimingManagementContext,
+  parseLimingManagementContext,
+} from "../src/domain/liming-management-context.ts";
 
 // 1. Correspondência pH-alvo -> V% alvo, exatamente como o manual declara.
 assert.equal(targetBaseSaturationForPh("5.5"), 65);
@@ -296,11 +311,59 @@ assert.equal(adjustSoybeanLimeDoseForPrnt2025(5, 80), 6.25);
 assert.throws(() => adjustSoybeanLimeDoseForPrnt2025(5, 0), /PRNT_INVALID/);
 
 
+// 19a. Contexto de calagem preserva UNKNOWN != NO e rejeita valores inválidos.
+const emptyLimingContext = parseLimingManagementContext(null);
+assert.equal(emptyLimingContext.yearsSinceLastLiming, null);
+assert.equal(emptyLimingContext.restrictionAssessment, null);
+const partialLimingContext = parseLimingManagementContext({
+  yearsSinceLastLiming: 4,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: null,
+    phosphorus10To20BelowCritical: false,
+    agronomistConfirmedIncorporationDecision: null,
+  },
+});
+assert.equal(partialLimingContext.restrictionAssessment.compactionRestrictsRootGrowthAtDepth, null);
+assert.equal(partialLimingContext.restrictionAssessment.phosphorus10To20BelowCritical, false);
+assert.throws(() => parseLimingManagementContext({ yearsSinceLastLiming: -1 }));
+assert.equal(evaluateStoredLimingManagementContext({ yearsSinceLastLiming: "inválido" }).status, "INVALID_OPTIONAL_EVIDENCE");
+
+// 19b. No ramo com restrições, confirmação profissional desconhecida bloqueia como contexto ausente.
+const unknownProfessionalDecision = evaluateSoybeanLimingRsSc2025({
+  region: "RS",
+  system: "NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS",
+  phWater10To20: 5.1,
+  aluminumSaturation10To20Pct: 15,
+  smp0To10: 5.6,
+  smp10To20: 5.7,
+  restrictionAssessment: {
+    yieldBelowLocalAverageEspeciallyInDrought: true,
+    compactionRestrictsRootGrowthAtDepth: true,
+    phosphorus10To20BelowCritical: false,
+    agronomistConfirmedIncorporationDecision: null,
+  },
+});
+assert.equal(unknownProfessionalDecision.decision, "BLOCKED_CONTEXT");
+assert.ok(unknownProfessionalDecision.blockers.includes("INCORPORATION_DECISION_NOT_ASSESSED"));
+
+// 19c. Contexto persistido inválido bloqueia somente a calagem consolidada.
+const invalidStoredContextDecision = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  results: [],
+  contextValidationBlockers: ["LIMING_MANAGEMENT_CONTEXT_INVALID"],
+});
+assert.equal(invalidStoredContextDecision.status, "BLOCKED");
+assert.ok(invalidStoredContextDecision.blockers.includes("LIMING_MANAGEMENT_CONTEXT_INVALID"));
+
 // 20. Evidência por amostra: duas doses distintas nunca viram média uniforme.
 const spatialEvidence = evaluateSoybeanLimingFromEvidence({
   cropCode: "SOJA",
   state: "RS",
   managementSystem: "CONVENTIONAL",
+  allowEqualWeightOperationalAverage: true,
   results: [
     { sampleCode: "A", parameterCode: "PH", value: 5.3, unit: "", depthFromCm: 0, depthToCm: 20 },
     { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
@@ -324,7 +387,7 @@ assert.equal(spatialEvidence.automaticUniformDoseAllowed, false);
 assert.equal(spatialEvidence.uniformDoseTonHaPrnt100, null);
 assert.equal(spatialEvidence.automaticGeneralDoseAllowed, true);
 assert.equal(spatialEvidence.operationalGeneralDoseTonHaPrnt100, 4.8);
-assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_WEIGHT_SAMPLE_MEAN");
+assert.equal(spatialEvidence.generalDoseBasis, "EQUAL_AREA_GRID_MEAN");
 assert.deepEqual(spatialEvidence.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
 assert.equal(spatialEvidence.applicationMode, "INCORPORATED");
 assert.deepEqual(
@@ -333,6 +396,31 @@ assert.deepEqual(
 );
 assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedBaseSaturation));
 assert.ok(spatialEvidence.sampleDecisions.every((item) => item.derivedAluminumSaturation));
+assert.ok(spatialEvidence.warnings.includes("LIMING_GENERAL_DOSE_EQUAL_AREA_GRID_MEAN"));
+
+// 20a. Sem prova de área equivalente, a mesma heterogeneidade permanece espacial sem promover média geral.
+const spatialWithoutEqualAreaSupport = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { sampleCode: "A", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "SMP", value: 5.6, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "V", value: 60, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "A", parameterCode: "M", value: 12, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "PH", value: 5.2, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "SMP", value: 5.8, unit: "", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "V", value: 60, unit: "%", depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "B", parameterCode: "M", value: 12, unit: "%", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(spatialWithoutEqualAreaSupport.status, "SPATIAL");
+assert.equal(spatialWithoutEqualAreaSupport.automaticUniformDoseAllowed, false);
+assert.equal(spatialWithoutEqualAreaSupport.automaticGeneralDoseAllowed, false);
+assert.equal(spatialWithoutEqualAreaSupport.operationalGeneralDoseTonHaPrnt100, null);
+assert.equal(spatialWithoutEqualAreaSupport.generalDoseBasis, null);
+assert.deepEqual(spatialWithoutEqualAreaSupport.doseRangeTonHaPrnt100, { min: 4.2, max: 5.4 });
+assert.ok(spatialWithoutEqualAreaSupport.blockers.includes("LIMING_EQUAL_WEIGHT_AVERAGE_REQUIRES_EQUAL_AREA_GRID"));
 
 // 21. pH>=5,5 em todos os pontos resulta em decisão uniforme de não aplicar quando o restante da evidência é válido.
 const noApplyEvidence = evaluateSoybeanLimingFromEvidence({
@@ -418,6 +506,13 @@ const wrongSpatialAverageLime = validatePrescriptionLimingRecommendation({
 assert.equal(wrongSpatialAverageLime.allowed, false);
 assert.ok(wrongSpatialAverageLime.blockers.includes("LIME_QUANTITY_DOES_NOT_MATCH_DETERMINISTIC_ENGINE"));
 
+const forbiddenSpatialAverageWithoutArea = validatePrescriptionLimingRecommendation({
+  recommendations: [{ inputType: "LIME_PRNT100", quantity: 4.8, unit: "t/ha" }],
+  deterministicDecision: spatialWithoutEqualAreaSupport,
+});
+assert.equal(forbiddenSpatialAverageWithoutArea.allowed, false);
+assert.ok(forbiddenSpatialAverageWithoutArea.blockers.includes("LIME_DETERMINISTIC_DOSE_NOT_READY"));
+
 // 26. Decisão uniforme de não aplicar aceita ausência de calcário e rejeita dose positiva.
 const noApplyWithoutLime = validatePrescriptionLimingRecommendation({
   recommendations: [],
@@ -431,5 +526,168 @@ const forbiddenNoApplyLime = validatePrescriptionLimingRecommendation({
 });
 assert.equal(forbiddenNoApplyLime.allowed, false);
 assert.ok(forbiddenNoApplyLime.blockers.includes("LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"));
+
+
+// 27. Seletor de metodologia lê a profundidade real do laudo antes de escolher a regra.
+const integrated020Profile = detectLimingSamplingProfile([
+  { parameterCode: "PH", depthFromCm: 0, depthToCm: 20 },
+  { parameterCode: "SMP", depthFromCm: 0, depthToCm: 20 },
+]);
+assert.equal(integrated020Profile, "INTEGRATED_0_20");
+
+// 27a. Em SPD consolidado com laudo integrado 0-20, a RAIZ pode calcular a
+// necessidade da camada 0-20 pelo método CQFS/SMP sem fingir que isso já é
+// a regra moderna de aplicação do SPD.
+const integrated020Selection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "NO_TILL_CONSOLIDATED_UNSPECIFIED",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 20 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020Selection.selectedMethodId, LIMING_METHOD_IDS.cqfsRsSc2016Integrated020);
+assert.equal(integrated020Selection.scope, "LAYER_REQUIREMENT");
+assert.equal(integrated020Selection.automaticCalculationAllowed, true);
+assert.ok(integrated020Selection.warnings.includes("LAYER_REQUIREMENT_IS_NOT_THE_SAME_AS_MODERN_NO_TILL_APPLICATION_RULE"));
+
+const integrated020Dose = computeIntegrated020SmpRequirement({ smpIndex: 5.6, targetPh: "5.5" });
+assert.equal(integrated020Dose.doseTonHaPrnt100, 3.2);
+
+// 27b. Quando chegam 0-10 + 10-20, soja RS/SC consolidada seleciona a regra moderna.
+const splitSelection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 10 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 10 },
+    { parameterCode: "PH", depthFromCm: 10, depthToCm: 20 },
+    { parameterCode: "SMP", depthFromCm: 10, depthToCm: 20 },
+  ],
+});
+assert.equal(splitSelection.selectedMethodId, LIMING_METHOD_IDS.soybeanRsSc2025Split0101020);
+assert.equal(splitSelection.scope, "APPLICATION_RECOMMENDATION");
+
+// 27c. Uma amostra composta 0-30 não herda a tabela SMP 0-20 por analogia.
+const direct030Selection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 30 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 30 },
+  ],
+});
+assert.equal(direct030Selection.selectedMethodId, null);
+assert.ok(direct030Selection.blockers.includes("NO_VALIDATED_RS_SC_DIRECT_0_30_LIMING_METHOD"));
+
+// 27d. 0-30 existe no catálogo quando a própria fonte manda AJUSTAR a
+// recomendação calculada em 0-20 para uma camada-alvo 0-30 (perenes).
+const perennial030 = scale020RequirementTo030ForPerennialEstablishment(4);
+assert.equal(perennial030.doseTonHaPrnt100, 6);
+assert.equal(perennial030.multiplier, 1.5);
+
+
+// 27e. A necessidade 0-20 é calculada ponto a ponto e só vira média geral com grade equivalente.
+const integrated020SpatialRequirement = evaluateIntegrated020LimingLayerRequirement({
+  cropCode: "SOJA",
+  allowEqualWeightOperationalAverage: true,
+  results: [
+    { sampleCode: "P1", parameterCode: "SMP", value: 5.5, depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "P2", parameterCode: "SMP", value: 5.8, depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020SpatialRequirement.targetPh, "6.0");
+assert.equal(integrated020SpatialRequirement.status, "SPATIAL");
+assert.deepEqual(integrated020SpatialRequirement.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(integrated020SpatialRequirement.operationalGeneralDoseTonHaPrnt100, 5.15);
+assert.equal(integrated020SpatialRequirement.generalDoseBasis, "EQUAL_AREA_GRID_MEAN");
+
+const integrated020NoAverage = evaluateIntegrated020LimingLayerRequirement({
+  cropCode: "SOJA",
+  results: [
+    { sampleCode: "P1", parameterCode: "SMP", value: 5.5, depthFromCm: 0, depthToCm: 20 },
+    { sampleCode: "P2", parameterCode: "SMP", value: 5.8, depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020NoAverage.operationalGeneralDoseTonHaPrnt100, null);
+assert.ok(integrated020NoAverage.warnings.includes("GENERAL_DOSE_REQUIRES_EQUAL_AREA_GRID"));
+
+
+// 27f. Regressão da Área 01 (homologação, leitura 2026-09-30): 8 amostras integradas 0-20.
+// O mesmo laudo gera números diferentes quando muda o pH-alvo; por isso método + alvo
+// fazem parte do resultado e nunca são omitidos.
+const cabedaArea01Smp020 = [5.6, 5.5, 5.8, 5.8, 5.8, 5.8, 5.7, 5.7]
+  .map((value, index) => ({
+    sampleCode: `CABEDA-${index + 1}`,
+    parameterCode: "SMP",
+    value,
+    depthFromCm: 0,
+    depthToCm: 20,
+  }));
+const cabeda55 = evaluateIntegrated020LimingLayerRequirementForTarget({
+  targetPh: "5.5",
+  targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_2_REFERENCE_SCENARIO",
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabeda55.doseRangeTonHaPrnt100, { min: 2.3, max: 3.7 });
+assert.equal(cabeda55.operationalGeneralDoseTonHaPrnt100, 2.71);
+
+const cabeda60 = evaluateIntegrated020LimingLayerRequirementForTarget({
+  targetPh: "6.0",
+  targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabeda60.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(cabeda60.operationalGeneralDoseTonHaPrnt100, 4.74);
+
+const cabedaScenarios = buildIntegrated020LimingReferenceScenarios({
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabedaScenarios.map((item) => item.targetPh), ["5.5", "6.0", "6.5"]);
+assert.equal(cabedaScenarios[0].operationalGeneralDoseTonHaPrnt100, 2.71);
+assert.equal(cabedaScenarios[1].operationalGeneralDoseTonHaPrnt100, 4.74);
+assert.equal(cabedaScenarios[2].doseRangeTonHaPrnt100?.max, 8.6);
+
+
+// 27g. Quando o laudo REAL é integrado 0-20 e o seletor escolhe o método
+// clássico versionado, a necessidade dessa camada vira a decisão quantitativa
+// sem inventar 0-10/10-20 nem modo de aplicação.
+const classicModernBlocked = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.equal(classicModernBlocked.status, "BLOCKED");
+
+const classicResolved = resolveSelectedLimingDecision({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaArea01Smp020,
+  methodSelection: selectLimingMethod({
+    state: "RS",
+    cropCode: "SOJA",
+    managementSystem: null,
+    results: cabedaArea01Smp020,
+  }),
+  integrated020Requirement: cabeda60,
+  modernDecision: classicModernBlocked,
+});
+assert.equal(classicResolved.status, "SPATIAL");
+assert.equal(classicResolved.automaticGeneralDoseAllowed, true);
+assert.equal(classicResolved.operationalGeneralDoseTonHaPrnt100, 4.74);
+assert.deepEqual(classicResolved.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(classicResolved.applicationMode, null);
+assert.ok(classicResolved.warnings.includes("CLASSIC_INTEGRATED_0_20_METHOD_SELECTED_FROM_LAB_DEPTH"));
+assert.ok(classicResolved.warnings.includes("APPLICATION_MODE_NOT_INFERRED_FROM_INTEGRATED_0_20_SAMPLE"));
+assert.ok(classicResolved.sampleDecisions.every((item) => item.depthFromCm === 0 && item.depthToCm === 20));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");

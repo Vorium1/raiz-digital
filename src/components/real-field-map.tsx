@@ -19,16 +19,20 @@ export type { MapImageOverlay, MapLegendEntry, MapPoint, SpatialGeometry } from 
  * NDVI, pontos e contorno continuam sendo dados RAIZ/Sentinel-2/PostGIS e não dependem do provedor-base.
  * Google é a preferência. Mapbox fica pré-integrado como segunda opção; se ambos falharem, Leaflet + relevo preserva a análise.
  */
-export function RealFieldMap(props: FieldMapProps) {
+export function RealFieldMap({ renderImmediately = false, ...props }: FieldMapProps & { renderImmediately?: boolean }) {
   const resolution = useMemo(() => resolveSpatialMapProvider(), []);
   const [googleFailed, setGoogleFailed] = useState(false);
   const [mapboxFailed, setMapboxFailed] = useState(false);
-  const [shouldMountMap, setShouldMountMap] = useState(false);
+  const [shouldMountMap, setShouldMountMap] = useState(renderImmediately);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const onGoogleFailure = useCallback(() => setGoogleFailed(true), []);
   const onMapboxFailure = useCallback(() => setMapboxFailed(true), []);
 
   useEffect(() => {
+    if (renderImmediately && !shouldMountMap) {
+      setShouldMountMap(true);
+      return;
+    }
     const node = hostRef.current;
     if (!node || shouldMountMap) return;
     if (typeof IntersectionObserver === "undefined") {
@@ -46,7 +50,7 @@ export function RealFieldMap(props: FieldMapProps) {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [shouldMountMap]);
+  }, [renderImmediately, shouldMountMap]);
 
   if (!shouldMountMap) {
     return (

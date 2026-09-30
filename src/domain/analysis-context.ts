@@ -1,5 +1,6 @@
 import type { AnalysisEvidence, EvidenceStatus } from "./analysis-depth-readiness";
 import type { IrrigationApplication } from "./irrigation-applications";
+import { normalizeManagementSystem } from "./management-system";
 
 export type WaterRegime = "" | "SEQUEIRO" | "IRRIGADO";
 
@@ -73,6 +74,10 @@ export function buildAnalysisEvidence(
     registeredSoilContext?: boolean;
   },
 ): AnalysisEvidence {
+  const managementSystem = normalizeManagementSystem(draft.tillageSystem);
+  const limingManagementClassified = managementSystem !== "OTHER"
+    && managementSystem !== "NO_TILL_CONSOLIDATED_UNSPECIFIED";
+
   return {
     currentSoilAnalysis: external.currentSoilAnalysis,
     samplingDepth: draft.samplingDepthLabel.trim().length > 0,
@@ -80,7 +85,7 @@ export function buildAnalysisEvidence(
     yieldGoal: external.yieldGoal,
     yieldUnit: external.yieldUnit,
     waterRegime: draft.waterRegime !== "",
-    tillageSystem: draft.tillageSystem.trim().length > 0,
+    tillageSystem: limingManagementClassified,
     managementHistory: draft.managementHistoryStatus,
     soilContext: Boolean(external.registeredSoilContext) || draft.soilContextNotes.trim().length > 0,
     yieldHistory: draft.yieldHistoryStatus,

@@ -10,11 +10,13 @@ export type TenantBranding = {
 export async function getTenantBranding(tenantId: string): Promise<TenantBranding> {
   const result = await query<{
     tradeName: string;
+    reportDisplayName: string | null;
     reportLogoDataUrl: string | null;
     reportResponsibleName: string | null;
     reportResponsibleRegistration: string | null;
   }>(
-    `SELECT trade_name AS "tradeName", report_logo_data_url AS "reportLogoDataUrl",
+    `SELECT trade_name AS "tradeName", report_display_name AS "reportDisplayName",
+            report_logo_data_url AS "reportLogoDataUrl",
             report_responsible_name AS "reportResponsibleName",
             report_responsible_registration AS "reportResponsibleRegistration"
      FROM tenants WHERE id = $1::uuid`,
@@ -23,7 +25,7 @@ export async function getTenantBranding(tenantId: string): Promise<TenantBrandin
   const row = result.rows[0];
   if (!row) throw new Error("Empresa não encontrada.");
   return {
-    displayName: row.tradeName,
+    displayName: row.reportDisplayName?.trim() || row.tradeName,
     logoDataUrl: row.reportLogoDataUrl,
     responsibleName: row.reportResponsibleName,
     responsibleRegistration: row.reportResponsibleRegistration,
@@ -38,7 +40,7 @@ const MAX_LOGO_BYTES = 220_000;
  */
 export async function updateTenantBranding(
   tenantId: string,
-  input: { logoDataUrl?: string | null; responsibleName?: string | null; responsibleRegistration?: string | null },
+  input: { displayName?: string | null; logoDataUrl?: string | null; responsibleName?: string | null; responsibleRegistration?: string | null },
 ): Promise<TenantBranding> {
   if (input.logoDataUrl) {
     if (!/^data:image\/(png|jpeg|jpg|svg\+xml|webp);base64,/.test(input.logoDataUrl)) {
@@ -55,6 +57,7 @@ export async function updateTenantBranding(
     values.push(value);
     sets.push(`${column} = $${values.length}`);
   }
+  if (input.displayName !== undefined) set("report_display_name", input.displayName);
   if (input.logoDataUrl !== undefined) set("report_logo_data_url", input.logoDataUrl);
   if (input.responsibleName !== undefined) set("report_responsible_name", input.responsibleName);
   if (input.responsibleRegistration !== undefined) set("report_responsible_registration", input.responsibleRegistration);

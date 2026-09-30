@@ -43,7 +43,7 @@ export type SoybeanLimingRestrictionAssessment = {
   yieldBelowLocalAverageEspeciallyInDrought: boolean | null;
   compactionRestrictsRootGrowthAtDepth: boolean | null;
   phosphorus10To20BelowCritical: boolean | null;
-  agronomistConfirmedIncorporationDecision: boolean;
+  agronomistConfirmedIncorporationDecision: boolean | null;
 };
 
 export type SoybeanLimingRsSc2025Input = {
@@ -322,6 +322,7 @@ export function evaluateSoybeanLimingRsSc2025(input: SoybeanLimingRsSc2025Input)
     if (typeof assessment.yieldBelowLocalAverageEspeciallyInDrought !== "boolean") blockers.push("YIELD_RESTRICTION_10_20_NOT_ASSESSED");
     if (typeof assessment.compactionRestrictsRootGrowthAtDepth !== "boolean") blockers.push("COMPACTION_RESTRICTION_10_20_NOT_ASSESSED");
     if (typeof assessment.phosphorus10To20BelowCritical !== "boolean") blockers.push("PHOSPHORUS_RESTRICTION_10_20_NOT_ASSESSED");
+    if (typeof assessment.agronomistConfirmedIncorporationDecision !== "boolean") blockers.push("INCORPORATION_DECISION_NOT_ASSESSED");
   }
   if (blockers.length) return buildBlocked(system, blockers, "BLOCKED_CONTEXT");
   if ((input.phWater10To20 as number) >= 5.5) return buildNoApply(system, "PH_WATER_10_20_AT_OR_ABOVE_5_5");
