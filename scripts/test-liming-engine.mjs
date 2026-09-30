@@ -14,6 +14,13 @@ import {
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
 import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
+import {
+  LIMING_METHOD_IDS,
+  detectLimingSamplingProfile,
+  selectLimingMethod,
+  computeIntegrated020SmpRequirement,
+  scale020RequirementTo030ForPerennialEstablishment,
+} from "../src/domain/liming-method-selector.ts";
 import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
 import {
   evaluateStoredLimingManagementContext,
@@ -515,5 +522,67 @@ const forbiddenNoApplyLime = validatePrescriptionLimingRecommendation({
 });
 assert.equal(forbiddenNoApplyLime.allowed, false);
 assert.ok(forbiddenNoApplyLime.blockers.includes("LIME_DOSE_FORBIDDEN_WHEN_NOT_INDICATED"));
+
+
+// 27. Seletor de metodologia lê a profundidade real do laudo antes de escolher a regra.
+const integrated020Profile = detectLimingSamplingProfile([
+  { parameterCode: "PH", depthFromCm: 0, depthToCm: 20 },
+  { parameterCode: "SMP", depthFromCm: 0, depthToCm: 20 },
+]);
+assert.equal(integrated020Profile, "INTEGRATED_0_20");
+
+// 27a. Em SPD consolidado com laudo integrado 0-20, a RAIZ pode calcular a
+// necessidade da camada 0-20 pelo método CQFS/SMP sem fingir que isso já é
+// a regra moderna de aplicação do SPD.
+const integrated020Selection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "NO_TILL_CONSOLIDATED_UNSPECIFIED",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 20 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 20 },
+  ],
+});
+assert.equal(integrated020Selection.selectedMethodId, LIMING_METHOD_IDS.cqfsRsSc2016Integrated020);
+assert.equal(integrated020Selection.scope, "LAYER_REQUIREMENT");
+assert.equal(integrated020Selection.automaticCalculationAllowed, true);
+assert.ok(integrated020Selection.warnings.includes("LAYER_REQUIREMENT_IS_NOT_THE_SAME_AS_MODERN_NO_TILL_APPLICATION_RULE"));
+
+const integrated020Dose = computeIntegrated020SmpRequirement({ smpIndex: 5.6, targetPh: "5.5" });
+assert.equal(integrated020Dose.doseTonHaPrnt100, 3.2);
+
+// 27b. Quando chegam 0-10 + 10-20, soja RS/SC consolidada seleciona a regra moderna.
+const splitSelection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 10 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 10 },
+    { parameterCode: "PH", depthFromCm: 10, depthToCm: 20 },
+    { parameterCode: "SMP", depthFromCm: 10, depthToCm: 20 },
+  ],
+});
+assert.equal(splitSelection.selectedMethodId, LIMING_METHOD_IDS.soybeanRsSc2025Split0101020);
+assert.equal(splitSelection.scope, "APPLICATION_RECOMMENDATION");
+
+// 27c. Uma amostra composta 0-30 não herda a tabela SMP 0-20 por analogia.
+const direct030Selection = selectLimingMethod({
+  state: "RS",
+  cropCode: "SOJA",
+  managementSystem: "CONVENTIONAL",
+  results: [
+    { parameterCode: "PH", depthFromCm: 0, depthToCm: 30 },
+    { parameterCode: "SMP", depthFromCm: 0, depthToCm: 30 },
+  ],
+});
+assert.equal(direct030Selection.selectedMethodId, null);
+assert.ok(direct030Selection.blockers.includes("NO_VALIDATED_RS_SC_DIRECT_0_30_LIMING_METHOD"));
+
+// 27d. 0-30 existe no catálogo quando a própria fonte manda AJUSTAR a
+// recomendação calculada em 0-20 para uma camada-alvo 0-30 (perenes).
+const perennial030 = scale020RequirementTo030ForPerennialEstablishment(4);
+assert.equal(perennial030.doseTonHaPrnt100, 6);
+assert.equal(perennial030.multiplier, 1.5);
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");
