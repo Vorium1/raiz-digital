@@ -581,6 +581,7 @@ export function FinalVisualReport(props: Props) {
   const nextCropForProfile = currentCropLabel || "a cultura desta safra";
 
   const limeRecommendation = recommendations.find((item) => /CALCAR|LIME/i.test(item.inputType ?? "")) ?? null;
+  const limingMissingInformation = missingInformation.find((item) => /^calagem\b/i.test(item.trim())) ?? null;
   const limingFeature = (() => {
     if (limeRecommendation && typeof limeRecommendation.quantity === "number" && limeRecommendation.unit) {
       return {
@@ -646,7 +647,6 @@ export function FinalVisualReport(props: Props) {
     };
   })();
   const quietProfileLabels = quietNutrientLabels;
-  const limingMissingInformation = missingInformation.find((item) => /^calagem\b/i.test(item.trim())) ?? null;
 
   const producerPlanRows: Array<{
     key: string;
