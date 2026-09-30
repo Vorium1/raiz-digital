@@ -8,6 +8,7 @@ export type PlatformTenantSummary = {
   tradeName: string;
   status: PlatformTenantStatus;
   activeMembers: number;
+  activeAdmins: number;
   clients: number;
   properties: number;
   fields: number;
@@ -29,6 +30,7 @@ export async function listPlatformTenants() {
        t.trade_name AS "tradeName",
        t.status::text AS status,
        (SELECT count(*)::int FROM tenant_members tm WHERE tm.tenant_id = t.id AND tm.active = true) AS "activeMembers",
+       (SELECT count(*)::int FROM tenant_members tm WHERE tm.tenant_id = t.id AND tm.active = true AND tm.role IN ('SUPER_ADMIN','TENANT_ADMIN')) AS "activeAdmins",
        (SELECT count(*)::int FROM clients c WHERE c.tenant_id = t.id AND c.archived_at IS NULL) AS clients,
        (SELECT count(*)::int FROM properties p WHERE p.tenant_id = t.id) AS properties,
        (SELECT count(*)::int FROM fields f WHERE f.tenant_id = t.id) AS fields,
