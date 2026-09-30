@@ -102,6 +102,7 @@ type Prescription = {
   limingDecision?: SoybeanLimingUniformDecision | null;
   limingMethodSelection?: LimingMethodSelection | null;
   limingLayerRequirement?: Integrated020LimingLayerRequirement | null;
+  limingReferenceScenarios?: Integrated020LimingLayerRequirement[];
   agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 
@@ -412,6 +413,11 @@ export function FinalVisualReport(props: Props) {
   const limingDecision = prescription?.limingDecision ?? null;
   const limingMethodSelection = prescription?.limingMethodSelection ?? null;
   const limingLayerRequirement = prescription?.limingLayerRequirement ?? null;
+  const limingReferenceScenarios = prescription?.limingReferenceScenarios ?? [];
+  const limingScenario55 = limingReferenceScenarios.find((item) => item.targetPh === "5.5" && item.status !== "BLOCKED") ?? null;
+  const limingScenario60 = limingReferenceScenarios.find((item) => item.targetPh === "6.0" && item.status !== "BLOCKED") ?? null;
+  const limingScenarioDose = (scenario: Integrated020LimingLayerRequirement | null) =>
+    scenario ? scenario.operationalGeneralDoseTonHaPrnt100 ?? scenario.uniformDoseTonHaPrnt100 : null;
   const commercial = props.commercialPlanSnapshot ? buildProducerCommercialPlanSummary(props.commercialPlanSnapshot) : null;
   const areaHa = typeof props.context.areaHa === "number" ? props.context.areaHa : null;
   const collectedCount = props.points.filter((point) => Boolean(point.collectedAt)).length;
@@ -625,20 +631,28 @@ export function FinalVisualReport(props: Props) {
       };
     }
     if (limingDecision?.status === "BLOCKED" && limingLayerRequirement && limingLayerRequirement.status !== "BLOCKED") {
+      const dose55 = limingScenarioDose(limingScenario55);
+      const dose60 = limingScenarioDose(limingScenario60);
       const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
         ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
       const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+      const scenarioDisplay = dose55 != null && dose60 != null
+        ? numberPt(dose55) + " t/ha (pH 5,5) · " + numberPt(dose60) + " t/ha (pH 6,0)"
+        : null;
       return {
         tone: "pending" as const,
-        status: "REFERÊNCIA TÉCNICA · CAMADA 0–20",
-        dose: general != null
-          ? numberPt(general) + " t/ha PRNT 100%"
-          : range
-            ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
-            : "Necessidade por ponto calculada",
-        detail: "Cálculo SMP para a camada integrada 0–20 cm, meta pH " + limingLayerRequirement.targetPh
-          + ". Método: " + (limingMethodSelection?.selectedMethodId ?? limingLayerRequirement.methodId)
-          + ". A profundidade real do laudo foi preservada; esta referência não é convertida silenciosamente em regra moderna de aplicação.",
+        status: scenarioDisplay ? "REFERÊNCIAS TÉCNICAS · CAMADA 0–20" : "REFERÊNCIA TÉCNICA · CAMADA 0–20",
+        dose: scenarioDisplay
+          ?? (general != null
+            ? numberPt(general) + " t/ha PRNT 100%"
+            : range
+              ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
+              : "Necessidade por ponto calculada"),
+        detail: scenarioDisplay
+          ? "Cenários SMP calculados com a mesma amostra integrada 0–20 cm. A escolha do pH-alvo e do protocolo pertence à metodologia de calagem; a RAIZ não escolhe um alvo diferente só para aproximar uma dose esperada."
+          : "Cálculo SMP para a camada integrada 0–20 cm, meta pH " + limingLayerRequirement.targetPh
+            + ". Método: " + (limingMethodSelection?.selectedMethodId ?? limingLayerRequirement.methodId)
+            + ". A profundidade real do laudo foi preservada; esta referência não é convertida silenciosamente em regra moderna de aplicação.",
       };
     }
     if (limingDecision?.status === "BLOCKED") {
@@ -725,15 +739,23 @@ export function FinalVisualReport(props: Props) {
     const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
       ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
     const range = limingLayerRequirement.doseRangeTonHaPrnt100;
+    const dose55 = limingScenarioDose(limingScenario55);
+    const dose60 = limingScenarioDose(limingScenario60);
+    const scenarioDisplay = dose55 != null && dose60 != null
+      ? "pH 5,5: " + numberPt(dose55) + " t/ha · pH 6,0: " + numberPt(dose60) + " t/ha"
+      : null;
     producerPlanRows.push({
       key: "lime-integrated-020-reference",
       label: "Calcário · referência 0–20",
-      dose: general != null
-        ? numberPt(general) + " t/ha PRNT 100%"
-        : range
-          ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
-          : "Necessidade por ponto calculada",
-      detail: "Necessidade equivalente da camada integrada 0–20 cm pelo SMP. O método de aplicação do manejo atual permanece identificado separadamente.",
+      dose: scenarioDisplay
+        ?? (general != null
+          ? numberPt(general) + " t/ha PRNT 100%"
+          : range
+            ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
+            : "Necessidade por ponto calculada"),
+      detail: scenarioDisplay
+        ? "Cenários equivalentes PRNT 100% calculados com a camada integrada 0–20. Definir o protocolo/pH-alvo aplicável antes de converter para o produto comercial."
+        : "Necessidade equivalente da camada integrada 0–20 cm pelo SMP. O método de aplicação do manejo atual permanece identificado separadamente.",
       tone: "pending",
     });
   } else if (

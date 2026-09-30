@@ -140,6 +140,11 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   const liming = evidence.deterministicLimingDecision;
   const limingLayerRequirement = evidence.integrated020LimingLayerRequirement;
+  const limingReferenceScenarios = evidence.integrated020LimingReferenceScenarios ?? [];
+  const limingScenario55 = limingReferenceScenarios.find((item) => item.targetPh === "5.5" && item.status !== "BLOCKED") ?? null;
+  const limingScenario60 = limingReferenceScenarios.find((item) => item.targetPh === "6.0" && item.status !== "BLOCKED") ?? null;
+  const scenarioDose = (scenario: typeof limingLayerRequirement) =>
+    scenario ? scenario.operationalGeneralDoseTonHaPrnt100 ?? scenario.uniformDoseTonHaPrnt100 : null;
   if (
     evidence.season.cropProfileCode === "SOJA"
     && limingLayerRequirement
@@ -148,10 +153,14 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
     const range = limingLayerRequirement.doseRangeTonHaPrnt100;
     const general = limingLayerRequirement.operationalGeneralDoseTonHaPrnt100
       ?? limingLayerRequirement.uniformDoseTonHaPrnt100;
+    const dose55 = scenarioDose(limingScenario55);
+    const dose60 = scenarioDose(limingScenario60);
     managementPractices.push(
-      general != null
-        ? `Calagem — amostra integrada 0–20 cm: necessidade equivalente calculada pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}) = ${general.toLocaleString("pt-BR")} t/ha PRNT 100%${range && Math.abs(range.max - range.min) > 1e-9 ? `; faixa entre pontos ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha` : ""}. Este cálculo representa a camada 0–20 recebida no laudo e não divide artificialmente o perfil.`
-        : `Calagem — amostra integrada 0–20 cm: o motor calculou as necessidades por ponto pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}), sem transformar a variação em média geral porque a grade equivalente não está comprovada.`,
+      dose55 != null && dose60 != null
+        ? `Calagem — amostra integrada 0–20 cm: o mesmo laudo sustenta cenários SMP diferentes conforme o pH-alvo: ${dose55.toLocaleString("pt-BR")} t/ha PRNT 100% para pH 5,5 e ${dose60.toLocaleString("pt-BR")} t/ha PRNT 100% para pH 6,0. O pH-alvo faz parte do método e não é escolhido para aproximar uma dose esperada.`
+        : general != null
+          ? `Calagem — amostra integrada 0–20 cm: necessidade equivalente calculada pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}) = ${general.toLocaleString("pt-BR")} t/ha PRNT 100%${range && Math.abs(range.max - range.min) > 1e-9 ? `; faixa entre pontos ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha` : ""}. Este cálculo representa a camada 0–20 recebida no laudo e não divide artificialmente o perfil.`
+          : `Calagem — amostra integrada 0–20 cm: o motor calculou as necessidades por ponto pelo método CQFS-RS/SC 2016 (SMP, meta pH ${limingLayerRequirement.targetPh}), sem transformar a variação em média geral porque a grade equivalente não está comprovada.`,
     );
     if (liming?.status === "BLOCKED") {
       limitations.push(
