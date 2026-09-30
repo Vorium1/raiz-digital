@@ -109,10 +109,10 @@ export function PlatformTenantManager({ initialTenants }: { initialTenants: Plat
         {tenants.length === 0 ? <div className="empty-state"><Icon name="users"/><strong>Nenhuma empresa cadastrada.</strong></div> : (
           <div className="data-card">
             <table className="data-table">
-              <thead><tr><th>Empresa</th><th>Equipe</th><th>Clientes</th><th>Propriedades</th><th>Talhões</th><th>Situação</th></tr></thead>
+              <thead><tr><th>Empresa</th><th>Equipe</th><th>Administradores</th><th>Situação</th></tr></thead>
               <tbody>{tenants.map((tenant) => <tr key={tenant.id}>
                 <td><strong>{tenant.tradeName}</strong><small>{tenant.legalName}</small></td>
-                <td>{tenant.activeMembers}</td><td>{tenant.clients}</td><td>{tenant.properties}</td><td>{tenant.fields}</td>
+                <td>{tenant.activeMembers}</td><td>{tenant.activeAdmins}</td>
                 <td>
                   <div className="review-actions" style={{ margin: 0 }}>
                     <StatusBadge tone={tenant.status === "ACTIVE" ? "success" : "waiting"}>{STATUS_LABEL[tenant.status]}</StatusBadge>
