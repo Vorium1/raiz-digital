@@ -35,6 +35,7 @@ jobs:
           npm run test:handoff
           npm run test:client-master
           npm run test:platform-admin
+          npm run test:team-privacy
           node --experimental-strip-types scripts/test-map-runtime-recovery.mjs
           node --experimental-strip-types scripts/test-final-route-permissions.mjs
           node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs
