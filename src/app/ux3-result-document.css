@@ -239,19 +239,20 @@
     border:0;
     border-radius:0;
     box-shadow:none;
-    break-after:page;
-    /* Chromium arredonda 297 mm para 1123 px; em cinco páginas o erro
-       acumulado pode criar uma sexta página vazia. Reservamos 0,5 mm
-       dentro da folha A4 para manter a paginação determinística. */
-    height:296.5mm;
+    /* Quebra ANTES das páginas 2–5, em vez de depois das páginas 1–4.
+       Isso evita a folha fantasma que o Chromium pode criar no fim do PDF
+       quando altura física + break-after sofrem arredondamento subpixel. */
+    height:296mm;
     margin:0;
-    min-height:296.5mm;
+    min-height:296mm;
     overflow:hidden;
     padding:14mm 15mm 13mm;
-    page-break-after:always;
     width:210mm;
   }
-  .concept-report-page:last-child{break-after:auto;page-break-after:auto}
+  .concept-report-page + .concept-report-page{
+    break-before:page;
+    page-break-before:always;
+  }
   .concept-page-footer{bottom:8mm;left:15mm;right:15mm}
   .concept-map-shell,.concept-diagnostic-card,.concept-recommendation-card,.concept-final-opinion,.concept-identification-card,.concept-fertility-card{box-shadow:none}
   .concept-map-frame{height:95mm}

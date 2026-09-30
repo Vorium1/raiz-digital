@@ -20,9 +20,9 @@ assert.match(component, /EXECUÇÃO DA SAFRA/);
 assert.match(component, /O PLANO PARA O/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
-assert.match(css, /height:297mm/);
+assert.match(css, /height:296mm/);
 assert.match(css, /width:210mm/);
-assert.match(css, /page-break-after:always/);
+assert.match(css, /page-break-before:always/);
 assert.match(css, /-webkit-text-fill-color:#075c3b/);
 assert.match(css, /concept-map-frame-cover[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
 assert.match(css, /concept-map-frame-overview[\s\S]*real-field-map-canvas[\s\S]*height:100%!important/);
@@ -44,7 +44,8 @@ assert.match(css, /concept-cover-identification/);
 assert.match(css, /grid-template-columns:1\.15fr 1\.15fr \.9fr/);
 
 
-assert.match(css, /\.concept-report-page:last-child\{break-after:auto;page-break-after:auto\}/);
+assert.doesNotMatch(css, /concept-report-page:last-child\{break-after:auto/);
+assert.match(css, /\.concept-report-page \+ \.concept-report-page\{/);
 
 assert.match(component, /facts\.forEach\(\(fact\) => register\(fact\.parameterCode\)\)/);
 assert.match(component, /rows\.forEach\(\(row\) => register\(row\.parameterCode\)\)/);
