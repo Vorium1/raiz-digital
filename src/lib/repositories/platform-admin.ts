@@ -128,7 +128,7 @@ export async function createFirstTenantAdmin(input: {
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
     const tenantResult = await client.query<{ tradeName: string }>(
-      `SELECT trade_name AS "tradeName" FROM tenants WHERE id = $1::uuid`,
+      `SELECT trade_name AS "tradeName" FROM tenants WHERE id = $1::uuid FOR UPDATE`,
       [input.tenantId],
     );
     const tenant = tenantResult.rows[0];
