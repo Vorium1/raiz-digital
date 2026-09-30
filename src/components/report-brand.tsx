@@ -19,13 +19,12 @@ export function ReportBrand({ branding }: { branding: TenantBranding }) {
 }
 
 export function ReportSignature({ branding }: { branding: TenantBranding }) {
-  if (!branding.responsibleName) return null;
   return (
     <footer className="report-brand-signature">
       <div className="report-brand-signature-line" />
-      <strong>{branding.responsibleName}</strong>
+      <strong>{branding.responsibleName || "Assinatura do responsável técnico"}</strong>
       {branding.responsibleRegistration && <small>{branding.responsibleRegistration}</small>}
-      <small>Responsável técnico · {branding.displayName}</small>
+      <small>Responsável técnico · {branding.displayName || "Empresa parceira"}</small>
     </footer>
   );
 }

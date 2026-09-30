@@ -44,7 +44,8 @@ async function openProducerReport(page: Page) {
   await expect(page).not.toHaveURL(/\/login(?:\/|$|\?)/);
   const report = page.locator(".concept-report");
   await expect(report).toBeVisible({ timeout: 20_000 });
-  await expect(report.locator(".concept-report-page")).toHaveCount(5);
+  const pageCount = await report.locator(".concept-report-page").count();
+  expect([4, 5]).toContain(pageCount);
   return report;
 }
 
@@ -76,25 +77,30 @@ test.describe("Relatório final visual · decisão congelada", () => {
     await expect(page.getByText(/snapshot IMUTÁVEL publicado/i)).toHaveCount(0);
   });
 
-  test("produtor e técnico publicado usam o mesmo snapshot e as mesmas cinco páginas", async ({ page }) => {
+  test("produtor e técnico publicado usam o mesmo snapshot e a mesma paginação", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
     const technical = await openPublishedTechnicalReport(page);
     const technicalField = (await fieldNameLocator(technical).innerText()).trim();
     expect(technicalField).toBeTruthy();
-    await expect(technical.locator(".concept-report-page")).toHaveCount(5);
+    const technicalPageCount = await technical.locator(".concept-report-page").count();
+    expect([4, 5]).toContain(technicalPageCount);
     await expect(technical.locator(".concept-technical-appendix")).toBeVisible();
 
     const producer = await openProducerReport(page);
     const producerField = (await fieldNameLocator(producer).innerText()).trim();
     expect(producerField).toBe(technicalField);
+    expect(await producer.locator(".concept-report-page").count()).toBe(technicalPageCount);
     await expect(producer.locator(".concept-technical-appendix")).toHaveCount(0);
     await expect(producer.getByText("PARECER FINAL", { exact: true })).toBeVisible();
   });
 
-  test("desktop renderiza as cinco páginas conceituais sem overflow", async ({ page }) => {
+  test("desktop omite execução vazia e mantém as páginas conceituais sem overflow", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1100 });
     const report = await openProducerReport(page);
     const pages = report.locator(".concept-report-page");
+
+    const pageCount = await pages.count();
+    const executionCount = await report.getByText("03 / EXECUÇÃO DA SAFRA", { exact: true }).count();
 
     await expect(pages.nth(0)).toContainText("RELATÓRIO");
     await expect(pages.nth(0)).toContainText("AGRONÔMICO");
@@ -103,15 +109,23 @@ test.describe("Relatório final visual · decisão congelada", () => {
     await expect(pages.nth(1)).toContainText("VISÃO");
     await expect(pages.nth(2)).toContainText("O QUE O SEU SOLO");
     await expect(pages.nth(2)).toContainText("PEDE");
-    await expect(pages.nth(3)).toContainText("EXECUÇÃO DA SAFRA");
-    await expect(pages.nth(3)).toContainText("APLICAÇÃO / POSICIONAMENTO");
-    await expect(pages.nth(4)).toContainText("O PLANO PARA O");
-    await expect(pages.nth(4)).toContainText("PRODUTOR");
-    await expect(pages.nth(4)).toContainText("PARECER FINAL");
+
+    if (executionCount) {
+      expect(pageCount).toBe(5);
+      await expect(pages.nth(3)).toContainText("EXECUÇÃO DA SAFRA");
+      await expect(pages.nth(3)).toContainText("APLICAÇÃO / POSICIONAMENTO");
+    } else {
+      expect(pageCount).toBe(4);
+    }
+
+    const finalPage = report.locator(".concept-final-page");
+    await expect(finalPage).toContainText("PLANO PARA");
+    await expect(finalPage).toContainText("PARECER FINAL");
+    await expect(finalPage).toContainText("Responsável técnico");
 
     await assertNoHorizontalOverflow(page);
     await mkdir(EVIDENCE_DIR, { recursive: true });
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < pageCount; index++) {
       await pages.nth(index).screenshot({ path: join(EVIDENCE_DIR, `pagina-${index + 1}.png`) });
     }
   });
@@ -119,19 +133,20 @@ test.describe("Relatório final visual · decisão congelada", () => {
   test("mobile permanece legível e sem overflow horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const report = await openProducerReport(page);
-    await expect(report.locator(".concept-report-page")).toHaveCount(5);
+    expect([4, 5]).toContain(await report.locator(".concept-report-page").count());
     await assertNoHorizontalOverflow(page);
 
     await mkdir(EVIDENCE_DIR, { recursive: true });
     await page.screenshot({ path: join(EVIDENCE_DIR, "mobile-390x844.png"), fullPage: true });
   });
 
-  test("impressão do relatório do produtor gera exatamente cinco páginas A4", async ({ page }) => {
+  test("impressão do relatório do produtor usa somente páginas A4 com conteúdo", async ({ page }) => {
     await page.setViewportSize({ width: 1240, height: 1754 });
     const report = await openProducerReport(page);
     await page.emulateMedia({ media: "print" });
     const pages = report.locator(".concept-report-page");
-    await expect(pages).toHaveCount(5);
+    const expectedPageCount = await pages.count();
+    expect([4, 5]).toContain(expectedPageCount);
 
     const pdf = await page.pdf({
       format: "A4",
@@ -139,7 +154,7 @@ test.describe("Relatório final visual · decisão congelada", () => {
       preferCSSPageSize: true,
     });
     await mkdir(EVIDENCE_DIR, { recursive: true });
-    await writeFile(join(EVIDENCE_DIR, "relatorio-produtor-5-paginas-a4.pdf"), pdf);
+    await writeFile(join(EVIDENCE_DIR, `relatorio-produtor-${expectedPageCount}-paginas-a4.pdf`), pdf);
 
     const metrics = await pages.evaluateAll((elements) =>
       elements.map((element) => ({
@@ -155,6 +170,6 @@ test.describe("Relatório final visual · decisão congelada", () => {
 
     const ascii = pdf.toString("latin1");
     const pageObjects = ascii.match(/\/Type\s*\/Page\b/g) ?? [];
-    expect(pageObjects.length, "PDF do produtor não pode ganhar página vazia/extra por overflow").toBe(5);
+    expect(pageObjects.length, "PDF do produtor não pode ganhar página vazia/extra por overflow").toBe(expectedPageCount);
   });
 });

@@ -19,6 +19,7 @@ import type { ReportSpatialNutrientPlan } from "@/domain/report-spatial-nutrient
 import type { SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 import type { Integrated020LimingLayerRequirement, LimingMethodSelection } from "@/domain/liming-method-selector";
 import { classifyNdviValue, VIGOR_ZONE_LABELS, type VigorZone } from "@/domain/ndvi-engine";
+import { displayYieldFromTonPerHa, yieldGoalPresetConfig } from "@/domain/yield-goal-presets";
 
 const NDVI_REPORT_SCALE: Array<{ zone: VigorZone; range: string; cssClass: string }> = [
   { zone: "SEM_VEGETACAO", range: "< 0,20", cssClass: "zone-bare" },
@@ -448,15 +449,44 @@ export function FinalVisualReport(props: Props) {
   const fertilityYieldGoalLabel = fertilityPlan?.targetYieldDisplay
     ? fertilityPlan.targetYieldDisplay.replace(/\s*\([^)]*\)\s*$/, "")
     : null;
-  const hasYieldGoalLabel = props.context.yieldGoal != null || Boolean(fertilityYieldGoalLabel);
-  const yieldGoalLabel = props.context.yieldGoal != null
-    ? numberPt(Number(props.context.yieldGoal)) + (props.context.yieldGoalUnit ? " " + props.context.yieldGoalUnit : "")
-    : fertilityYieldGoalLabel ?? "Não registrada";
-  const totalYieldBags = props.context.yieldGoal != null
-    && areaHa != null
-    && /sc\s*\/\s*ha/i.test(props.context.yieldGoalUnit ?? "")
-      ? Math.round(Number(props.context.yieldGoal) * areaHa)
+  const storedYieldGoal = props.context.yieldGoal != null ? Number(props.context.yieldGoal) : null;
+  const storedYieldUnit = props.context.yieldGoalUnit?.trim() ?? "";
+  const yieldDisplayConfig = yieldGoalPresetConfig(currentCropLabel);
+  const convertedYieldGoal = storedYieldGoal != null
+    && Number.isFinite(storedYieldGoal)
+    && /^(t\/ha|t\.ha-?1|tha-?1)$/i.test(storedYieldUnit.replace(/\s+/g, ""))
+    && yieldDisplayConfig?.displayUnit === "sc/ha"
+      ? displayYieldFromTonPerHa(currentCropLabel, storedYieldGoal)
       : null;
+  const yieldGoalDisplayValue = convertedYieldGoal ?? storedYieldGoal;
+  const yieldGoalDisplayUnit = convertedYieldGoal != null
+    ? yieldDisplayConfig?.displayUnit ?? "sc/ha"
+    : storedYieldUnit;
+  const hasYieldGoalLabel = yieldGoalDisplayValue != null || Boolean(fertilityYieldGoalLabel);
+  const yieldGoalLabel = yieldGoalDisplayValue != null
+    ? numberPt(yieldGoalDisplayValue) + (yieldGoalDisplayUnit ? " " + yieldGoalDisplayUnit : "")
+    : fertilityYieldGoalLabel ?? "Não registrada";
+  const totalYieldBags = yieldGoalDisplayValue != null
+    && areaHa != null
+    && /sc\s*\/\s*ha/i.test(yieldGoalDisplayUnit)
+      ? Math.round(yieldGoalDisplayValue * areaHa)
+      : null;
+  const hasExecutionPageContent = Boolean(
+    applicationGuidance?.guidance?.trim()
+    || applicationGuidance?.costBenefitNote?.trim()
+    || commercial?.rows.length
+    || soilComplementActions.length
+    || biologicalContext?.hasAnyBiology
+    || biologicalContext?.summary?.trim()
+    || (climateContext?.status === "PROVIDED" && climateContext.notes?.trim())
+    || agroclimateSnapshot?.status === "READY"
+    || agroclimateSnapshot?.status === "PARTIAL"
+    || management.length
+  );
+  const producerPageCount = hasExecutionPageContent ? 5 : 4;
+  const producerFinalPageNumber = producerPageCount;
+  const producerPlanSectionNumber = hasExecutionPageContent ? "04" : "03";
+
   const mapCanUseNdvi = Boolean(
     props.ndviSnapshot
     && props.ndviSnapshot.rasterArchived
@@ -917,7 +947,7 @@ export function FinalVisualReport(props: Props) {
           </div>
         </div>
 
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / {producerPageCount}</b></footer>
       </section>
 
       <section className="concept-report-page">
@@ -1009,7 +1039,7 @@ export function FinalVisualReport(props: Props) {
           {!commercial && primaryRecommendation && <small className="concept-hero-footnote">Ainda não é peso de fertilizante comercial: produto e teor precisam estar oficialmente definidos.</small>}
         </div>
 
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / {producerPageCount}</b></footer>
       </section>
 
       <section className="concept-report-page">
@@ -1085,10 +1115,11 @@ export function FinalVisualReport(props: Props) {
         </div>
 
         <div className="concept-scope-strip concept-scope-strip-roomy"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / {producerPageCount}</b></footer>
       </section>
 
-      <section className="concept-report-page">
+      {hasExecutionPageContent && (
+      <section className="concept-report-page concept-execution-page">
         <div className="concept-section-header">
           <ConceptMiniBrands branding={props.branding} />
           <span>03 / EXECUÇÃO DA SAFRA</span>
@@ -1127,15 +1158,20 @@ export function FinalVisualReport(props: Props) {
           <div><span>REVISÃO</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
           <div><span>INTEGRIDADE</span><strong>{props.viewingPublished ? "Snapshot verificado" : props.currentStatusLabel}</strong></div>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>4 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>4 / {producerPageCount}</b></footer>
       </section>
+      )}
 
       <section className="concept-report-page concept-final-page">
         <div className="concept-section-header">
           <ConceptMiniBrands branding={props.branding} />
-          <span>04 / PLANO AO PRODUTOR</span>
+          <span>{producerPlanSectionNumber} / PLANO AO PRODUTOR</span>
         </div>
-        <div className="concept-page-heading concept-page-heading-approved"><span>O PLANO PARA O</span><h2>PRODUTOR</h2></div>
+        <div className="concept-page-heading concept-page-heading-approved concept-producer-heading">
+          <span>PLANO PARA</span>
+          <h2>{props.context.clientName || "PRODUTOR"}</h2>
+          <p>{props.context.fieldName ? "Talhão " + props.context.fieldName : "Talhão não identificado"}{props.context.propertyName ? " · " + props.context.propertyName : ""}</p>
+        </div>
 
         <section className="concept-yield-banner concept-yield-banner-approved concept-yield-banner-primary">
           <span>META PRODUTIVA · {cropSeasonLabel}</span>
@@ -1179,7 +1215,7 @@ export function FinalVisualReport(props: Props) {
           <Icon name="shield" size={14}/>
           <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : props.currentStatusLabel}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • MOTOR AGRONÔMICO E RASTREABILIDADE</span><b>5 / 5</b></footer>
+        <footer className="concept-page-footer"><span>RAIZ DIGITAL • MOTOR AGRONÔMICO E RASTREABILIDADE</span><b>{producerFinalPageNumber} / {producerPageCount}</b></footer>
       </section>
 
       {props.showTechnicalAppendix && (
@@ -1189,7 +1225,7 @@ export function FinalVisualReport(props: Props) {
             <div>
               <span>ANEXO TÉCNICO</span>
               <h2>Evidências e rastreabilidade completas</h2>
-              <p>Este anexo existe somente na visualização técnica. As cinco páginas anteriores permanecem como a entrega simples ao produtor.</p>
+              <p>Este anexo existe somente na visualização técnica. As {producerPageCount} páginas anteriores permanecem como a entrega simples ao produtor.</p>
             </div>
           </header>
 

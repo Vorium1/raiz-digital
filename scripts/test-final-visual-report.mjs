@@ -12,12 +12,18 @@ const realFieldMap = read("src/components/real-field-map.tsx");
 const printButton = read("src/components/print-button.tsx");
 
 assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
+assert.match(component, /hasExecutionPageContent/);
+assert.match(component, /producerPageCount = hasExecutionPageContent \? 5 : 4/);
+assert.match(component, /\{hasExecutionPageContent && \(/);
 assert.match(component, /RELATÓRIO/);
 assert.match(component, /A ÁREA EM UMA/);
 assert.match(component, /O QUE O SEU SOLO/);
 assert.match(component, /<h2>PEDE<\/h2>/);
 assert.match(component, /EXECUÇÃO DA SAFRA/);
-assert.match(component, /O PLANO PARA O/);
+assert.match(component, /PLANO PARA/);
+assert.match(component, /props\.context\.clientName/);
+assert.match(component, /Talhão /);
+assert.match(component, /producerPlanSectionNumber/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
 assert.match(css, /html body\{padding-bottom:0!important\}/);
@@ -178,7 +184,11 @@ assert.match(technicalPage, /const shouldUsePublishedVersion = explicitlyPublish
 assert.match(technicalPage, /if \(shouldUsePublishedVersion && !canShowPublishedView\)/);
 assert.match(technicalPage, /hashVerified === true/);
 
-console.log("final-visual-report: 5 páginas conceituais, snapshot único, NDVI/pontos, doses e produto comercial fail-closed validados");
+assert.match(component, /displayYieldFromTonPerHa/);
+assert.match(component, /yieldGoalPresetConfig/);
+assert.match(component, /sc\\s\*\\\/\\s\*ha/);
+assert.match(read("src/components/report-brand.tsx"), /Assinatura do responsável técnico/);
+console.log("final-visual-report: página de execução condicional, plano personalizado, meta exibida na unidade do produtor e assinatura validados");
 
 assert.match(css, /concept-ndvi-explainer/);
 assert.match(css, /concept-ndvi-scale/);
