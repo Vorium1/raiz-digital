@@ -10,6 +10,15 @@ type Client = {
   taxId: string | null;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  postalCode: string | null;
+  street: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
+  district: string | null;
+  municipality: string | null;
+  state: string | null;
+  country: string | null;
   personType: "PF" | "PJ" | null;
   tradeName: string | null;
   contactName: string | null;
@@ -122,6 +131,15 @@ export function ClientManager() {
         <label><span>Contato principal</span><input name="contactName" maxLength={160} defaultValue={editingClient?.contactName ?? ""}/></label>
         <label><span>E-mail</span><input name="email" type="email" defaultValue={editingClient?.email ?? ""}/></label>
         <label><span>Telefone</span><input name="phone" type="tel" defaultValue={editingClient?.phone ?? ""}/></label>
+        <label><span>WhatsApp</span><input name="whatsapp" type="tel" defaultValue={editingClient?.whatsapp ?? ""}/></label>
+        <label><span>CEP</span><input name="postalCode" inputMode="numeric" maxLength={9} defaultValue={editingClient?.postalCode ?? ""}/></label>
+        <label><span>Logradouro</span><input name="street" maxLength={180} defaultValue={editingClient?.street ?? ""}/></label>
+        <label><span>Número</span><input name="addressNumber" maxLength={40} defaultValue={editingClient?.addressNumber ?? ""}/></label>
+        <label><span>Complemento</span><input name="addressComplement" maxLength={120} defaultValue={editingClient?.addressComplement ?? ""}/></label>
+        <label><span>Bairro / localidade</span><input name="district" maxLength={120} defaultValue={editingClient?.district ?? ""}/></label>
+        <label><span>Município</span><input name="municipality" maxLength={120} defaultValue={editingClient?.municipality ?? ""}/></label>
+        <label><span>UF</span><input name="state" maxLength={2} defaultValue={editingClient?.state ?? ""}/></label>
+        <label><span>País</span><input name="country" maxLength={2} defaultValue={editingClient?.country ?? "BR"}/></label>
       </div>
       <label className="full-field"><span>Observações</span><textarea name="notes" rows={3} defaultValue={editingClient?.notes ?? ""}/></label>
       <div className="inline-form-footer">

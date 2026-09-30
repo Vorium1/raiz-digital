@@ -40,6 +40,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (email && !/^\S+@\S+\.\S+$/.test(email)) {
       return Response.json({ error: "E-mail inválido." }, { status: 400 });
     }
+    const postalCode = cleanOptional(body.postalCode)?.replace(/\D/g, "") ?? null;
+    if (postalCode && !/^\d{8}$/.test(postalCode)) {
+      return Response.json({ error: "CEP deve conter 8 dígitos." }, { status: 400 });
+    }
+    const state = cleanOptional(body.state)?.toUpperCase() ?? null;
+    if (state && !/^[A-Z]{2}$/.test(state)) {
+      return Response.json({ error: "UF deve conter 2 letras." }, { status: 400 });
+    }
 
     const updated = await updateClient({
       tenantId: session.tenantId,
@@ -53,6 +61,15 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       contactName: cleanOptional(body.contactName),
       email,
       phone: cleanOptional(body.phone),
+      whatsapp: cleanOptional(body.whatsapp),
+      postalCode,
+      street: cleanOptional(body.street),
+      addressNumber: cleanOptional(body.addressNumber),
+      addressComplement: cleanOptional(body.addressComplement),
+      district: cleanOptional(body.district),
+      municipality: cleanOptional(body.municipality),
+      state,
+      country: cleanOptional(body.country)?.toUpperCase() ?? "BR",
       notes: cleanOptional(body.notes),
     });
     return Response.json({ client: updated });

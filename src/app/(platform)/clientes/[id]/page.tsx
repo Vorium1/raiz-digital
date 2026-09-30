@@ -54,6 +54,15 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
             <div><dt>Contato</dt><dd>{client.contactName || "Não informado"}</dd></div>
             <div><dt>E-mail</dt><dd>{client.email || "Não informado"}</dd></div>
             <div><dt>Telefone</dt><dd>{client.phone || "Não informado"}</dd></div>
+            <div><dt>WhatsApp</dt><dd>{client.whatsapp || "Não informado"}</dd></div>
+            <div><dt>Endereço</dt><dd>{[
+              client.street,
+              client.addressNumber,
+              client.district,
+              client.municipality,
+              client.state,
+            ].filter(Boolean).join(", ") || "Não informado"}</dd></div>
+            <div><dt>CEP</dt><dd>{client.postalCode || "Não informado"}</dd></div>
           </dl>
           {client.notes && <div className="narrative-block" style={{ marginTop: 12 }}><h4>Observações</h4><p>{client.notes}</p></div>}
         </section>

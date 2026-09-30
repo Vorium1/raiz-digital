@@ -14,6 +14,15 @@ export type ClientListItem = {
   taxId: string | null;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  postalCode: string | null;
+  street: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
+  district: string | null;
+  municipality: string | null;
+  state: string | null;
+  country: string | null;
   personType: "PF" | "PJ" | null;
   tradeName: string | null;
   contactName: string | null;
@@ -34,6 +43,15 @@ export async function listClients(tenantId: string, userId?: string, includeArch
          c.tax_id AS "taxId",
          c.email::text AS email,
          c.phone,
+         c.whatsapp,
+         c.postal_code AS "postalCode",
+         c.street,
+         c.address_number AS "addressNumber",
+         c.address_complement AS "addressComplement",
+         c.district,
+         c.municipality,
+         c.state,
+         c.country,
          c.person_type AS "personType", c.trade_name AS "tradeName", c.contact_name AS "contactName", c.notes,
          c.archived_at::text AS "archivedAt",
          (SELECT count(*)::int FROM properties p WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS properties,
@@ -120,6 +138,15 @@ export async function createClient(input: {
   taxId?: string | null;
   email?: string | null;
   phone?: string | null;
+  whatsapp?: string | null;
+  postalCode?: string | null;
+  street?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  district?: string | null;
+  municipality?: string | null;
+  state?: string | null;
+  country?: string | null;
   notes?: string | null;
   personType: "PF" | "PJ";
   documentNormalized?: string | null;
@@ -130,14 +157,30 @@ export async function createClient(input: {
     let result;
     try {
       result = await client.query<ClientListItem>(
-      `INSERT INTO clients (tenant_id, name, tax_id, document_normalized, person_type, trade_name, contact_name, email, phone, notes)
-       VALUES ($1::uuid, $2, nullif($3,''), nullif($4,''), $5, nullif($6,''), nullif($7,''), nullif($8,'')::citext, nullif($9,''), nullif($10,''))
-       RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone,
+      `INSERT INTO clients (
+         tenant_id, name, tax_id, document_normalized, person_type, trade_name, contact_name,
+         email, phone, whatsapp, postal_code, street, address_number, address_complement,
+         district, municipality, state, country, notes
+       )
+       VALUES (
+         $1::uuid, $2, nullif($3,''), nullif($4,''), $5, nullif($6,''), nullif($7,''),
+         nullif($8,'')::citext, nullif($9,''), nullif($10,''), nullif($11,''), nullif($12,''),
+         nullif($13,''), nullif($14,''), nullif($15,''), nullif($16,''), nullif($17,''), nullif($18,''), nullif($19,'')
+       )
+       RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone, whatsapp,
+                 postal_code AS "postalCode", street, address_number AS "addressNumber",
+                 address_complement AS "addressComplement", district, municipality, state, country,
                  person_type AS "personType", trade_name AS "tradeName", contact_name AS "contactName", notes,
                  archived_at::text AS "archivedAt",
                  0::int AS properties, 0::float8 AS hectares, 0::int AS analyses,
                  created_at::text AS "createdAt"`,
-      [input.tenantId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType, input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
+      [
+        input.tenantId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType,
+        input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "",
+        input.whatsapp ?? "", input.postalCode ?? "", input.street ?? "", input.addressNumber ?? "",
+        input.addressComplement ?? "", input.district ?? "", input.municipality ?? "", input.state ?? "",
+        input.country ?? "BR", input.notes ?? ""
+      ],
       );
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23505") {
@@ -166,6 +209,15 @@ export async function updateClient(input: {
   taxId?: string | null;
   email?: string | null;
   phone?: string | null;
+  whatsapp?: string | null;
+  postalCode?: string | null;
+  street?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  district?: string | null;
+  municipality?: string | null;
+  state?: string | null;
+  country?: string | null;
   notes?: string | null;
   personType: "PF" | "PJ";
   documentNormalized?: string | null;
@@ -177,16 +229,42 @@ export async function updateClient(input: {
     try {
       result = await client.query<ClientListItem>(
       `UPDATE clients
-       SET name = $3, tax_id = nullif($4,''), document_normalized = nullif($5,''), person_type = $6, trade_name = nullif($7,''), contact_name = nullif($8,''), email = nullif($9,'')::citext, phone = nullif($10,''), notes = nullif($11,''), updated_at = now()
+       SET name = $3,
+           tax_id = nullif($4,''),
+           document_normalized = nullif($5,''),
+           person_type = $6,
+           trade_name = nullif($7,''),
+           contact_name = nullif($8,''),
+           email = nullif($9,'')::citext,
+           phone = nullif($10,''),
+           whatsapp = nullif($11,''),
+           postal_code = nullif($12,''),
+           street = nullif($13,''),
+           address_number = nullif($14,''),
+           address_complement = nullif($15,''),
+           district = nullif($16,''),
+           municipality = nullif($17,''),
+           state = nullif($18,''),
+           country = nullif($19,''),
+           notes = nullif($20,''),
+           updated_at = now()
        WHERE tenant_id = $1::uuid AND id = $2::uuid
-       RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone,
+       RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone, whatsapp,
+                 postal_code AS "postalCode", street, address_number AS "addressNumber",
+                 address_complement AS "addressComplement", district, municipality, state, country,
                  person_type AS "personType", trade_name AS "tradeName", contact_name AS "contactName", notes,
                  archived_at::text AS "archivedAt",
                  (SELECT count(*)::int FROM properties p WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS properties,
                  (SELECT coalesce(sum(f.area_ha),0)::float8 FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS hectares,
                  0::int AS analyses,
                  created_at::text AS "createdAt"`,
-      [input.tenantId, input.clientId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType, input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
+      [
+        input.tenantId, input.clientId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType,
+        input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "",
+        input.whatsapp ?? "", input.postalCode ?? "", input.street ?? "", input.addressNumber ?? "",
+        input.addressComplement ?? "", input.district ?? "", input.municipality ?? "", input.state ?? "",
+        input.country ?? "BR", input.notes ?? ""
+      ],
       );
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23505") {
