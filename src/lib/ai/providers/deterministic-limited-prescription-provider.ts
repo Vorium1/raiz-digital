@@ -176,12 +176,17 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
 
   if (evidence.season.cropProfileCode === "SOJA" && liming) {
     if (liming.status === "UNIFORM_APPLY" && liming.automaticUniformDoseAllowed && liming.uniformDoseTonHaPrnt100 != null) {
-      const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+      const methodId = evidence.limingMethodSelection?.selectedMethodId ?? "motor determinístico de calagem";
+      const mode = liming.applicationMode === "SURFACE"
+        ? "aplicação superficial"
+        : liming.applicationMode === "INCORPORATED"
+          ? "aplicação incorporada"
+          : "modo de aplicação não inferido pela profundidade do laudo";
       recommendations.push({
         inputType: "CALCARIO_PRNT100",
         quantity: liming.uniformDoseTonHaPrnt100,
         unit: "t/ha",
-        rationale: `Necessidade uniforme calculada pelo motor determinístico de calagem da soja RS/SC 2025, equivalente a PRNT 100%, com ${mode}. A RAIZ não escolhe produto comercial nem converte PRNT sem o valor declarado do corretivo.`,
+        rationale: `Necessidade uniforme calculada pelo método ${methodId}, equivalente a PRNT 100%, com ${mode}. A RAIZ preserva a profundidade e o pH-alvo do método e não escolhe produto comercial nem converte PRNT sem o valor declarado do corretivo.`,
       });
     } else if (liming.status === "UNIFORM_NO_APPLY") {
       managementPractices.push("Calagem: não indicada pelo critério determinístico atual para os pontos avaliados.");
@@ -191,13 +196,18 @@ function deterministicRecommendations(evidence: AgronomicPrescriptionEvidencePac
         && liming.operationalGeneralDoseTonHaPrnt100 != null
         && liming.operationalGeneralDoseTonHaPrnt100 > 0
       ) {
-        const mode = liming.applicationMode === "SURFACE" ? "aplicação superficial" : "aplicação incorporada";
+        const methodId = evidence.limingMethodSelection?.selectedMethodId ?? "motor determinístico de calagem";
+        const mode = liming.applicationMode === "SURFACE"
+          ? "aplicação superficial"
+          : liming.applicationMode === "INCORPORATED"
+            ? "aplicação incorporada"
+            : "modo de aplicação não inferido pela profundidade do laudo";
         const range = liming.doseRangeTonHaPrnt100;
         recommendations.push({
           inputType: "CALCARIO_PRNT100",
           quantity: liming.operationalGeneralDoseTonHaPrnt100,
           unit: "t/ha",
-          rationale: `Dose geral operacional do talhão calculada pelo motor a partir de ${liming.sampleDecisions.length} pontos de uma grade com área equivalente por ponto, em PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A consolidação por média só é autorizada porque a evidência de amostragem confirma representatividade espacial equivalente.`,
+          rationale: `Dose geral operacional do talhão calculada pelo método ${methodId} a partir de ${liming.sampleDecisions.length} pontos de uma grade com área equivalente por ponto, em PRNT 100%, com ${mode}. ${range ? `Variação observada: ${range.min.toLocaleString("pt-BR")}–${range.max.toLocaleString("pt-BR")} t/ha.` : ""} A consolidação por média só é autorizada porque a evidência de amostragem confirma representatividade espacial equivalente.`,
         });
       }
       const bySample = liming.sampleDecisions

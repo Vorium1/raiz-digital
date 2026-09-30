@@ -14,6 +14,7 @@ import {
   adjustSoybeanLimeDoseForPrnt2025,
 } from "../src/domain/soybean-liming-rs-sc-2025.ts";
 import { evaluateSoybeanLimingFromEvidence } from "../src/domain/soybean-liming-evidence.ts";
+import { resolveSelectedLimingDecision } from "../src/domain/liming-method-decision.ts";
 import {
   LIMING_METHOD_IDS,
   detectLimingSamplingProfile,
@@ -652,5 +653,41 @@ assert.deepEqual(cabedaScenarios.map((item) => item.targetPh), ["5.5", "6.0", "6
 assert.equal(cabedaScenarios[0].operationalGeneralDoseTonHaPrnt100, 2.71);
 assert.equal(cabedaScenarios[1].operationalGeneralDoseTonHaPrnt100, 4.74);
 assert.equal(cabedaScenarios[2].doseRangeTonHaPrnt100?.max, 8.6);
+
+
+// 27g. Quando o laudo REAL é integrado 0-20 e o seletor escolhe o método
+// clássico versionado, a necessidade dessa camada vira a decisão quantitativa
+// sem inventar 0-10/10-20 nem modo de aplicação.
+const classicModernBlocked = evaluateSoybeanLimingFromEvidence({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.equal(classicModernBlocked.status, "BLOCKED");
+
+const classicResolved = resolveSelectedLimingDecision({
+  cropCode: "SOJA",
+  state: "RS",
+  managementSystem: null,
+  results: cabedaArea01Smp020,
+  methodSelection: selectLimingMethod({
+    state: "RS",
+    cropCode: "SOJA",
+    managementSystem: null,
+    results: cabedaArea01Smp020,
+  }),
+  integrated020Requirement: cabeda60,
+  modernDecision: classicModernBlocked,
+});
+assert.equal(classicResolved.status, "SPATIAL");
+assert.equal(classicResolved.automaticGeneralDoseAllowed, true);
+assert.equal(classicResolved.operationalGeneralDoseTonHaPrnt100, 4.74);
+assert.deepEqual(classicResolved.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(classicResolved.applicationMode, null);
+assert.ok(classicResolved.warnings.includes("CLASSIC_INTEGRATED_0_20_METHOD_SELECTED_FROM_LAB_DEPTH"));
+assert.ok(classicResolved.warnings.includes("APPLICATION_MODE_NOT_INFERRED_FROM_INTEGRATED_0_20_SAMPLE"));
+assert.ok(classicResolved.sampleDecisions.every((item) => item.depthFromCm === 0 && item.depthToCm === 20));
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");
