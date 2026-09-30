@@ -119,7 +119,7 @@ export function PlatformTenantManager({ initialTenants }: { initialTenants: Plat
                     <select value={tenant.status} disabled={busy === `status-${tenant.id}`} onChange={(e) => void changeStatus(tenant.id, e.target.value as PlatformTenantStatus)}>
                       <option value="ACTIVE">Ativa</option><option value="BLOCKED">Bloqueada</option><option value="CANCELED">Cancelada</option>
                     </select>
-                    {tenant.activeMembers === 0 && <button className="button tiny" onClick={() => { setAdminTenantId(tenant.id); setAdminName(""); setAdminEmail(""); }}>Primeiro administrador</button>}
+                    {tenant.activeAdmins === 0 && <button className="button tiny" onClick={() => { setAdminTenantId(tenant.id); setAdminName(""); setAdminEmail(""); }}>Primeiro administrador</button>}
                   </div>
                 </td>
               </tr>)}</tbody>
