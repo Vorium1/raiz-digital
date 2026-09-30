@@ -1,4 +1,4 @@
-import { getPool, query } from "@/lib/db";
+import { getPool, query, withTenant } from "@/lib/db";
 
 export type PlatformTenantStatus = "ACTIVE" | "BLOCKED" | "CANCELED";
 
@@ -9,9 +9,6 @@ export type PlatformTenantSummary = {
   status: PlatformTenantStatus;
   activeMembers: number;
   activeAdmins: number;
-  clients: number;
-  properties: number;
-  fields: number;
   createdAt: string;
 };
 
@@ -23,22 +20,31 @@ export class PlatformAdminError extends Error {
 }
 
 export async function listPlatformTenants() {
-  const result = await query<PlatformTenantSummary>(
+  const result = await query<Omit<PlatformTenantSummary, "activeMembers" | "activeAdmins">>(
     `SELECT
        t.id::text AS id,
        t.legal_name AS "legalName",
        t.trade_name AS "tradeName",
        t.status::text AS status,
-       (SELECT count(*)::int FROM tenant_members tm WHERE tm.tenant_id = t.id AND tm.active = true) AS "activeMembers",
-       (SELECT count(*)::int FROM tenant_members tm WHERE tm.tenant_id = t.id AND tm.active = true AND tm.role IN ('SUPER_ADMIN','TENANT_ADMIN')) AS "activeAdmins",
-       (SELECT count(*)::int FROM clients c WHERE c.tenant_id = t.id AND c.archived_at IS NULL) AS clients,
-       (SELECT count(*)::int FROM properties p WHERE p.tenant_id = t.id) AS properties,
-       (SELECT count(*)::int FROM fields f WHERE f.tenant_id = t.id) AS fields,
        t.created_at::text AS "createdAt"
      FROM tenants t
      ORDER BY t.status = 'ACTIVE' DESC, t.trade_name ASC`,
   );
-  return result.rows;
+
+  return Promise.all(result.rows.map(async (tenant) => {
+    const membershipCounts = await withTenant({ tenantId: tenant.id }, async (client) => {
+      const counts = await client.query<{ activeMembers: number; activeAdmins: number }>(
+        `SELECT
+           count(*) FILTER (WHERE active = true)::int AS "activeMembers",
+           count(*) FILTER (WHERE active = true AND role IN ('SUPER_ADMIN','TENANT_ADMIN'))::int AS "activeAdmins"
+         FROM tenant_members
+         WHERE tenant_id = $1::uuid`,
+        [tenant.id],
+      );
+      return counts.rows[0] ?? { activeMembers: 0, activeAdmins: 0 };
+    });
+    return { ...tenant, ...membershipCounts };
+  }));
 }
 
 export async function createPlatformTenant(input: {
@@ -120,12 +126,9 @@ export async function createFirstTenantAdmin(input: {
   email: string;
   bootstrapPasswordHash: string;
 }) {
-  const client = await getPool().connect();
-  try {
-    await client.query("BEGIN");
-
+  return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
     const tenantResult = await client.query<{ tradeName: string }>(
-      `SELECT trade_name AS "tradeName" FROM tenants WHERE id = $1::uuid FOR UPDATE`,
+      `SELECT trade_name AS "tradeName" FROM tenants WHERE id = $1::uuid`,
       [input.tenantId],
     );
     const tenant = tenantResult.rows[0];
@@ -134,7 +137,8 @@ export async function createFirstTenantAdmin(input: {
     const admins = await client.query(
       `SELECT 1 FROM tenant_members
        WHERE tenant_id = $1::uuid AND active = true AND role IN ('SUPER_ADMIN','TENANT_ADMIN')
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [input.tenantId],
     );
     if (admins.rows[0]) throw new PlatformAdminError("Esta empresa já possui administrador ativo.", 409);
@@ -182,12 +186,6 @@ export async function createFirstTenantAdmin(input: {
       [input.actorUserId, input.tenantId, createdNewUser],
     );
 
-    await client.query("COMMIT");
     return { userId, tenantName: tenant.tradeName, createdNewUser };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
