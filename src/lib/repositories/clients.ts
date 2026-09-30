@@ -14,13 +14,17 @@ export type ClientListItem = {
   taxId: string | null;
   email: string | null;
   phone: string | null;
+  personType: "PF" | "PJ" | null;
+  tradeName: string | null;
+  contactName: string | null;
+  archivedAt: string | null;
   properties: number;
   hectares: number;
   analyses: number;
   createdAt: string;
 };
 
-export async function listClients(tenantId: string, userId?: string) {
+export async function listClients(tenantId: string, userId?: string, includeArchived = false) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query<ClientListItem>(
       `SELECT
@@ -29,6 +33,7 @@ export async function listClients(tenantId: string, userId?: string) {
          c.tax_id AS "taxId",
          c.email::text AS email,
          c.phone,
+         c.person_type AS "personType", c.trade_name AS "tradeName", c.contact_name AS "contactName", c.archived_at::text AS "archivedAt",
          (SELECT count(*)::int FROM properties p WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS properties,
          (SELECT coalesce(sum(f.area_ha),0)::float8
             FROM properties p
@@ -42,9 +47,38 @@ export async function listClients(tenantId: string, userId?: string) {
            WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS analyses,
          c.created_at::text AS "createdAt"
        FROM clients c
+       WHERE c.tenant_id = $1::uuid AND ($2::boolean OR c.archived_at IS NULL)
        ORDER BY c.name ASC`,
+      [tenantId, includeArchived],
     );
     return result.rows;
+  });
+}
+
+export async function getClient360(tenantId: string, clientId: string, userId?: string) {
+  return withTenant({ tenantId, userId }, async (client) => {
+    const clientResult = await client.query<ClientListItem>(
+      `SELECT c.id::text AS id, c.name, c.tax_id AS "taxId", c.email::text AS email, c.phone,
+              c.person_type AS "personType", c.trade_name AS "tradeName", c.contact_name AS "contactName", c.archived_at::text AS "archivedAt",
+              (SELECT count(*)::int FROM properties p WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS properties,
+              (SELECT coalesce(sum(f.area_ha), 0)::float8 FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS hectares,
+              (SELECT count(*)::int FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id JOIN crop_seasons cs ON cs.tenant_id = f.tenant_id AND cs.field_id = f.id JOIN analyses a ON a.tenant_id = cs.tenant_id AND a.crop_season_id = cs.id WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS analyses,
+              c.created_at::text AS "createdAt"
+       FROM clients c WHERE c.tenant_id = $1::uuid AND c.id = $2::uuid`,
+      [tenantId, clientId],
+    );
+    const item = clientResult.rows[0];
+    if (!item) throw new ClientError("Cliente não encontrado.", 404);
+
+    const properties = await client.query(
+      `SELECT p.id::text AS id, p.name, p.municipality, p.state, count(f.id)::int AS fields,
+              coalesce(sum(f.area_ha), 0)::float8 AS hectares
+       FROM properties p LEFT JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id
+       WHERE p.tenant_id = $1::uuid AND p.client_id = $2::uuid
+       GROUP BY p.id ORDER BY p.name`,
+      [tenantId, clientId],
+    );
+    return { client: item, properties: properties.rows };
   });
 }
 
@@ -56,15 +90,20 @@ export async function createClient(input: {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  personType: "PF" | "PJ";
+  documentNormalized?: string | null;
+  tradeName?: string | null;
+  contactName?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query<ClientListItem>(
-      `INSERT INTO clients (tenant_id, name, tax_id, email, phone, notes)
-       VALUES ($1::uuid, $2, nullif($3,''), nullif($4,'')::citext, nullif($5,''), nullif($6,''))
+      `INSERT INTO clients (tenant_id, name, tax_id, document_normalized, person_type, trade_name, contact_name, email, phone, notes)
+       VALUES ($1::uuid, $2, nullif($3,''), nullif($4,''), $5, nullif($6,''), nullif($7,''), nullif($8,'')::citext, nullif($9,''), nullif($10,''))
        RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone,
+                 person_type AS "personType", trade_name AS "tradeName", contact_name AS "contactName", archived_at::text AS "archivedAt",
                  0::int AS properties, 0::float8 AS hectares, 0::int AS analyses,
                  created_at::text AS "createdAt"`,
-      [input.tenantId, input.name.trim(), input.taxId ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
+      [input.tenantId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType, input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
     );
     const created = result.rows[0];
     await writeAudit(client, {
@@ -73,7 +112,7 @@ export async function createClient(input: {
       action: "CLIENT_CREATED",
       entityType: "client",
       entityId: created.id,
-      metadata: { name: created.name },
+      metadata: { personType: created.personType, hasDocument: Boolean(input.documentNormalized) },
     });
     return created;
   });
@@ -88,18 +127,23 @@ export async function updateClient(input: {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  personType: "PF" | "PJ";
+  documentNormalized?: string | null;
+  tradeName?: string | null;
+  contactName?: string | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query<ClientListItem>(
       `UPDATE clients
-       SET name = $3, tax_id = nullif($4,''), email = nullif($5,'')::citext, phone = nullif($6,''), notes = nullif($7,''), updated_at = now()
+       SET name = $3, tax_id = nullif($4,''), document_normalized = nullif($5,''), person_type = $6, trade_name = nullif($7,''), contact_name = nullif($8,''), email = nullif($9,'')::citext, phone = nullif($10,''), notes = nullif($11,''), updated_at = now()
        WHERE tenant_id = $1::uuid AND id = $2::uuid
        RETURNING id::text AS id, name, tax_id AS "taxId", email::text AS email, phone,
+                 person_type AS "personType", trade_name AS "tradeName", contact_name AS "contactName", archived_at::text AS "archivedAt",
                  (SELECT count(*)::int FROM properties p WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS properties,
                  (SELECT coalesce(sum(f.area_ha),0)::float8 FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS hectares,
                  0::int AS analyses,
                  created_at::text AS "createdAt"`,
-      [input.tenantId, input.clientId, input.name.trim(), input.taxId ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
+      [input.tenantId, input.clientId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType, input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "", input.notes ?? ""],
     );
     const updated = result.rows[0];
     if (!updated) throw new ClientError("Cliente não encontrado.", 404);
@@ -109,23 +153,24 @@ export async function updateClient(input: {
       action: "CLIENT_UPDATED",
       entityType: "client",
       entityId: updated.id,
-      metadata: { name: updated.name },
+      metadata: { personType: updated.personType, hasDocument: Boolean(input.documentNormalized) },
     });
     return updated;
   });
 }
 
-export async function deleteClient(input: { tenantId: string; userId: string; clientId: string }) {
+export async function archiveClient(input: { tenantId: string; userId: string; clientId: string; reason?: string | null }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     let result;
     try {
       result = await client.query<{ id: string; name: string }>(
-        `DELETE FROM clients WHERE tenant_id = $1::uuid AND id = $2::uuid RETURNING id::text, name`,
-        [input.tenantId, input.clientId],
+        `UPDATE clients SET archived_at = now(), archived_by = $3::uuid, archive_reason = nullif($4,''), updated_at = now()
+         WHERE tenant_id = $1::uuid AND id = $2::uuid AND archived_at IS NULL RETURNING id::text, name`,
+        [input.tenantId, input.clientId, input.userId, input.reason ?? ""],
       );
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23503") {
-        throw new ClientError("Não é possível excluir: este cliente já tem propriedades ou histórico cadastrado.", 409);
+        throw new ClientError("Não foi possível arquivar este cliente.", 409);
       }
       throw error;
     }
@@ -134,10 +179,10 @@ export async function deleteClient(input: { tenantId: string; userId: string; cl
     await writeAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
-      action: "CLIENT_DELETED",
+      action: "CLIENT_ARCHIVED",
       entityType: "client",
       entityId: deleted.id,
-      metadata: { name: deleted.name },
+      metadata: { reasonProvided: Boolean(input.reason) },
     });
     return deleted;
   });

@@ -1,5 +1,6 @@
 import { getPlatformSession } from "@/lib/auth/session";
 import { createClient, listClients } from "@/lib/repositories/clients";
+import { validateClientDocument, type ClientPersonType } from "@/domain/client-document";
 
 function cleanOptional(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -26,6 +27,10 @@ export async function POST(request: Request) {
   }
 
   const email = cleanOptional(body.email);
+  const personType = body.personType === "PJ" ? "PJ" : body.personType === "PF" ? "PF" : null;
+  if (!personType) return Response.json({ error: "Informe se o cliente é pessoa física ou jurídica." }, { status: 400 });
+  const document = validateClientDocument(personType as ClientPersonType, cleanOptional(body.taxId));
+  if (document.error) return Response.json({ error: document.error }, { status: 400 });
   if (email && !/^\S+@\S+\.\S+$/.test(email)) {
     return Response.json({ error: "E-mail inválido." }, { status: 400 });
   }
@@ -35,6 +40,10 @@ export async function POST(request: Request) {
     userId: session.userId,
     name,
     taxId: cleanOptional(body.taxId),
+    documentNormalized: document.normalized,
+    personType,
+    tradeName: cleanOptional(body.tradeName),
+    contactName: cleanOptional(body.contactName),
     email,
     phone: cleanOptional(body.phone),
     notes: cleanOptional(body.notes),
