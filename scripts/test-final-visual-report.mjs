@@ -10,6 +10,7 @@ const rootLayout = read("src/app/layout.tsx");
 const publishedNdviMap = read("src/components/published-ndvi-map.tsx");
 const realFieldMap = read("src/components/real-field-map.tsx");
 const printButton = read("src/components/print-button.tsx");
+const premiumPublication = read("src/lib/repositories/premium-report-publication.ts");
 
 assert.equal((component.match(/<section className="concept-report-page/g) ?? []).length, 5);
 assert.match(component, /hasExecutionPageContent/);
@@ -198,6 +199,9 @@ assert.match(read("src/components/report-brand.tsx"), /Assinatura do responsáve
 assert.match(read("src/components/report-brand.tsx"), /<img src=\{branding\.logoDataUrl\}/);
 assert.doesNotMatch(read("src/components/report-brand.tsx"), /report-brand-name/);
 assert.match(component, /concept-final-signature-brand/);
+assert.match(premiumPublication, /reportBrandingFingerprint/);
+assert.match(premiumPublication, /brandingChangedAfterPreviousReport/);
+assert.match(premiumPublication, /metadata->>'brandingFingerprint'/);
 assert.match(component, /<ReportBrand branding=\{props\.branding\}/);
 assert.match(css, /concept-final-signature-brand/);
 console.log("final-visual-report: página de execução condicional, plano personalizado, meta exibida na unidade do produtor e assinatura validados");
