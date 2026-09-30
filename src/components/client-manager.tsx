@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 type Client = {
@@ -135,7 +136,7 @@ export function ClientManager() {
     {error && <div className="import-message danger"><Icon name="warning" size={16}/><div><strong>Não foi possível concluir</strong><small>{error}</small></div></div>}
 
     <div className="data-card">
-      {loading ? <div className="empty-state"><strong>Carregando carteira…</strong><small>Consultando dados isolados da sua empresa.</small></div> : filtered.length === 0 ? <div className="empty-state"><Icon name="users"/><strong>{clients.length ? "Nenhum cliente encontrado" : "Sua carteira começa aqui"}</strong><small>{clients.length ? "Ajuste a busca para localizar outro cadastro." : "Cadastre o primeiro cliente para depois criar propriedades e talhões."}</small></div> : <table className="data-table"><thead><tr><th>Cliente</th><th>Contato</th><th>Propriedades</th><th>Área acompanhada</th><th>Análises</th><th></th></tr></thead><tbody>{filtered.map((client)=><tr key={client.id}><td><strong>{client.name}</strong><small>{client.taxId || "Documento não informado"}</small></td><td>{client.email || client.phone || "—"}</td><td>{client.properties}</td><td>{client.hectares.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</td><td>{client.analyses}</td><td className="client-row-actions"><button type="button" className="icon-button" aria-label={`Editar ${client.name}`} onClick={()=>startEdit(client)}><Icon name="edit" size={15}/></button><button type="button" className="icon-button" aria-label={`Arquivar ${client.name}`} disabled={deletingId === client.id} onClick={()=>void remove(client)}><Icon name={deletingId === client.id ? "clock" : "trash"} size={15}/></button></td></tr>)}</tbody></table>}
+      {loading ? <div className="empty-state"><strong>Carregando carteira…</strong><small>Consultando dados isolados da sua empresa.</small></div> : filtered.length === 0 ? <div className="empty-state"><Icon name="users"/><strong>{clients.length ? "Nenhum cliente encontrado" : "Sua carteira começa aqui"}</strong><small>{clients.length ? "Ajuste a busca para localizar outro cadastro." : "Cadastre o primeiro cliente para depois criar propriedades e talhões."}</small></div> : <table className="data-table"><thead><tr><th>Cliente</th><th>Contato</th><th>Propriedades</th><th>Área acompanhada</th><th>Análises</th><th></th></tr></thead><tbody>{filtered.map((client)=><tr key={client.id}><td><Link href={`/clientes/${client.id}`}><strong>{client.name}</strong></Link><small>{client.taxId || "Documento não informado"}</small></td><td>{client.email || client.phone || "—"}</td><td>{client.properties}</td><td>{client.hectares.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</td><td>{client.analyses}</td><td className="client-row-actions"><button type="button" className="icon-button" aria-label={`Editar ${client.name}`} onClick={()=>startEdit(client)}><Icon name="edit" size={15}/></button><button type="button" className="icon-button" aria-label={`Arquivar ${client.name}`} disabled={deletingId === client.id} onClick={()=>void remove(client)}><Icon name={deletingId === client.id ? "clock" : "trash"} size={15}/></button></td></tr>)}</tbody></table>}
     </div>
   </>;
 }
