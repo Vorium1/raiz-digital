@@ -50,7 +50,7 @@ export async function inviteTeamMember(input: {
       action: "TEAM_MEMBER_INVITED",
       entityType: "user",
       entityId: targetUserId,
-      metadata: { email: input.email, role: input.role, newAccount: createdNewUser },
+      metadata: { role: input.role },
     });
 
     return { userId: targetUserId, createdNewUser };
