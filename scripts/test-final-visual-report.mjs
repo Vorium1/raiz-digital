@@ -20,6 +20,8 @@ assert.match(component, /EXECUÇÃO DA SAFRA/);
 assert.match(component, /O PLANO PARA O/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
+assert.match(css, /html body\{padding-bottom:0!important\}/);
+assert.match(css, /simple-shell \.main-content\{min-height:0!important;padding-bottom:0!important\}/);
 assert.match(css, /height:296mm/);
 assert.match(css, /width:210mm/);
 assert.match(css, /page-break-before:always/);

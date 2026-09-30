@@ -233,6 +233,13 @@
 }
 @media print{
   @page{size:A4 portrait;margin:0}
+  /* A largura física do A4 ativa os breakpoints mobile de 820px durante
+     impressão. Zerar esses paddings evita que o body/main-content acrescente
+     ~78–96px depois da quinta página e gere uma sexta folha vazia. */
+  html body{padding-bottom:0!important}
+  .simple-shell{min-height:0!important}
+  .simple-shell .main-content{min-height:0!important;padding-bottom:0!important}
+  .simple-result-page{padding:0!important}
   .concept-report{display:block;max-width:none}
   .concept-report-page{
     background:#fbfdfb!important;
