@@ -703,6 +703,45 @@ export function FinalVisualReport(props: Props) {
     tone: "apply",
   }));
 
+  const representedPlanInputs = new Set(
+    operationalSummary.rows.map((row) => row.inputType.trim().toUpperCase()),
+  );
+  for (const spatial of spatialNutrientPlan?.nutrients ?? []) {
+    const inputType = spatial.nutrient.trim().toUpperCase();
+    if (representedPlanInputs.has(inputType)) continue;
+
+    if (spatial.status === "POINT_SPECIFIC") {
+      const range = spatial.rangeKgPerHa;
+      const purchase = spatial.purchaseEquivalent;
+      producerPlanRows.push({
+        key: "spatial-" + inputType,
+        label: recommendationShortLabel(inputType),
+        dose: range
+          ? numberPt(range.min) + "–" + numberPt(range.max) + " kg/ha por ponto/zona"
+          : "Dose por ponto/zona",
+        detail: purchase
+          ? "Executar espacialmente. Equivalência apenas para compra/logística: "
+            + numberPt(purchase.kgPerHaEquivalent) + " kg/ha equivalentes · "
+            + numberPt(purchase.totalKg) + " kg na área. Não usar essa equivalência como taxa uniforme."
+          : "Executar conforme a decisão por ponto/zona; não converter a variação em uma taxa uniforme.",
+        tone: "apply",
+      });
+      representedPlanInputs.add(inputType);
+      continue;
+    }
+
+    if (spatial.status === "UNIFORM" && (spatial.uniformDoseKgPerHa ?? 0) > 0) {
+      producerPlanRows.push({
+        key: "spatial-uniform-" + inputType,
+        label: recommendationShortLabel(inputType),
+        dose: numberPt(spatial.uniformDoseKgPerHa!) + " kg/ha",
+        detail: "Dose uniforme congelada no plano espacial da decisão.",
+        tone: "apply",
+      });
+      representedPlanInputs.add(inputType);
+    }
+  }
+
   const hasLimePlanRow = operationalSummary.rows.some(
     (row) => row.quantityKind === "LIME_PRNT100_EQUIVALENT" || /CALCAR|LIME/i.test(row.inputType),
   );
@@ -784,11 +823,15 @@ export function FinalVisualReport(props: Props) {
     .map((row) => row.label + ": " + row.dose)
     .join("; ");
 
+  const hasSpatialProducerPlan = producerPlanRows.some((row) => row.key.startsWith("spatial-"));
   const plainProducerOpinion = producerPlanRows.length
     ? "Para " + (props.context.fieldName || "esta área") + ", nesta safra, o plano é " + producerPlanText + ". "
       + (commercial?.rows.length
         ? "Os produtos comerciais congelados devem ser executados conforme o cenário aprovado."
         : "As doses de nutrientes são necessidades agronômicas; a fonte comercial deve respeitar o teor do produto escolhido.")
+      + (hasSpatialProducerPlan
+        ? " Taxas por ponto/zona devem ser executadas espacialmente; eventual equivalência de compra não é taxa uniforme de aplicação."
+        : "")
     : "Para " + (props.context.fieldName || "esta área") + ", nenhuma aplicação geral foi indicada para esta safra.";
 
   /* legacy branch kept out of rendering: */
