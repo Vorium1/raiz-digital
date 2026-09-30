@@ -726,6 +726,10 @@ export function FinalVisualReport(props: Props) {
         : "Esta publicação não contém uma decisão de calagem. A ausência de dose não significa que o talhão não precise de calcário.",
     };
   })();
+  const showProducerLimingDecision =
+    limingFeature.tone === "apply"
+    || limingFeature.tone === "spatial"
+    || limingFeature.tone === "none";
   const quietProfileLabels = quietNutrientLabels;
 
   const producerPlanRows: Array<{
@@ -853,23 +857,6 @@ export function FinalVisualReport(props: Props) {
       detail: scenarioDisplay
         ? "Cenários equivalentes PRNT 100% calculados com a camada integrada 0–20. Definir o protocolo/pH-alvo aplicável antes de converter para o produto comercial."
         : "Necessidade equivalente da camada integrada 0–20 cm pelo SMP. O método de aplicação do manejo atual permanece identificado separadamente.",
-      tone: "pending",
-    });
-  } else if (
-    !hasLimePlanRow
-    && (!limingDecision || limingDecision.status === "BLOCKED" || limingDecision.status === "NOT_APPLICABLE")
-  ) {
-    producerPlanRows.push({
-      key: "lime-unresolved",
-      label: "Calcário",
-      dose: limingDecision?.status === "BLOCKED"
-        ? "Decisão de calagem não concluída"
-        : "Decisão não registrada nesta versão",
-      detail: limingMissingInformation
-        ? limingMissingInformation + " A ausência de dose não significa ausência de necessidade."
-        : limingDecision?.status === "BLOCKED"
-          ? "A ausência de dose não significa ausência de necessidade; esta decisão precisa ser concluída no fluxo técnico."
-          : "Esta publicação não possui uma decisão de calagem congelada. A ausência de dose não significa ausência de necessidade.",
       tone: "pending",
     });
   }
@@ -1054,25 +1041,27 @@ export function FinalVisualReport(props: Props) {
 
         <div className="concept-diagnostic-intro">
           <strong>NECESSIDADES PARA {cropSeasonLabel.toUpperCase()}</strong>
-          <span>O foco desta página é mostrar o que precisa ser feito agora. Nutrientes sem ação geral ficam resumidos no final; correção de acidez aparece sempre em bloco próprio.</span>
+          <span>O foco desta página é mostrar o que precisa ser feito agora. Nutrientes sem ação geral ficam resumidos no final; a correção de acidez só aparece quando houver decisão fechada para esta safra.</span>
         </div>
 
         <section className="concept-soil-needs-summary">
           <article>
             <span>CULTURA / SAFRA</span>
             <strong>{cropSeasonLabel}</strong>
-            <small>{hasYieldGoalLabel ? "Meta produtiva · " + yieldGoalLabel : "Meta produtiva não registrada nesta versão"}</small>
+            {hasYieldGoalLabel && <small>{"Meta produtiva · " + yieldGoalLabel}</small>}
           </article>
           <article>
             <span>AÇÕES DEFINIDAS</span>
             <strong>{fertilityActionRows.length}</strong>
             <small>{fertilityActionRows.length === 1 ? "necessidade com ação nesta safra" : "necessidades com ação nesta safra"}</small>
           </article>
+          {phRange && (
           <article>
             <span>ACIDEZ DO SOLO</span>
-            <strong>{phRange ? "pH " + phRangeLabel : "Sem faixa de pH"}</strong>
-            <small>{smpRange ? "Índice SMP · " + smpRangeLabel : "SMP não disponível nesta versão"}</small>
+            <strong>{"pH " + phRangeLabel}</strong>
+            {smpRange && <small>{"Índice SMP · " + smpRangeLabel}</small>}
           </article>
+          )}
         </section>
 
         <section className={"concept-needs-card-grid" + (fertilityActionRows.length > 4 ? " is-dense" : "")}>
@@ -1091,6 +1080,7 @@ export function FinalVisualReport(props: Props) {
           )}
         </section>
 
+        {showProducerLimingDecision && (
         <section className={"concept-liming-feature liming-" + limingFeature.tone}>
           <div className="concept-liming-copy">
             <span>CORREÇÃO DA ACIDEZ · CALAGEM</span>
@@ -1103,6 +1093,7 @@ export function FinalVisualReport(props: Props) {
             <small>{acidityContextLabel}</small>
           </div>
         </section>
+        )}
 
         {quietProfileLabels.length > 0 && (
           <div className="concept-profile-legend concept-profile-legend-roomy">
@@ -1114,7 +1105,7 @@ export function FinalVisualReport(props: Props) {
         <div className="concept-profile-explainer concept-profile-explainer-roomy">
           <span><b>CORRIGIR</b> = há correção do solo ou nutriente a fazer.</span>
           <span><b>REPOR PARA A SAFRA</b> = o teor pode estar adequado, mas a cultura exige reposição/manutenção.</span>
-          <span><b>CALAGEM</b> = só recebe dose quando a decisão estiver tecnicamente fechada e congelada no relatório.</span>
+          {showProducerLimingDecision && <span><b>CALAGEM</b> = decisão fechada e congelada para esta safra.</span>}
         </div>
 
         <div className="concept-scope-strip concept-scope-strip-roomy"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
