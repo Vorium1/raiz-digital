@@ -312,3 +312,53 @@ export function convertLimingRequirementToCommercialProduct(input: {
     totalCost,
   };
 }
+
+
+/**
+ * Conversões químicas explícitas para exibição e conferência.
+ * Não são recomendações agronômicas: transformam massa equivalente
+ * entre elemento e óxido usando massas molares padrão.
+ */
+export type NutrientBasis = "P" | "P2O5" | "K" | "K2O";
+
+const ATOMIC_MASS = {
+  P: 30.973761998,
+  K: 39.0983,
+  O: 15.999,
+} as const;
+
+const P2O5_MOLAR_MASS = (2 * ATOMIC_MASS.P) + (5 * ATOMIC_MASS.O);
+const K2O_MOLAR_MASS = (2 * ATOMIC_MASS.K) + ATOMIC_MASS.O;
+
+export const NUTRIENT_BASIS_FACTORS = {
+  P_TO_P2O5: P2O5_MOLAR_MASS / (2 * ATOMIC_MASS.P),
+  P2O5_TO_P: (2 * ATOMIC_MASS.P) / P2O5_MOLAR_MASS,
+  K_TO_K2O: K2O_MOLAR_MASS / (2 * ATOMIC_MASS.K),
+  K2O_TO_K: (2 * ATOMIC_MASS.K) / K2O_MOLAR_MASS,
+} as const;
+
+export function convertNutrientBasis(valueKgPerHa: number, from: NutrientBasis, to: NutrientBasis) {
+  finiteNonNegative(valueKgPerHa, "Quantidade a converter");
+  if (from === to) return round(valueKgPerHa, 6);
+  if (from === "P" && to === "P2O5") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.P_TO_P2O5, 6);
+  if (from === "P2O5" && to === "P") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.P2O5_TO_P, 6);
+  if (from === "K" && to === "K2O") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.K_TO_K2O, 6);
+  if (from === "K2O" && to === "K") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.K2O_TO_K, 6);
+  throw new Error(`Conversão direta ${from} → ${to} não é suportada. Escolha bases do mesmo nutriente.`);
+}
+
+/** Operação inversa da correção por PRNT. */
+export function convertCommercialLimeDoseToPrnt100(input: {
+  productDoseTonPerHa: number;
+  productPrntPercent: number;
+}) {
+  finiteNonNegative(input.productDoseTonPerHa, "Dose física do calcário");
+  if (!Number.isFinite(input.productPrntPercent) || input.productPrntPercent <= 0) {
+    throw new Error("PRNT do produto deve ser um número finito maior que zero.");
+  }
+  return {
+    productDoseTonPerHa: round(input.productDoseTonPerHa, 4),
+    productPrntPercent: round(input.productPrntPercent, 4),
+    equivalentPrnt100TonPerHa: round(input.productDoseTonPerHa * (input.productPrntPercent / 100), 4),
+  };
+}
