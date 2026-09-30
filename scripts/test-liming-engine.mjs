@@ -19,7 +19,9 @@ import {
   detectLimingSamplingProfile,
   selectLimingMethod,
   computeIntegrated020SmpRequirement,
+  buildIntegrated020LimingReferenceScenarios,
   evaluateIntegrated020LimingLayerRequirement,
+  evaluateIntegrated020LimingLayerRequirementForTarget,
   scale020RequirementTo030ForPerennialEstablishment,
 } from "../src/domain/liming-method-selector.ts";
 import { validatePrescriptionLimingRecommendation } from "../src/domain/prescription-liming-validation.ts";
@@ -611,5 +613,44 @@ const integrated020NoAverage = evaluateIntegrated020LimingLayerRequirement({
 });
 assert.equal(integrated020NoAverage.operationalGeneralDoseTonHaPrnt100, null);
 assert.ok(integrated020NoAverage.warnings.includes("GENERAL_DOSE_REQUIRES_EQUAL_AREA_GRID"));
+
+
+// 27f. Regressão da Área 01 (homologação, leitura 2026-09-30): 8 amostras integradas 0-20.
+// O mesmo laudo gera números diferentes quando muda o pH-alvo; por isso método + alvo
+// fazem parte do resultado e nunca são omitidos.
+const cabedaArea01Smp020 = [5.6, 5.5, 5.8, 5.8, 5.8, 5.8, 5.7, 5.7]
+  .map((value, index) => ({
+    sampleCode: `CABEDA-${index + 1}`,
+    parameterCode: "SMP",
+    value,
+    depthFromCm: 0,
+    depthToCm: 20,
+  }));
+const cabeda55 = evaluateIntegrated020LimingLayerRequirementForTarget({
+  targetPh: "5.5",
+  targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_2_REFERENCE_SCENARIO",
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabeda55.doseRangeTonHaPrnt100, { min: 2.3, max: 3.7 });
+assert.equal(cabeda55.operationalGeneralDoseTonHaPrnt100, 2.71);
+
+const cabeda60 = evaluateIntegrated020LimingLayerRequirementForTarget({
+  targetPh: "6.0",
+  targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabeda60.doseRangeTonHaPrnt100, { min: 4.2, max: 6.1 });
+assert.equal(cabeda60.operationalGeneralDoseTonHaPrnt100, 4.74);
+
+const cabedaScenarios = buildIntegrated020LimingReferenceScenarios({
+  results: cabedaArea01Smp020,
+  allowEqualWeightOperationalAverage: true,
+});
+assert.deepEqual(cabedaScenarios.map((item) => item.targetPh), ["5.5", "6.0", "6.5"]);
+assert.equal(cabedaScenarios[0].operationalGeneralDoseTonHaPrnt100, 2.71);
+assert.equal(cabedaScenarios[1].operationalGeneralDoseTonHaPrnt100, 4.74);
+assert.equal(cabedaScenarios[2].doseRangeTonHaPrnt100?.max, 8.6);
 
 console.log("liming-engine: base CQFS + soja RS/SC 2025 validadas; C1/C2 resolvidos e C3 tratado como lacuna de domínio fail-closed");

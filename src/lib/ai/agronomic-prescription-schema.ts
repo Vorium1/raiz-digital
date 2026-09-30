@@ -58,6 +58,7 @@ export type AgronomicPrescription = {
   limingDecision?: SoybeanLimingUniformDecision | null;
   limingMethodSelection?: LimingMethodSelection | null;
   limingLayerRequirement?: Integrated020LimingLayerRequirement | null;
+  limingReferenceScenarios?: Integrated020LimingLayerRequirement[];
   agroclimateSnapshot?: ReportAgroclimateSnapshot | null;
 };
 

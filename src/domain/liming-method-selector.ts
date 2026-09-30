@@ -273,31 +273,13 @@ export function cqfs2016ReferencePhForCrop(cropCode: string | null | undefined):
  * ponto por ponto, usando SMP. Não divide artificialmente a amostra e não
  * converte este resultado em regra moderna de aplicação superficial.
  */
-export function evaluateIntegrated020LimingLayerRequirement(input: {
-  cropCode: string | null;
+export function evaluateIntegrated020LimingLayerRequirementForTarget(input: {
+  targetPh: LimingTargetPh;
+  targetPhBasis: string;
   results: Array<ResultDepth & { sampleCode: string; value: number }>;
   allowEqualWeightOperationalAverage?: boolean;
 }): Integrated020LimingLayerRequirement {
-  const targetPh = cqfs2016ReferencePhForCrop(input.cropCode);
-  if (!targetPh) {
-    return {
-      methodId: LIMING_METHOD_IDS.cqfsRsSc2016Integrated020,
-      samplingProfile: "INTEGRATED_0_20",
-      scope: "LAYER_REQUIREMENT",
-      targetPh: "6.0",
-      targetPhBasis: "UNRESOLVED_FOR_CROP",
-      status: "BLOCKED",
-      sampleRequirements: [],
-      uniformDoseTonHaPrnt100: null,
-      operationalGeneralDoseTonHaPrnt100: null,
-      generalDoseBasis: null,
-      doseRangeTonHaPrnt100: null,
-      blockers: ["CQFS_2016_REFERENCE_PH_NOT_MAPPED_FOR_CROP"],
-      warnings: [],
-      source: CQFS_2016_SOURCE,
-    };
-  }
-
+  const targetPh = input.targetPh;
   const grouped = new Map<string, Array<ResultDepth & { sampleCode: string; value: number }>>();
   for (const row of input.results) {
     if (!row.sampleCode?.trim()) continue;
@@ -343,7 +325,7 @@ export function evaluateIntegrated020LimingLayerRequirement(input: {
       samplingProfile: "INTEGRATED_0_20",
       scope: "LAYER_REQUIREMENT",
       targetPh,
-      targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+      targetPhBasis: input.targetPhBasis,
       status: "BLOCKED",
       sampleRequirements,
       uniformDoseTonHaPrnt100: null,
@@ -369,7 +351,7 @@ export function evaluateIntegrated020LimingLayerRequirement(input: {
     samplingProfile: "INTEGRATED_0_20",
     scope: "LAYER_REQUIREMENT",
     targetPh,
-    targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+    targetPhBasis: input.targetPhBasis,
     status: uniform ? "UNIFORM" : "SPATIAL",
     sampleRequirements,
     uniformDoseTonHaPrnt100: uniform ? doses[0] : null,
@@ -385,4 +367,50 @@ export function evaluateIntegrated020LimingLayerRequirement(input: {
         ],
     source: CQFS_2016_SOURCE,
   };
+}
+
+export function evaluateIntegrated020LimingLayerRequirement(input: {
+  cropCode: string | null;
+  results: Array<ResultDepth & { sampleCode: string; value: number }>;
+  allowEqualWeightOperationalAverage?: boolean;
+}): Integrated020LimingLayerRequirement {
+  const targetPh = cqfs2016ReferencePhForCrop(input.cropCode);
+  if (!targetPh) {
+    return {
+      methodId: LIMING_METHOD_IDS.cqfsRsSc2016Integrated020,
+      samplingProfile: "INTEGRATED_0_20",
+      scope: "LAYER_REQUIREMENT",
+      targetPh: "6.0",
+      targetPhBasis: "UNRESOLVED_FOR_CROP",
+      status: "BLOCKED",
+      sampleRequirements: [],
+      uniformDoseTonHaPrnt100: null,
+      operationalGeneralDoseTonHaPrnt100: null,
+      generalDoseBasis: null,
+      doseRangeTonHaPrnt100: null,
+      blockers: ["CQFS_2016_REFERENCE_PH_NOT_MAPPED_FOR_CROP"],
+      warnings: [],
+      source: CQFS_2016_SOURCE,
+    };
+  }
+  return evaluateIntegrated020LimingLayerRequirementForTarget({
+    targetPh,
+    targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_1_SOYBEAN",
+    results: input.results,
+    allowEqualWeightOperationalAverage: input.allowEqualWeightOperationalAverage,
+  });
+}
+
+export function buildIntegrated020LimingReferenceScenarios(input: {
+  results: Array<ResultDepth & { sampleCode: string; value: number }>;
+  allowEqualWeightOperationalAverage?: boolean;
+}) {
+  return (["5.5", "6.0", "6.5"] as const).map((targetPh) =>
+    evaluateIntegrated020LimingLayerRequirementForTarget({
+      targetPh,
+      targetPhBasis: "CQFS_RS_SC_2016_TABLE_5_2_REFERENCE_SCENARIO",
+      results: input.results,
+      allowEqualWeightOperationalAverage: input.allowEqualWeightOperationalAverage,
+    }),
+  );
 }

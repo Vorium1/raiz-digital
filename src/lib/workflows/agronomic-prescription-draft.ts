@@ -162,6 +162,7 @@ export async function prepareAgronomicPrescriptionDraft(input: {
       limingDecision: evidence.deterministicLimingDecision ?? null,
       limingMethodSelection: evidence.limingMethodSelection,
       limingLayerRequirement: evidence.integrated020LimingLayerRequirement,
+      limingReferenceScenarios: evidence.integrated020LimingReferenceScenarios,
       agroclimateSnapshot: collectedAgroclimate?.reportSnapshot ?? null,
     },
   };

@@ -12,6 +12,7 @@ import { computeSoybeanSulfurRecommendation, type SoybeanSulfurUniformDecision }
 import { evaluateSoybeanLimingFromEvidence, type SoybeanLimingUniformDecision } from "@/domain/soybean-liming-evidence";
 import {
   LIMING_METHOD_IDS,
+  buildIntegrated020LimingReferenceScenarios,
   evaluateIntegrated020LimingLayerRequirement,
   selectLimingMethod,
   type Integrated020LimingLayerRequirement,
@@ -86,6 +87,7 @@ export type AgronomicPrescriptionEvidencePackage = {
   limingManagementEvidence: ReturnType<typeof evaluateStoredLimingManagementContext>;
   limingMethodSelection: LimingMethodSelection;
   integrated020LimingLayerRequirement: Integrated020LimingLayerRequirement | null;
+  integrated020LimingReferenceScenarios: Integrated020LimingLayerRequirement[];
   deterministicLimingDecision?: SoybeanLimingUniformDecision;
   soilMicrobiologyEvidence: ReturnType<typeof evaluateSoilMicrobiologyEvidence>;
   biologicalSoilEvidence: ReturnType<typeof evaluateBiologicalSoilEvidence>;
@@ -753,6 +755,13 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
             allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
           })
         : null;
+    const integrated020LimingReferenceScenarios =
+      limingMethodSelection.samplingProfile === "INTEGRATED_0_20"
+        ? buildIntegrated020LimingReferenceScenarios({
+            results: resultsResult.rows,
+            allowEqualWeightOperationalAverage: equalWeightSamplingSupport,
+          })
+        : [];
 
     const deterministicLimingDecision = evaluateSoybeanLimingFromEvidence({
       cropCode: base.cropProfileCode,
@@ -860,6 +869,7 @@ export async function buildAgronomicPrescriptionEvidencePackage(tenantId: string
       limingManagementEvidence: storedLimingContext,
       limingMethodSelection,
       integrated020LimingLayerRequirement,
+      integrated020LimingReferenceScenarios,
       deterministicLimingDecision,
       soilMicrobiologyEvidence,
       biologicalSoilEvidence,
