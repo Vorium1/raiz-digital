@@ -362,6 +362,12 @@ assert.match(results, /A emissão oficial fica disponível para o perfil respons
 assert.match(results, /const canPublishOfficial = PUBLISH_ROLES\.has\(session\.role\)/);
 assert.match(results, /delivery\.prescriptionCurrent === true[\s\S]*?delivery\.prescriptionStatus === "APPROVED"/);
 assert.match(results, /CONCLUÍDOS COM LIMITES/);
+assert.match(results, /FECHAMENTO TÉCNICO/);
+assert.match(results, /Antes de emitir o laudo/);
+assert.match(results, /analysis\.officialResultReady === true/);
+assert.match(results, /analysis\.officialResultReady === false/);
+assert.match(resultsOverviewRepository, /evaluateOfficialResultCompleteness/);
+assert.match(resultsOverviewRepository, /prescription\.response_payload AS "prescriptionResponsePayload"/);
 assert.match(resultsPreparation, /interpret\?draft=local/);
 assert.match(resultsPreparation, /router\.refresh\(\)/);
 assert.match(resultsPreparation, /versão oficial antiga permanece congelada/);

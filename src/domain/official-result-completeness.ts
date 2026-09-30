@@ -60,6 +60,7 @@ export function hasCurrentOfficialResultContract(responsePayload: unknown) {
   const prescription = prescriptionFromResponse(responsePayload);
   if (!prescription) return false;
   return Object.prototype.hasOwnProperty.call(prescription, "limingDecision")
+    && Boolean(asRecord(prescription.limingMethodSelection))
     && Boolean(asRecord(prescription.spatialNutrientPlan))
     && Array.isArray(prescription.soilComplementActions);
 }
@@ -115,10 +116,18 @@ export function evaluateOfficialResultCompleteness(responsePayload: unknown): Of
     });
   } else if (liming.status === "BLOCKED") {
     const codes = Array.isArray(liming.blockers) ? liming.blockers.filter((item): item is string => typeof item === "string") : [];
+    const layerRequirement = asRecord(prescription.limingLayerRequirement);
+    const methodSelection = asRecord(prescription.limingMethodSelection);
+    const hasIntegrated020Reference =
+      methodSelection?.samplingProfile === "INTEGRATED_0_20"
+      && layerRequirement
+      && layerRequirement.status !== "BLOCKED";
     pushUnique(blockers, {
-      code: "LIMING_DECISION_BLOCKED",
+      code: hasIntegrated020Reference ? "LIMING_APPLICATION_METHOD_NOT_CLOSED" : "LIMING_DECISION_BLOCKED",
       category: "LIMING",
-      message: limingMessage(codes),
+      message: hasIntegrated020Reference
+        ? "Calagem: o laudo 0–20 já sustenta cálculo SMP da camada, mas o método de aplicação escolhido para esta condição ainda precisa estar fechado antes da emissão oficial."
+        : limingMessage(codes),
     });
   } else if (!Object.prototype.hasOwnProperty.call(prescription, "limingDecision")) {
     const missing = Array.isArray(prescription.missingInformation)

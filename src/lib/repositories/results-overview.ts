@@ -1,4 +1,5 @@
 import { evaluateAnalysisEvidenceFreshness } from "@/domain/analysis-evidence-freshness";
+import { evaluateOfficialResultCompleteness, officialResultCompletenessReason } from "@/domain/official-result-completeness";
 import type { DecisionDeliveryStatus } from "@/lib/repositories/decision-delivery-status";
 import { withTenant } from "@/lib/db";
 
@@ -30,6 +31,7 @@ type ResultsAnalysisRow = {
   prescriptionStatus: DecisionDeliveryStatus["prescriptionStatus"];
   prescriptionCreatedAt: string | null;
   prescriptionInterpretationId: string | null;
+  prescriptionResponsePayload: unknown;
   reportCount: number;
   latestReportAt: string | null;
   latestDecisionReportCount: number;
@@ -48,11 +50,15 @@ export type ResultsOverviewAnalysis = Omit<ResultsAnalysisRow,
   | "prescriptionStatus"
   | "prescriptionCreatedAt"
   | "prescriptionInterpretationId"
+  | "prescriptionResponsePayload"
   | "reportCount"
   | "latestReportAt"
   | "latestDecisionReportCount"
   | "latestDecisionReportAt"
->;
+> & {
+  officialResultReady: boolean;
+  officialResultReason: string | null;
+};
 
 export type ResultsOverviewReport = {
   id: string;
@@ -141,6 +147,7 @@ export async function getResultsOverview(tenantId: string, userId?: string): Pro
                     prescription.status::text AS "prescriptionStatus",
                     prescription.created_at::text AS "prescriptionCreatedAt",
                     prescription.interpretation_id::text AS "prescriptionInterpretationId",
+                    prescription.response_payload AS "prescriptionResponsePayload",
                     coalesce(report_stats.report_count,0)::int AS "reportCount",
                     report_stats.latest_report_at::text AS "latestReportAt",
                     coalesce(current_report_stats.report_count,0)::int AS "latestDecisionReportCount",
@@ -169,7 +176,7 @@ export async function getResultsOverview(tenantId: string, userId?: string): Pro
                WHERE cpp.crop_profile_id=cp.id
              ) rule_state ON cp.id IS NOT NULL
              LEFT JOIN LATERAL (
-               SELECT ag.id, ag.status, ag.created_at, ag.interpretation_id
+               SELECT ag.id, ag.status, ag.created_at, ag.interpretation_id, ag.response_payload
                FROM ai_generations ag
                WHERE ag.tenant_id=a.tenant_id
                  AND ag.analysis_id=a.id
@@ -237,7 +244,9 @@ export async function getResultsOverview(tenantId: string, userId?: string): Pro
       };
     });
 
-    const analyses: ResultsOverviewAnalysis[] = sourceAnalyses.map((analysis) => ({
+    const analyses: ResultsOverviewAnalysis[] = sourceAnalyses.map((analysis) => {
+      const completeness = evaluateOfficialResultCompleteness(analysis.prescriptionResponsePayload);
+      return {
       id: analysis.id,
       code: analysis.code,
       status: analysis.status,
@@ -254,7 +263,10 @@ export async function getResultsOverview(tenantId: string, userId?: string): Pro
       nextCrop: analysis.nextCrop,
       latestInterpretationStatus: analysis.latestInterpretationStatus,
       notInterpretableReason: analysis.notInterpretableReason,
-    }));
+      officialResultReady: completeness.ready,
+      officialResultReason: officialResultCompletenessReason(completeness),
+      };
+    });
 
     return {
       published: row.published ?? [],

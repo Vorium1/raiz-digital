@@ -1156,6 +1156,51 @@ export function FinalVisualReport(props: Props) {
             </div>
           </section>
 
+          {(limingMethodSelection || limingLayerRequirement || limingReferenceScenarios.length > 0) && (
+            <section className="concept-technical-block">
+              <h3>Metodologia de calagem</h3>
+              <div className="concept-technical-list">
+                <article>
+                  <div>
+                    <strong>Perfil de amostragem</strong>
+                    <b>{limingMethodSelection?.samplingProfile || limingLayerRequirement?.samplingProfile || "Não registrado"}</b>
+                  </div>
+                  <p>
+                    Método selecionado: {limingMethodSelection?.selectedMethodId || limingLayerRequirement?.methodId || "sem método fechado"}.
+                    {limingMethodSelection?.scope ? " Escopo: " + limingMethodSelection.scope + "." : ""}
+                  </p>
+                  <small>
+                    {limingMethodSelection?.source
+                      ? limingMethodSelection.source.title + " · " + limingMethodSelection.source.year + " · " + limingMethodSelection.source.locator
+                      : limingLayerRequirement?.source
+                        ? limingLayerRequirement.source.title + " · " + limingLayerRequirement.source.year + " · " + limingLayerRequirement.source.locator
+                        : "Fonte metodológica não congelada nesta versão."}
+                  </small>
+                </article>
+                {limingReferenceScenarios
+                  .filter((item) => item.status !== "BLOCKED")
+                  .map((item) => {
+                    const general = item.operationalGeneralDoseTonHaPrnt100 ?? item.uniformDoseTonHaPrnt100;
+                    const range = item.doseRangeTonHaPrnt100;
+                    return (
+                      <article key={"liming-scenario-" + item.targetPh}>
+                        <div>
+                          <strong>{"SMP · alvo pH " + item.targetPh}</strong>
+                          <b>{general != null
+                            ? numberPt(general) + " t/ha PRNT 100%"
+                            : range
+                              ? numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%"
+                              : "Por ponto"}</b>
+                        </div>
+                        <p>{range ? "Faixa entre pontos: " + numberPt(range.min) + "–" + numberPt(range.max) + " t/ha PRNT 100%." : "Sem faixa espacial registrada."}</p>
+                        <small>Cenário técnico da camada recebida; o pH-alvo e o método permanecem explícitos para auditoria.</small>
+                      </article>
+                    );
+                  })}
+              </div>
+            </section>
+          )}
+
           <section className="concept-technical-block">
             <h3>Recomendações completas</h3>
             <div className="concept-technical-list">

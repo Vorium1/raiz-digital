@@ -105,6 +105,7 @@ assert.match(incompletePrescription.reason, /Calagem pendente/);
 const missingLiming = evaluateOfficialResultCompleteness({
   prescription: {
     limingDecision: null,
+    limingMethodSelection: { samplingProfile: "INTEGRATED_0_20" },
     spatialNutrientPlan: { nutrients: [] },
     soilComplementActions: [],
     recommendations: [],
@@ -116,6 +117,7 @@ assert.ok(missingLiming.blockers.some((item) => item.code === "LIMING_DECISION_M
 const unresolvedBoron = evaluateOfficialResultCompleteness({
   prescription: {
     limingDecision: { status: "UNIFORM_NO_APPLY" },
+    limingMethodSelection: { samplingProfile: "SPLIT_0_10_10_20" },
     spatialNutrientPlan: { nutrients: [] },
     soilComplementActions: [{
       parameterCode: "B",
@@ -132,6 +134,7 @@ assert.ok(unresolvedBoron.blockers.some((item) => item.code === "SOIL_COMPLEMENT
 const resolvedBoron = evaluateOfficialResultCompleteness({
   prescription: {
     limingDecision: { status: "UNIFORM_NO_APPLY" },
+    limingMethodSelection: { samplingProfile: "SPLIT_0_10_10_20" },
     spatialNutrientPlan: { nutrients: [] },
     soilComplementActions: [{
       parameterCode: "B",
@@ -143,5 +146,19 @@ const resolvedBoron = evaluateOfficialResultCompleteness({
   },
 });
 assert.equal(resolvedBoron.ready, true);
+
+const integrated020NotClosed = evaluateOfficialResultCompleteness({
+  prescription: {
+    limingDecision: { status: "BLOCKED", blockers: ["NO_TILL_CONSOLIDATED_10_20_CONDITION_REQUIRED"] },
+    limingMethodSelection: { samplingProfile: "INTEGRATED_0_20", selectedMethodId: "CQFS-RS-SC-2016-INTEGRATED-0-20" },
+    limingLayerRequirement: { status: "SPATIAL" },
+    spatialNutrientPlan: { nutrients: [] },
+    soilComplementActions: [],
+    recommendations: [],
+  },
+});
+assert.equal(integrated020NotClosed.ready, false);
+assert.ok(integrated020NotClosed.blockers.some((item) => item.code === "LIMING_APPLICATION_METHOD_NOT_CLOSED"));
+assert.match(integrated020NotClosed.blockers[0].message, /laudo 0–20 já sustenta cálculo SMP/i);
 
 console.log("report publication gate: interpretação/regra corrente + fonte + conclusão técnica aprovada enforced");
