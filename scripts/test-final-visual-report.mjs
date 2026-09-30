@@ -24,6 +24,10 @@ assert.match(component, /PLANO PARA/);
 assert.match(component, /props\.context\.clientName/);
 assert.match(component, /Talhão /);
 assert.match(component, /producerPlanSectionNumber/);
+assert.match(component, /producerBrandLabel/);
+assert.match(component, /\{producerBrandLabel\} • DO SOLO À DECISÃO/);
+assert.match(component, /\{producerBrandLabel\} • RELATÓRIO OFICIAL/);
+assert.match(component, /\{producerBrandLabel\} • PLANO AO PRODUTOR/);
 
 assert.match(css, /@page\{size:A4 portrait;margin:0\}/);
 assert.match(css, /html body\{padding-bottom:0!important\}/);

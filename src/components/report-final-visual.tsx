@@ -486,6 +486,9 @@ export function FinalVisualReport(props: Props) {
   const producerPageCount = hasExecutionPageContent ? 5 : 4;
   const producerFinalPageNumber = producerPageCount;
   const producerPlanSectionNumber = hasExecutionPageContent ? "04" : "03";
+  const producerBrandLabel = props.branding.logoDataUrl
+    ? (props.branding.displayName || "EMPRESA PARCEIRA").toLocaleUpperCase("pt-BR")
+    : "RAIZ DIGITAL";
 
   const mapCanUseNdvi = Boolean(
     props.ndviSnapshot
@@ -947,7 +950,7 @@ export function FinalVisualReport(props: Props) {
           </div>
         </div>
 
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • DO SOLO À DECISÃO</span><b>1 / {producerPageCount}</b></footer>
+        <footer className="concept-page-footer"><span>{producerBrandLabel} • DO SOLO À DECISÃO</span><b>1 / {producerPageCount}</b></footer>
       </section>
 
       <section className="concept-report-page">
@@ -1039,7 +1042,7 @@ export function FinalVisualReport(props: Props) {
           {!commercial && primaryRecommendation && <small className="concept-hero-footnote">Ainda não é peso de fertilizante comercial: produto e teor precisam estar oficialmente definidos.</small>}
         </div>
 
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>2 / {producerPageCount}</b></footer>
+        <footer className="concept-page-footer"><span>{producerBrandLabel} • RELATÓRIO OFICIAL</span><b>2 / {producerPageCount}</b></footer>
       </section>
 
       <section className="concept-report-page">
@@ -1115,7 +1118,7 @@ export function FinalVisualReport(props: Props) {
         </div>
 
         <div className="concept-scope-strip concept-scope-strip-roomy"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / {producerPageCount}</b></footer>
+        <footer className="concept-page-footer"><span>{producerBrandLabel} • RELATÓRIO OFICIAL</span><b>3 / {producerPageCount}</b></footer>
       </section>
 
       {hasExecutionPageContent && (
@@ -1158,7 +1161,7 @@ export function FinalVisualReport(props: Props) {
           <div><span>REVISÃO</span><strong>{props.interpretationRevision ?? "—"}</strong></div>
           <div><span>INTEGRIDADE</span><strong>{props.viewingPublished ? "Snapshot verificado" : props.currentStatusLabel}</strong></div>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>4 / {producerPageCount}</b></footer>
+        <footer className="concept-page-footer"><span>{producerBrandLabel} • RELATÓRIO OFICIAL</span><b>4 / {producerPageCount}</b></footer>
       </section>
       )}
 
@@ -1218,7 +1221,7 @@ export function FinalVisualReport(props: Props) {
           <Icon name="shield" size={14}/>
           <span>{props.viewingPublished ? "Documento oficial congelado e verificado" : props.currentStatusLabel}{props.publishedHashPrefix ? " · " + props.publishedHashPrefix + "…" : ""}</span>
         </div>
-        <footer className="concept-page-footer"><span>RAIZ DIGITAL • MOTOR AGRONÔMICO E RASTREABILIDADE</span><b>{producerFinalPageNumber} / {producerPageCount}</b></footer>
+        <footer className="concept-page-footer"><span>{producerBrandLabel} • PLANO AO PRODUTOR</span><b>{producerFinalPageNumber} / {producerPageCount}</b></footer>
       </section>
 
       {props.showTechnicalAppendix && (
