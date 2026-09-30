@@ -47,6 +47,9 @@ function makeParam(overrides = {}) {
   assert.equal(result.interpretable, false);
   assert.equal(result.interpretation[0].interpretable, false);
   assert.equal(result.interpretation[0].code, "NO_CROP_PROFILE");
+  assert.equal(result.facts[0].sampleType, "SOLO");
+  assert.equal(result.facts[0].depthFromCm, 0);
+  assert.equal(result.facts[0].depthToCm, 20);
 }
 
 // 2. Cultura vinculada, mas parâmetro não cadastrado no perfil.

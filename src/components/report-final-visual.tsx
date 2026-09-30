@@ -34,6 +34,9 @@ type StructuredFact = {
   value: number;
   unit: string;
   method: string;
+  sampleType?: string | null;
+  depthFromCm?: number | null;
+  depthToCm?: number | null;
   source?: string;
 };
 
@@ -1136,13 +1139,14 @@ export function FinalVisualReport(props: Props) {
             <h3>Resultados laboratoriais e interpretação</h3>
             <div className="concept-technical-table-wrap">
               <table className="concept-technical-table">
-                <thead><tr><th>Amostra</th><th>Parâmetro</th><th>Resultado</th><th>Método</th><th>Interpretação</th></tr></thead>
+                <thead><tr><th>Amostra</th><th>Profundidade</th><th>Parâmetro</th><th>Resultado</th><th>Método</th><th>Interpretação</th></tr></thead>
                 <tbody>
                   {props.facts.map((fact, index) => {
                     const interpreted = props.interpretationRows.find((row) => row.sampleCode === fact.sampleCode && row.parameterCode === fact.parameterCode);
                     return (
                       <tr key={fact.sampleCode + fact.parameterCode + index}>
                         <td>{fact.sampleCode}</td>
+                        <td>{typeof fact.depthFromCm === "number" && typeof fact.depthToCm === "number" ? fact.depthFromCm + "–" + fact.depthToCm + " cm" : "—"}</td>
                         <td>{fact.parameterCode}</td>
                         <td>{numberPt(fact.value)} {fact.unit}</td>
                         <td>{fact.method || "—"}</td>
@@ -1150,7 +1154,7 @@ export function FinalVisualReport(props: Props) {
                       </tr>
                     );
                   })}
-                  {!props.facts.length && <tr><td colSpan={5}>Nenhum resultado laboratorial congelado neste documento.</td></tr>}
+                  {!props.facts.length && <tr><td colSpan={6}>Nenhum resultado laboratorial congelado neste documento.</td></tr>}
                 </tbody>
               </table>
             </div>

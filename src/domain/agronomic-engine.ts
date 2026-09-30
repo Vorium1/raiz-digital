@@ -177,6 +177,9 @@ export type ParameterFact = {
   unit: string;
   method: string;
   protocol?: string | null;
+  sampleType: SampleType;
+  depthFromCm: number | null;
+  depthToCm: number | null;
   source?: "MEASURED" | "CALCULATED";
 };
 
@@ -440,6 +443,9 @@ export function runAgronomicEngine(input: EngineInput): EngineResult {
     unit: row.unit,
     method: row.method,
     protocol: row.protocol ?? null,
+    sampleType: row.sampleType,
+    depthFromCm: row.depthFromCm,
+    depthToCm: row.depthToCm,
     source: row.source,
   }));
   const interpretation = input.labResults.map((row) => interpretOne(row, input.cropProfile, input.labResults.filter((r) => r.sampleCode === row.sampleCode)));

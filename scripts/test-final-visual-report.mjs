@@ -146,6 +146,9 @@ assert.doesNotMatch(resultPage, /summarizeSimpleInterpretation|recommendationTot
 assert.match(component, /showTechnicalAppendix\?: boolean/);
 assert.match(component, /ANEXO TÉCNICO/);
 assert.match(component, /props\.facts\.map/);
+assert.match(component, /Profundidade/);
+assert.match(component, /fact\.depthFromCm/);
+assert.match(component, /fact\.depthToCm/);
 assert.match(component, /recommendations\.map/);
 assert.match(component, /props\.points\.map/);
 assert.match(technicalPage, /showTechnicalAppendix/);

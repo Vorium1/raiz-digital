@@ -45,7 +45,7 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
               a.created_at::text AS "createdAt", a.updated_at::text AS "updatedAt", a.collection_order_id::text AS "collectionOrderId",
               c.name AS "clientName", p.name AS "propertyName", p.municipality, p.state,
               f.id::text AS "fieldId", f.name AS "fieldName", f.area_ha::float8 AS "areaHa", ST_AsGeoJSON(f.boundary)::json AS "fieldBoundary",
-              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.cultivar, cs.management_system AS "managementSystem",
+              cs.season_label AS "seasonLabel", cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop", cs.cultivar, cs.management_system AS "managementSystem",
               cs.soil_texture AS "soilTexture", cs.yield_goal::float8 AS "yieldGoal", cs.yield_goal_unit AS "yieldGoalUnit",
               l.name AS "laboratoryName"
        FROM analyses a
@@ -76,8 +76,12 @@ export async function getFieldAnalysisReportData(tenantId: string, analysisId: s
 
     const resultsResult = await client.query(
       `SELECT ls.laboratory_code AS "sampleCode", lr.parameter_code AS "parameterCode", lr.numeric_value::float8 AS value,
-              lr.unit, lr.analytical_method AS method
-       FROM lab_samples ls JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+              lr.unit, lr.analytical_method AS method, ls.sample_type AS "sampleType",
+              COALESCE(sp.depth_from_cm::float8, NULLIF(lr.original_payload->>'depthFromCm', '')::float8) AS "depthFromCm",
+              COALESCE(sp.depth_to_cm::float8, NULLIF(lr.original_payload->>'depthToCm', '')::float8) AS "depthToCm"
+       FROM lab_samples ls
+       JOIN lab_results lr ON lr.tenant_id = ls.tenant_id AND lr.lab_sample_id = ls.id
+       LEFT JOIN sample_points sp ON sp.tenant_id = ls.tenant_id AND sp.id = ls.sample_point_id
        WHERE ls.tenant_id = $1::uuid AND ls.analysis_id = $2::uuid ORDER BY ls.laboratory_code, lr.parameter_code`,
       [tenantId, analysisId],
     );

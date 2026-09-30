@@ -20,6 +20,9 @@ type StructuredOutput = {
     value: number;
     unit: string;
     method: string;
+    sampleType?: string | null;
+    depthFromCm?: number | null;
+    depthToCm?: number | null;
     source?: string;
   }>;
   interpretation?: Array<{
