@@ -11,6 +11,7 @@ on:
       - "src/components/report-final-visual.tsx"
       - "src/app/(platform)/relatorios/talhao/**"
       - "src/app/globals.css"
+      - "src/app/ux3-result-document.css"
       - "src/domain/producer-result-summary.ts"
       - "src/domain/official-commercial-plan.ts"
   workflow_dispatch:
