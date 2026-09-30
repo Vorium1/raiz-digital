@@ -1064,3 +1064,124 @@
   .concept-profile-explainer{gap:1mm;padding:1.8mm 3mm 2mm}
   .concept-profile-explainer span{font-size:4.8pt}
 }
+
+/* Página 3 — uso integral do A4 e calagem sempre explícita */
+.concept-soil-needs-summary{
+  display:grid;
+  gap:10px;
+  grid-template-columns:1.15fr .72fr 1fr;
+  margin:12px 0 14px;
+}
+.concept-soil-needs-summary>article{
+  background:linear-gradient(145deg,#fff,#f5faf6);
+  border:1px solid #bfd9c7;
+  border-radius:15px;
+  min-height:86px;
+  padding:13px 14px;
+}
+.concept-soil-needs-summary span,.concept-soil-needs-summary strong,.concept-soil-needs-summary small{display:block}
+.concept-soil-needs-summary span{color:#2d7953;font-size:7px;font-weight:950;letter-spacing:.08em}
+.concept-soil-needs-summary strong{color:#103d2a;font-size:17px;letter-spacing:-.025em;line-height:1.12;margin-top:8px}
+.concept-soil-needs-summary small{color:#718078;font-size:7px;line-height:1.4;margin-top:5px}
+.concept-needs-card-grid{
+  display:grid;
+  gap:11px;
+  grid-template-columns:1fr 1fr;
+  margin-top:2px;
+}
+.concept-need-card{
+  background:#fff;
+  border:1.2px solid #b9d7c3;
+  border-radius:16px;
+  box-shadow:0 10px 24px rgba(18,83,55,.06);
+  min-height:126px;
+  padding:14px 15px 13px;
+  position:relative;
+  overflow:hidden;
+}
+.concept-need-card:before{bottom:0;content:"";left:0;position:absolute;top:0;width:5px}
+.concept-need-card.need-correct:before{background:#df704f}
+.concept-need-card.need-complement:before{background:#e9ae42}
+.concept-need-card.need-replenish:before{background:#2c8259}
+.concept-need-card.need-zone:before{background:#3478a8}
+.concept-need-card header{align-items:center;display:flex;gap:10px}
+.concept-need-card header>b{
+  align-items:center;background:#0b5a3d;border-radius:50%;color:#fff;display:flex;
+  font-size:11px;height:34px;justify-content:center;min-width:34px;padding:0 4px
+}
+.concept-need-card header span,.concept-need-card header strong{display:block}
+.concept-need-card header span{color:#234d37;font-size:10px;font-weight:900}
+.concept-need-card header strong{font-size:8px;letter-spacing:.04em;margin-top:3px}
+.concept-need-card.need-correct header strong{color:#b95138}
+.concept-need-card.need-complement header strong{color:#9a6811}
+.concept-need-card.need-replenish header strong{color:#24714c}
+.concept-need-card.need-zone header strong{color:#2d6f9b}
+.concept-need-card p{color:#103f2a;font-size:16px;font-weight:850;letter-spacing:-.02em;line-height:1.28;margin:14px 0 7px}
+.concept-need-card>small{color:#718078;display:block;font-size:7.5px;line-height:1.45}
+.concept-needs-card-grid.is-dense .concept-need-card{min-height:105px}
+.concept-needs-card-grid.is-dense .concept-need-card p{font-size:13px;margin:10px 0 5px}
+.concept-liming-feature{
+  align-items:stretch;
+  border:1.4px solid #7fbd96;
+  border-radius:18px;
+  display:grid;
+  gap:0;
+  grid-template-columns:1.35fr .85fr;
+  margin-top:14px;
+  min-height:142px;
+  overflow:hidden;
+}
+.concept-liming-copy{padding:17px 18px}
+.concept-liming-copy>span{color:#2a7952;display:block;font-size:8px;font-weight:950;letter-spacing:.08em}
+.concept-liming-copy>strong{color:#123e2a;display:block;font-size:18px;line-height:1.15;margin-top:8px}
+.concept-liming-copy>p{color:#587064;font-size:8.5px;line-height:1.55;margin:9px 0 0}
+.concept-liming-dose{
+  align-items:flex-start;background:#0d5b3d;color:#fff;display:flex;flex-direction:column;
+  justify-content:center;padding:18px
+}
+.concept-liming-dose>span{color:#d5f575;font-size:8px;font-weight:950;letter-spacing:.08em}
+.concept-liming-dose>strong{font-size:23px;letter-spacing:-.035em;line-height:1.08;margin-top:8px}
+.concept-liming-dose>small{font-size:7px;line-height:1.45;margin-top:8px;opacity:.82}
+.concept-liming-feature.liming-spatial .concept-liming-dose{background:#2e6f9b}
+.concept-liming-feature.liming-none .concept-liming-dose{background:#557166}
+.concept-liming-feature.liming-pending{border-color:#dfb15a;background:#fffaf0}
+.concept-liming-feature.liming-pending .concept-liming-dose{background:#9b6a16}
+.concept-liming-feature.liming-neutral .concept-liming-dose{background:#687970}
+.concept-profile-legend-roomy{border:1px solid #dfe9e1;border-radius:13px;margin-top:12px;padding:11px 13px}
+.concept-profile-explainer-roomy{border:1px solid #e1e9e3;border-radius:13px;margin-top:10px;padding:10px 13px}
+.concept-scope-strip-roomy{margin-top:10px}
+@media(max-width:820px){
+  .concept-soil-needs-summary{grid-template-columns:1fr}
+  .concept-soil-needs-summary>article{min-height:auto}
+  .concept-needs-card-grid{grid-template-columns:1fr}
+  .concept-liming-feature{grid-template-columns:1fr}
+  .concept-liming-dose{min-height:100px}
+}
+@media print{
+  .concept-soil-needs-summary{gap:2.2mm;margin:2.5mm 0 3mm}
+  .concept-soil-needs-summary>article{min-height:18mm;padding:2.7mm 3mm}
+  .concept-soil-needs-summary span{font-size:5.2pt}
+  .concept-soil-needs-summary strong{font-size:11pt;margin-top:1.5mm}
+  .concept-soil-needs-summary small{font-size:5.2pt;margin-top:1mm}
+  .concept-needs-card-grid{gap:2.5mm}
+  .concept-need-card{box-shadow:none;min-height:27mm;padding:3mm 3.5mm}
+  .concept-need-card header>b{font-size:7.5pt;height:8mm;min-width:8mm}
+  .concept-need-card header span{font-size:7pt}
+  .concept-need-card header strong{font-size:5.8pt}
+  .concept-need-card p{font-size:11pt;margin:2.5mm 0 1.4mm}
+  .concept-need-card>small{font-size:5.5pt}
+  .concept-needs-card-grid.is-dense .concept-need-card{min-height:23mm}
+  .concept-needs-card-grid.is-dense .concept-need-card p{font-size:9pt}
+  .concept-liming-feature{margin-top:3mm;min-height:29mm}
+  .concept-liming-copy{padding:3.3mm 3.8mm}
+  .concept-liming-copy>span{font-size:5.5pt}
+  .concept-liming-copy>strong{font-size:12pt;margin-top:1.5mm}
+  .concept-liming-copy>p{font-size:6pt;margin-top:1.5mm}
+  .concept-liming-dose{padding:3.5mm}
+  .concept-liming-dose>span{font-size:5.5pt}
+  .concept-liming-dose>strong{font-size:15pt;margin-top:1.5mm}
+  .concept-liming-dose>small{font-size:5.2pt;margin-top:1.5mm}
+  .concept-profile-legend-roomy{margin-top:2.5mm;padding:2.2mm 3mm}
+  .concept-profile-explainer-roomy{margin-top:2mm;padding:2mm 3mm}
+  .concept-scope-strip-roomy{margin-top:2mm}
+}

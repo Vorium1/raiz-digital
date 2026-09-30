@@ -55,6 +55,7 @@ type ReportContext = {
   areaHa?: number | null;
   seasonLabel?: string | null;
   currentCrop?: string | null;
+  nextCrop?: string | null;
   cultivar?: string | null;
   managementSystem?: string | null;
   soilTexture?: string | null;
@@ -423,7 +424,7 @@ export function FinalVisualReport(props: Props) {
   const diagnosticSummaries = summaries.filter((item) => !item.auxiliary);
   const primaryCommercialRow = commercial?.rows.length === 1 ? commercial.rows[0] : null;
   const primaryRecommendation = operationalSummary.rows[0] ?? null;
-  const currentCropLabel = (props.context.currentCrop || "").trim();
+  const currentCropLabel = (props.context.currentCrop || props.context.nextCrop || "").trim();
   const seasonLabel = (props.context.seasonLabel || "").trim();
   const cropSeasonLabel = currentCropLabel && seasonLabel
     ? seasonLabel.toLocaleLowerCase("pt-BR").includes(currentCropLabel.toLocaleLowerCase("pt-BR"))
@@ -433,9 +434,10 @@ export function FinalVisualReport(props: Props) {
   const fertilityYieldGoalLabel = fertilityPlan?.targetYieldDisplay
     ? fertilityPlan.targetYieldDisplay.replace(/\s*\([^)]*\)\s*$/, "")
     : null;
+  const hasYieldGoalLabel = props.context.yieldGoal != null || Boolean(fertilityYieldGoalLabel);
   const yieldGoalLabel = props.context.yieldGoal != null
     ? numberPt(Number(props.context.yieldGoal)) + (props.context.yieldGoalUnit ? " " + props.context.yieldGoalUnit : "")
-    : fertilityYieldGoalLabel ?? "Meta da safra não registrada";
+    : fertilityYieldGoalLabel ?? "Não registrada";
   const totalYieldBags = props.context.yieldGoal != null
     && areaHa != null
     && /sc\s*\/\s*ha/i.test(props.context.yieldGoalUnit ?? "")
@@ -453,6 +455,28 @@ export function FinalVisualReport(props: Props) {
     ? numberPt(props.ndviSnapshot.minNdvi, 2) + " a " + numberPt(props.ndviSnapshot.maxNdvi, 2)
     : null;
   const fieldTotalLabel = props.context.fieldName ? "No talhão · " + props.context.fieldName : "No talhão";
+  const factRange = (parameterCode: string) => {
+    const values = props.facts
+      .filter((fact) => fact.parameterCode.trim().toUpperCase() === parameterCode)
+      .map((fact) => Number(fact.value))
+      .filter((value) => Number.isFinite(value));
+    if (!values.length) return null;
+    return { min: Math.min(...values), max: Math.max(...values), count: values.length };
+  };
+  const phRange = factRange("PH");
+  const smpRange = factRange("SMP");
+  const rangeLabel = (range: { min: number; max: number } | null, decimals = 1) => {
+    if (!range) return "—";
+    return Math.abs(range.max - range.min) < 0.0001
+      ? numberPt(range.min, decimals)
+      : numberPt(range.min, decimals) + "–" + numberPt(range.max, decimals);
+  };
+  const phRangeLabel = rangeLabel(phRange);
+  const smpRangeLabel = rangeLabel(smpRange);
+  const acidityContextLabel = [
+    phRange ? "pH " + phRangeLabel : null,
+    smpRange ? "SMP " + smpRangeLabel : null,
+  ].filter((item): item is string => Boolean(item)).join(" · ") || "Leitura de acidez não disponível nesta versão";
   const fertilityScopeText = "Recomendação válida para " + cropSeasonLabel
     + (props.context.yieldGoal != null ? " com meta de " + yieldGoalLabel : "")
     + ". Esta dose vale para esta safra e não deve ser repetida automaticamente em cultivos futuros. Mudança de cultura, meta produtiva, safra ou nova análise exige novo cálculo.";
@@ -529,7 +553,7 @@ export function FinalVisualReport(props: Props) {
         actionTone = "complement";
       } else {
         needLabel = "REPOR PARA A SAFRA";
-        needDetail = "Reposição/manutenção para " + cropSeasonLabel + (yieldGoalLabel ? " · meta " + yieldGoalLabel : "") + ".";
+        needDetail = "Reposição/manutenção para " + cropSeasonLabel + (hasYieldGoalLabel ? " · meta " + yieldGoalLabel : "") + ".";
         actionTone = "replenish";
       }
     }
@@ -557,48 +581,67 @@ export function FinalVisualReport(props: Props) {
   const nextCropForProfile = currentCropLabel || "a cultura desta safra";
 
   const limeRecommendation = recommendations.find((item) => /CALCAR|LIME/i.test(item.inputType ?? "")) ?? null;
-  const limeActionRow = (() => {
+  const limingFeature = (() => {
     if (limeRecommendation && typeof limeRecommendation.quantity === "number" && limeRecommendation.unit) {
       return {
-        code: "Ca",
-        label: "Calcário",
-        needLabel: "CORRIGIR ACIDEZ",
-        needDetail: "A calagem foi indicada para esta safra.",
-        action: "Aplicar " + numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit + " de " + (limeRecommendation.inputType ?? "CALCARIO_PRNT100").replace("CALCARIO_PRNT100", "PRNT 100%") + ".",
-        actionTone: "correct" as const,
+        tone: "apply" as const,
+        status: "CORRIGIR ACIDEZ",
+        dose: numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit,
+        detail: "Dose de calcário registrada na decisão oficial desta safra.",
       };
     }
     if (limingDecision?.status === "SPATIAL") {
       const dose = limingDecision.doseRangeTonHaPrnt100
-        ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha PRNT 100%"
-        : "dose definida por ponto";
+        ? numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–" + numberPt(limingDecision.doseRangeTonHaPrnt100.max) + " t/ha"
+        : "Dose por ponto/zona";
       return {
-        code: "Ca",
-        label: "Calcário",
-        needLabel: "CORRIGIR POR ZONA",
-        needDetail: "A necessidade de calagem varia dentro do talhão.",
-        action: "Aplicar calcário por ponto/zona: " + dose + ".",
-        actionTone: "zone" as const,
+        tone: "spatial" as const,
+        status: "CORRIGIR POR ZONA",
+        dose,
+        detail: "A necessidade de calagem varia dentro do talhão. Base técnica: equivalente PRNT 100%.",
       };
     }
     if (limingDecision?.status === "UNIFORM_APPLY") {
       const dose = limingDecision.operationalGeneralDoseTonHaPrnt100 ?? limingDecision.uniformDoseTonHaPrnt100;
       return {
-        code: "Ca",
-        label: "Calcário",
-        needLabel: "CORRIGIR ACIDEZ",
-        needDetail: "A calagem foi indicada para esta safra.",
-        action: dose != null ? "Aplicar " + numberPt(dose) + " t/ha PRNT 100%." : "Aplicar a dose determinística congelada de calcário.",
-        actionTone: "correct" as const,
+        tone: "apply" as const,
+        status: "CORRIGIR ACIDEZ",
+        dose: dose != null ? numberPt(dose) + " t/ha" : "Dose oficial registrada",
+        detail: "Aplicação uniforme indicada na decisão congelada. Base técnica: equivalente PRNT 100%.",
       };
     }
-    return null;
+    if (limingDecision?.status === "UNIFORM_NO_APPLY") {
+      return {
+        tone: "none" as const,
+        status: "SEM CALAGEM NESTA DECISÃO",
+        dose: "0 t/ha",
+        detail: "A decisão agronômica congelada concluiu que não há aplicação geral de calcário nesta safra.",
+      };
+    }
+    if (limingDecision?.status === "BLOCKED") {
+      return {
+        tone: "pending" as const,
+        status: "CALAGEM NÃO CONCLUÍDA",
+        dose: "Dose não liberada",
+        detail: "A versão oficial não possui dose de calcário tecnicamente fechada. Isso não significa ausência de necessidade.",
+      };
+    }
+    if (limingDecision?.status === "NOT_APPLICABLE") {
+      return {
+        tone: "neutral" as const,
+        status: "FORA DO ESCOPO DESTA DECISÃO",
+        dose: "Sem dose",
+        detail: "O perfil agronômico congelado nesta versão não liberou uma decisão de calagem.",
+      };
+    }
+    return {
+      tone: "pending" as const,
+      status: "DECISÃO NÃO REGISTRADA NESTA VERSÃO",
+      dose: "Sem dose congelada",
+      detail: "Esta publicação não contém uma decisão de calagem. A ausência de dose não significa que o talhão não precise de calcário.",
+    };
   })();
-  const profileActionRows = limeActionRow ? [...fertilityActionRows, limeActionRow] : fertilityActionRows;
-  const quietProfileLabels = [
-    ...quietNutrientLabels,
-    limingDecision?.status === "UNIFORM_NO_APPLY" ? "Calcário (sem necessidade de aplicação)" : null,
-  ].filter((item): item is string => Boolean(item));
+  const quietProfileLabels = quietNutrientLabels;
 
   const producerPlanRows: Array<{
     key: string;
@@ -824,45 +867,70 @@ export function FinalVisualReport(props: Props) {
 
         <div className="concept-diagnostic-intro">
           <strong>NECESSIDADES PARA {cropSeasonLabel.toUpperCase()}</strong>
-          <span>Aqui aparecem somente os nutrientes e corretivos que precisam de aplicação, correção ou reposição nesta safra. Se um item não precisa de ação, ele não ocupa espaço no quadro.</span>
+          <span>O foco desta página é mostrar o que precisa ser feito agora. Nutrientes sem ação geral ficam resumidos no final; correção de acidez aparece sempre em bloco próprio.</span>
         </div>
 
-        <section className="concept-fertility-profile">
-          <div className="concept-profile-header">
-            <span>O QUE</span>
-            <span>POR QUE APARECE</span>
-            <span>O QUE FAZER</span>
-          </div>
+        <section className="concept-soil-needs-summary">
+          <article>
+            <span>CULTURA / SAFRA</span>
+            <strong>{cropSeasonLabel}</strong>
+            <small>{hasYieldGoalLabel ? "Meta produtiva · " + yieldGoalLabel : "Meta produtiva não registrada nesta versão"}</small>
+          </article>
+          <article>
+            <span>AÇÕES DEFINIDAS</span>
+            <strong>{fertilityActionRows.length}</strong>
+            <small>{fertilityActionRows.length === 1 ? "necessidade com ação nesta safra" : "necessidades com ação nesta safra"}</small>
+          </article>
+          <article>
+            <span>ACIDEZ DO SOLO</span>
+            <strong>{phRange ? "pH " + phRangeLabel : "Sem faixa de pH"}</strong>
+            <small>{smpRange ? "Índice SMP · " + smpRangeLabel : "SMP não disponível nesta versão"}</small>
+          </article>
+        </section>
 
-          {profileActionRows.map((item) => (
-            <div className={"concept-profile-row need-" + item.actionTone} key={item.code}>
-              <div className="concept-profile-item">
+        <section className={"concept-needs-card-grid" + (fertilityActionRows.length > 4 ? " is-dense" : "")}>
+          {fertilityActionRows.map((item) => (
+            <article className={"concept-need-card need-" + item.actionTone} key={item.code}>
+              <header>
                 <b>{item.code}</b>
-                <div><strong>{item.label}</strong><small>Necessidade da próxima cultura</small></div>
-              </div>
-              <div className="concept-profile-state">
-                <strong>{item.needLabel}</strong>
-                <small>{item.needDetail}</small>
-              </div>
-              <div className="concept-profile-action">{item.action}</div>
-            </div>
+                <div><span>{item.label}</span><strong>{item.needLabel}</strong></div>
+              </header>
+              <p>{item.action}</p>
+              <small>{item.needDetail}</small>
+            </article>
           ))}
-
-          {quietProfileLabels.length > 0 && (
-            <div className="concept-profile-legend">
-              <strong>AVALIADOS SEM AÇÃO GERAL NESTA SAFRA</strong>
-              <span>{quietProfileLabels.join(", ")}. Esses itens foram avaliados, mas não precisam aparecer como recomendação de aplicação para {nextCropForProfile}.</span>
-            </div>
+          {fertilityActionRows.length === 0 && (
+            <div className="concept-empty-state">Nenhuma reposição ou correção nutricional geral foi registrada para esta safra.</div>
           )}
+        </section>
 
-          <div className="concept-profile-explainer">
-            <span><b>CORRIGIR</b> = o solo está abaixo do desejável.</span>
-            <span><b>REPOR PARA A SAFRA</b> = o solo pode estar adequado, mas a cultura e a meta produtiva exigem reposição/manutenção.</span>
-            <span><b>POR ZONA</b> = a necessidade varia dentro do talhão.</span>
+        <section className={"concept-liming-feature liming-" + limingFeature.tone}>
+          <div className="concept-liming-copy">
+            <span>CORREÇÃO DA ACIDEZ · CALAGEM</span>
+            <strong>{limingFeature.status}</strong>
+            <p>{limingFeature.detail}</p>
+          </div>
+          <div className="concept-liming-dose">
+            <span>CALCÁRIO</span>
+            <strong>{limingFeature.dose}</strong>
+            <small>{acidityContextLabel}</small>
           </div>
         </section>
 
-        <div className="concept-scope-strip"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
+        {quietProfileLabels.length > 0 && (
+          <div className="concept-profile-legend concept-profile-legend-roomy">
+            <strong>OUTROS PARÂMETROS ACOMPANHADOS</strong>
+            <span>{quietProfileLabels.join(", ")}. Foram avaliados, mas não possuem recomendação geral de aplicação para {nextCropForProfile} nesta decisão.</span>
+          </div>
+        )}
+
+        <div className="concept-profile-explainer concept-profile-explainer-roomy">
+          <span><b>CORRIGIR</b> = há correção do solo ou nutriente a fazer.</span>
+          <span><b>REPOR PARA A SAFRA</b> = o teor pode estar adequado, mas a cultura exige reposição/manutenção.</span>
+          <span><b>CALAGEM</b> = só recebe dose quando a decisão estiver tecnicamente fechada e congelada no relatório.</span>
+        </div>
+
+        <div className="concept-scope-strip concept-scope-strip-roomy"><strong>VIGÊNCIA DA RECOMENDAÇÃO</strong><span>{fertilityScopeText}</span></div>
         <footer className="concept-page-footer"><span>RAIZ DIGITAL • RELATÓRIO OFICIAL</span><b>3 / 5</b></footer>
       </section>
 

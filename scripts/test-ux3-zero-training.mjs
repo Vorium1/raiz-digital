@@ -691,3 +691,9 @@ assert.match(dataMode, /process\.env\.DATA_MODE === "demo"/);
 
 assert.match(send, /Organiza, analisa e prepara o laudo/);
 assert.doesNotMatch(send, /leva para revisão/);
+
+assert.match(finalVisualReport, /CORREÇÃO DA ACIDEZ · CALAGEM/);
+assert.match(finalVisualReport, /DECISÃO NÃO REGISTRADA NESTA VERSÃO/);
+assert.match(finalVisualReport, /A ausência de dose não significa que o talhão não precise de calcário/);
+assert.match(finalVisualReport, /factRange\("PH"\)/);
+assert.match(finalVisualReport, /factRange\("SMP"\)/);
