@@ -598,11 +598,19 @@ export function FinalVisualReport(props: Props) {
   const limingMissingInformation = missingInformation.find((item) => /^calagem\b/i.test(item.trim())) ?? null;
   const limingFeature = (() => {
     if (limeRecommendation && typeof limeRecommendation.quantity === "number" && limeRecommendation.unit) {
+      const spatialRange = limingDecision?.status === "SPATIAL" ? limingDecision.doseRangeTonHaPrnt100 : null;
+      const methodId = limingMethodSelection?.selectedMethodId ?? null;
       return {
         tone: "apply" as const,
         status: "CORRIGIR ACIDEZ",
         dose: numberPt(limeRecommendation.quantity) + " " + limeRecommendation.unit,
-        detail: "Dose de calcário registrada na decisão oficial desta safra.",
+        detail: spatialRange
+          ? "Dose geral operacional da grade. Necessidade entre pontos: "
+            + numberPt(spatialRange.min) + "–" + numberPt(spatialRange.max)
+            + " t/ha PRNT 100%."
+            + (limingLayerRequirement?.targetPh ? " pH-alvo " + limingLayerRequirement.targetPh + "." : "")
+            + (methodId ? " Método " + methodId + "." : "")
+          : "Dose de calcário registrada na decisão oficial desta safra.",
       };
     }
     if (limingDecision?.status === "SPATIAL") {
@@ -693,15 +701,29 @@ export function FinalVisualReport(props: Props) {
     dose: string;
     detail: string | null;
     tone: "apply" | "none" | "pending";
-  }> = operationalSummary.rows.map((row) => ({
-    key: "recommendation-" + row.inputType,
-    label: row.label,
-    dose: numberPt(row.doseQuantity) + " " + row.doseUnit,
-    detail: row.totalQuantity != null && row.totalUnit
-      ? numberPt(row.totalQuantity) + " " + row.totalUnit + " equivalentes na área"
-      : null,
-    tone: "apply",
-  }));
+  }> = operationalSummary.rows.map((row) => {
+    const details: string[] = [];
+    if (row.totalQuantity != null && row.totalUnit) {
+      details.push(numberPt(row.totalQuantity) + " " + row.totalUnit + " equivalentes na área");
+    }
+    const isLime = row.quantityKind === "LIME_PRNT100_EQUIVALENT" || /CALCAR|LIME/i.test(row.inputType);
+    if (isLime && limingDecision?.status === "SPATIAL" && limingDecision.doseRangeTonHaPrnt100) {
+      details.push(
+        "Dose geral operacional da grade; faixa entre pontos "
+        + numberPt(limingDecision.doseRangeTonHaPrnt100.min) + "–"
+        + numberPt(limingDecision.doseRangeTonHaPrnt100.max)
+        + " t/ha PRNT 100%",
+      );
+      if (limingLayerRequirement?.targetPh) details.push("pH-alvo " + limingLayerRequirement.targetPh);
+    }
+    return {
+      key: "recommendation-" + row.inputType,
+      label: row.label,
+      dose: numberPt(row.doseQuantity) + " " + row.doseUnit,
+      detail: details.length ? details.join(" · ") : null,
+      tone: "apply",
+    };
+  });
 
   const representedPlanInputs = new Set(
     operationalSummary.rows.map((row) => row.inputType.trim().toUpperCase()),

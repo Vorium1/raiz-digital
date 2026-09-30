@@ -36,10 +36,21 @@ O manual 2016 e as indicações de soja 2025 tratam o SPD consolidado com maior 
 
 Quando o laboratório entrega apenas uma amostra composta 0–20, a RAIZ pode calcular a necessidade equivalente da própria camada 0–20, mas não deve fingir que conhece 0–10 e 10–20 separadamente.
 
+Se o seletor de metodologia escolher explicitamente o método clássico integrado 0–20, o cálculo dessa camada pode ser promovido à decisão quantitativa daquele método, mantendo no snapshot:
+- profundidade 0–20 real;
+- índice SMP por ponto;
+- pH-alvo;
+- edição/fonte;
+- faixa entre pontos;
+- média operacional somente quando a grade tiver peso de área equivalente;
+- modo de aplicação como não inferido quando a própria evidência não o determinar.
+
+Essa promoção não rebatiza o resultado como regra moderna de SPD consolidado. O método clássico e a regra moderna continuam identificados separadamente.
+
 O relatório deve mostrar as duas coisas quando necessário:
 
 - cálculo que a amostra 0–20 realmente sustenta;
-- limitação da regra de aplicação que exige camadas separadas.
+- qual metodologia gerou a dose e quais aspectos de aplicação não foram inferidos.
 
 ## 0–30
 
@@ -64,6 +75,8 @@ Aplicando apenas a Tabela 5.2 como cenários de referência da camada 0–20 e a
 - alvo pH 6,0: faixa 4,2–6,1 t/ha PRNT 100%; média operacional matemática 4,74 t/ha.
 
 Esses números demonstram por que a RAIZ deve sempre guardar o método e o pH-alvo junto da dose. O mesmo laudo não possui uma única quantidade universal de calcário fora de um protocolo definido.
+
+No fluxo atual da RAIZ, para soja com o método clássico integrado 0–20 selecionado, o pH de referência do método é 6,0. Para a Área 01 isso produz 4,74 t/ha PRNT 100% como dose geral operacional da grade, com faixa de 4,2–6,1 t/ha entre pontos. Esse número não é escolhido para reproduzir uma recomendação externa e não define sozinho aplicação superficial ou incorporada.
 
 A média só é operacionalmente válida quando a grade representa áreas equivalentes. Caso contrário, o resultado permanece por ponto/faixa.
 
