@@ -868,12 +868,32 @@
   margin:10px 0 0;
 }
 .concept-final-signature{
+  align-items:flex-end;
+  border:1px solid #d3e6da;
+  border-radius:14px;
+  display:grid;
+  gap:24px;
+  grid-template-columns:minmax(150px,.8fr) minmax(220px,1.2fr);
   margin-top:14px;
-  min-height:42px;
+  min-height:86px;
+  padding:14px 18px;
+}
+.concept-final-signature-brand{
+  align-items:center;
+  border-right:1px solid #d9e7de;
+  display:flex;
+  min-height:58px;
+  padding-right:18px;
+}
+.concept-final-signature-brand .report-brand-logo{
+  max-height:54px;
+  max-width:210px;
+  object-fit:contain;
 }
 .concept-final-signature .report-brand-signature{
   margin-top:0;
   max-width:330px;
+  width:100%;
 }
 .concept-final-signature .report-brand-signature>strong{
   color:#244735;
@@ -887,12 +907,22 @@
 }
 @media print{
   .concept-producer-heading>p{font-size:7pt;margin-top:1.5mm}
-  .concept-final-signature{margin-top:4mm;min-height:18mm}
+  .concept-final-signature{
+    gap:5mm;
+    grid-template-columns:55mm 1fr;
+    margin-top:4mm;
+    min-height:23mm;
+    padding:3mm 4mm;
+  }
+  .concept-final-signature-brand{min-height:16mm;padding-right:4mm}
+  .concept-final-signature-brand .report-brand-logo{max-height:14mm;max-width:48mm}
   .concept-final-signature .report-brand-signature{max-width:85mm}
   .concept-final-signature .report-brand-signature-line{margin-bottom:2mm}
   .concept-final-signature .report-brand-signature>strong{font-size:7.5pt}
 }
 @media(max-width:820px){
+  .concept-final-signature{grid-template-columns:1fr}
+  .concept-final-signature-brand{border-bottom:1px solid #d9e7de;border-right:0;padding-bottom:12px;padding-right:0}
   .concept-cover-meta-identified{grid-template-columns:1fr 1fr}
   .concept-cover-location{align-items:flex-start;flex-direction:column;gap:3px}
   .concept-producer-plan-row{grid-template-columns:1fr}

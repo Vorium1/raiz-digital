@@ -188,6 +188,11 @@ assert.match(component, /displayYieldFromTonPerHa/);
 assert.match(component, /yieldGoalPresetConfig/);
 assert.match(component, /sc\\s\*\\\/\\s\*ha/);
 assert.match(read("src/components/report-brand.tsx"), /Assinatura do responsável técnico/);
+assert.match(read("src/components/report-brand.tsx"), /<img src=\{branding\.logoDataUrl\}/);
+assert.doesNotMatch(read("src/components/report-brand.tsx"), /report-brand-name/);
+assert.match(component, /concept-final-signature-brand/);
+assert.match(component, /<ReportBrand branding=\{props\.branding\}/);
+assert.match(css, /concept-final-signature-brand/);
 console.log("final-visual-report: página de execução condicional, plano personalizado, meta exibida na unidade do produtor e assinatura validados");
 
 assert.match(css, /concept-ndvi-explainer/);

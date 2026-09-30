@@ -13,7 +13,6 @@ export function ReportBrand({ branding }: { branding: TenantBranding }) {
     <span className="report-brand">
       {/* eslint-disable-next-line @next/next/no-img-element -- logo enviado pelo cliente (data URI), não é asset estático do projeto */}
       <img src={branding.logoDataUrl} alt={branding.displayName} className="report-brand-logo" />
-      <strong className="report-brand-name">{branding.displayName}</strong>
     </span>
   );
 }

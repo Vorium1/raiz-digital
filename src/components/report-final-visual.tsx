@@ -1208,6 +1208,9 @@ export function FinalVisualReport(props: Props) {
         </section>
 
         <section className="concept-final-signature">
+          {props.branding.logoDataUrl && (
+            <div className="concept-final-signature-brand"><ReportBrand branding={props.branding} /></div>
+          )}
           <ReportSignature branding={props.branding} />
         </section>
 
