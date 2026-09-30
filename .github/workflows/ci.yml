@@ -8,6 +8,7 @@ on:
       - 'release/**'
       - 'work/**'
       - 'feature/**'
+      - 'chore/**'
   pull_request:
     branches:
       - main
@@ -39,6 +40,7 @@ jobs:
           node --experimental-strip-types scripts/test-ux3-zero-training.mjs
           node --experimental-strip-types scripts/test-performance-fast-path.mjs
           node --experimental-strip-types scripts/test-talhao-visual-polish.mjs
+          node --experimental-strip-types scripts/test-agent-dev-contract.mjs
 
       - name: Validar preflight automático de homologação
         run: node --experimental-strip-types scripts/test-homologation-readiness.mjs
