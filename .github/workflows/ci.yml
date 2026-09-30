@@ -34,6 +34,7 @@ jobs:
         run: |
           npm run test:handoff
           npm run test:client-master
+          npm run test:platform-admin
           node --experimental-strip-types scripts/test-map-runtime-recovery.mjs
           node --experimental-strip-types scripts/test-final-route-permissions.mjs
           node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs
