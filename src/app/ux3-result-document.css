@@ -843,6 +843,9 @@
 }
 .concept-producer-plan-row.plan-none{background:#f8faf8}
 .concept-producer-plan-row.plan-none>div strong{font-size:14px}
+.concept-producer-plan-row.plan-pending{background:#fff9ee;border-color:#e6c789}
+.concept-producer-plan-row.plan-pending>div small{color:#8a641e}
+.concept-producer-plan-row.plan-pending>div strong{color:#765114;font-size:14px}
 
 .concept-final-opinion-compact{
   padding:20px 21px;

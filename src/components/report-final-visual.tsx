@@ -648,7 +648,7 @@ export function FinalVisualReport(props: Props) {
     label: string;
     dose: string;
     detail: string | null;
-    tone: "apply" | "none";
+    tone: "apply" | "none" | "pending";
   }> = operationalSummary.rows.map((row) => ({
     key: "recommendation-" + row.inputType,
     label: row.label,
@@ -688,6 +688,21 @@ export function FinalVisualReport(props: Props) {
       dose: "Não aplicar nesta safra",
       detail: "A decisão de calagem está fechada sem necessidade de aplicação.",
       tone: "none",
+    });
+  } else if (
+    !hasLimePlanRow
+    && (!limingDecision || limingDecision.status === "BLOCKED" || limingDecision.status === "NOT_APPLICABLE")
+  ) {
+    producerPlanRows.push({
+      key: "lime-unresolved",
+      label: "Calcário",
+      dose: limingDecision?.status === "BLOCKED"
+        ? "Decisão de calagem não concluída"
+        : "Decisão não registrada nesta versão",
+      detail: limingDecision?.status === "BLOCKED"
+        ? "A ausência de dose não significa ausência de necessidade; esta decisão precisa ser concluída no fluxo técnico."
+        : "Esta publicação não possui uma decisão de calagem congelada. A ausência de dose não significa ausência de necessidade.",
+      tone: "pending",
     });
   }
 
