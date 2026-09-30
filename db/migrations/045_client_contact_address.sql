@@ -9,7 +9,10 @@ ALTER TABLE clients
   ADD COLUMN IF NOT EXISTS district text,
   ADD COLUMN IF NOT EXISTS municipality text,
   ADD COLUMN IF NOT EXISTS state text,
-  ADD COLUMN IF NOT EXISTS country text DEFAULT 'BR';
+  ADD COLUMN IF NOT EXISTS country text;
+
+ALTER TABLE clients
+  ALTER COLUMN country SET DEFAULT 'BR';
 
 ALTER TABLE clients
   ADD CONSTRAINT clients_postal_code_format

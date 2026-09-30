@@ -112,7 +112,8 @@ export function ClientManager() {
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     if (!needle) return clients;
-    return clients.filter((client) => [client.name, client.taxId, client.email, client.phone].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle)));
+    return clients.filter((client) => [client.name, client.taxId, client.email, client.phone, client.whatsapp, client.municipality, client.state]
+      .some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle)));
   }, [clients, query]);
 
   return <>

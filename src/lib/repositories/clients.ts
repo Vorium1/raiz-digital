@@ -79,6 +79,9 @@ export async function getClient360(tenantId: string, clientId: string, userId?: 
   return withTenant({ tenantId, userId }, async (client) => {
     const clientResult = await client.query<ClientListItem>(
       `SELECT c.id::text AS id, c.name, c.tax_id AS "taxId", c.email::text AS email, c.phone,
+              c.whatsapp, c.postal_code AS "postalCode", c.street,
+              c.address_number AS "addressNumber", c.address_complement AS "addressComplement",
+              c.district, c.municipality, c.state, c.country,
               c.person_type AS "personType", c.trade_name AS "tradeName", c.contact_name AS "contactName", c.notes,
               c.archived_at::text AS "archivedAt",
               (SELECT count(*)::int FROM properties p WHERE p.tenant_id = c.tenant_id AND p.client_id = c.id) AS properties,
