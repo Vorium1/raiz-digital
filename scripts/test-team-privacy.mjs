@@ -9,7 +9,7 @@ const settings = await read("src/components/settings-tabs.tsx");
 
 assert.doesNotMatch(repository, /metadata:\s*\{[^}]*email:/s);
 assert.doesNotMatch(repository, /metadata:\s*\{[^}]*newAccount:/s);
-assert.doesNotMatch(route, /return Response\.json\(\{[\s\S]*?createdNewUser[\s\S]*?\}, \{ status: 201 \}\)/);
+assert.match(route, /return Response\.json\(\{\s*userId: result\.userId,\s*emailDelivery,\s*\}, \{ status: 201 \}\)/);
 assert.doesNotMatch(route, /team_invite_email_failed",\s*\{\s*email:/);
 assert.match(route, /emailDelivery/);
 assert.doesNotMatch(settings, /inviteResult\.createdNewUser/);
