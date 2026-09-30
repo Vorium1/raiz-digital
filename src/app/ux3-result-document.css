@@ -240,9 +240,12 @@
     border-radius:0;
     box-shadow:none;
     break-after:page;
-    height:297mm;
+    /* Chromium arredonda 297 mm para 1123 px; em cinco páginas o erro
+       acumulado pode criar uma sexta página vazia. Reservamos 0,5 mm
+       dentro da folha A4 para manter a paginação determinística. */
+    height:296.5mm;
     margin:0;
-    min-height:297mm;
+    min-height:296.5mm;
     overflow:hidden;
     padding:14mm 15mm 13mm;
     page-break-after:always;
