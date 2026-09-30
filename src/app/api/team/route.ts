@@ -62,7 +62,7 @@ async function deliverInvite(input: {
     });
     return delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
   } catch (error) {
-    console.error("team_invite_email_failed", { email: input.email, error });
+    console.error("team_invite_email_failed", { errorName: error instanceof Error ? error.name : "unknown" });
     return "failed";
   }
 }
@@ -113,7 +113,6 @@ export async function POST(request: Request) {
 
     return Response.json({
       userId: result.userId,
-      createdNewUser: result.createdNewUser,
       emailDelivery,
     }, { status: 201 });
   } catch (error) {
