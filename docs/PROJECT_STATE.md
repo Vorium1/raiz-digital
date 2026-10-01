@@ -4309,6 +4309,20 @@ fosfatada, PRNT100/PRNT80, área/custo, embalagem de 50 kg e entradas inválidas
 `check:migrations` e `test:handoff` foram executados localmente. Não há migration,
 merge, deploy ou alteração de produção neste corte.
 
+## 2026-10-01 — #128, auditoria de matriz tenant/RBAC
+
+Sem acesso ao corpo remoto da issue pela API nesta máquina, a auditoria foi limitada
+ao escopo documentado, PR #129, migrations 001–046 e testes presentes. Clientes,
+equipe, catálogo comercial, propriedades, talhões e administração de plataforma já
+possuem escopo de tenant/RLS e contratos de RBAC. A lacuna objetiva encontrada era
+de regressão: criação de propriedade/talhão cobria pai estrangeiro, mas edição e
+exclusão por UUID de outro tenant não eram exercitadas na matriz de rota.
+
+`test:tenant-catalog-routes` agora cobre todos os papéis para criação, edição e
+exclusão de propriedades e talhões, e comprova que UUID estrangeiro retorna 404 sem
+escrita nem auditoria. O repositório já tinha a cláusula `tenant_id` correspondente;
+nenhuma regra de produto, migration ou dado operacional foi alterado.
+
 
 ### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
 
