@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { executeMultiseasonPlan, resolvePlanningCapability } from "../src/domain/multiseason-planning.ts";
+assert.equal(resolvePlanningCapability("SOYBEAN").status, "PARTIAL");
+assert.equal(resolvePlanningCapability("UNKNOWN").status, "UNSUPPORTED");
+const noEvidence = executeMultiseasonPlan({ crops: [{ cropCode: "SOYBEAN" }], hasBaseEvidence: false });
+assert.equal(noEvidence[0].limitations[0], "INSUFFICIENT_EVIDENCE");
+const plan = executeMultiseasonPlan({ crops: [{ cropCode: "SOYBEAN" }, { cropCode: "WHEAT" }, { cropCode: "RICE" }], hasBaseEvidence: true });
+assert.equal(plan[0].status, "PARTIAL");
+assert.equal(plan[1].status, "PARTIAL");
+assert.equal(plan[2].status, "REANALYSIS_REQUIRED");
+assert.equal(plan[2].reanalysisRequired, true);
+console.log("multiseason-planning: capability fail-closed, evidência e gate de reanálise aprovados");
