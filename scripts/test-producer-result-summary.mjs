@@ -15,6 +15,19 @@ assert.equal(potassium.rows[0].quantityKind, "NUTRIENT_EQUIVALENT");
 assert.equal(potassium.showsNutrientEquivalentNote, true);
 assert.equal(potassium.costFrozenInOfficialReport, false);
 
+// Regressões de rastreabilidade: total é calculado pela dose bruta, não por valor exibido.
+const quantitativeMatrix = buildProducerResultSummary({
+  areaHa: 10,
+  recommendations: [{ inputType: "K2O", quantity: 60, unit: "kg/ha" }],
+});
+assert.equal(quantitativeMatrix.rows[0].totalQuantity, 600);
+const phosphorusTotal = buildProducerResultSummary({ areaHa: 25, recommendations: [{ inputType: "P2O5", quantity: 80, unit: "kg/ha" }] });
+assert.equal(phosphorusTotal.rows[0].totalQuantity, 2000);
+const sulfurTotal = buildProducerResultSummary({ areaHa: 12.4, recommendations: [{ inputType: "S", quantity: 15, unit: "kg/ha" }] });
+assert.equal(sulfurTotal.rows[0].totalQuantity, 186);
+const preciseTotal = buildProducerResultSummary({ areaHa: 37.5, recommendations: [{ inputType: "K2O", quantity: 195.6522, unit: "kg/ha" }] });
+assert.ok(Math.abs((preciseTotal.rows[0].totalQuantity ?? 0) - 7336.9575) < 1e-9);
+
 const phosphorusAndSulfur = buildProducerResultSummary({
   areaHa: 12.5,
   recommendations: [
@@ -39,6 +52,8 @@ assert.equal(lime.rows[0].totalQuantity, 22);
 assert.equal(lime.rows[0].totalUnit, "t");
 assert.equal(lime.rows[0].quantityKind, "LIME_PRNT100_EQUIVALENT");
 assert.equal(lime.showsLimeEquivalentNote, true);
+const limeArea = buildProducerResultSummary({ areaHa: 20, recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 3, unit: "t/ha" }] });
+assert.equal(limeArea.rows[0].totalQuantity, 60);
 
 const unsupportedUnit = buildProducerResultSummary({
   areaHa: 20,
