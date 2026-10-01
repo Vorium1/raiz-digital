@@ -8,6 +8,23 @@ export class TeamError extends Error {
   }
 }
 
+// Todas as alterações de equipe usam a mesma trava que o cadastro do primeiro
+// administrador. Leia a autorização e o alvo somente após adquirir essa trava:
+// o papel obtido na sessão HTTP pode ter mudado enquanto a requisição aguardava.
+async function lockTeamAdministration(client: import("pg").PoolClient, tenantId: string, actorUserId: string) {
+  await client.query("SELECT id FROM tenants WHERE id = $1::uuid FOR UPDATE", [tenantId]);
+  const actor = await client.query<{ role: string }>(
+    `SELECT role::text FROM tenant_members
+     WHERE tenant_id = $1::uuid AND user_id = $2::uuid AND active = true`,
+    [tenantId, actorUserId],
+  );
+  const role = actor.rows[0]?.role;
+  if (role !== "SUPER_ADMIN" && role !== "TENANT_ADMIN") {
+    throw new TeamError("Seu perfil não pode gerenciar a equipe.", 403);
+  }
+  return role;
+}
+
 export async function inviteTeamMember(input: {
   tenantId: string;
   userId: string;
@@ -17,6 +34,8 @@ export async function inviteTeamMember(input: {
   temporaryPasswordHash: string;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    await lockTeamAdministration(client, input.tenantId, input.userId);
+    if (!manageableRoles.has(input.role)) throw new TeamError("Perfil inválido.", 400);
     const existing = await client.query<{ id: string }>(`SELECT id::text FROM users WHERE email = $1::citext LIMIT 1`, [input.email]);
     let targetUserId: string;
     let createdNewUser: boolean;
@@ -77,12 +96,16 @@ async function countActiveAdminsLocked(client: import("pg").PoolClient, tenantId
 export async function updateTeamMemberRole(input: { tenantId: string; actorUserId: string; targetUserId: string; role: string }) {
   if (!manageableRoles.has(input.role)) throw new TeamError("Perfil inválido.", 400);
   return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
+    const actorRole = await lockTeamAdministration(client, input.tenantId, input.actorUserId);
     const current = await client.query<{ role: string; active: boolean }>(
       `SELECT role::text, active FROM tenant_members WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
       [input.tenantId, input.targetUserId],
     );
     const row = current.rows[0];
     if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
+    if (row.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
+      throw new TeamError("Apenas um super administrador pode gerenciar outro super administrador.", 403);
+    }
 
     if (adminRoles.has(row.role) && !adminRoles.has(input.role) && row.active) {
       const remaining = await countActiveAdminsLocked(client, input.tenantId, input.targetUserId);
@@ -107,12 +130,16 @@ export async function updateTeamMemberRole(input: { tenantId: string; actorUserI
 export async function setTeamMemberActive(input: { tenantId: string; actorUserId: string; targetUserId: string; active: boolean }) {
   if (input.targetUserId === input.actorUserId) throw new TeamError("Você não pode desativar o seu próprio acesso.", 400);
   return withTenant({ tenantId: input.tenantId, userId: input.actorUserId }, async (client) => {
+    const actorRole = await lockTeamAdministration(client, input.tenantId, input.actorUserId);
     const current = await client.query<{ role: string; active: boolean }>(
       `SELECT role::text, active FROM tenant_members WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
       [input.tenantId, input.targetUserId],
     );
     const row = current.rows[0];
     if (!row) throw new TeamError("Membro não encontrado nesta empresa.", 404);
+    if (row.role === "SUPER_ADMIN" && actorRole !== "SUPER_ADMIN") {
+      throw new TeamError("Apenas um super administrador pode gerenciar outro super administrador.", 403);
+    }
 
     if (!input.active && adminRoles.has(row.role) && row.active) {
       const remaining = await countActiveAdminsLocked(client, input.tenantId, input.targetUserId);
@@ -144,7 +171,9 @@ export async function listTenantMembers(tenantId: string, userId?: string) {
   return withTenant({ tenantId, userId }, async (client) => {
     const result = await client.query(
       `SELECT u.id::text, u.name, u.email::text AS email, tm.role::text AS role, tm.active,
-              u.last_login_at::text AS "lastLoginAt", tm.created_at::text AS "memberSince"
+              (SELECT max(s.created_at)::text FROM user_sessions s
+               WHERE s.tenant_id = tm.tenant_id AND s.user_id = tm.user_id) AS "lastLoginAt",
+              tm.created_at::text AS "memberSince"
        FROM tenant_members tm
        JOIN users u ON u.id = tm.user_id
        WHERE tm.tenant_id = $1::uuid

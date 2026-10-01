@@ -33,37 +33,43 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
 
     let emailDelivery: "sent" | "logged" | "failed" = "failed";
-    if (result.createdNewUser) {
-      const token = await createPasswordResetToken(result.userId);
-      if (token) {
-        const link = `${appUrl()}/redefinir-senha?token=${token}`;
+    // O cadastro já foi confirmado. Uma indisponibilidade do provedor não deve
+    // apresentar uma falsa falha de criação e incentivar um segundo cadastro.
+    try {
+      if (result.createdNewUser) {
+        const token = await createPasswordResetToken(result.userId);
+        if (token) {
+          const link = `${appUrl()}/redefinir-senha?token=${token}`;
+          const delivery = await sendEmail({
+            to: email,
+            subject: `Convite para ${result.tenantName} · RAIZ Digital`,
+            text: [
+              `Olá, ${name}.`,
+              "",
+              `Seu acesso administrativo a ${result.tenantName} foi criado na RAIZ Digital.`,
+              "Defina sua senha pelo link individual abaixo:",
+              link,
+              "",
+              "O link expira conforme a política de segurança da plataforma.",
+            ].join("\n"),
+          });
+          emailDelivery = delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
+        }
+      } else {
         const delivery = await sendEmail({
           to: email,
-          subject: `Convite para ${result.tenantName} · RAIZ Digital`,
+          subject: `Acesso administrativo a ${result.tenantName} · RAIZ Digital`,
           text: [
             `Olá, ${name}.`,
             "",
-            `Seu acesso administrativo a ${result.tenantName} foi criado na RAIZ Digital.`,
-            "Defina sua senha pelo link individual abaixo:",
-            link,
-            "",
-            "O link expira conforme a política de segurança da plataforma.",
+            `Seu usuário existente recebeu acesso administrativo a ${result.tenantName}.`,
+            `Entre em ${appUrl()}/login com suas credenciais atuais.`,
           ].join("\n"),
         });
         emailDelivery = delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
       }
-    } else {
-      const delivery = await sendEmail({
-        to: email,
-        subject: `Acesso administrativo a ${result.tenantName} · RAIZ Digital`,
-        text: [
-          `Olá, ${name}.`,
-          "",
-          `Seu usuário existente recebeu acesso administrativo a ${result.tenantName}.`,
-          `Entre em ${appUrl()}/login com suas credenciais atuais.`,
-        ].join("\n"),
-      });
-      emailDelivery = delivery.delivered ? "sent" : delivery.logged ? "logged" : "failed";
+    } catch (error) {
+      console.error("first_tenant_admin_email_failed", { errorName: error instanceof Error ? error.name : "unknown" });
     }
 
     return Response.json({ ok: true, emailDelivery }, { status: 201 });

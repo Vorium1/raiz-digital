@@ -124,8 +124,77 @@ export async function getClient360(tenantId: string, clientId: string, userId?: 
       [tenantId, clientId],
     );
 
+    const seasons = await client.query<{
+      id: string; fieldId: string; fieldName: string; propertyName: string; seasonLabel: string;
+      currentCrop: string | null; nextCrop: string | null;
+    }>(
+      `SELECT cs.id::text, cs.field_id::text AS "fieldId", f.name AS "fieldName",
+              p.name AS "propertyName", cs.season_label AS "seasonLabel",
+              cs.current_crop AS "currentCrop", cs.next_crop AS "nextCrop"
+       FROM crop_seasons cs
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       WHERE cs.tenant_id = $1::uuid AND p.client_id = $2::uuid
+       ORDER BY cs.created_at DESC, cs.id`, [tenantId, clientId],
+    );
+    const analyses = await client.query<{
+      id: string; code: string; status: string; fieldName: string; seasonLabel: string; createdAt: string;
+    }>(
+      `SELECT a.id::text, a.code, a.status::text, f.name AS "fieldName",
+              cs.season_label AS "seasonLabel", a.created_at::text AS "createdAt"
+       FROM analyses a
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       WHERE a.tenant_id = $1::uuid AND p.client_id = $2::uuid
+       ORDER BY a.created_at DESC, a.id`, [tenantId, clientId],
+    );
+    const reports = await client.query<{
+      id: string; analysisId: string; analysisCode: string; revision: number; publishedAt: string;
+    }>(
+      `SELECT r.id::text, a.id::text AS "analysisId", a.code AS "analysisCode",
+              r.revision, r.published_at::text AS "publishedAt"
+       FROM reports r
+       JOIN interpretations i ON i.tenant_id = r.tenant_id AND i.id = r.interpretation_id
+       JOIN analyses a ON a.tenant_id = i.tenant_id AND a.id = i.analysis_id
+       JOIN crop_seasons cs ON cs.tenant_id = a.tenant_id AND cs.id = a.crop_season_id
+       JOIN fields f ON f.tenant_id = cs.tenant_id AND f.id = cs.field_id
+       JOIN properties p ON p.tenant_id = f.tenant_id AND p.id = f.property_id
+       WHERE r.tenant_id = $1::uuid AND p.client_id = $2::uuid
+       ORDER BY r.published_at DESC, r.id`, [tenantId, clientId],
+    );
+    const history = await client.query<{ id: string; action: string; entityType: string; createdAt: string }>(
+      `WITH client_properties AS (
+         SELECT id FROM properties WHERE tenant_id = $1::uuid AND client_id = $2::uuid
+       ), client_fields AS (
+         SELECT f.id FROM fields f JOIN client_properties p ON p.id = f.property_id WHERE f.tenant_id = $1::uuid
+       ), client_seasons AS (
+         SELECT cs.id FROM crop_seasons cs JOIN client_fields f ON f.id = cs.field_id WHERE cs.tenant_id = $1::uuid
+       ), client_analyses AS (
+         SELECT a.id FROM analyses a JOIN client_seasons cs ON cs.id = a.crop_season_id WHERE a.tenant_id = $1::uuid
+       ), client_interpretations AS (
+         SELECT i.id FROM interpretations i JOIN client_analyses a ON a.id = i.analysis_id WHERE i.tenant_id = $1::uuid
+       ), client_entities AS (
+         SELECT 'client' AS entity_type, $2::uuid AS id
+         UNION ALL SELECT 'property', id FROM client_properties
+         UNION ALL SELECT 'field', id FROM client_fields
+         UNION ALL SELECT 'crop_season', id FROM client_seasons
+         UNION ALL SELECT 'analysis', id FROM client_analyses
+         UNION ALL SELECT 'interpretation', id FROM client_interpretations
+         UNION ALL SELECT 'report', r.id FROM reports r JOIN client_interpretations i ON i.id = r.interpretation_id WHERE r.tenant_id = $1::uuid
+       )
+       SELECT ae.id::text, ae.action, ae.entity_type AS "entityType", ae.created_at::text AS "createdAt"
+       FROM audit_events ae
+       JOIN client_entities e ON e.id = ae.entity_id AND e.entity_type = ae.entity_type
+       WHERE ae.tenant_id = $1::uuid ORDER BY ae.created_at DESC, ae.id DESC LIMIT 50`, [tenantId, clientId],
+    );
+
     return {
       client: item,
+      seasons: seasons.rows,
+      analyses: analyses.rows,
+      reports: reports.rows,
+      history: history.rows,
       properties: properties.rows.map((property) => ({
         ...property,
         fields: fields.rows.filter((field) => field.propertyId === property.id),
@@ -259,14 +328,14 @@ export async function updateClient(input: {
                  archived_at::text AS "archivedAt",
                  (SELECT count(*)::int FROM properties p WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS properties,
                  (SELECT coalesce(sum(f.area_ha),0)::float8 FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS hectares,
-                 0::int AS analyses,
+                 (SELECT count(*)::int FROM properties p JOIN fields f ON f.tenant_id = p.tenant_id AND f.property_id = p.id JOIN crop_seasons cs ON cs.tenant_id = f.tenant_id AND cs.field_id = f.id JOIN analyses a ON a.tenant_id = cs.tenant_id AND a.crop_season_id = cs.id WHERE p.tenant_id = clients.tenant_id AND p.client_id = clients.id) AS analyses,
                  created_at::text AS "createdAt"`,
       [
         input.tenantId, input.clientId, input.name.trim(), input.taxId ?? "", input.documentNormalized ?? "", input.personType,
         input.tradeName ?? "", input.contactName ?? "", input.email?.trim().toLowerCase() ?? "", input.phone ?? "",
         input.whatsapp ?? "", input.postalCode ?? "", input.street ?? "", input.addressNumber ?? "",
         input.addressComplement ?? "", input.district ?? "", input.municipality ?? "", input.state ?? "",
-        input.country ?? "BR", input.notes ?? ""
+        input.country ?? "", input.notes ?? ""
       ],
       );
     } catch (error) {

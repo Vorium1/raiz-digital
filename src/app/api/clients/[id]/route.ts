@@ -28,6 +28,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   try {
     const body = await request.json() as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return Response.json({ error: "Informe um cadastro válido." }, { status: 400 });
+    }
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (name.length < 2 || name.length > 160) {
       return Response.json({ error: "Informe um nome válido para o cliente." }, { status: 400 });
@@ -47,6 +50,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const state = cleanOptional(body.state)?.toUpperCase() ?? null;
     if (state && !/^[A-Z]{2}$/.test(state)) {
       return Response.json({ error: "UF deve conter 2 letras." }, { status: 400 });
+    }
+
+    const country = cleanOptional(body.country)?.toUpperCase() ?? null;
+    if (country && !/^[A-Z]{2}$/.test(country)) {
+      return Response.json({ error: "País deve conter 2 letras." }, { status: 400 });
     }
 
     const updated = await updateClient({
@@ -69,13 +77,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       district: cleanOptional(body.district),
       municipality: cleanOptional(body.municipality),
       state,
-      country: cleanOptional(body.country)?.toUpperCase() ?? "BR",
+      country,
       notes: cleanOptional(body.notes),
     });
     return Response.json({ client: updated });
   } catch (error) {
     if (error instanceof ClientError) return Response.json({ error: error.message }, { status: error.status });
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível editar o cliente." }, { status: 422 });
+    if (error instanceof SyntaxError) return Response.json({ error: "Informe um cadastro válido." }, { status: 400 });
+    return Response.json({ error: "Não foi possível editar o cliente." }, { status: 422 });
   }
 }
 
@@ -92,6 +101,6 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     return Response.json({ client: archived });
   } catch (error) {
     if (error instanceof ClientError) return Response.json({ error: error.message }, { status: error.status });
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível excluir o cliente." }, { status: 422 });
+    return Response.json({ error: "Não foi possível excluir o cliente." }, { status: 422 });
   }
 }

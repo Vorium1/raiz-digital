@@ -72,7 +72,8 @@ export function ClientManager() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const body = Object.fromEntries(form.entries());
     const isEdit = Boolean(editingClient);
     const response = await fetch(isEdit ? `/api/clients/${editingClient!.id}` : "/api/clients", {
@@ -92,7 +93,7 @@ export function ClientManager() {
       setClients((current) => [...current, payload.client].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
     }
     closeForm();
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function remove(client: Client) {
@@ -140,7 +141,7 @@ export function ClientManager() {
         <label><span>Bairro / localidade</span><input name="district" maxLength={120} defaultValue={editingClient?.district ?? ""}/></label>
         <label><span>Município</span><input name="municipality" maxLength={120} defaultValue={editingClient?.municipality ?? ""}/></label>
         <label><span>UF</span><input name="state" maxLength={2} defaultValue={editingClient?.state ?? ""}/></label>
-        <label><span>País</span><input name="country" maxLength={2} defaultValue={editingClient?.country ?? "BR"}/></label>
+        <label><span>País</span><input name="country" maxLength={2} defaultValue={editingClient ? editingClient.country ?? "" : "BR"}/></label>
       </div>
       <label className="full-field"><span>Observações</span><textarea name="notes" rows={3} defaultValue={editingClient?.notes ?? ""}/></label>
       <div className="inline-form-footer">

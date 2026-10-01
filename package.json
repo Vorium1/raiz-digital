@@ -131,7 +131,10 @@
     "test:irrigation-applications": "node --experimental-strip-types scripts/test-irrigation-applications.mjs",
     "test:producer-summary": "node --experimental-strip-types scripts/test-producer-result-summary.mjs",
     "test:official-commercial-plan": "node --experimental-strip-types scripts/test-official-commercial-plan.mjs",
-    "test:final-visual-report": "node --experimental-strip-types scripts/test-final-visual-report.mjs"
+    "test:final-visual-report": "node --experimental-strip-types scripts/test-final-visual-report.mjs",
+    "test:team-administration": "node scripts/test-team-administration.mjs",
+    "test:tenant-catalog-routes": "node scripts/test-tenant-catalog-routes.mjs",
+    "test:analysis-tenant-links": "node scripts/test-analysis-tenant-links.mjs"
   },
   "dependencies": {
     "@node-rs/argon2": "2.0.2",
