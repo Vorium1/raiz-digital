@@ -50,6 +50,7 @@ jobs:
         run: |
           npm run db:migrate
           docker exec -i ${{ job.services.database.id }} psql -U postgres -d raiz_e2e < scripts/test-multitenant-rls.sql
+          npm run test:timeline-db
 
       - name: Rodar testes (lógica pura, sem banco de dados)
         run: |
@@ -57,6 +58,9 @@ jobs:
           npm run test:client-master
           npm run test:calculator
           npm run test:calculator-ui
+          npm run test:timeline-filters
+          npm run test:timeline-route
+          npm run test:timeline-ui
           npm run test:platform-admin
           npm run test:team-privacy
           npm run test:team-administration

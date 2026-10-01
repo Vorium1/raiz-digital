@@ -4286,3 +4286,13 @@ existente preservado como fonte única. Navegador dos cinco modos desktop/mobile
 real de catálogo e manual sem persistência aprovados no banco local E2E descartável.
 Regressões de motor/render React e handoff aprovadas; ver `docs/WSL_LOCAL_REVIEW_2026-09-30.md`.
 Sem merge ou produção.
+
+
+### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
+
+Após #128/PR129 e #130/PR131 com CI verde, a branch
+`feature/agronomic-decision-timeline` adiciona reconstrução por registros existentes,
+todas as revisões, fontes/responsáveis e regras congeladas, filtros tipo/período/safra.
+Sem migration, histórico paralelo ou escrita de produção. Testes reais de isolamento
+PostgreSQL e regressões registrados no CI. Detalhes em
+`docs/WSL_LOCAL_REVIEW_2026-09-30.md`. PR deve permanecer draft, sem merge.

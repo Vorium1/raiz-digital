@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { RealFieldMap, type MapPoint } from "@/components/real-field-map";
+import { FieldDecisionTimeline } from "@/components/field-decision-timeline";
 import { FieldNdviPanel } from "@/components/field-ndvi-panel";
 import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-ui";
 import { classificationColor } from "@/lib/classification-colors";
@@ -47,7 +48,7 @@ type MapLayerResponse = {
  * (não decorativo): troca o conjunto de ordens/análises mostradas nas abas Evidências e Decisões.
  */
 export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOverview; alerts: OperationalAlert[] }) {
-  const { field, seasons, orders, analyses, yieldHistory, ndviSnapshots, gpsQuality, reports } = overview;
+  const { field, seasons, orders, analyses, ndviSnapshots, gpsQuality, reports } = overview;
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -68,7 +69,6 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
   const seasonOrders = useMemo(() => orders.filter((o) => !seasonId || o.cropSeasonId === seasonId), [orders, seasonId]);
   const seasonAnalyses = useMemo(() => analyses.filter((a) => !seasonId || a.cropSeasonId === seasonId), [analyses, seasonId]);
   const seasonReports = useMemo(() => reports.filter((r) => !seasonId || r.cropSeasonId === seasonId), [reports, seasonId]);
-  const seasonYield = useMemo(() => yieldHistory.filter((y) => !selectedSeason || y.seasonLabel === selectedSeason.seasonLabel), [yieldHistory, selectedSeason]);
 
   const urlOrderId = searchParams.get("ordem");
   const [selectedOrderId, setSelectedOrderIdState] = useState<string>(
@@ -164,32 +164,6 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
     if (notInterpretable.length > 0) return { label: `${notInterpretable.length} de ${seasonAnalyses.length} sem parâmetro interpretável`, tone: "waiting" as const };
     return { label: "Avaliação em andamento", tone: "waiting" as const };
   }, [seasonAnalyses]);
-
-  // Linha do tempo: junta datas REAIS de cada tabela (nunca inventa uma data). Quando só existe
-  // created_at (sem uma data de domínio própria, ex. planned_at), rotula "Cadastrado em" -- pedido
-  // explícito do briefing pra nunca disfarçar data de cadastro como data do evento real.
-  //
-  // Item 3 (revisão independente): NDVI não tem vínculo real com safra (field_ndvi_snapshots não tem
-  // crop_season_id -- não dá pra saber com segurança a qual safra uma leitura pertenceria, e adivinhar por
-  // data seria inventar uma associação que o dado não garante). Por isso essas linhas SEMPRE aparecem
-  // (histórico do talhão inteiro, não filtrado por safra) e ficam marcadas "(histórico do talhão)" pra
-  // nunca parecerem um evento desta safra específica. Ordens/análises/relatórios têm vínculo real de safra
-  // e por isso usam as listas já filtradas (seasonOrders/seasonAnalyses/seasonReports).
-  const timelineEvents = useMemo(() => {
-    const events: Array<{ date: string; label: string; detail: string; icon: "location" | "flask" | "shield" | "sparkles" | "file" }> = [];
-    for (const o of seasonOrders) {
-      events.push({ date: o.plannedAt ?? o.createdAt, label: o.plannedAt ? `Coleta planejada — ${o.code}` : `Cadastrado em — ordem ${o.code}`, detail: `${o.collectedPoints}/${o.plannedPoints} pontos`, icon: "location" });
-    }
-    for (const a of seasonAnalyses) {
-      events.push({ date: a.createdAt, label: `Cadastrado em — análise ${a.code}`, detail: "Entrada laboratorial", icon: "flask" });
-      if (a.interpretedAt) events.push({ date: a.interpretedAt, label: `Interpretação calculada — ${a.code}`, detail: a.notInterpretableReason ?? "Motor determinístico executado", icon: "sparkles" });
-      if (a.reviewedAt) events.push({ date: a.reviewedAt, label: `Validação registrada — ${a.code}`, detail: "Estado de validação registrado na trilha técnica", icon: "shield" });
-      if (a.approvedAt) events.push({ date: a.approvedAt, label: `Interpretação validada — ${a.code}`, detail: "Decisão registrada na trilha técnica", icon: "shield" });
-    }
-    for (const n of ndviSnapshots) events.push({ date: n.capturedAt, label: "Leitura de satélite (histórico do talhão)", detail: `NDVI médio ${n.meanNdvi.toFixed(2)} · ${n.source}`, icon: "sparkles" });
-    for (const r of seasonReports) events.push({ date: r.publishedAt, label: `Relatório publicado — ${r.analysisCode}`, detail: `Revisão #${r.revision}`, icon: "file" });
-    return events.filter((e) => e.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [seasonOrders, seasonAnalyses, ndviSnapshots, seasonReports]);
 
   // Fase 2, Bloco C: síntese estruturada "o que está disponível / o que exige atenção / próxima ação",
   // toda derivada de contagens e estados reais já carregados -- ver src/domain/field-overview-synthesis.ts.
@@ -369,28 +343,7 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
 
       {tab === "timeline" && (
         <div className="field-overview-panel">
-          <div className="field-overview-timeline card">
-            {timelineEvents.length === 0 && <p className="report-empty-note" style={{ padding: 16 }}>Nenhum evento registrado nesta safra ainda.</p>}
-            {timelineEvents.map((e, i) => (
-              <div key={i} className="field-overview-timeline-row">
-                <Icon name={e.icon} size={15}/>
-                <div><strong>{e.label}</strong><small>{e.detail}</small></div>
-                <span>{formatRelativeOrDate(e.date)}</span>
-              </div>
-            ))}
-          </div>
-          {seasonYield.length > 0 && (
-            <div className="field-overview-timeline card">
-              <div className="field-ops-section-head compact"><div><span className="eyebrow">PRODUTIVIDADE REGISTRADA</span><h2>Histórico de colheita</h2></div><Link href="/coletas#produtividade">Editar</Link></div>
-              {seasonYield.map((y) => (
-                <div key={y.id} className="field-overview-timeline-row">
-                  <Icon name="leaf" size={15}/>
-                  <div><strong>{y.crop}{y.cultivar ? ` · ${y.cultivar}` : ""}</strong><small>{y.yieldValue} {y.yieldUnit} · fonte: {y.source}</small></div>
-                  <span>{formatRelativeOrDate(y.createdAt)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <FieldDecisionTimeline key={field.id} fieldId={field.id} seasonId={seasonId}/>
         </div>
       )}
     </div>
