@@ -1,0 +1,2 @@
+import { getPlatformSession } from "@/lib/auth/session"; import { calculatePlanningScenario, PlanningError } from "@/lib/repositories/planning";
+export async function POST(_:Request,{params}:{params:Promise<{id:string}>}){const s=await getPlatformSession();if(!s)return Response.json({error:"Sessão necessária."},{status:401});try{return Response.json(await calculatePlanningScenario(s.tenantId,(await params).id,s.userId));}catch(e){return Response.json({error:"Planejamento não encontrado."},{status:e instanceof PlanningError?e.status:422});}}
