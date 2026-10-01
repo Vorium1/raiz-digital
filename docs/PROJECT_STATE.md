@@ -4296,3 +4296,20 @@ todas as revisões, fontes/responsáveis e regras congeladas, filtros tipo/perí
 Sem migration, histórico paralelo ou escrita de produção. Testes reais de isolamento
 PostgreSQL e regressões registrados no CI. Detalhes em
 `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. PR deve permanecer draft, sem merge.
+
+## 2026-10-01 — #123, auditoria de dose e entrega no relatório
+
+O bloco foi isolado em `feature/issue-123-dose-audit`, criado de
+`feature/report-dose-completeness` (`2e756b0`). O fluxo auditado conserva P₂O₅,
+K₂O e S em `report-spatial-nutrient-plan`: sem representatividade para uma taxa
+uniforme, exibe decisão por ponto/zona e bloqueia transformar a média logística da
+grade em taxa de aplicação. O resumo do produtor recebe apenas recomendações oficiais
+congeladas, calcula o total da área para `kg/ha` e `t/ha`, e não escolhe produto,
+preço nem custo. A calagem mantém separadas necessidade agronômica PRNT100 e eventual
+produto comercial explicitamente congelado. N e micronutrientes permanecem dependentes
+das respectivas regras/evidências; nenhuma dose é criada para preencher o relatório.
+
+O contrato de resumo foi ampliado para verificar também P₂O₅ e S com total por área.
+Snapshots publicados continuam imutáveis; divergência de contexto/recomendação exige
+nova revisão/publicação. Este checkpoint prova o caminho coberto por testes locais,
+não estabelece nova regra agronômica.

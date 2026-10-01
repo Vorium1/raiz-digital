@@ -15,6 +15,22 @@ assert.equal(potassium.rows[0].quantityKind, "NUTRIENT_EQUIVALENT");
 assert.equal(potassium.showsNutrientEquivalentNote, true);
 assert.equal(potassium.costFrozenInOfficialReport, false);
 
+const phosphorusAndSulfur = buildProducerResultSummary({
+  areaHa: 12.5,
+  recommendations: [
+    { inputType: "P2O5", quantity: 48, unit: "kg/ha" },
+    { inputType: "S", quantity: 20, unit: "kg/ha" },
+  ],
+});
+assert.deepEqual(phosphorusAndSulfur.rows.map((row) => ({
+  label: row.label,
+  total: row.totalQuantity,
+  kind: row.quantityKind,
+})), [
+  { label: "Fósforo (P₂O₅)", total: 600, kind: "NUTRIENT_EQUIVALENT" },
+  { label: "Enxofre (S)", total: 250, kind: "NUTRIENT_EQUIVALENT" },
+]);
+
 const lime = buildProducerResultSummary({
   areaHa: 10,
   recommendations: [{ inputType: "CALCARIO_PRNT100", quantity: 2.2, unit: "t/ha" }],
