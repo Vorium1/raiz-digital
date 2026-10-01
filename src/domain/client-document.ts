@@ -25,7 +25,15 @@ export function isValidCnpj(document: string) {
 
 export function validateClientDocument(personType: ClientPersonType, value: string | null | undefined) {
   const normalized = normalizeTaxDocument(value);
-  if (!normalized) return { normalized: null, error: null };
+  if (!(value ?? "").trim()) return { normalized: null, error: null };
   const valid = personType === "PF" ? isValidCpf(normalized) : isValidCnpj(normalized);
   return { normalized, error: valid ? null : `Informe um ${personType === "PF" ? "CPF" : "CNPJ"} válido.` };
+}
+
+/** Formats known numeric documents without changing an unrecognized legacy value. */
+export function formatClientDocument(value: string | null | undefined) {
+  const digits = normalizeTaxDocument(value);
+  if (digits.length === 11) return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  if (digits.length === 14) return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  return value || "Não informado";
 }

@@ -16,6 +16,20 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: raiz_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: e2e-local-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d raiz_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -30,11 +44,23 @@ jobs:
       - name: Checar tipos
         run: npm run typecheck
 
+      - name: Validar migrations e RLS em banco descartável
+        env:
+          DATABASE_URL: postgresql://postgres:e2e-local-only@localhost:5432/raiz_e2e
+        run: |
+          npm run db:migrate
+          docker exec -i ${{ job.services.database.id }} psql -U postgres -d raiz_e2e < scripts/test-multitenant-rls.sql
+
       - name: Rodar testes (lógica pura, sem banco de dados)
         run: |
           npm run test:handoff
           npm run test:client-master
           npm run test:calculator
+          npm run test:platform-admin
+          npm run test:team-privacy
+          npm run test:team-administration
+          npm run test:tenant-catalog-routes
+          npm run test:analysis-tenant-links
           node --experimental-strip-types scripts/test-map-runtime-recovery.mjs
           node --experimental-strip-types scripts/test-final-route-permissions.mjs
           node --experimental-strip-types scripts/test-analysis-evidence-freshness.mjs

@@ -1,6 +1,6 @@
 import { isAnalysisDepthId, type AnalysisDepthId } from "@/domain/analysis-depths";
 import { getPlatformSession } from "@/lib/auth/session";
-import { createAnalysis, listAnalyses } from "@/lib/repositories/analyses";
+import { AnalysisError, createAnalysis, listAnalyses } from "@/lib/repositories/analyses";
 import { irrigationApplicationsFromContext, parseIrrigationApplications } from "@/domain/irrigation-applications";
 
 const sourceTypes = new Set(["INTEGRATION", "CSV", "XLSX", "PDF_OCR", "MANUAL"] as const);
@@ -52,15 +52,20 @@ export async function POST(request: Request) {
   try { parseIrrigationApplications(irrigationApplicationsFromContext(analysisContext)); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Registro de irrigação inválido." }, { status: 400 }); }
 
-  const analysis = await createAnalysis({
-    tenantId: session.tenantId,
-    userId: session.userId,
-    cropSeasonId: body.cropSeasonId,
-    collectionOrderId: body.collectionOrderId || null,
-    laboratoryId: body.laboratoryId || null,
-    sourceType: body.sourceType || null,
-    analysisDepth: body.analysisDepth ?? null,
-    analysisContext,
-  });
-  return Response.json({ analysis }, { status: 201 });
+  try {
+    const analysis = await createAnalysis({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      cropSeasonId: body.cropSeasonId,
+      collectionOrderId: body.collectionOrderId || null,
+      laboratoryId: body.laboratoryId || null,
+      sourceType: body.sourceType || null,
+      analysisDepth: body.analysisDepth ?? null,
+      analysisContext,
+    });
+    return Response.json({ analysis }, { status: 201 });
+  } catch (error) {
+    if (error instanceof AnalysisError) return Response.json({ error: error.message }, { status: error.status });
+    throw error;
+  }
 }

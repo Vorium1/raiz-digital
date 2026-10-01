@@ -39,6 +39,16 @@ export default async function MorePage() {
           <Icon name="chevron" size={17}/>
         </Link>
 
+        {session.isPlatformAdmin && (
+          <Link href="/administracao/empresas">
+            <span><Icon name="shield" size={21}/></span>
+            <div>
+              <strong>Administração RAIZ</strong>
+              <small>Empresas, situação e primeiro administrador de cada tenant.</small>
+            </div>
+            <Icon name="chevron" size={17}/>
+          </Link>
+        )}
         {canManageSettings && (
           <Link href="/configuracoes">
             <span><Icon name="settings" size={21}/></span>

@@ -4266,3 +4266,13 @@ sem salvar dados; desktop 1348 px sem overflow. Corrigidos contraste/tamanho dos
 via CSS Module, inputs 16 px e alvos 44 px. O estado de publicação mostrado no Preview
 diverge do checkpoint de homologação e requer reconciliação antes do smoke com escrita;
 não houve geração de laudo ou gravação de aplicações nesta inspeção.
+
+## 2026-09-30 — ambiente oficial local WSL2, revisão #128
+
+Fonte remota `2ab4c590` preservada sem recuperar commits antigos Windows. Corrigidos erros de
+cadastro/documento, atividade global exposta na equipe, autorização concorrente de administração,
+falha de convite já persistido e vínculos de laboratório/pais cross-tenant. Cliente 360° ampliado
+com safras/análises/publicações/auditoria reais. Migrations 001–046 e RLS com dois tenants
+validadas em PostgreSQL/PostGIS local descartável; regressões executáveis e navegador
+ desktop/mobile aprovados. CI ganhou integração de migrations/RLS em PostGIS descartável.
+Detalhes e limitações em `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. Sem merge ou produção.
