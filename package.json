@@ -31,6 +31,7 @@
     "test:spatial-map": "node --experimental-strip-types scripts/test-spatial-map-contract.mjs",
     "test:engine": "node --experimental-strip-types scripts/test-agronomic-engine.mjs",
     "test:multiseason-planning": "node --experimental-strip-types scripts/test-multiseason-planning.mjs",
+    "test:multiseason-planning-db": "docker compose -f compose.yaml exec -T database psql -U raiz -d raiz_digital -v ON_ERROR_STOP=1 < scripts/test-multiseason-planning-db.sql",
     "test:auxiliary": "node --experimental-strip-types scripts/test-auxiliary-pendencies.mjs",
     "test:liming": "node --experimental-strip-types scripts/test-liming-engine.mjs",
     "test:rice-liming-dry": "node --experimental-strip-types scripts/test-rice-liming-dry-soil-sosbai-2025.mjs",
