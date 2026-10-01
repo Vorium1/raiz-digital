@@ -1,5 +1,5 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { createCropSeason } from "@/lib/repositories/catalog";
+import { CatalogError, createCropSeason } from "@/lib/repositories/catalog";
 
 const TECHNOLOGY_LEVELS = new Set(["BAIXO", "MEDIO", "ALTO"]);
 const COMPACTION_LEVELS = new Set(["NENHUM", "BAIXO", "MEDIO", "ALTO"]);
@@ -20,14 +20,15 @@ export async function POST(request: Request) {
   const session = await getPlatformSession();
   if (!session) return Response.json({ error: "Sessão necessária." }, { status: 401 });
   if (!new Set(["SUPER_ADMIN","TENANT_ADMIN","AGRONOMIST","FIELD_TECH"]).has(session.role)) return Response.json({ error: "Perfil sem permissão." }, { status: 403 });
-  const body = await request.json() as Record<string, unknown>;
-  const fieldId = typeof body.fieldId === "string" ? body.fieldId : "";
-  const seasonLabel = typeof body.seasonLabel === "string" ? body.seasonLabel.trim() : "";
-  const yieldGoal = body.yieldGoal == null || body.yieldGoal === "" ? null : Number(body.yieldGoal);
-  if (!fieldId || !seasonLabel || (yieldGoal != null && (!Number.isFinite(yieldGoal) || yieldGoal <= 0))) return Response.json({ error: "Talhão, safra e meta produtiva válida são necessários." }, { status: 400 });
-  const technologyLevel = typeof body.technologyLevel === "string" && TECHNOLOGY_LEVELS.has(body.technologyLevel) ? body.technologyLevel : null;
-  const soilCompactionLevel = typeof body.soilCompactionLevel === "string" && COMPACTION_LEVELS.has(body.soilCompactionLevel) ? body.soilCompactionLevel : null;
-  const season = await createCropSeason({
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    const fieldId = typeof body.fieldId === "string" ? body.fieldId : "";
+    const seasonLabel = typeof body.seasonLabel === "string" ? body.seasonLabel.trim() : "";
+    const yieldGoal = body.yieldGoal == null || body.yieldGoal === "" ? null : Number(body.yieldGoal);
+    if (!fieldId || !seasonLabel || (yieldGoal != null && (!Number.isFinite(yieldGoal) || yieldGoal <= 0))) return Response.json({ error: "Talhão, safra e meta produtiva válida são necessários." }, { status: 400 });
+    const technologyLevel = typeof body.technologyLevel === "string" && TECHNOLOGY_LEVELS.has(body.technologyLevel) ? body.technologyLevel : null;
+    const soilCompactionLevel = typeof body.soilCompactionLevel === "string" && COMPACTION_LEVELS.has(body.soilCompactionLevel) ? body.soilCompactionLevel : null;
+    const season = await createCropSeason({
     tenantId: session.tenantId,
     userId: session.userId,
     fieldId,
@@ -50,6 +51,11 @@ export async function POST(request: Request) {
     headlandAreaHa: parseNonNegativeNumber(body.headlandAreaHa),
     isFirstYearArea: typeof body.isFirstYearArea === "boolean" ? body.isFirstYearArea : null,
     cultivationYears: parseCultivationYears(body.cultivationYears),
-  });
-  return Response.json({ season }, { status: 201 });
+    });
+    return Response.json({ season }, { status: 201 });
+  } catch (error) {
+    if (error instanceof CatalogError) return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof SyntaxError) return Response.json({ error: "Informe uma safra válida." }, { status: 400 });
+    return Response.json({ error: "Não foi possível cadastrar a safra." }, { status: 422 });
+  }
 }

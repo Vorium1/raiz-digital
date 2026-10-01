@@ -14,6 +14,7 @@ class CatalogError extends Error { constructor(message, status) { super(message)
 const cases = [
   ['properties', 'createProperty', { clientId: 'foreign-id', name: 'E2E', municipality: 'E2E', state: 'RS' }, ['SUPER_ADMIN', 'TENANT_ADMIN', 'AGRONOMIST', 'FIELD_TECH', 'COMMERCIAL']],
   ['fields', 'createField', { propertyId: 'foreign-id', name: 'E2E', boundary: { type: 'Polygon', coordinates: [] } }, ['SUPER_ADMIN', 'TENANT_ADMIN', 'AGRONOMIST', 'FIELD_TECH']],
+  ['crop-seasons', 'createCropSeason', { fieldId: 'foreign-id', seasonLabel: 'E2E' }, ['SUPER_ADMIN', 'TENANT_ADMIN', 'AGRONOMIST', 'FIELD_TECH']],
 ];
 for (const [resource, fn, body, roles] of cases) {
   for (const role of [null, 'VIEWER', 'COMMERCIAL', 'FIELD_TECH', 'AGRONOMIST', 'TENANT_ADMIN', 'SUPER_ADMIN']) {
@@ -64,6 +65,7 @@ for (const [resource, entity, updateFn, deleteFn, patchBody, writeRoles] of muta
 for (const [fn, input] of [
   ['createProperty', { tenantId: 'tenant-a', userId: 'actor-a', clientId: 'foreign-id', name: 'E2E' }],
   ['createField', { tenantId: 'tenant-a', userId: 'actor-a', propertyId: 'foreign-id', name: 'E2E', boundary: {} }],
+  ['createCropSeason', { tenantId: 'tenant-a', userId: 'actor-a', fieldId: 'foreign-id', seasonLabel: 'E2E' }],
 ]) {
   let audited = false;
   const repository = load('src/lib/repositories/catalog.ts', {

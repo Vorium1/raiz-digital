@@ -330,9 +330,11 @@ export async function createCropSeason(input: {
         crop_profile_id, cultivar, management_system, soil_type, soil_texture, technical_region_code,
         next_cultivar, technology_level, soil_compaction_level, livestock_trample_area_ha, headland_area_ha,
         is_first_year_area, cultivation_years)
-       VALUES ($1::uuid, $2::uuid, $3, nullif($4,''), nullif($5,''), $6, nullif($7,''), $8,
-               $9::uuid, nullif($10,''), nullif($11,''), nullif($12,''), nullif($13,''), nullif($14,''),
-               nullif($15,''), nullif($16,''), nullif($17,''), $18, $19, $20, $21)
+       SELECT $1::uuid, f.id, $3, nullif($4,''), nullif($5,''), $6, nullif($7,''), $8,
+              $9::uuid, nullif($10,''), nullif($11,''), nullif($12,''), nullif($13,''), nullif($14,''),
+              nullif($15,''), nullif($16,''), nullif($17,''), $18, $19, $20, $21
+       FROM fields f
+       WHERE f.tenant_id = $1::uuid AND f.id = $2::uuid
        RETURNING id::text, field_id::text AS "fieldId", season_label AS "seasonLabel", current_crop AS "currentCrop", next_crop AS "nextCrop",
                  yield_goal::float8 AS "yieldGoal", yield_goal_unit AS "yieldGoalUnit", irrigated,
                  crop_profile_id::text AS "cropProfileId", cultivar, management_system AS "managementSystem",
@@ -351,6 +353,7 @@ export async function createCropSeason(input: {
       ],
     );
     const created = result.rows[0];
+    if (!created) throw new CatalogError("Talhão não encontrado.", 404);
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "CROP_SEASON_CREATED", entityType: "crop_season", entityId: created.id, metadata: { seasonLabel: created.seasonLabel } });
     return created;
   });

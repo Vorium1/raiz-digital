@@ -4320,8 +4320,10 @@ exclusão por UUID de outro tenant não eram exercitadas na matriz de rota.
 
 `test:tenant-catalog-routes` agora cobre todos os papéis para criação, edição e
 exclusão de propriedades e talhões, e comprova que UUID estrangeiro retorna 404 sem
-escrita nem auditoria. O repositório já tinha a cláusula `tenant_id` correspondente;
-nenhuma regra de produto, migration ou dado operacional foi alterado.
+escrita nem auditoria. A criação de safra recebeu a mesma garantia: o `INSERT SELECT`
+consulta o talhão no tenant da sessão e retorna 404 quando ele não existe ou pertence
+a outro tenant, antes de auditoria. Nenhuma regra de produto, migration ou dado
+operacional foi alterado.
 
 
 ### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
