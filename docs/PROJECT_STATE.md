@@ -4325,6 +4325,33 @@ consulta o talhão no tenant da sessão e retorna 404 quando ele não existe ou 
 a outro tenant, antes de auditoria. Nenhuma regra de produto, migration ou dado
 operacional foi alterado.
 
+### Checkpoint de topologia e RBAC (2026-10-01)
+
+O remoto foi lido diretamente por Git: `feature/agronomic-decision-timeline`
+(`a46edeb`) é a base de `feature/calculadora-raiz-v2-pontos` (`1341ab8`), que
+contém `ed03e10` da Calculadora e o teste de catálogo `1341ab8`. A auditoria
+`feature/issue-128-tenant-audit` (`dd71800`) é um único commit acima dessa pilha.
+`feature/report-dose-completeness` (`2e756b0`) é ancestral dessa linha e deve ser
+tratada como bloco isolado de relatório, sem reescrever os históricos existentes.
+
+Matriz de escrita confirmada nas rotas e contratos auditados: clientes aceitam
+`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST` e `COMMERCIAL`; propriedades incluem
+também `FIELD_TECH`; talhões, safras, coletas, pontos e operações de análise aceitam
+`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST` e `FIELD_TECH`; revisão, homologação e
+publicação exigem `SUPER_ADMIN`, `TENANT_ADMIN` ou `AGRONOMIST`; catálogo comercial
+é administrado por `SUPER_ADMIN`, `TENANT_ADMIN` ou `AGRONOMIST`; equipe exige
+`SUPER_ADMIN` ou `TENANT_ADMIN`; console de plataforma exige o flag explícito
+`isPlatformAdmin`, separado de `is_platform_curator`. `VIEWER` não possui rota de
+escrita nesses contratos e `COMMERCIAL` não possui rota de revisão/publicação.
+As leituras continuam no tenant da sessão/RLS; isso não transforma o administrador
+da plataforma em leitor operacional global.
+
+Os testes `security`, `client-master`, `platform-admin`, `team-privacy`,
+`team-administration`, `tenant-catalog-routes` e `analysis-tenant-links` foram
+executados neste checkpoint, além do teste real de RLS local. A auditoria não usa o
+corpo da issue remota, indisponível pela API desta máquina; não foi encontrada outra
+lacuna determinística no escopo de código e contratos examinado.
+
 
 ### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
 
