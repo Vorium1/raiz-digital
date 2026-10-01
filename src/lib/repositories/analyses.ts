@@ -9,6 +9,13 @@ import { parseWheatBuyerQualityContext } from "@/domain/wheat-buyer-quality-cont
 import { parseSpatialInterpolationValidations, spatialInterpolationValidationsFromAnalysisContext } from "@/domain/spatial-interpolation-context";
 import { limingManagementContextFromAnalysisContext, parseLimingManagementContext } from "@/domain/liming-management-context";
 
+export class AnalysisError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+    this.name = "AnalysisError";
+  }
+}
+
 function analysisCode() {
   const year = new Date().getFullYear();
   return `AN-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -118,6 +125,17 @@ export async function createAnalysis(input: {
   analysisContext?: Record<string, unknown> | null;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    // A FK de laboratório é global por id. RLS não valida a empresa da linha
+    // referenciada durante INSERT; confira explicitamente o catálogo permitido.
+    if (input.laboratoryId) {
+      const laboratory = await client.query(
+        `SELECT id FROM laboratories
+         WHERE id = $2::uuid AND (tenant_id = $1::uuid OR tenant_id IS NULL) AND active
+         FOR SHARE`,
+        [input.tenantId, input.laboratoryId],
+      );
+      if (!laboratory.rows[0]) throw new AnalysisError("Laboratório não encontrado no catálogo ativo desta empresa.", 404);
+    }
     const code = analysisCode();
     const result = await client.query(
       `INSERT INTO analyses

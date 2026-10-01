@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 
 type Client = {
@@ -9,6 +10,18 @@ type Client = {
   taxId: string | null;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  postalCode: string | null;
+  street: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
+  district: string | null;
+  municipality: string | null;
+  state: string | null;
+  country: string | null;
+  personType: "PF" | "PJ" | null;
+  tradeName: string | null;
+  contactName: string | null;
   notes?: string | null;
   properties: number;
   hectares: number;
@@ -59,7 +72,8 @@ export function ClientManager() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const body = Object.fromEntries(form.entries());
     const isEdit = Boolean(editingClient);
     const response = await fetch(isEdit ? `/api/clients/${editingClient!.id}` : "/api/clients", {
@@ -79,11 +93,11 @@ export function ClientManager() {
       setClients((current) => [...current, payload.client].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
     }
     closeForm();
-    event.currentTarget.reset();
+    formElement.reset();
   }
 
   async function remove(client: Client) {
-    if (!window.confirm(`Excluir o cliente "${client.name}"? Essa ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Arquivar o cliente "${client.name}"? O histórico técnico será preservado.`)) return;
     setDeletingId(client.id);
     setError("");
     const response = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
@@ -99,7 +113,8 @@ export function ClientManager() {
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     if (!needle) return clients;
-    return clients.filter((client) => [client.name, client.taxId, client.email, client.phone].some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle)));
+    return clients.filter((client) => [client.name, client.taxId, client.email, client.phone, client.whatsapp, client.municipality, client.state]
+      .some((value) => value?.toLocaleLowerCase("pt-BR").includes(needle)));
   }, [clients, query]);
 
   return <>
@@ -111,10 +126,22 @@ export function ClientManager() {
     {showForm && <form className="card inline-create-form" onSubmit={submit} key={editingClient?.id ?? "new"}>
       <div className="form-heading"><span className="eyebrow">{editingClient ? "EDIÇÃO" : "CADASTRO REAL"}</span><h2>{editingClient ? `Editar ${editingClient.name}` : "Novo cliente"}</h2><p>{editingClient ? "As mudanças são gravadas no PostgreSQL na hora." : "O registro será gravado no PostgreSQL já vinculado ao tenant da sessão."}</p></div>
       <div className="form-grid compact">
+        <label><span>Tipo de pessoa *</span><select name="personType" required defaultValue={editingClient?.personType ?? "PF"}><option value="PF">Pessoa física</option><option value="PJ">Pessoa jurídica</option></select></label>
         <label><span>Nome / razão social *</span><input name="name" required minLength={2} maxLength={160} defaultValue={editingClient?.name ?? ""}/></label>
         <label><span>CPF/CNPJ</span><input name="taxId" inputMode="numeric" defaultValue={editingClient?.taxId ?? ""}/></label>
+        <label><span>Nome fantasia</span><input name="tradeName" maxLength={160} defaultValue={editingClient?.tradeName ?? ""}/></label>
+        <label><span>Contato principal</span><input name="contactName" maxLength={160} defaultValue={editingClient?.contactName ?? ""}/></label>
         <label><span>E-mail</span><input name="email" type="email" defaultValue={editingClient?.email ?? ""}/></label>
         <label><span>Telefone</span><input name="phone" type="tel" defaultValue={editingClient?.phone ?? ""}/></label>
+        <label><span>WhatsApp</span><input name="whatsapp" type="tel" defaultValue={editingClient?.whatsapp ?? ""}/></label>
+        <label><span>CEP</span><input name="postalCode" inputMode="numeric" maxLength={9} defaultValue={editingClient?.postalCode ?? ""}/></label>
+        <label><span>Logradouro</span><input name="street" maxLength={180} defaultValue={editingClient?.street ?? ""}/></label>
+        <label><span>Número</span><input name="addressNumber" maxLength={40} defaultValue={editingClient?.addressNumber ?? ""}/></label>
+        <label><span>Complemento</span><input name="addressComplement" maxLength={120} defaultValue={editingClient?.addressComplement ?? ""}/></label>
+        <label><span>Bairro / localidade</span><input name="district" maxLength={120} defaultValue={editingClient?.district ?? ""}/></label>
+        <label><span>Município</span><input name="municipality" maxLength={120} defaultValue={editingClient?.municipality ?? ""}/></label>
+        <label><span>UF</span><input name="state" maxLength={2} defaultValue={editingClient?.state ?? ""}/></label>
+        <label><span>País</span><input name="country" maxLength={2} defaultValue={editingClient ? editingClient.country ?? "" : "BR"}/></label>
       </div>
       <label className="full-field"><span>Observações</span><textarea name="notes" rows={3} defaultValue={editingClient?.notes ?? ""}/></label>
       <div className="inline-form-footer">
@@ -129,7 +156,7 @@ export function ClientManager() {
     {error && <div className="import-message danger"><Icon name="warning" size={16}/><div><strong>Não foi possível concluir</strong><small>{error}</small></div></div>}
 
     <div className="data-card">
-      {loading ? <div className="empty-state"><strong>Carregando carteira…</strong><small>Consultando dados isolados da sua empresa.</small></div> : filtered.length === 0 ? <div className="empty-state"><Icon name="users"/><strong>{clients.length ? "Nenhum cliente encontrado" : "Sua carteira começa aqui"}</strong><small>{clients.length ? "Ajuste a busca para localizar outro cadastro." : "Cadastre o primeiro cliente para depois criar propriedades e talhões."}</small></div> : <table className="data-table"><thead><tr><th>Cliente</th><th>Contato</th><th>Propriedades</th><th>Área acompanhada</th><th>Análises</th><th></th></tr></thead><tbody>{filtered.map((client)=><tr key={client.id}><td><strong>{client.name}</strong><small>{client.taxId || "Documento não informado"}</small></td><td>{client.email || client.phone || "—"}</td><td>{client.properties}</td><td>{client.hectares.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</td><td>{client.analyses}</td><td className="client-row-actions"><button type="button" className="icon-button" aria-label={`Editar ${client.name}`} onClick={()=>startEdit(client)}><Icon name="edit" size={15}/></button><button type="button" className="icon-button" aria-label={`Excluir ${client.name}`} disabled={deletingId === client.id} onClick={()=>void remove(client)}><Icon name={deletingId === client.id ? "clock" : "trash"} size={15}/></button></td></tr>)}</tbody></table>}
+      {loading ? <div className="empty-state"><strong>Carregando carteira…</strong><small>Consultando dados isolados da sua empresa.</small></div> : filtered.length === 0 ? <div className="empty-state"><Icon name="users"/><strong>{clients.length ? "Nenhum cliente encontrado" : "Sua carteira começa aqui"}</strong><small>{clients.length ? "Ajuste a busca para localizar outro cadastro." : "Cadastre o primeiro cliente para depois criar propriedades e talhões."}</small></div> : <table className="data-table"><thead><tr><th>Cliente</th><th>Contato</th><th>Propriedades</th><th>Área acompanhada</th><th>Análises</th><th></th></tr></thead><tbody>{filtered.map((client)=><tr key={client.id}><td><Link href={`/clientes/${client.id}`}><strong>{client.name}</strong></Link><small>{client.taxId || "Documento não informado"}</small></td><td>{client.email || client.phone || "—"}</td><td>{client.properties}</td><td>{client.hectares.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha</td><td>{client.analyses}</td><td className="client-row-actions"><button type="button" className="icon-button" aria-label={`Editar ${client.name}`} onClick={()=>startEdit(client)}><Icon name="edit" size={15}/></button><button type="button" className="icon-button" aria-label={`Arquivar ${client.name}`} disabled={deletingId === client.id} onClick={()=>void remove(client)}><Icon name={deletingId === client.id ? "clock" : "trash"} size={15}/></button></td></tr>)}</tbody></table>}
     </div>
   </>;
 }

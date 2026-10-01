@@ -77,12 +77,14 @@ export async function createProperty(input: {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
     const result = await client.query(
       `INSERT INTO properties (tenant_id, client_id, name, municipality, state, boundary)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5,
-         CASE WHEN $6::text IS NULL THEN NULL ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($6),4326)) END)
+       SELECT $1::uuid, c.id, $3, $4, $5,
+         CASE WHEN $6::text IS NULL THEN NULL ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($6),4326)) END
+       FROM clients c WHERE c.tenant_id = $1::uuid AND c.id = $2::uuid
        RETURNING id::text, client_id::text AS "clientId", name, municipality, state`,
       [input.tenantId, input.clientId, input.name, input.municipality, input.state, input.boundary ? JSON.stringify(input.boundary) : null],
     );
     const created = result.rows[0];
+    if (!created) throw new CatalogError("Cliente não encontrado.", 404);
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "PROPERTY_CREATED", entityType: "property", entityId: created.id, metadata: { name: created.name } });
     return created;
   });
@@ -96,6 +98,11 @@ export async function createField(input: {
   boundary: object;
 }) {
   return withTenant({ tenantId: input.tenantId, userId: input.userId }, async (client) => {
+    const property = await client.query(
+      "SELECT id FROM properties WHERE tenant_id = $1::uuid AND id = $2::uuid",
+      [input.tenantId, input.propertyId],
+    );
+    if (!property.rows[0]) throw new CatalogError("Propriedade não encontrada.", 404);
     const boundary = JSON.stringify(input.boundary);
     const result = await client.query(
       `WITH geom AS (
@@ -114,7 +121,7 @@ export async function createField(input: {
       [input.tenantId, input.propertyId, input.name, boundary],
     );
     const created = result.rows[0];
-    if (!created || Number(created.areaHa) <= 0) throw new Error("Polígono inválido, vazio ou fora do limite cadastrado da propriedade.");
+    if (!created || Number(created.areaHa) <= 0) throw new CatalogError("Polígono inválido, vazio ou fora do limite cadastrado da propriedade.", 422);
     await writeAudit(client, { tenantId: input.tenantId, userId: input.userId, action: "FIELD_CREATED", entityType: "field", entityId: created.id, metadata: { name: created.name, areaHa: created.areaHa } });
     return created;
   });

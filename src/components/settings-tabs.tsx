@@ -84,7 +84,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
   const [inviteRole, setInviteRole] = useState<string>("VIEWER");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
-  const [inviteResult, setInviteResult] = useState<{ email: string; createdNewUser: boolean; emailDelivery: InviteDelivery } | null>(null);
+  const [inviteResult, setInviteResult] = useState<{ email: string; emailDelivery: InviteDelivery } | null>(null);
 
   async function inviteMember() {
     const name = inviteName.trim();
@@ -98,7 +98,7 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível convidar o membro.");
       const delivery: InviteDelivery = payload.emailDelivery === "sent" || payload.emailDelivery === "logged" ? payload.emailDelivery : "failed";
-      setInviteResult({ email, createdNewUser: Boolean(payload.createdNewUser), emailDelivery: delivery });
+      setInviteResult({ email, emailDelivery: delivery });
       setInviteName("");
       setInviteEmail("");
       router.refresh();
@@ -360,17 +360,17 @@ export function SettingsTabs({ members: initialMembers, laboratories: initialLab
                     <div>
                       <strong>
                         {inviteResult.emailDelivery === "sent"
-                          ? inviteResult.createdNewUser ? `Convite enviado para ${inviteResult.email}` : `Acesso liberado e aviso enviado para ${inviteResult.email}`
+                          ? `Convite de acesso enviado para ${inviteResult.email}`
                           : inviteResult.emailDelivery === "logged"
                             ? `Acesso criado para ${inviteResult.email}`
                             : `Acesso criado, mas o e-mail não foi entregue`}
                       </strong>
                       <small>
                         {inviteResult.emailDelivery === "sent"
-                          ? inviteResult.createdNewUser ? "A pessoa recebeu um link individual para definir a senha. O link expira em 30 minutos." : "A pessoa continua usando a senha que já tinha na RAIZ Digital."
+                          ? "As instruções de acesso foram enviadas. Por privacidade, esta tela não informa se o e-mail já possuía conta na RAIZ."
                           : inviteResult.emailDelivery === "logged"
-                            ? "O ambiente está em modo de desenvolvimento: a mensagem foi registrada no console, sem envio real."
-                            : inviteResult.createdNewUser ? "Peça à pessoa para usar “Esqueci minha senha” na tela de login para receber um novo link quando o provedor estiver disponível." : "O vínculo já está ativo; a pessoa pode entrar com a senha que já utilizava na plataforma."}
+                            ? "O ambiente está em modo de desenvolvimento: a mensagem foi registrada sem expor outros vínculos desta identidade."
+                            : "O vínculo já está ativo. A pessoa pode usar o fluxo de login ou “Esqueci minha senha” sem que esta tela revele contas em outras empresas."}
                       </small>
                     </div>
                   </div>
