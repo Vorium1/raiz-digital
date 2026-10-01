@@ -55,6 +55,8 @@ jobs:
         run: |
           npm run test:handoff
           npm run test:client-master
+          npm run test:calculator
+          npm run test:calculator-ui
           npm run test:platform-admin
           npm run test:team-privacy
           npm run test:team-administration

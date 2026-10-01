@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import { CommercialPlanSnapshotPanel } from "@/components/commercial-plan-snapshot-panel";
@@ -135,12 +136,19 @@ export function CommercialSimulationPanel({ analysisId }: { analysisId: string }
   if (!workspace) return message ? <section className="card"><div className="agro-message danger"><Icon name="warning" size={14}/><span>{message.text}</span></div></section> : null;
 
   const noRecognizedTarget = availableNutrients.length === 0 && workspace.targets.limingRequirementTonPerHaPrnt100 == null;
+  const calculatorNutrient = availableNutrients[0] ?? null;
+  const calculatorHref = calculatorNutrient
+    ? `/calculadoras?nutrient=${calculatorNutrient}&target=${workspace.targets.nutrientTargetsKgPerHa[calculatorNutrient]}&area=${workspace.areaHa}`
+    : `/calculadoras?area=${workspace.areaHa}`;
 
   return (
     <section className="card">
       <div className="card-header"><div><span className="eyebrow">CAMADA COMERCIAL · OPCIONAL</span><h2>Converter necessidade em produto e custo</h2></div><StatusBadge tone="info">Simulação</StatusBadge></div>
       <div className="review-actions">
         <p className="report-empty-note" style={{ marginTop: 0 }}>A necessidade agronômica continua sendo a referência. Aqui você escolhe explicitamente produtos reais do catálogo para ver kg/ha, toneladas e custo. A RAIZ não escolhe marca nem altera dose agronômica nesta etapa.</p>
+        <div className="narrative-review-actions" style={{ marginBottom: 12 }}>
+          <Link href={calculatorHref} className="button ghost"><Icon name="flask" size={14}/>Abrir Calculadora RAIZ</Link>
+        </div>
 
         {workspace.targets.sourceRows.length > 0 && <div className="review-grid" style={{ marginBottom: 12 }}>{workspace.targets.sourceRows.map((row) => (
           <div className="review-summary" key={`${row.inputType}-${row.canonicalTarget}`}><span>{row.canonicalTarget}</span><strong>{formatNumber(row.quantity)} {row.unit}</strong><small>Recomendação oficial corrente · origem {row.inputType}</small></div>

@@ -102,6 +102,15 @@ function validateArea(areaHa?: number | null) {
   if (!Number.isFinite(areaHa) || areaHa <= 0) throw new Error("Área deve ser um número finito maior que zero.");
 }
 
+// Arredonde somente a saída exibida. Multiplicar custo/ha já arredondado
+// acumula centavos perdidos em áreas grandes e pode zerar custos pequenos.
+function commercialCosts(rawCostPerHa: number | null, areaHa?: number | null) {
+  return {
+    costPerHa: rawCostPerHa == null ? null : round(rawCostPerHa, 2),
+    totalCost: rawCostPerHa == null || areaHa == null ? null : round(rawCostPerHa * areaHa, 2),
+  };
+}
+
 function nutrientFraction(product: CommercialFertilizerProduct, nutrient: CommercialNutrient) {
   return (product.guaranteesPercent[nutrient] ?? 0) / 100;
 }
@@ -154,10 +163,9 @@ export function evaluateCommercialProductRate(input: {
   }
 
   const price = input.product.pricePerTon ?? null;
-  const costPerHa = price == null ? null : round((input.rateKgPerHa / 1000) * price, 2);
+  const { costPerHa, totalCost } = commercialCosts(price == null ? null : (input.rateKgPerHa / 1000) * price, input.areaHa);
   const totalProductKg = input.areaHa == null ? null : round(input.rateKgPerHa * input.areaHa, 3);
   const totalProductTon = totalProductKg == null ? null : round(totalProductKg / 1000, 4);
-  const totalCost = costPerHa == null || input.areaHa == null ? null : round(costPerHa * input.areaHa, 2);
 
   return {
     product: input.product,
@@ -250,11 +258,10 @@ export function solveTwoProductPkPlan(input: {
     if (value !== 0) combined[nutrient] = round(value);
   }
 
-  const knownCosts = [productA.costPerHa, productB.costPerHa];
-  const costPerHa = knownCosts.some((value) => value == null)
-    ? null
-    : round((knownCosts[0] as number) + (knownCosts[1] as number), 2);
-  const totalCost = costPerHa == null || input.areaHa == null ? null : round(costPerHa * input.areaHa, 2);
+  const priceA = input.productA.pricePerTon;
+  const priceB = input.productB.pricePerTon;
+  const rawCostPerHa = priceA == null || priceB == null ? null : (rateA / 1000) * priceA + (rateB / 1000) * priceB;
+  const { costPerHa, totalCost } = commercialCosts(rawCostPerHa, input.areaHa);
 
   return {
     productA,
@@ -298,8 +305,7 @@ export function convertLimingRequirementToCommercialProduct(input: {
   const productDoseTonPerHa = input.requirementTonPerHaPrnt100 * (100 / input.productPrntPercent);
   const area = input.areaHa ?? null;
   const totalProductTon = area == null ? null : round(productDoseTonPerHa * area, 4);
-  const costPerHa = input.pricePerTon == null ? null : round(productDoseTonPerHa * input.pricePerTon, 2);
-  const totalCost = costPerHa == null || area == null ? null : round(costPerHa * area, 2);
+  const { costPerHa, totalCost } = commercialCosts(input.pricePerTon == null ? null : productDoseTonPerHa * input.pricePerTon, area);
 
   return {
     requirementTonPerHaPrnt100: round(input.requirementTonPerHaPrnt100),
@@ -310,5 +316,62 @@ export function convertLimingRequirementToCommercialProduct(input: {
     totalProductTon,
     costPerHa,
     totalCost,
+  };
+}
+
+
+/**
+ * Conversões químicas explícitas para exibição e conferência.
+ * Não são recomendações agronômicas: transformam massa equivalente
+ * entre elemento e óxido usando massas molares padrão.
+ */
+export type NutrientBasis = "P" | "P2O5" | "K" | "K2O";
+
+const ATOMIC_MASS = {
+  P: 30.973761998,
+  K: 39.0983,
+  O: 15.999,
+} as const;
+
+const P2O5_MOLAR_MASS = (2 * ATOMIC_MASS.P) + (5 * ATOMIC_MASS.O);
+const K2O_MOLAR_MASS = (2 * ATOMIC_MASS.K) + ATOMIC_MASS.O;
+
+export const NUTRIENT_BASIS_FACTORS = {
+  P_TO_P2O5: P2O5_MOLAR_MASS / (2 * ATOMIC_MASS.P),
+  P2O5_TO_P: (2 * ATOMIC_MASS.P) / P2O5_MOLAR_MASS,
+  K_TO_K2O: K2O_MOLAR_MASS / (2 * ATOMIC_MASS.K),
+  K2O_TO_K: (2 * ATOMIC_MASS.K) / K2O_MOLAR_MASS,
+} as const;
+
+export function convertNutrientBasis(valueKgPerHa: number, from: NutrientBasis, to: NutrientBasis) {
+  finiteNonNegative(valueKgPerHa, "Quantidade a converter");
+  if (from === to) return round(valueKgPerHa, 6);
+  if (from === "P" && to === "P2O5") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.P_TO_P2O5, 6);
+  if (from === "P2O5" && to === "P") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.P2O5_TO_P, 6);
+  if (from === "K" && to === "K2O") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.K_TO_K2O, 6);
+  if (from === "K2O" && to === "K") return round(valueKgPerHa * NUTRIENT_BASIS_FACTORS.K2O_TO_K, 6);
+  throw new Error(`Conversão direta ${from} → ${to} não é suportada. Escolha bases do mesmo nutriente.`);
+}
+
+/** Operação inversa da correção por PRNT. */
+export function convertCommercialLimeDoseToPrnt100(input: {
+  productDoseTonPerHa: number;
+  productPrntPercent: number;
+  areaHa?: number | null;
+  pricePerTon?: number | null;
+}) {
+  finiteNonNegative(input.productDoseTonPerHa, "Dose física do calcário");
+  if (!Number.isFinite(input.productPrntPercent) || input.productPrntPercent <= 0) {
+    throw new Error("PRNT do produto deve ser um número finito maior que zero.");
+  }
+  const conversion = convertLimingRequirementToCommercialProduct({
+    requirementTonPerHaPrnt100: input.productDoseTonPerHa * (input.productPrntPercent / 100),
+    productPrntPercent: input.productPrntPercent,
+    areaHa: input.areaHa,
+    pricePerTon: input.pricePerTon,
+  });
+  return {
+    ...conversion,
+    equivalentPrnt100TonPerHa: conversion.requirementTonPerHaPrnt100,
   };
 }

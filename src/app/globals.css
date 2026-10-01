@@ -1335,3 +1335,18 @@ button { color: inherit; }
   .report-final-signature{margin-top:14px}
   .report-final-signature .report-brand-signature{max-width:220px}
 }
+
+/* Calculator controls must shrink within narrow mobile cards. */
+.raiz-calculator .review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.raiz-calculator .review-summary { min-width: 0; overflow-wrap: anywhere; }
+.raiz-calculator input,
+.raiz-calculator select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+@media (max-width: 600px) {
+  .raiz-calculator .review-grid { grid-template-columns: minmax(0, 1fr); }
+  .raiz-calculator .review-actions { padding: 16px; }
+  .raiz-calculator input,
+  .raiz-calculator select { font-size: 16px; min-height: 44px; }
+}
+.raiz-calculator .review-summary > span { color: #40574a; font-size: 12px; }
+.raiz-calculator .review-summary > strong { font-size: 16px; }
+.raiz-calculator .review-summary small { color: #52685a; font-size: 11px; }

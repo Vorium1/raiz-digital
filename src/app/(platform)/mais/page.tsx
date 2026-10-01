@@ -30,6 +30,15 @@ export default async function MorePage() {
       </section>
 
       <section className="simple-more-list" aria-label="Mais opções">
+        <Link href="/calculadoras">
+          <span><Icon name="flask" size={21}/></span>
+          <div>
+            <strong>Calculadoras</strong>
+            <small>Nutrientes, fertilizantes, P/K e calcário por PRNT.</small>
+          </div>
+          <Icon name="chevron" size={17}/>
+        </Link>
+
         {session.isPlatformAdmin && (
           <Link href="/administracao/empresas">
             <span><Icon name="shield" size={21}/></span>
