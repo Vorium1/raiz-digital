@@ -1,0 +1,9 @@
+import { getPlatformSession } from "@/lib/auth/session"; import { removePlanningCrop,updatePlanningCrop,PlanningError } from "@/lib/repositories/planning";
+const writers=new Set(["SUPER_ADMIN","TENANT_ADMIN","AGRONOMIST"]);
+function denied(){return Response.json({error:"Perfil sem permissão."},{status:403});}
+export async function PATCH(r:Request,{params}:{params:Promise<{id:string;cropId:string}>}){const s=await getPlatformSession();if(!s)return Response.json({error:"Sessão necessária."},{status:401});if(!writers.has(s.role))return denied();try{const b=await r.json();const p=await params;if(typeof b.cropCode!=="string"||!b.cropCode.trim())return Response.json({error:"Cultura necessária."},{status:400});return Response.json({crop:await updatePlanningCrop({tenantId:s.tenantId,userId:s.userId,scenarioId:p.id,cropId:p.cropId,cropCode:b.cropCode,seasonLabel:b.seasonLabel,plannedDate:b.plannedDate,targetYield:Number.isFinite(b.targetYield)?b.targetYield:null,targetUnit:b.targetUnit,irrigated:typeof b.irrigated==="boolean"?b.irrigated:null,notes:b.notes})});}catch(e){return Response.json({error:e instanceof PlanningError?e.message:"Não foi possível editar."},{status:e instanceof PlanningError?e.status:422});}}
+export async function DELETE(_:Request,{params}:{params:Promise<{id:string;cropId:string}>}) {
+  const s=await getPlatformSession(); if(!s)return Response.json({error:"Sessão necessária."},{status:401}); if(!writers.has(s.role))return denied();
+  try { const p=await params; const scenario=await removePlanningCrop({tenantId:s.tenantId,userId:s.userId,scenarioId:p.id,cropId:p.cropId}); return Response.json({scenario}); }
+  catch(e) { return Response.json({error:e instanceof PlanningError?e.message:"Não foi possível remover."},{status:e instanceof PlanningError?e.status:422}); }
+}
