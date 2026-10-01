@@ -4287,6 +4287,28 @@ real de catálogo e manual sem persistência aprovados no banco local E2E descar
 Regressões de motor/render React e handoff aprovadas; ver `docs/WSL_LOCAL_REVIEW_2026-09-30.md`.
 Sem merge ou produção.
 
+## 2026-10-01 — Calculadora RAIZ V2, pontos ↔ produto
+
+Partindo do HEAD validado do PR #132 (`a46edeb`), a Calculadora V1 foi estendida
+sem criar um segundo motor matemático. O modo principal usa “pontos” somente como
+linguagem de interface, sempre acompanhado da base explícita em kg/ha de N, P2O5,
+K2O, S, Ca ou Mg. A conversão continua em `commercial-input-engine.ts`: o produto
+escolhido entrega todos os nutrientes declarados, sem concluir se há excesso ou
+recomendação agronômica.
+
+Produto manual agora aceita a fórmula declarada N-P2O5-K2O (por exemplo 04-20-20),
+sem inferir outros componentes; S, Ca e Mg exigem declaração separada. A logística
+opcional de embalagens informa unidades teóricas, arredondamento de compra e
+excedente logístico sem modificar a dose técnica. Calcário continua em bloco PRNT
+separado, sem ser chamado de pontos. Nenhum produto manual é persistido e nenhuma
+simulação altera prescrição, relatório ou decisão oficial.
+
+Foram validados os cenários K2O 60/60%=100 kg/ha, N 90/46%, 04-20-20, fonte
+fosfatada, PRNT100/PRNT80, área/custo, embalagem de 50 kg e entradas inválidas.
+`test:calculator`, `test:calculator-ui`, contratos comerciais, `typecheck`, build,
+`check:migrations` e `test:handoff` foram executados localmente. Não há migration,
+merge, deploy ou alteração de produção neste corte.
+
 
 ### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
 
@@ -4296,3 +4318,10 @@ todas as revisões, fontes/responsáveis e regras congeladas, filtros tipo/perí
 Sem migration, histórico paralelo ou escrita de produção. Testes reais de isolamento
 PostgreSQL e regressões registrados no CI. Detalhes em
 `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. PR deve permanecer draft, sem merge.
+
+**Checkpoint validado do PR #132:** o Item 10 está funcionalmente concluído no HEAD
+`a46edeb3d6eb49c34951b49944289d6e93eb6a81` (PR #132, ainda Draft e sem merge).
+No ambiente local descartável foram validadas as migrations 001–046 em PostGIS,
+o contrato RLS/timeline e os testes específicos; `typecheck`, build e
+`test:handoff`/contratos do CI também passaram. Esta validação não integra o PR,
+não altera produção e não executa migration fora do banco local descartável.
