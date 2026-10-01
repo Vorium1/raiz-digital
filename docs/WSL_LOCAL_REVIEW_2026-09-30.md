@@ -74,3 +74,38 @@ migrations/RLS, mas o build falhou em `next/font/google` ao extrair extensão de
 Sora e Inter oficiais (Latin WOFF2) agora são distribuídas localmente com licenças SIL OFL1.1,
 origem e SHA-256 em `src/app/fonts/README.md`; `next/font/local` preserva variáveis/estilos
 existentes e elimina dependência de Google Fonts durante o build. Nenhuma fonte substituída.
+
+
+## Fase 3 — #126: reconstrução da decisão agronômica
+
+Branch `feature/agronomic-decision-timeline`, baseada no corte verde da Calculadora.
+A linha do tempo consulta os registros existentes com escopo tenant/talhão e inclui
+**todas** as revisões de interpretação, coleta, laboratório/importação/conferência,
+prescrição/revisão, recomendação, cenários salvos, publicação, aplicação e acompanhamento.
+Não cria tabela, migration, histórico paralelo ou execução de regra agronômica.
+
+Regra/versão/hash vêm exclusivamente do trace congelado da revisão. Responsável é
+obtido pelo vínculo do evento. Ausência de vínculo imutável com importação, ausência de
+safra em produtividade/NDVI e conteúdo histórico não preservado ficam explícitos.
+Eventos de auditoria complementam revisões não representadas pelo timestamp vigente;
+payloads privados, identidades globais completas e chaves de armazenamento não são expostos.
+
+Interface carregada ao abrir a aba; filtros por tipo/período e safra, calendário local
+preservando datas sem hora, agrupamento por dia, fontes e limitações. Falhas permitem
+nova tentativa; navegação cancela requisição obsoleta. API privada sem cache e 404 para
+campo ausente/de outra empresa. Nenhuma escrita de dados pelo fluxo.
+
+Validação: testes de filtros/ordenação, React/retry/cancelamento, sessão/rota e integração
+PostgreSQL real com fixtures E2E revertidas. Integração comprova duas revisões, responsáveis,
+vínculo decisão/evidência, regra congelada após mudança de catálogo e isolamento entre
+dois tenants sob `raiz_app`. Harness recusa conexão de banco externa. Suíte handoff passou.
+Fixtures visuais limitadas ao banco local, marcadas E2E, geometria vazia; sem coordenadas,
+quantidades agronômicas ou execução do motor.
+
+
+Encerramento solicitado por limite de cota: build local passou; browser desktop/mobile
+passou filtros e isolamento, sem overflow/pageerror. Ajuste final apenas CSS para usar
+tokens de contraste do tema e controles mobile16px/44px, após build local; teste UI
+reexecutado. CI do HEAD final deve confirmar build desse ajuste. Dev encerrado. Sem
+merge, produção ou migration externa. Retomada: conferir CI do HEAD da branch #126,
+corrigir eventual falha determinística e repetir captura visual do contraste final.
