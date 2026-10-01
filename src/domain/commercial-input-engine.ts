@@ -102,6 +102,15 @@ function validateArea(areaHa?: number | null) {
   if (!Number.isFinite(areaHa) || areaHa <= 0) throw new Error("Área deve ser um número finito maior que zero.");
 }
 
+// Arredonde somente a saída exibida. Multiplicar custo/ha já arredondado
+// acumula centavos perdidos em áreas grandes e pode zerar custos pequenos.
+function commercialCosts(rawCostPerHa: number | null, areaHa?: number | null) {
+  return {
+    costPerHa: rawCostPerHa == null ? null : round(rawCostPerHa, 2),
+    totalCost: rawCostPerHa == null || areaHa == null ? null : round(rawCostPerHa * areaHa, 2),
+  };
+}
+
 function nutrientFraction(product: CommercialFertilizerProduct, nutrient: CommercialNutrient) {
   return (product.guaranteesPercent[nutrient] ?? 0) / 100;
 }
@@ -154,10 +163,9 @@ export function evaluateCommercialProductRate(input: {
   }
 
   const price = input.product.pricePerTon ?? null;
-  const costPerHa = price == null ? null : round((input.rateKgPerHa / 1000) * price, 2);
+  const { costPerHa, totalCost } = commercialCosts(price == null ? null : (input.rateKgPerHa / 1000) * price, input.areaHa);
   const totalProductKg = input.areaHa == null ? null : round(input.rateKgPerHa * input.areaHa, 3);
   const totalProductTon = totalProductKg == null ? null : round(totalProductKg / 1000, 4);
-  const totalCost = costPerHa == null || input.areaHa == null ? null : round(costPerHa * input.areaHa, 2);
 
   return {
     product: input.product,
@@ -250,11 +258,10 @@ export function solveTwoProductPkPlan(input: {
     if (value !== 0) combined[nutrient] = round(value);
   }
 
-  const knownCosts = [productA.costPerHa, productB.costPerHa];
-  const costPerHa = knownCosts.some((value) => value == null)
-    ? null
-    : round((knownCosts[0] as number) + (knownCosts[1] as number), 2);
-  const totalCost = costPerHa == null || input.areaHa == null ? null : round(costPerHa * input.areaHa, 2);
+  const priceA = input.productA.pricePerTon;
+  const priceB = input.productB.pricePerTon;
+  const rawCostPerHa = priceA == null || priceB == null ? null : (rateA / 1000) * priceA + (rateB / 1000) * priceB;
+  const { costPerHa, totalCost } = commercialCosts(rawCostPerHa, input.areaHa);
 
   return {
     productA,
@@ -298,8 +305,7 @@ export function convertLimingRequirementToCommercialProduct(input: {
   const productDoseTonPerHa = input.requirementTonPerHaPrnt100 * (100 / input.productPrntPercent);
   const area = input.areaHa ?? null;
   const totalProductTon = area == null ? null : round(productDoseTonPerHa * area, 4);
-  const costPerHa = input.pricePerTon == null ? null : round(productDoseTonPerHa * input.pricePerTon, 2);
-  const totalCost = costPerHa == null || area == null ? null : round(costPerHa * area, 2);
+  const { costPerHa, totalCost } = commercialCosts(input.pricePerTon == null ? null : productDoseTonPerHa * input.pricePerTon, area);
 
   return {
     requirementTonPerHaPrnt100: round(input.requirementTonPerHaPrnt100),
@@ -351,14 +357,21 @@ export function convertNutrientBasis(valueKgPerHa: number, from: NutrientBasis, 
 export function convertCommercialLimeDoseToPrnt100(input: {
   productDoseTonPerHa: number;
   productPrntPercent: number;
+  areaHa?: number | null;
+  pricePerTon?: number | null;
 }) {
   finiteNonNegative(input.productDoseTonPerHa, "Dose física do calcário");
   if (!Number.isFinite(input.productPrntPercent) || input.productPrntPercent <= 0) {
     throw new Error("PRNT do produto deve ser um número finito maior que zero.");
   }
+  const conversion = convertLimingRequirementToCommercialProduct({
+    requirementTonPerHaPrnt100: input.productDoseTonPerHa * (input.productPrntPercent / 100),
+    productPrntPercent: input.productPrntPercent,
+    areaHa: input.areaHa,
+    pricePerTon: input.pricePerTon,
+  });
   return {
-    productDoseTonPerHa: round(input.productDoseTonPerHa, 4),
-    productPrntPercent: round(input.productPrntPercent, 4),
-    equivalentPrnt100TonPerHa: round(input.productDoseTonPerHa * (input.productPrntPercent / 100), 4),
+    ...conversion,
+    equivalentPrnt100TonPerHa: conversion.requirementTonPerHaPrnt100,
   };
 }

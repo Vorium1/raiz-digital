@@ -4276,3 +4276,13 @@ com safras/análises/publicações/auditoria reais. Migrations 001–046 e RLS c
 validadas em PostgreSQL/PostGIS local descartável; regressões executáveis e navegador
  desktop/mobile aprovados. CI ganhou integração de migrations/RLS em PostGIS descartável.
 Detalhes e limitações em `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. Sem merge ou produção.
+
+## 2026-09-30 — #130 / PR #131, revisão da Calculadora RAIZ
+
+Branch empilhada atualizada com #128 sem reescrever histórico. Corrigidos defaults sem origem,
+números inválidos omitidos, fallback manual oculto de calcário, avisos de limites ausentes,
+totais/custos no inverso e perdas por arredondamento monetário intermediário. Motor comercial
+existente preservado como fonte única. Navegador dos cinco modos desktop/mobile, isolamento
+real de catálogo e manual sem persistência aprovados no banco local E2E descartável.
+Regressões de motor/render React e handoff aprovadas; ver `docs/WSL_LOCAL_REVIEW_2026-09-30.md`.
+Sem merge ou produção.

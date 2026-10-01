@@ -135,7 +135,8 @@
     "test:final-visual-report": "node --experimental-strip-types scripts/test-final-visual-report.mjs",
     "test:team-administration": "node scripts/test-team-administration.mjs",
     "test:tenant-catalog-routes": "node scripts/test-tenant-catalog-routes.mjs",
-    "test:analysis-tenant-links": "node scripts/test-analysis-tenant-links.mjs"
+    "test:analysis-tenant-links": "node scripts/test-analysis-tenant-links.mjs",
+    "test:calculator-ui": "node scripts/test-raiz-calculator-ui.mjs"
   },
   "dependencies": {
     "@node-rs/argon2": "2.0.2",

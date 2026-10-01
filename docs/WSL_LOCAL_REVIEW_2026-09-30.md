@@ -45,3 +45,26 @@ migration de produção ou criação de contas operacionais reais.
 A visualização de publicações mostra revisão/data e leva ao relatório da análise;
 não afirma abrir um snapshot específico de revisão. Safras são listadas como registradas,
 sem inferir que a mais recente seja a atual.
+
+## #130 / PR #131 — Calculadora RAIZ
+
+Branch remota `feature/calculadora-raiz-v1` preservada e atualizada por merge normal
+com #128 (sem rebase/force-push, sem merge de PR). Conflitos de CI/navegação resolvidos
+mantendo ambas as funcionalidades e todos os testes.
+
+- Quantidades/garantias/PRNT iniciais vazios; somente prefill explícito é reutilizado.
+- Texto inválido não é descartado como ausência; motor valida área, garantia, dose e preço.
+- Calcário de catálogo utiliza exclusivamente seu PRNT/preço, sem fallback manual oculto.
+- Avisos de limites operacionais e diferenças P/K são exibidos; totais por produto aparecem.
+- Conversão inversa de calcário recebe área/preço e reutiliza o motor existente.
+- Custos totais de produto/calcário/dupla PK usam valores brutos, arredondando somente a saída.
+- Controles responsivos corrigidos após overflow observado no navegador em390px;
+  rótulos e resultados com contraste/tamanho legíveis.
+
+Regressões do motor e render real React aprovadas (`test:calculator`, `test:calculator-ui`,
+`test:commercial-input`, `test:commercial-comparison`, `test:handoff`). Navegador real validou
+os cinco modos, vírgula decimal, área inválida, avisos, tenant isolation do catálogo e
+produto manual sem persistência. Fixtures E2E sintéticas de composição/preço foram usadas
+somente no banco local descartável; não são cadastro comercial real ou regra agronômica.
+Screenshots locais: `/tmp/raiz-calculator-desktop.png` e `/tmp/raiz-calculator-mobile.png`.
+Nenhuma conexão externa de banco ou alteração em prescrição/relatório oficial.

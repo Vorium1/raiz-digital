@@ -24,8 +24,10 @@ const NUTRIENTS: CommercialNutrient[] = ["N", "P2O5", "K2O", "S", "Ca", "Mg"];
 
 function parseNumber(value: string) {
   if (!value.trim()) return null;
-  const parsed = Number(value.trim().replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
+  const normalized = value.trim().replace(",", ".");
+  // Keep a filled invalid value distinct from an optional blank; the shared motor rejects NaN.
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return Number.NaN;
+  return Number(normalized);
 }
 
 function formatNumber(value: number | null | undefined, digits = 2) {
@@ -48,7 +50,12 @@ function toEngineProduct(product: CommercialInputProduct): CommercialFertilizerP
 }
 
 function ResultError({ message }: { message: string }) {
-  return <div className="agro-message danger"><Icon name="warning" size={15}/><span>{message}</span></div>;
+  return <div className="agro-message danger" role="alert"><Icon name="warning" size={15}/><span>{message}</span></div>;
+}
+
+function ConstraintWarnings({ violations, productName }: { violations: string[]; productName?: string }) {
+  if (!violations.length) return null;
+  return <div className="agro-message waiting" role="status"><div><strong>Limites operacionais{productName ? ` · ${productName}` : ""}</strong>{violations.map((violation) => <p key={violation}>{violation}</p>)}</div></div>;
 }
 
 export function RaizCalculator({
@@ -66,28 +73,28 @@ export function RaizCalculator({
   const [selectedProductId, setSelectedProductId] = useState(fertilizers[0]?.id ?? "");
   const [selectedProductBId, setSelectedProductBId] = useState(fertilizers[1]?.id ?? "");
   const [nutrient, setNutrient] = useState<CommercialNutrient>(prefill?.nutrient ?? "K2O");
-  const [target, setTarget] = useState(prefill?.targetKgPerHa?.toString() ?? "72");
-  const [rate, setRate] = useState("150");
+  const [target, setTarget] = useState(prefill?.targetKgPerHa?.toString() ?? "");
+  const [rate, setRate] = useState("");
   const [area, setArea] = useState(prefill?.areaHa?.toString() ?? "");
-  const [pkP, setPkP] = useState("90");
-  const [pkK, setPkK] = useState("72");
+  const [pkP, setPkP] = useState("");
+  const [pkK, setPkK] = useState("");
 
   const [manualName, setManualName] = useState("Produto manual");
   const [manualPrice, setManualPrice] = useState("");
   const [manualGuarantees, setManualGuarantees] = useState<Record<CommercialNutrient, string>>({
-    N: "", P2O5: "", K2O: "60", S: "", Ca: "", Mg: "",
+    N: "", P2O5: "", K2O: "", S: "", Ca: "", Mg: "",
   });
 
   const [limeSource, setLimeSource] = useState<ProductSource>(limestones.length ? "CATALOG" : "MANUAL");
   const [limeProductId, setLimeProductId] = useState(limestones[0]?.id ?? "");
-  const [limePrnt, setLimePrnt] = useState("80");
+  const [limePrnt, setLimePrnt] = useState("");
   const [limePrice, setLimePrice] = useState("");
-  const [limeRequirement, setLimeRequirement] = useState("4.74");
-  const [limePhysicalDose, setLimePhysicalDose] = useState("5.925");
+  const [limeRequirement, setLimeRequirement] = useState("");
+  const [limePhysicalDose, setLimePhysicalDose] = useState("");
   const [limeDirection, setLimeDirection] = useState<LimeDirection>("PRNT100_TO_PRODUCT");
 
   const [chemicalMode, setChemicalMode] = useState<"P_TO_P2O5" | "P2O5_TO_P" | "K_TO_K2O" | "K2O_TO_K">("P_TO_P2O5");
-  const [chemicalValue, setChemicalValue] = useState("90");
+  const [chemicalValue, setChemicalValue] = useState("");
 
   const currentProduct = useMemo(() => {
     if (source === "CATALOG") {
@@ -164,8 +171,11 @@ export function RaizCalculator({
   const limeResult = useMemo(() => {
     if (mode !== "LIME") return null;
     const catalog = limeSource === "CATALOG" ? limestones.find((product) => product.id === limeProductId) : null;
-    const prnt = catalog?.prntPercent ?? parseNumber(limePrnt);
-    const price = catalog?.pricePerTon ?? parseNumber(limePrice);
+    if (limeSource === "CATALOG" && (!catalog || catalog.prntPercent == null)) {
+      return { value: null, reverse: limeDirection === "PRODUCT_TO_PRNT100", error: "O calcário selecionado não possui PRNT cadastrado. Informe o PRNT na opção manual ou revise o catálogo." };
+    }
+    const prnt = limeSource === "CATALOG" ? catalog!.prntPercent : parseNumber(limePrnt);
+    const price = limeSource === "CATALOG" ? catalog!.pricePerTon : parseNumber(limePrice);
     if (prnt == null) return null;
     try {
       if (limeDirection === "PRNT100_TO_PRODUCT") {
@@ -176,14 +186,16 @@ export function RaizCalculator({
           productPrntPercent: prnt,
           areaHa: areaNumber,
           pricePerTon: price,
-        }), reverse: false, error: null };
+        }), reverse: false as const, error: null };
       }
       const physical = parseNumber(limePhysicalDose);
       if (physical == null) return null;
       return { value: convertCommercialLimeDoseToPrnt100({
         productDoseTonPerHa: physical,
         productPrntPercent: prnt,
-      }), reverse: true, error: null };
+        areaHa: areaNumber,
+        pricePerTon: price,
+      }), reverse: true as const, error: null };
     } catch (error) {
       return { value: null, reverse: limeDirection === "PRODUCT_TO_PRNT100", error: error instanceof Error ? error.message : "Não foi possível converter o calcário." };
     }
@@ -202,7 +214,7 @@ export function RaizCalculator({
   }, [mode, chemicalMode, chemicalValue]);
 
   return (
-    <section className="card">
+    <section className="card raiz-calculator">
       <div className="card-header">
         <div><span className="eyebrow">CALCULADORA RAIZ</span><h2>Conversões de fertilizantes e corretivos</h2></div>
         <StatusBadge tone="info">Simulação</StatusBadge>
@@ -270,26 +282,35 @@ export function RaizCalculator({
           <label className="review-summary"><span>Quantidade (kg/ha)</span><input value={chemicalValue} onChange={(event) => setChemicalValue(event.target.value)} inputMode="decimal"/></label>
         </div>}
 
-        <div className="narrative-block" style={{ marginTop: 16 }}>
+        <div className="narrative-block" style={{ marginTop: 16 }} aria-live="polite">
           <h4>Resultado</h4>
           {nutrientResult?.error && <ResultError message={nutrientResult.error}/>}
           {nutrientResult?.value && <>
+            <ConstraintWarnings violations={nutrientResult.value.constraintViolations}/>
             <div className="review-grid"><div className="review-summary"><span>Dose do produto</span><strong>{formatNumber(nutrientResult.value.rateKgPerHa, 4)} kg/ha</strong></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(nutrientResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(nutrientResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(nutrientResult.value.totalCost)}</small></div></div>
             <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(nutrientResult.value.suppliedKgPerHa).map(([key, value]) => <div className="field-ops-list-row" key={key}><span><strong>{key}</strong><small>Fornecido pelo produto</small></span><strong>{formatNumber(value, 4)} kg/ha</strong></div>)}</div>
           </>}
           {supplyResult?.error && <ResultError message={supplyResult.error}/>}
           {supplyResult?.value && <>
+            <ConstraintWarnings violations={supplyResult.value.constraintViolations}/>
             <div className="review-grid"><div className="review-summary"><span>Dose aplicada</span><strong>{formatNumber(supplyResult.value.rateKgPerHa, 4)} kg/ha</strong></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(supplyResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(supplyResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(supplyResult.value.totalCost)}</small></div></div>
             <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(supplyResult.value.suppliedKgPerHa).map(([key, value]) => <div className="field-ops-list-row" key={key}><span><strong>{key}</strong></span><strong>{formatNumber(value, 4)} kg/ha</strong></div>)}</div>
           </>}
           {pkResult?.error && <ResultError message={pkResult.error}/>}
           {pkResult?.value && <>
+            <ConstraintWarnings violations={pkResult.value.productA.constraintViolations} productName={pkResult.value.productA.product.name}/>
+            <ConstraintWarnings violations={pkResult.value.productB.constraintViolations} productName={pkResult.value.productB.product.name}/>
+            <div className="review-grid">
+              <div className="review-summary"><span>Total do produto A no talhão</span><strong>{formatNumber(pkResult.value.productA.totalProductTon, 4)} t</strong></div>
+              <div className="review-summary"><span>Total do produto B no talhão</span><strong>{formatNumber(pkResult.value.productB.totalProductTon, 4)} t</strong></div>
+            </div>
+            <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(pkResult.value.targetComparison).map(([key, comparison]) => comparison && <div className="field-ops-list-row" key={key}><span><strong>{key}</strong><small>Alvo {formatNumber(comparison.targetKgPerHa, 4)} kg/ha · Fornecido {formatNumber(comparison.suppliedKgPerHa, 4)} kg/ha</small></span><span>Diferença {formatNumber(comparison.differenceKgPerHa, 4)} kg/ha</span></div>)}</div>
             <div className="review-grid"><div className="review-summary"><span>Produto A</span><strong>{formatNumber(pkResult.value.productA.rateKgPerHa, 4)} kg/ha</strong><small>{pkResult.value.productA.product.name}</small></div><div className="review-summary"><span>Produto B</span><strong>{formatNumber(pkResult.value.productB.rateKgPerHa, 4)} kg/ha</strong><small>{pkResult.value.productB.product.name}</small></div><div className="review-summary"><span>Custo combinado</span><strong>{formatMoney(pkResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(pkResult.value.totalCost)}</small></div></div>
             <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(pkResult.value.combinedSuppliedKgPerHa).map(([key, value]) => <div className="field-ops-list-row" key={key}><span><strong>{key}</strong><small>Entrega combinada</small></span><strong>{formatNumber(value, 4)} kg/ha</strong></div>)}</div>
           </>}
           {limeResult?.error && <ResultError message={limeResult.error}/>}
           {limeResult?.value && !limeResult.reverse && "productDoseKgPerHa" in limeResult.value && <div className="review-grid"><div className="review-summary"><span>Dose do produto</span><strong>{formatNumber(limeResult.value.productDoseTonPerHa, 4)} t/ha</strong><small>{formatNumber(limeResult.value.productDoseKgPerHa, 2)} kg/ha</small></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(limeResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(limeResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(limeResult.value.totalCost)}</small></div></div>}
-          {limeResult?.value && limeResult.reverse && "equivalentPrnt100TonPerHa" in limeResult.value && <div className="review-grid"><div className="review-summary"><span>Equivalente PRNT100</span><strong>{formatNumber(limeResult.value.equivalentPrnt100TonPerHa, 4)} t/ha</strong></div><div className="review-summary"><span>Dose física</span><strong>{formatNumber(limeResult.value.productDoseTonPerHa, 4)} t/ha</strong></div><div className="review-summary"><span>PRNT</span><strong>{formatNumber(limeResult.value.productPrntPercent, 2)}%</strong></div></div>}
+          {limeResult?.value && limeResult.reverse && "equivalentPrnt100TonPerHa" in limeResult.value && <div className="review-grid"><div className="review-summary"><span>Equivalente PRNT100</span><strong>{formatNumber(limeResult.value.equivalentPrnt100TonPerHa, 4)} t/ha</strong></div><div className="review-summary"><span>Dose física</span><strong>{formatNumber(limeResult.value.productDoseTonPerHa, 4)} t/ha</strong></div><div className="review-summary"><span>PRNT</span><strong>{formatNumber(limeResult.value.productPrntPercent, 2)}%</strong></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(limeResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(limeResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(limeResult.value.totalCost)}</small></div></div>}
           {chemicalResult?.error && <ResultError message={chemicalResult.error}/>}
           {chemicalResult?.value != null && <div className="review-grid"><div className="review-summary"><span>Entrada</span><strong>{formatNumber(parseNumber(chemicalValue), 4)} kg/ha {chemicalResult.from}</strong></div><div className="review-summary"><span>Equivalente</span><strong>{formatNumber(chemicalResult.value, 4)} kg/ha {chemicalResult.to}</strong></div></div>}
           {!nutrientResult && !supplyResult && !pkResult && !limeResult && !chemicalResult && <p className="report-empty-note">Preencha os dados para calcular.</p>}
