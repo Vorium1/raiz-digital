@@ -68,3 +68,9 @@ produto manual sem persistência. Fixtures E2E sintéticas de composição/preç
 somente no banco local descartável; não são cadastro comercial real ou regra agronômica.
 Screenshots locais: `/tmp/raiz-calculator-desktop.png` e `/tmp/raiz-calculator-mobile.png`.
 Nenhuma conexão externa de banco ou alteração em prescrição/relatório oficial.
+
+Correção adicional de CI: a primeira execução remota do #130 passou tipos, regressões e
+migrations/RLS, mas o build falhou em `next/font/google` ao extrair extensão de URL recebida.
+Sora e Inter oficiais (Latin WOFF2) agora são distribuídas localmente com licenças SIL OFL1.1,
+origem e SHA-256 em `src/app/fonts/README.md`; `next/font/local` preserva variáveis/estilos
+existentes e elimina dependência de Google Fonts durante o build. Nenhuma fonte substituída.

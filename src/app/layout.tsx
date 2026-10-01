@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Sora } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "./ux2.css";
 import "./ux2-intake.css";
@@ -21,8 +21,8 @@ import "./ux3-accessibility.css";
 
 // Tipografia oficial do Guia de Marca (docs/brand/Guia_de_Marca_Raiz_Digital.pdf):
 // Sora para títulos/institucional, Inter para o restante da plataforma.
-const sora = Sora({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-sora", display: "swap" });
-const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-inter", display: "swap" });
+const sora = localFont({ src: "./fonts/sora-latin.woff2", weight: "600 700", variable: "--font-sora", display: "swap" });
+const inter = localFont({ src: "./fonts/inter-latin.woff2", weight: "400 600", variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Raiz Digital", template: "%s · Raiz Digital" },
