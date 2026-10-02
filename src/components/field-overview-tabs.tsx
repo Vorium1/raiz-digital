@@ -12,6 +12,7 @@ import { analysisDisplayStatus, formatRelativeOrDate } from "@/domain/analysis-u
 import { classificationColor } from "@/lib/classification-colors";
 import { computeParameterDistribution } from "@/domain/parameter-distribution";
 import { computeFieldOverviewSynthesis } from "@/domain/field-overview-synthesis";
+import { visibleFertilityParameters } from "@/domain/visible-fertility-parameters";
 import type { FieldOverview } from "@/lib/repositories/field-overview";
 import type { OperationalAlert } from "@/lib/repositories/alerts";
 
@@ -38,6 +39,7 @@ type MapLayerResponse = {
   fieldBoundary: unknown;
   points: MapPoint[];
   availableParameters: string[];
+  classifiedParameters: string[];
   analysisId: string | null;
   reportId: string | null;
 };
@@ -264,7 +266,7 @@ export function FieldOverviewTabs({ overview, alerts }: { overview: FieldOvervie
                   <label><span>Parâmetro</span>
                     <select value={parameter} onChange={(e) => selectParameter(e.target.value)}>
                       <option value="">Selecione um parâmetro</option>
-                      {(layer?.availableParameters ?? []).map((code) => <option key={code} value={code}>{code}</option>)}
+                      {visibleFertilityParameters({ available: layer?.availableParameters ?? [], classified: layer?.classifiedParameters ?? [] }).map((code) => <option key={code} value={code}>{code}</option>)}
                     </select>
                   </label>
                   <span className="field-overview-depth-context"><Icon name="location" size={13}/>Profundidade desta coleta: {selectedOrder.depthFromCm}–{selectedOrder.depthToCm} cm</span>

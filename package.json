@@ -30,6 +30,7 @@
     "test:field": "node --experimental-strip-types scripts/test-field-operations.mjs",
     "test:spatial-map": "node --experimental-strip-types scripts/test-spatial-map-contract.mjs",
     "test:engine": "node --experimental-strip-types scripts/test-agronomic-engine.mjs",
+    "test:visible-fertility": "node --experimental-strip-types scripts/test-visible-fertility-parameters.mjs",
     "test:auxiliary": "node --experimental-strip-types scripts/test-auxiliary-pendencies.mjs",
     "test:liming": "node --experimental-strip-types scripts/test-liming-engine.mjs",
     "test:rice-liming-dry": "node --experimental-strip-types scripts/test-rice-liming-dry-soil-sosbai-2025.mjs",
