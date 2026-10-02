@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { executeMultiseasonPlan, resolvePlanningCapability } from "../src/domain/multiseason-planning.ts";
 assert.equal(resolvePlanningCapability("SOYBEAN").status, "PARTIAL");
 assert.equal(resolvePlanningCapability("UNKNOWN").status, "UNSUPPORTED");
@@ -9,4 +10,7 @@ assert.equal(plan[0].status, "PARTIAL");
 assert.equal(plan[1].status, "PARTIAL");
 assert.equal(plan[2].status, "REANALYSIS_REQUIRED");
 assert.equal(plan[2].reanalysisRequired, true);
+const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
+assert.match(calculateRoute, /writers\.has\(s\.role\)/);
+assert.match(calculateRoute, /status:403/);
 console.log("multiseason-planning: capability fail-closed, evidência e gate de reanálise aprovados");
