@@ -6,6 +6,7 @@ import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
 import { classificationColor } from "@/lib/classification-colors";
+import { NDVI_DISPLAY_ZONE_COLOR } from "@/lib/ndvi-display-palette";
 
 type Snapshot = {
   id: string;
@@ -45,13 +46,8 @@ type SoilMapContext = {
 };
 
 const ZONE_ORDER: VigorZone[] = ["SEM_VEGETACAO", "BAIXO", "MODERADO", "ALTO", "MUITO_ALTO"];
-export const NDVI_ZONE_COLOR: Record<VigorZone, string> = {
-  SEM_VEGETACAO: "#9a8468",
-  BAIXO: "#d9655a",
-  MODERADO: "#d89943",
-  ALTO: "#8fbf6b",
-  MUITO_ALTO: "#29966f",
-};
+// Apresentação compartilhada com o raster publicado; não altera classes ou thresholds NDVI.
+export const NDVI_ZONE_COLOR: Record<VigorZone, string> = NDVI_DISPLAY_ZONE_COLOR;
 const CHART_MIN = 0;
 const CHART_MAX = 1;
 
@@ -534,7 +530,7 @@ function NdviHistoryChart({ history }: { history: Snapshot[] }) {
       {bandStops.map((band) => (
         <rect key={band.zone} x={padding.left} y={yFor(band.to)} width={plotWidth} height={yFor(band.from) - yFor(band.to)} fill={NDVI_ZONE_COLOR[band.zone]} opacity={0.12} />
       ))}
-      <path d={linePath} fill="none" stroke="#29966f" strokeWidth={2} />
+      <path d={linePath} fill="none" stroke={NDVI_ZONE_COLOR.MUITO_ALTO} strokeWidth={2} />
       {history.map((snapshot, index) => (
         <circle key={snapshot.id} cx={xFor(index)} cy={yFor(snapshot.meanNdvi)} r={3.5} fill={NDVI_ZONE_COLOR[classifyNdviValue(snapshot.meanNdvi)]} stroke="#0c1512" strokeWidth={1} />
       ))}
