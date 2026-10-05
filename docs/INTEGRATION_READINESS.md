@@ -193,3 +193,20 @@ Portar #109 ou #111 separadamente depois dessa pilha seria retrabalho.
 As frentes #138 e #141 continuam independentes sobre #132 e podem ser avaliadas sem
 reaplicar suas PRs antigas.
 
+## Fechamento da auditoria da antiga #101
+
+A antiga PR #101 não será portada.
+
+A baseline atual já possui contratos posteriores que cobrem os riscos centrais daquela
+frente:
+
+- `effectivePointCoordinates` prioriza posição observada quando existe;
+- `pointPositionKind` distingue `OBSERVED`, `AUDITED_SOURCE` e `PLANNED`;
+- somente fontes auditadas exatas promovem a coordenada para evidência real;
+- fontes genéricas ou com sufixos arbitrários permanecem planejadas/fail-closed;
+- `test:spatial-map`, `test:spatial-provenance-audit` e `test:cabeda-area01`
+  já participam de `test:handoff`.
+
+Conclusão: replayar #101 hoje seria retrabalho e risco de regressão. Reabrir essa
+frente somente se um gate espacial atual falhar com evidência reproduzível.
+
