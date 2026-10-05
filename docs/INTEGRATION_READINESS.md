@@ -151,3 +151,45 @@ existe:
 4. #106: explicação técnica de confiança;
 5. #101: somente se um gate espacial atual reprovar.
 
+## Targeted ports concluídos sem replay das PRs antigas
+
+As lacunas antigas que permaneceram relevantes foram portadas de forma cirúrgica sobre
+a baseline atual. Nenhuma PR divergente foi reaplicada inteira.
+
+| Origem antiga | Draft PR atual | Base atual | Capacidade portada | Regra anti-retrabalho |
+| --- | --- | --- | --- | --- |
+| #115 | #138 | #132 | histórico temporal compatível do mesmo talhão | preserva comparadores atuais de talhão/safra/ponto/propriedade |
+| #109 | #139 | #122 | comparação NDVI A × B entre aquisições reais | empilhada sobre #122 para preservar a paleta/UX NDVI já refinada |
+| #111 | #140 | #139 | contexto auditável Solo × Satélite | empilhada sobre #139 para editar o painel NDVI uma única vez |
+| #106 | #141 | #132 | explicação do score técnico já persistido pelo motor | não recalcula score e não porta a reconstrução antiga de confiança do laudo |
+
+### Estado de preview verificado
+
+- #138: preview Vercel verde.
+- #139: preview Vercel verde após alinhar o tipo pairwise ao contrato atual `rasterStored`.
+- #140: preview Vercel verde com o mesmo contrato de raster e contexto Solo × Satélite.
+- #141: preview criado; validação ainda em andamento no momento desta atualização.
+
+### Lacunas antigas deliberadamente NÃO portadas
+
+- **#117**: tratada como supersedida pela infraestrutura posterior do Assistente RAIZ
+  existente em #132. Não reaplicar.
+- **#101**: não portar scripts ou implementação antiga enquanto os contratos espaciais
+  atuais de posição observada/auditada, proveniência e custódia não demonstrarem uma
+  regressão real.
+- **Confiança do laudo/importação da antiga #106**: não foi misturada ao port #141.
+  O caminho técnico atual já possui confiança de interpretação persistida. A confiança
+  do arquivo importado só deve virar nova frente se houver requisito de produto explícito
+  e auditoria própria do score armazenado.
+
+### Ordem futura sem duplicação
+
+A linha NDVI deve ser considerada uma pilha única:
+
+`#132 → #122/#134 → #139 → #140`
+
+Portar #109 ou #111 separadamente depois dessa pilha seria retrabalho.
+
+As frentes #138 e #141 continuam independentes sobre #132 e podem ser avaliadas sem
+reaplicar suas PRs antigas.
+
