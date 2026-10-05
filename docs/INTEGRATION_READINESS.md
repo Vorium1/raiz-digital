@@ -92,3 +92,23 @@ Repetir esses gates somente quando uma futura branch de integração realmente
 combinar as frentes e puder introduzir regressão.
 
 Nenhuma frente acima deve ser considerada mergeada ou deployada em produção.
+
+## Auditoria inicial das PRs antigas divergentes
+
+Foi feita uma primeira checagem por arquivos distintivos diretamente contra #132.
+Isto **não prova ausência funcional** quando um arquivo não existe, porque a função pode
+ter sido renomeada/reimplementada; serve apenas para direcionar a próxima auditoria sem
+retrabalho.
+
+| PR | Arquivo distintivo da PR | Em #132? | Interpretação segura |
+| --- | --- | --- | --- |
+| #117 Assistente | `src/lib/ai/assistant-evidence.ts` | sim | não portar a PR inteira; existe implementação posterior/equivalente e precisa de diff semântico |
+| #115 Comparativos | `src/domain/comparison-compatibility.ts` | não | lacuna possível; verificar equivalente antes de portar |
+| #111 Solo × Satélite | `src/components/soil-satellite-evidence-context.tsx` | não | lacuna possível; verificar composição atual do Talhão 360° |
+| #109 NDVI temporal | `src/components/ndvi-temporal-comparison.tsx` | não | lacuna possível; verificar comparação temporal existente antes de portar |
+| #106 Confiança explicável | `src/domain/technical-confidence-explanation.ts` | não | lacuna possível; verificar explicação de confiança atual antes de portar |
+| #101 Verdade espacial Cabeda | `scripts/audit-cabeda-coordinate-chain.mjs` | não | script específico ausente não implica regressão; validar contratos espaciais atuais |
+
+Próxima regra: para cada linha marcada como “lacuna possível”, comparar comportamento,
+testes e contratos atuais com a PR antiga antes de qualquer mudança de código.
+
