@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { NdviTemporalComparison } from "@/components/ndvi-temporal-comparison";
+import { SoilSatelliteEvidenceContext } from "@/components/soil-satellite-evidence-context";
 import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/real-field-map";
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
@@ -442,6 +443,14 @@ export function FieldNdviPanel({
                     : "Imagem-base real do talhão; raster NDVI histórico aguardando arquivamento/disponibilidade"}
                 imageOverlay={rasterOverlay}
               />
+              {soilParameter && (
+                <SoilSatelliteEvidenceContext
+                  parameterCode={soilParameter}
+                  points={soilPoints}
+                  satellite={selectedRasterSnapshot}
+                  soilContext={fallbackSoilContext}
+                />
+              )}
             </div>
           )}
 
