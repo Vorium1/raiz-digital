@@ -112,3 +112,42 @@ retrabalho.
 Próxima regra: para cada linha marcada como “lacuna possível”, comparar comportamento,
 testes e contratos atuais com a PR antiga antes de qualquer mudança de código.
 
+## Resultado da auditoria funcional inicial das PRs divergentes
+
+A comparação de comportamento atual com as branches antigas permitiu reduzir o risco
+de retrabalho:
+
+- **#117 Assistente RAIZ**: a baseline #132 já possui `assistant-evidence.ts`,
+  Evidence Catalog, grounding gate, provider router e controles posteriores. Tratar
+  #117 como **supersedida por implementação mais nova**; não portar a PR inteira.
+- **#115 Comparativos/deltas**: a baseline já possui comparação real entre
+  talhão/safra/ponto/propriedade, porém `/historico` em modo banco ainda é um
+  placeholder e não existe `/api/comparisons/history`. Portanto a lacuna real é
+  **histórico temporal comparável do mesmo talhão**, não o comparador inteiro.
+- **#111 Solo × Satélite**: a baseline possui `field-satellite-decision-strip` e
+  sobreposição solo/NDVI no painel, mas não possui o cartão detalhado da PR antiga
+  que explicita evidência por ponto, posição efetiva, coleta, satélite e relação
+  temporal. Classificar como **lacuna de explicabilidade**, não como ausência de
+  NDVI.
+- **#109 NDVI temporal A × B**: a baseline possui série temporal e estado temporal,
+  mas não possui o seletor explícito de duas aquisições reais com delta A→B da PR
+  antiga. Classificar como **lacuna de UX/comparação pairwise**, não como ausência
+  do motor NDVI.
+- **#106 Confiança explicável**: `decision-readiness-card` atual explica o fluxo
+  operacional da decisão, mas não substitui o explainer técnico da PR antiga
+  (score/dimensões/pesos/limitações). Classificar como **lacuna de explicabilidade
+  da confiança**, caso esse requisito continue desejado.
+- **#101 Verdade espacial Cabeda**: grande parte da infraestrutura espacial atual
+  (mapas, posição observada/auditada, proveniência, contratos) evoluiu depois.
+  Não portar scripts/PR inteira sem um teste de aceitação específico mostrando uma
+  regressão real.
+
+Prioridade sugerida das lacunas reais remanescentes, sem reimplementar o que já
+existe:
+
+1. #115: histórico temporal comparável;
+2. #109: comparação NDVI A × B;
+3. #111: explicabilidade Solo × Satélite;
+4. #106: explicação técnica de confiança;
+5. #101: somente se um gate espacial atual reprovar.
+
