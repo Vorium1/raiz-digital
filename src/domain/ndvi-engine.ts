@@ -99,6 +99,126 @@ function isComparableQuality(quality: NdviObservationQuality): boolean {
   return quality === "ALTA" || quality === "MODERADA";
 }
 
+export type SoilSatelliteTemporalStatus =
+  | "SAME_DATE"
+  | "DATE_GAP"
+  | "SOIL_DATE_MISSING"
+  | "SATELLITE_DATE_MISSING"
+  | "SATELLITE_QUALITY_LIMITED";
+
+export type SoilSatelliteTemporalRelation = {
+  status: SoilSatelliteTemporalStatus;
+  soilCollectedAt: string | null;
+  satelliteCapturedAt: string | null;
+  satelliteQuality: NdviObservationQuality;
+  daysApart: number | null;
+  sequence: "SOIL_BEFORE_SATELLITE" | "SATELLITE_BEFORE_SOIL" | "SAME_DATE" | "UNKNOWN";
+  note: string;
+};
+
+function calendarDayStamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (isoDay) {
+    const year = Number(isoDay[1]);
+    const month = Number(isoDay[2]);
+    const day = Number(isoDay[3]);
+    const stamp = Date.UTC(year, month - 1, day);
+    return Number.isFinite(stamp) ? stamp : null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+}
+
+/**
+ * Contexto temporal para a sobreposição Solo × Satélite.
+ *
+ * Deliberadamente NÃO existe um corte do tipo “até X dias é comparável”. O RAIZ não possui uma
+ * regra agronômica homologada que transforme distância de calendário, sozinha, em comparabilidade
+ * entre solo e resposta espectral. A função só registra fatos: datas, ordem, distância em dias e
+ * qualidade operacional da imagem. Datas diferentes permanecem como cruzamento espacial/descritivo
+ * que exige cultura, fenologia, manejo e clima antes de qualquer interpretação agronômica.
+ */
+export function assessSoilSatelliteTemporalRelation(input: {
+  soilCollectedAt: string | null | undefined;
+  satelliteCapturedAt: string | null | undefined;
+  satelliteCloudCoverPct?: number | null;
+}): SoilSatelliteTemporalRelation {
+  const soilStamp = calendarDayStamp(input.soilCollectedAt);
+  const satelliteStamp = calendarDayStamp(input.satelliteCapturedAt);
+  const satelliteQuality = classifyNdviObservationQuality({ cloudCoverPct: input.satelliteCloudCoverPct ?? null });
+
+  if (satelliteStamp == null) {
+    return {
+      status: "SATELLITE_DATE_MISSING",
+      soilCollectedAt: input.soilCollectedAt ?? null,
+      satelliteCapturedAt: input.satelliteCapturedAt ?? null,
+      satelliteQuality,
+      daysApart: null,
+      sequence: "UNKNOWN",
+      note: "Sem data de aquisição NDVI válida. A relação temporal Solo × Satélite não pode ser avaliada.",
+    };
+  }
+
+  if (soilStamp == null) {
+    return {
+      status: "SOIL_DATE_MISSING",
+      soilCollectedAt: input.soilCollectedAt ?? null,
+      satelliteCapturedAt: input.satelliteCapturedAt ?? null,
+      satelliteQuality,
+      daysApart: null,
+      sequence: "UNKNOWN",
+      note: "A data de coleta do solo não está registrada para este ponto. A sobreposição espacial continua visível, mas a evidência temporal é insuficiente.",
+    };
+  }
+
+  const signedDays = Math.round((satelliteStamp - soilStamp) / 86_400_000);
+  const daysApart = Math.abs(signedDays);
+  const sequence: SoilSatelliteTemporalRelation["sequence"] = signedDays === 0
+    ? "SAME_DATE"
+    : signedDays > 0
+      ? "SOIL_BEFORE_SATELLITE"
+      : "SATELLITE_BEFORE_SOIL";
+
+  if (!isComparableQuality(satelliteQuality)) {
+    return {
+      status: "SATELLITE_QUALITY_LIMITED",
+      soilCollectedAt: input.soilCollectedAt ?? null,
+      satelliteCapturedAt: input.satelliteCapturedAt ?? null,
+      satelliteQuality,
+      daysApart,
+      sequence,
+      note: `A imagem NDVI tem ${NDVI_QUALITY_LABELS[satelliteQuality].toLowerCase()}. As datas e a distância temporal podem ser inspecionadas, mas o satélite não sustenta um sinal temporal acionável.`,
+    };
+  }
+
+  if (daysApart === 0) {
+    return {
+      status: "SAME_DATE",
+      soilCollectedAt: input.soilCollectedAt ?? null,
+      satelliteCapturedAt: input.satelliteCapturedAt ?? null,
+      satelliteQuality,
+      daysApart: 0,
+      sequence,
+      note: "Solo e satélite têm a mesma data civil. Isso reduz a distância temporal conhecida, mas não prova correlação, causalidade ou resposta agronômica.",
+    };
+  }
+
+  const orderText = sequence === "SOIL_BEFORE_SATELLITE"
+    ? "a coleta de solo ocorreu antes da imagem"
+    : "a imagem ocorreu antes da coleta de solo";
+  return {
+    status: "DATE_GAP",
+    soilCollectedAt: input.soilCollectedAt ?? null,
+    satelliteCapturedAt: input.satelliteCapturedAt ?? null,
+    satelliteQuality,
+    daysApart,
+    sequence,
+    note: `${daysApart} ${daysApart === 1 ? "dia" : "dias"} de separação; ${orderText}. A RAIZ não usa esse intervalo, sozinho, para declarar comparabilidade agronômica: o cruzamento permanece espacial e descritivo.`,
+  };
+}
+
 export type NdviTemporalDirection = "ALTA" | "QUEDA" | "ESTAVEL" | "SEM_BASELINE";
 
 export type NdviTemporalAnalysis = {
