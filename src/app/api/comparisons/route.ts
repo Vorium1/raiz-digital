@@ -1,5 +1,5 @@
 import { getPlatformSession } from "@/lib/auth/session";
-import { compareFields, compareSeasons, comparePoints, compareProperties } from "@/lib/repositories/comparisons";
+import { compareFieldHistoricalAnalyses, compareFields, compareSeasons, comparePoints, compareProperties } from "@/lib/repositories/comparisons";
 
 export async function GET(request: Request) {
   const session = await getPlatformSession();
@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     if (mode === "fields") return Response.json(await compareFields(session.tenantId, a, b, session.userId));
     if (mode === "seasons") return Response.json(await compareSeasons(session.tenantId, a, b, session.userId));
     if (mode === "points") return Response.json(await comparePoints(session.tenantId, a, b, session.userId));
+    if (mode === "history") return Response.json(await compareFieldHistoricalAnalyses(session.tenantId, a, b, session.userId));
     if (mode === "properties") return Response.json(await compareProperties(session.tenantId, a, b, session.userId));
     return Response.json({ error: "Modo de comparação inválido." }, { status: 400 });
   } catch (error) {
