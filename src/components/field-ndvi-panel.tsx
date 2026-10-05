@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
+import { NdviTemporalComparison } from "@/components/ndvi-temporal-comparison";
 import { RealFieldMap, type MapImageOverlay, type MapPoint } from "@/components/real-field-map";
 import type { NdviObservationQuality, NdviTemporalAnalysis, VigorZone } from "@/domain/ndvi-engine";
 import { NDVI_QUALITY_LABELS, VIGOR_ZONE_LABELS, classifyNdviValue } from "@/domain/ndvi-engine";
@@ -18,6 +19,7 @@ type Snapshot = {
   maxNdvi?: number | null;
   pixelCount?: number | null;
   rasterStored?: boolean;
+  rasterAlgorithm?: string | null;
   zoneBreakdownPct: Partial<Record<VigorZone, number>>;
 };
 
@@ -475,6 +477,13 @@ export function FieldNdviPanel({
             </div>
           )}
         </>
+      )}
+
+      {chartHistory.length > 1 && (
+        <NdviTemporalComparison
+          history={chartHistory}
+          onViewRaster={(date) => setSelectedRasterDate(date)}
+        />
       )}
 
       {chartHistory.length > 0 && (
