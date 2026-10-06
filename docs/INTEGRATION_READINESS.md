@@ -248,3 +248,22 @@ O #143 adiciona apenas:
 Portanto, a antiga #101 continua proibida como replay integral. Para futura integração:
 usar os contratos espaciais atuais + #143 para o editor, sem reaplicar a branch antiga.
 
+## #100 + #102 — fechamento espacial sem replay da #101
+
+A auditoria de código mostrou duas lacunas separadas que não estavam integralmente na
+baseline #132:
+
+- **#143 / #102 — editor de contorno produtivo**: permite redesenhar o talhão, mantém
+  pontos GPS fixos, valida PostGIS, propriedade, pontos ativos e recalcula área. Preview
+  Vercel verde.
+- **#144 / #100 — autoridade de posição auditada**: mantém `position` como base
+  separada de `observed_position`; fontes auditadas exatas permanecem autoridade mesmo
+  diante de `observed_position` legado. O importador Cabeda passa a limpar o observado
+  legado somente quando a importação auditada for explicitamente aplicada.
+
+A #144 é empilhada sobre #143 para que o editor de contorno use a mesma autoridade
+espacial corrigida nos pontos de referência.
+
+Regra anti-retrabalho: não reaplicar a antiga #101. A cobertura relevante passa a ser
+baseline atual + #143 + #144.
+
