@@ -227,3 +227,24 @@ o score persistido, o score original continua autoridade e a decomposição falh
 
 Regra futura: não reaplicar a antiga #106 inteira depois de #141 + #142.
 
+## #101/#102 — separar autoridade espacial de editor de contorno
+
+A auditoria refinada mostrou que a antiga linha #101 continha duas capacidades diferentes:
+
+1. **autoridade/proveniência espacial de pontos** — já supersedida pelos contratos atuais
+   (`effectivePointCoordinates`, `pointPositionKind`, auditoria espacial e gates do handoff);
+2. **edição manual do contorno produtivo com GPS fixo (#102)** — não estava presente na
+   baseline #132 e foi portada de forma cirúrgica no Draft PR **#143**.
+
+O #143 adiciona apenas:
+- edição Polygon/MultiPolygon do talhão;
+- validação PostGIS;
+- limite da propriedade;
+- bloqueio quando ponto ativo ficaria fora;
+- recálculo de área;
+- audit trail sem coordenadas;
+- visualização dos pontos como referências fixas.
+
+Portanto, a antiga #101 continua proibida como replay integral. Para futura integração:
+usar os contratos espaciais atuais + #143 para o editor, sem reaplicar a branch antiga.
+
