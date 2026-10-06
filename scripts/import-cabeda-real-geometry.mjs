@@ -215,6 +215,7 @@ try {
       await client.query(
         `UPDATE sample_points
          SET position=ST_SetSRID(ST_GeomFromGeoJSON($4),4326)::geometry(Point,4326),
+             observed_position=NULL,
              gps_source=$5,
              notes=concat_ws(E'\n', nullif(notes,''), $6)
          WHERE tenant_id=$1::uuid AND collection_order_id=$2::uuid AND code=$3`,
