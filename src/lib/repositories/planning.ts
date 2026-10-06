@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
 import { executeMultiseasonPlan } from "@/domain/multiseason-planning";
+import { buildPlanningSnapshotPayload, verifyPlanningSnapshot } from "@/domain/planning-snapshot";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -180,12 +180,45 @@ export async function createPlanningSnapshot(tenantId:string,scenarioId:string,u
         hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
       }),
     };
-    const payload={version:1,createdAt:new Date().toISOString(),scenario,calculation};
-    const json=JSON.stringify(payload);
-    const sha256=createHash("sha256").update(json).digest("hex");
-    const row=(await c.query(`INSERT INTO planning_scenario_snapshots(tenant_id,scenario_id,payload,sha256,created_by) VALUES($1::uuid,$2::uuid,$3::jsonb,$4,$5::uuid) RETURNING id::text,sha256,created_at AS "createdAt"`,[tenantId,scenarioId,json,sha256,userId])).rows[0];
+    const {payload,sha256}=buildPlanningSnapshotPayload({
+      createdAt:new Date().toISOString(),
+      scenario,
+      calculation,
+    });
+    const row=(await c.query(
+      `INSERT INTO planning_scenario_snapshots(tenant_id,scenario_id,payload,sha256,created_by)
+       VALUES($1::uuid,$2::uuid,$3::jsonb,$4,$5::uuid)
+       RETURNING id::text,sha256,created_at AS "createdAt"`,
+      [tenantId,scenarioId,JSON.stringify(payload),sha256,userId],
+    )).rows[0];
     if(!row)throw new PlanningError("Planejamento não encontrado.",404);
     return row;
   });
 }
+
+export async function getPlanningSnapshot(
+  tenantId:string,
+  scenarioId:string,
+  snapshotId:string,
+  userId?:string,
+){
+  return withTenant({tenantId,userId},async c=>{
+    const row=(await c.query(
+      `SELECT id::text,payload,sha256,created_at::text AS "createdAt"
+       FROM planning_scenario_snapshots
+       WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid`,
+      [tenantId,scenarioId,snapshotId],
+    )).rows[0];
+    if(!row)throw new PlanningError("Snapshot de planejamento não encontrado.",404);
+    const version=Number(row.payload?.version??1);
+    if(version>=2&&!verifyPlanningSnapshot(row.payload,row.sha256)){
+      throw new PlanningError("Integridade do snapshot de planejamento não confere.",409);
+    }
+    return {
+      ...row,
+      integrity:version>=2?"VERIFIED":"LEGACY_UNVERIFIABLE",
+    };
+  });
+}
+
 export async function listPlanningSnapshots(tenantId:string,scenarioId:string,userId?:string){return withTenant({tenantId,userId},async c=>(await c.query(`SELECT id::text,sha256,created_at AS "createdAt" FROM planning_scenario_snapshots WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY created_at DESC`,[tenantId,scenarioId])).rows);}
