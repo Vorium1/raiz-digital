@@ -17,11 +17,37 @@ assert.match(calculateRoute, /status:403/);
 const repository = readFileSync(new URL("../src/lib/repositories/planning.ts", import.meta.url), "utf8");
 const editor = readFileSync(new URL("../src/components/planning-scenario-editor.tsx", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../db/migrations/047_multiseason_planning.sql", import.meta.url), "utf8");
+const planningWorkspace = readFileSync(new URL("../src/components/planning-workspace.tsx", import.meta.url), "utf8");
 
 assert.match(
   repository,
   /cs\.field_id=f\.id/,
   "análise-base precisa pertencer ao mesmo talhão do cenário",
+);
+assert.match(
+  repository,
+  /AS "baseEvidenceReady"/,
+  "cenário precisa distinguir análise vinculada de evidência laboratorial realmente disponível",
+);
+assert.match(
+  repository,
+  /JOIN lab_results plr/,
+  "readiness da análise-base deve depender de resultados laboratoriais persistidos",
+);
+assert.match(
+  repository,
+  /hasBaseEvidence:Boolean\(scenario\.baseEvidenceReady\)/,
+  "orquestração fail-closed deve usar evidência real e não apenas UUID da análise",
+);
+assert.match(
+  planningWorkspace,
+  /baseAnalysisId:baseAnalysisId\|\|null/,
+  "workspace deve enviar explicitamente a análise-base escolhida",
+);
+assert.match(
+  planningWorkspace,
+  /analysis\.fieldId===fieldId/,
+  "seletor de análise-base deve ficar restrito ao talhão escolhido",
 );
 assert.match(
   repository,
