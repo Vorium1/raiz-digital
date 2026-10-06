@@ -11,6 +11,16 @@ const scenarioSelect = `planning_scenarios.id::text,
   planning_scenarios.status,
   planning_scenarios.irrigated,
   planning_scenarios.notes,
+  planning_scenarios.management_system AS "managementSystem",
+  planning_scenarios.irrigation_type AS "irrigationType",
+  planning_scenarios.irrigation_capacity_notes AS "irrigationCapacityNotes",
+  planning_scenarios.water_availability_notes AS "waterAvailabilityNotes",
+  planning_scenarios.known_restrictions AS "knownRestrictions",
+  planning_scenarios.previous_crop AS "previousCrop",
+  planning_scenarios.recent_crop_history AS "recentCropHistory",
+  planning_scenarios.last_soil_correction AS "lastSoilCorrection",
+  planning_scenarios.fertilization_history AS "fertilizationHistory",
+  planning_scenarios.organic_inputs AS "organicInputs",
   planning_scenarios.created_at AS "createdAt",
   planning_scenarios.updated_at AS "updatedAt",
   CASE WHEN planning_scenarios.base_analysis_id IS NULL THEN false ELSE EXISTS (
@@ -44,14 +54,14 @@ export async function listPlanningBaseAnalyses(tenantId:string,userId?:string){
   )).rows);
 }
 export async function listPlanningScenarios(tenantId: string, userId?: string) {
-  return withTenant({ tenantId, userId }, async c => (await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", count(pc.id)::int AS "cropCount" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id LEFT JOIN planning_scenario_crops pc ON pc.tenant_id=planning_scenarios.tenant_id AND pc.scenario_id=planning_scenarios.id GROUP BY planning_scenarios.id,f.id ORDER BY planning_scenarios.updated_at DESC`)).rows);
+  return withTenant({ tenantId, userId }, async c => (await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", cl.name AS "clientName", count(pc.id)::int AS "cropCount" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN planning_scenario_crops pc ON pc.tenant_id=planning_scenarios.tenant_id AND pc.scenario_id=planning_scenarios.id GROUP BY planning_scenarios.id,f.id,p.id,cl.id ORDER BY planning_scenarios.updated_at DESC`)).rows);
 }
 async function getPlanningScenarioWithClient(
   c: import("pg").PoolClient,
   tenantId: string,
   scenarioId: string,
 ) {
-  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
+  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", cl.name AS "clientName", ba.code AS "baseAnalysisCode", ba.created_at::text AS "baseAnalysisCreatedAt" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN analyses ba ON ba.tenant_id=planning_scenarios.tenant_id AND ba.id=planning_scenarios.base_analysis_id WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
   if(!scenario) throw new PlanningError("Planejamento não encontrado.",404);
   const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, notes FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
   return {...scenario,crops};
