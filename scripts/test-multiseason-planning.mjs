@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { executeMultiseasonPlan, resolvePlanningCapability } from "../src/domain/multiseason-planning.ts";
+import { executeMultiseasonPlan, resolvePlanningCapability, resolvePlanningScenarioPersistenceStatus } from "../src/domain/multiseason-planning.ts";
 assert.equal(resolvePlanningCapability("SOYBEAN").status, "PARTIAL");
 assert.equal(resolvePlanningCapability("UNKNOWN").status, "UNSUPPORTED");
 const noEvidence = executeMultiseasonPlan({ crops: [{ cropCode: "SOYBEAN" }], hasBaseEvidence: false });
@@ -10,6 +10,12 @@ assert.equal(plan[0].status, "PARTIAL");
 assert.equal(plan[1].status, "PARTIAL");
 assert.equal(plan[2].status, "REANALYSIS_REQUIRED");
 assert.equal(plan[2].reanalysisRequired, true);
+assert.equal(resolvePlanningScenarioPersistenceStatus([]), "DRAFT");
+assert.equal(resolvePlanningScenarioPersistenceStatus(plan), "REANALYSIS_REQUIRED");
+assert.equal(
+  resolvePlanningScenarioPersistenceStatus(plan.slice(0,2)),
+  "CALCULATED",
+);
 const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
 assert.match(calculateRoute, /writers\.has\(s\.role\)/);
 assert.match(calculateRoute, /status:403/);
@@ -54,6 +60,26 @@ assert.match(
   repository,
   /getPlanningScenarioWithClient\(c,input\.tenantId,input\.scenarioId\)/,
   "lifecycle deve reler o cenário dentro da mesma transação tenant-scoped",
+);
+assert.match(
+  repository,
+  /FOR UPDATE/,
+  "mutações concorrentes do cenário precisam serializar a posição dos cultivos",
+);
+for (const auditAction of [
+  "PLANNING_CROP_ADDED",
+  "PLANNING_CROP_UPDATED",
+  "PLANNING_CROP_REMOVED",
+  "PLANNING_CROPS_REORDERED",
+  "PLANNING_SCENARIO_CALCULATED",
+  "PLANNING_SCENARIO_SNAPSHOT_CREATED",
+]) {
+  assert.match(repository, new RegExp(auditAction), `auditoria ausente: ${auditAction}`);
+}
+assert.match(
+  repository,
+  /SET status='DRAFT'/,
+  "edições precisam invalidar o estado calculado anterior",
 );
 assert.match(
   repository,
