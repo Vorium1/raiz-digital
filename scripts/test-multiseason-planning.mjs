@@ -18,6 +18,7 @@ const repository = readFileSync(new URL("../src/lib/repositories/planning.ts", i
 const editor = readFileSync(new URL("../src/components/planning-scenario-editor.tsx", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../db/migrations/047_multiseason_planning.sql", import.meta.url), "utf8");
 const planningWorkspace = readFileSync(new URL("../src/components/planning-workspace.tsx", import.meta.url), "utf8");
+const declaredContextMigration = readFileSync(new URL("../db/migrations/048_multiseason_declared_context.sql", import.meta.url), "utf8");
 
 assert.match(
   repository,
@@ -78,5 +79,29 @@ assert.match(
   migration,
   /planning_scenario_snapshots_immutable/,
   "imutabilidade do snapshot precisa existir também no banco",
+);
+assert.match(
+  declaredContextMigration,
+  /ADD COLUMN management_system text/,
+  "contexto declarado precisa ser persistido sem inferir manejo",
+);
+assert.match(declaredContextMigration, /ADD COLUMN irrigation_type text/);
+assert.match(declaredContextMigration, /ADD COLUMN recent_crop_history text/);
+assert.match(declaredContextMigration, /ADD COLUMN fertilization_history text/);
+assert.match(declaredContextMigration, /ADD COLUMN organic_inputs text/);
+assert.match(
+  editor,
+  /Data prevista/,
+  "cada cultivo deve expor a data prevista já existente no modelo",
+);
+assert.match(
+  editor,
+  /Condição hídrica/,
+  "cada cultivo deve distinguir irrigado, sequeiro e não informado",
+);
+assert.match(
+  editor,
+  /Eles não criam doses, clima ou efeito residual por conta própria/,
+  "entrevista declarada não pode ser apresentada como regra agronômica",
 );
 console.log("multiseason-planning: capability, evidência, base por talhão, snapshot imutável e ausência de alvo inventado aprovados");
