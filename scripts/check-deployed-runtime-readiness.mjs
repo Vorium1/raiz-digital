@@ -91,11 +91,14 @@ export async function waitForProductionDeployment({
       if (Array.isArray(statuses) && deploymentTerminalFailure(statuses)) {
         throw new Error("Production deployment reached a terminal failure state.");
       }
-      const success = Array.isArray(statuses)
-        ? statuses.find((item) => String(item.state).toLowerCase() === "success")
+      const latestStatus = Array.isArray(statuses) ? statuses[0] ?? null : null;
+      const latestState = String(latestStatus?.state ?? "").toLowerCase();
+      const readinessUrl = latestState === "success"
+        ? readinessUrlFromDeploymentStatus(latestStatus)
         : null;
-      const readinessUrl = readinessUrlFromDeploymentStatus(success);
-      if (success && readinessUrl) return { deployment, status: success, readinessUrl };
+      if (latestState === "success" && readinessUrl) {
+        return { deployment, status: latestStatus, readinessUrl };
+      }
     }
 
     if (attempt < maxAttempts) await sleep(waitMs);
