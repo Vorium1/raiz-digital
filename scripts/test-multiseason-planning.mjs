@@ -13,4 +13,44 @@ assert.equal(plan[2].reanalysisRequired, true);
 const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
 assert.match(calculateRoute, /writers\.has\(s\.role\)/);
 assert.match(calculateRoute, /status:403/);
-console.log("multiseason-planning: capability fail-closed, evidência e gate de reanálise aprovados");
+
+const repository = readFileSync(new URL("../src/lib/repositories/planning.ts", import.meta.url), "utf8");
+const editor = readFileSync(new URL("../src/components/planning-scenario-editor.tsx", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../db/migrations/047_multiseason_planning.sql", import.meta.url), "utf8");
+
+assert.match(
+  repository,
+  /cs\.field_id=f\.id/,
+  "análise-base precisa pertencer ao mesmo talhão do cenário",
+);
+assert.match(
+  repository,
+  /getPlanningScenarioWithClient\(c,input\.tenantId,input\.scenarioId\)/,
+  "lifecycle deve reler o cenário dentro da mesma transação tenant-scoped",
+);
+assert.match(
+  repository,
+  /const scenario=await getPlanningScenarioWithClient\(c,tenantId,scenarioId\)/,
+  "snapshot deve congelar cenário e cálculo dentro da mesma transação",
+);
+assert.doesNotMatch(
+  editor,
+  /target=60|nutrient=K2O/,
+  "planejamento sem dose calculada não pode inventar alvo K2O para a calculadora",
+);
+assert.match(
+  editor,
+  /\/calculadoras\?area=/,
+  "calculadora pode receber apenas contexto neutro de área enquanto não houver alvo calculado",
+);
+assert.match(
+  migration,
+  /REVOKE UPDATE, DELETE ON planning_scenario_snapshots FROM raiz_app/,
+  "runtime não pode alterar ou apagar snapshots de planejamento",
+);
+assert.match(
+  migration,
+  /planning_scenario_snapshots_immutable/,
+  "imutabilidade do snapshot precisa existir também no banco",
+);
+console.log("multiseason-planning: capability, evidência, base por talhão, snapshot imutável e ausência de alvo inventado aprovados");
