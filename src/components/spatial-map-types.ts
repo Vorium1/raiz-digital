@@ -110,9 +110,9 @@ export function effectivePointCoordinates(point: MapPoint): { latitude: number; 
  * auditor de proveniência; prefixos/sufixos arbitrários não promovem a coordenada a evidência auditada.
  */
 export function pointPositionKind(point: MapPoint): PointPositionKind {
-  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   const source = (point.gpsSource ?? "").trim().toUpperCase();
   if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
+  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   return "PLANNED";
 }
 export const MAP_NEUTRAL_COLOR = "#9AA79F";
