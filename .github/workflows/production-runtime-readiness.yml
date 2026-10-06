@@ -1,0 +1,32 @@
+name: Production Runtime Readiness
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  deployments: read
+
+concurrency:
+  group: production-runtime-readiness-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Confirmar readiness do deployment de produção do mesmo SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/check-deployed-runtime-readiness.mjs
