@@ -1,4 +1,332 @@
 "use client";
+
 import { useState } from "react";
-type Crop={id:string;position:number;cropCode:string;seasonLabel:string;targetYield:number|null;targetUnit:string|null;irrigated:boolean|null;notes:string};
-export function PlanningScenarioEditor({scenario,initialSnapshots}:{scenario:any;initialSnapshots:any[]}){const [crops,setCrops]=useState<Crop[]>(scenario.crops);const [results,setResults]=useState<any[]>([]);const [snapshots,setSnapshots]=useState(initialSnapshots);const [cropCode,setCropCode]=useState("SOYBEAN");const [editing,setEditing]=useState<string|null>(null);const [draft,setDraft]=useState<any>({});const [error,setError]=useState("");const call=async(path:string,method:string,body?:unknown)=>{const r=await fetch(path,{method,headers:body?{"content-type":"application/json"}:undefined,body:body?JSON.stringify(body):undefined});const p=await r.json();if(!r.ok)throw new Error(p.error);return p;};const refresh=async()=>{const p=await call(`/api/planning/${scenario.id}`,"GET");setCrops(p.scenario.crops);};async function add(){try{await call(`/api/planning/${scenario.id}/crops`,"POST",{cropCode,seasonLabel:"Planejado"});await refresh();}catch(e){setError(String(e));}}async function save(c:Crop){try{await call(`/api/planning/${scenario.id}/crops/${c.id}`,"PATCH",{...c,...draft,targetYield:draft.targetYield===""?null:Number(draft.targetYield)});setEditing(null);await refresh();}catch(e){setError(String(e));}}async function remove(id:string){try{await call(`/api/planning/${scenario.id}/crops/${id}`,"DELETE");await refresh();}catch(e){setError(String(e));}}async function move(i:number,d:number){const next=[...crops];const j=i+d;if(j<0||j>=next.length)return;[next[i],next[j]]=[next[j],next[i]];try{await call(`/api/planning/${scenario.id}/reorder`,"POST",{cropIds:next.map(x=>x.id)});setCrops(next.map((x,k)=>({...x,position:k})));}catch(e){setError(String(e));}}async function calculate(){try{setResults((await call(`/api/planning/${scenario.id}/calculate`,"POST")).results);}catch(e){setError(String(e));}}async function snapshot(){try{const p=await call(`/api/planning/${scenario.id}/snapshots`,"POST");setSnapshots([p.snapshot,...snapshots]);}catch(e){setError(String(e));}}return <><section className="card" style={{padding:16}}><label>Adicionar cultura<select value={cropCode} onChange={e=>setCropCode(e.target.value)}><option>SOYBEAN</option><option>WHEAT</option><option>RICE</option><option>UNSUPPORTED</option></select></label><button className="button" onClick={add}>Adicionar cultivo</button><button className="button" onClick={calculate}>Calcular simulação</button><button className="button" onClick={snapshot}>Criar snapshot</button>{error&&<p role="alert">{error}</p>}</section><section><h2>Linha do tempo</h2>{crops.map((c,i)=><article className="card" style={{padding:16,margin:"10px 0"}} key={c.id}><strong>{i+1}. {c.cropCode}</strong>{editing===c.id?<div><label>Cultura<input value={draft.cropCode??c.cropCode} onChange={e=>setDraft({...draft,cropCode:e.target.value})}/></label><label>Safra<input value={draft.seasonLabel??c.seasonLabel} onChange={e=>setDraft({...draft,seasonLabel:e.target.value})}/></label><label>Meta<input type="number" value={draft.targetYield??c.targetYield??""} onChange={e=>setDraft({...draft,targetYield:e.target.value})}/></label><label>Unidade<input value={draft.targetUnit??c.targetUnit??""} onChange={e=>setDraft({...draft,targetUnit:e.target.value})}/></label><label>Observações<textarea value={draft.notes??c.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></label><button onClick={()=>save(c)}>Salvar</button><button onClick={()=>setEditing(null)}>Cancelar</button></div>:<><p>{c.seasonLabel||"Janela não informada"} · Meta: {c.targetYield??"UNKNOWN"} {c.targetUnit??""}</p><button onClick={()=>{setDraft(c);setEditing(c.id)}}>Editar</button><button onClick={()=>move(i,-1)} disabled={i===0}>↑</button><button onClick={()=>move(i,1)} disabled={i===crops.length-1}>↓</button><button onClick={()=>remove(c.id)}>Remover</button></>}</article>)}</section>{results.length>0&&<section><h2>Resultados da simulação</h2>{results.map(r=><article className="card" style={{padding:14,margin:"8px 0"}} key={r.position}><strong>{r.crop.cropCode}: {r.status}</strong><p>{r.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":r.limitations.join(" · ")||"Requisitos disponíveis para revisão."}</p>{r.status!=="UNSUPPORTED"&&!r.reanalysisRequired&&<a className="button" href={`/calculadoras?area=${scenario.areaHa??""}`}>Abrir calculadora comercial</a>}</article>)}</section>}<section><h2>Snapshots imutáveis</h2>{snapshots.map(s=><p key={s.id}>{s.createdAt} · {s.sha256}</p>)}</section></>}
+
+type Crop={
+  id:string;
+  position:number;
+  cropCode:string;
+  seasonLabel:string;
+  plannedDate:string|null;
+  targetYield:number|null;
+  targetUnit:string|null;
+  irrigated:boolean|null;
+  notes:string;
+};
+
+type Scenario={
+  id:string;
+  name:string;
+  fieldName:string;
+  propertyName?:string|null;
+  clientName?:string|null;
+  areaHa:number|null;
+  baseAnalysisId:string|null;
+  baseAnalysisCode?:string|null;
+  baseAnalysisCreatedAt?:string|null;
+  baseEvidenceReady:boolean;
+  irrigated:boolean|null;
+  notes:string;
+  managementSystem:string|null;
+  irrigationType:string|null;
+  irrigationCapacityNotes:string|null;
+  waterAvailabilityNotes:string|null;
+  knownRestrictions:string|null;
+  previousCrop:string|null;
+  recentCropHistory:string|null;
+  lastSoilCorrection:string|null;
+  fertilizationHistory:string|null;
+  organicInputs:string|null;
+  crops:Crop[];
+};
+
+function triState(value:boolean|null|undefined){
+  return value===true?"yes":value===false?"no":"unknown";
+}
+
+function fromTriState(value:string):boolean|null{
+  return value==="yes"?true:value==="no"?false:null;
+}
+
+export function PlanningScenarioEditor({
+  scenario:initialScenario,
+  initialSnapshots,
+}:{
+  scenario:Scenario;
+  initialSnapshots:any[];
+}){
+  const [scenario,setScenario]=useState(initialScenario);
+  const [scenarioDraft,setScenarioDraft]=useState({...initialScenario});
+  const [crops,setCrops]=useState<Crop[]>(initialScenario.crops);
+  const [results,setResults]=useState<any[]>([]);
+  const [snapshots,setSnapshots]=useState(initialSnapshots);
+  const [cropCode,setCropCode]=useState("SOYBEAN");
+  const [editing,setEditing]=useState<string|null>(null);
+  const [draft,setDraft]=useState<any>({});
+  const [error,setError]=useState("");
+  const [savingScenario,setSavingScenario]=useState(false);
+
+  const call=async(path:string,method:string,body?:unknown)=>{
+    const r=await fetch(path,{
+      method,
+      headers:body?{"content-type":"application/json"}:undefined,
+      body:body?JSON.stringify(body):undefined,
+    });
+    const p=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(p.error??"Operação não concluída.");
+    return p;
+  };
+
+  const refresh=async()=>{
+    const p=await call(`/api/planning/${scenario.id}`,"GET");
+    setScenario(p.scenario);
+    setScenarioDraft(p.scenario);
+    setCrops(p.scenario.crops);
+    setResults([]);
+  };
+
+  async function saveScenarioContext(){
+    setSavingScenario(true);
+    setError("");
+    try{
+      const p=await call(`/api/planning/${scenario.id}`,"PATCH",{
+        name:scenarioDraft.name,
+        irrigated:scenarioDraft.irrigated,
+        notes:scenarioDraft.notes,
+        managementSystem:scenarioDraft.managementSystem,
+        irrigationType:scenarioDraft.irrigationType,
+        irrigationCapacityNotes:scenarioDraft.irrigationCapacityNotes,
+        waterAvailabilityNotes:scenarioDraft.waterAvailabilityNotes,
+        knownRestrictions:scenarioDraft.knownRestrictions,
+        previousCrop:scenarioDraft.previousCrop,
+        recentCropHistory:scenarioDraft.recentCropHistory,
+        lastSoilCorrection:scenarioDraft.lastSoilCorrection,
+        fertilizationHistory:scenarioDraft.fertilizationHistory,
+        organicInputs:scenarioDraft.organicInputs,
+      });
+      setScenario((current)=>({...current,...p.scenario,crops:current.crops}));
+      setScenarioDraft((current)=>({...current,...p.scenario,crops:current.crops}));
+      setResults([]);
+    }catch(e){
+      setError(e instanceof Error?e.message:String(e));
+    }finally{
+      setSavingScenario(false);
+    }
+  }
+
+  async function add(){
+    try{
+      await call(`/api/planning/${scenario.id}/crops`,"POST",{cropCode,seasonLabel:"Planejado"});
+      await refresh();
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function save(crop:Crop){
+    try{
+      const targetYield=draft.targetYield===""||draft.targetYield==null?null:Number(draft.targetYield);
+      if(targetYield!=null&&(!Number.isFinite(targetYield)||targetYield<=0)){
+        throw new Error("Meta de produtividade deve ser maior que zero.");
+      }
+      await call(`/api/planning/${scenario.id}/crops/${crop.id}`,"PATCH",{
+        ...crop,
+        ...draft,
+        targetYield,
+        plannedDate:draft.plannedDate||null,
+        irrigated:fromTriState(triState(draft.irrigated)),
+      });
+      setEditing(null);
+      await refresh();
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function remove(id:string){
+    try{
+      await call(`/api/planning/${scenario.id}/crops/${id}`,"DELETE");
+      await refresh();
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function move(index:number,delta:number){
+    const next=[...crops];
+    const target=index+delta;
+    if(target<0||target>=next.length)return;
+    [next[index],next[target]]=[next[target],next[index]];
+    try{
+      await call(`/api/planning/${scenario.id}/reorder`,"POST",{cropIds:next.map(item=>item.id)});
+      setCrops(next.map((item,position)=>({...item,position})));
+      setResults([]);
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function calculate(){
+    try{
+      setError("");
+      setResults((await call(`/api/planning/${scenario.id}/calculate`,"POST")).results);
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function snapshot(){
+    try{
+      setError("");
+      const p=await call(`/api/planning/${scenario.id}/snapshots`,"POST");
+      setSnapshots([p.snapshot,...snapshots]);
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  return <>
+    <section className="card" style={{padding:16,marginBottom:16}}>
+      <h2>Contexto declarado do cenário</h2>
+      <p>
+        Estes campos registram o que foi informado para o planejamento.
+        Eles não criam doses, clima ou efeito residual por conta própria.
+      </p>
+      <div className="form-grid">
+        <label>Nome
+          <input value={scenarioDraft.name??""} onChange={e=>setScenarioDraft({...scenarioDraft,name:e.target.value})}/>
+        </label>
+        <label>Área irrigada
+          <select
+            value={triState(scenarioDraft.irrigated)}
+            onChange={e=>setScenarioDraft({...scenarioDraft,irrigated:fromTriState(e.target.value)})}
+          >
+            <option value="unknown">Não informado</option>
+            <option value="yes">Sim</option>
+            <option value="no">Não</option>
+          </select>
+        </label>
+        <label>Sistema de manejo/calagem
+          <input value={scenarioDraft.managementSystem??""} onChange={e=>setScenarioDraft({...scenarioDraft,managementSystem:e.target.value})} placeholder="Informado pelo responsável"/>
+        </label>
+        <label>Tipo de irrigação
+          <input value={scenarioDraft.irrigationType??""} onChange={e=>setScenarioDraft({...scenarioDraft,irrigationType:e.target.value})} placeholder="Não inferir se ausente"/>
+        </label>
+        <label>Capacidade/limitação de irrigação
+          <textarea value={scenarioDraft.irrigationCapacityNotes??""} onChange={e=>setScenarioDraft({...scenarioDraft,irrigationCapacityNotes:e.target.value})}/>
+        </label>
+        <label>Disponibilidade hídrica
+          <textarea value={scenarioDraft.waterAvailabilityNotes??""} onChange={e=>setScenarioDraft({...scenarioDraft,waterAvailabilityNotes:e.target.value})}/>
+        </label>
+        <label>Restrições conhecidas
+          <textarea value={scenarioDraft.knownRestrictions??""} onChange={e=>setScenarioDraft({...scenarioDraft,knownRestrictions:e.target.value})}/>
+        </label>
+        <label>Cultura anterior
+          <input value={scenarioDraft.previousCrop??""} onChange={e=>setScenarioDraft({...scenarioDraft,previousCrop:e.target.value})}/>
+        </label>
+        <label>Histórico recente de culturas
+          <textarea value={scenarioDraft.recentCropHistory??""} onChange={e=>setScenarioDraft({...scenarioDraft,recentCropHistory:e.target.value})}/>
+        </label>
+        <label>Última correção/calagem
+          <textarea value={scenarioDraft.lastSoilCorrection??""} onChange={e=>setScenarioDraft({...scenarioDraft,lastSoilCorrection:e.target.value})}/>
+        </label>
+        <label>Histórico de adubação e fontes
+          <textarea value={scenarioDraft.fertilizationHistory??""} onChange={e=>setScenarioDraft({...scenarioDraft,fertilizationHistory:e.target.value})}/>
+        </label>
+        <label>Matéria orgânica / insumos orgânicos declarados
+          <textarea value={scenarioDraft.organicInputs??""} onChange={e=>setScenarioDraft({...scenarioDraft,organicInputs:e.target.value})}/>
+        </label>
+        <label>Observações gerais
+          <textarea value={scenarioDraft.notes??""} onChange={e=>setScenarioDraft({...scenarioDraft,notes:e.target.value})}/>
+        </label>
+      </div>
+      <button className="button" disabled={savingScenario||!scenarioDraft.name?.trim()} onClick={saveScenarioContext}>
+        {savingScenario?"Salvando…":"Salvar contexto"}
+      </button>
+      <p>
+        <strong>Origem:</strong> {scenario.clientName??"Cliente não disponível"} · {scenario.propertyName??"Propriedade não disponível"} · {scenario.fieldName} · {scenario.areaHa??"—"} ha
+      </p>
+      <p>
+        <strong>Análise-base:</strong>{" "}
+        {scenario.baseAnalysisId
+          ? `${scenario.baseAnalysisCode??scenario.baseAnalysisId.slice(0,8)} · ${scenario.baseAnalysisCreatedAt?new Date(scenario.baseAnalysisCreatedAt).toLocaleDateString("pt-BR"):"data não disponível"} · ${scenario.baseEvidenceReady?"evidência laboratorial disponível":"sem resultado laboratorial utilizável"}`
+          :"não vinculada"}
+      </p>
+    </section>
+
+    <section className="card" style={{padding:16}}>
+      <label>Adicionar cultura
+        <select value={cropCode} onChange={e=>setCropCode(e.target.value)}>
+          <option value="SOYBEAN">Soja</option>
+          <option value="WHEAT">Trigo</option>
+          <option value="RICE">Arroz</option>
+          <option value="UNSUPPORTED">Outra / sem regra homologada</option>
+        </select>
+      </label>
+      <button className="button" onClick={add}>Adicionar cultivo</button>
+      <button className="button" onClick={calculate}>Calcular simulação</button>
+      <button className="button" onClick={snapshot}>Criar snapshot</button>
+      {error&&<p role="alert">{error}</p>}
+    </section>
+
+    <section>
+      <h2>Linha do tempo</h2>
+      {crops.map((crop,index)=>
+        <article className="card" style={{padding:16,margin:"10px 0"}} key={crop.id}>
+          <strong>{index+1}. {crop.cropCode}</strong>
+          {editing===crop.id
+            ?<div className="form-grid">
+              <label>Cultura
+                <input value={draft.cropCode??crop.cropCode} onChange={e=>setDraft({...draft,cropCode:e.target.value})}/>
+              </label>
+              <label>Safra / janela
+                <input value={draft.seasonLabel??crop.seasonLabel} onChange={e=>setDraft({...draft,seasonLabel:e.target.value})}/>
+              </label>
+              <label>Data prevista
+                <input type="date" value={draft.plannedDate??crop.plannedDate??""} onChange={e=>setDraft({...draft,plannedDate:e.target.value})}/>
+              </label>
+              <label>Meta de produtividade
+                <input type="number" step="any" min="0" value={draft.targetYield??crop.targetYield??""} onChange={e=>setDraft({...draft,targetYield:e.target.value})}/>
+              </label>
+              <label>Unidade da meta
+                <input value={draft.targetUnit??crop.targetUnit??""} onChange={e=>setDraft({...draft,targetUnit:e.target.value})}/>
+              </label>
+              <label>Condição hídrica
+                <select
+                  value={triState(draft.irrigated??crop.irrigated)}
+                  onChange={e=>setDraft({...draft,irrigated:fromTriState(e.target.value)})}
+                >
+                  <option value="unknown">Não informado</option>
+                  <option value="yes">Irrigado</option>
+                  <option value="no">Sequeiro</option>
+                </select>
+              </label>
+              <label>Observações operacionais
+                <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
+              </label>
+              <div>
+                <button className="button" onClick={()=>save(crop)}>Salvar cultivo</button>
+                <button className="button secondary" onClick={()=>setEditing(null)}>Cancelar</button>
+              </div>
+            </div>
+            :<>
+              <p>
+                {crop.seasonLabel||"Janela não informada"} · {crop.plannedDate||"data não informada"} ·
+                Meta: {crop.targetYield??"UNKNOWN"} {crop.targetUnit??""} ·
+                {crop.irrigated===true?" irrigado":crop.irrigated===false?" sequeiro":" condição hídrica UNKNOWN"}
+              </p>
+              <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
+              <button onClick={()=>move(index,-1)} disabled={index===0}>↑</button>
+              <button onClick={()=>move(index,1)} disabled={index===crops.length-1}>↓</button>
+              <button onClick={()=>remove(crop.id)}>Remover</button>
+            </>}
+        </article>
+      )}
+    </section>
+
+    {results.length>0&&<section>
+      <h2>Resultados da simulação</h2>
+      {results.map(result=>
+        <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
+          <strong>{result.crop.cropCode}: {result.status}</strong>
+          <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Requisitos disponíveis para revisão."}</p>
+          {result.status!=="UNSUPPORTED"&&!result.reanalysisRequired&&
+            <a className="button" href={`/calculadoras?area=${scenario.areaHa??""}`}>Abrir calculadora comercial</a>}
+        </article>
+      )}
+    </section>}
+
+    <section>
+      <h2>Snapshots imutáveis</h2>
+      {snapshots.map(snapshot=><p key={snapshot.id}>{snapshot.createdAt} · {snapshot.sha256}</p>)}
+    </section>
+  </>;
+}
