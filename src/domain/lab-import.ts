@@ -556,7 +556,13 @@ function findHeaderIndex(headers: string[], aliases: string[]) {
   return headers.findIndex((header) => aliases.includes(normalizeHeader(header)));
 }
 
-function makeConfidence(rows: LabImportRow[], issues: LabImportIssue[], context: LabImportContext): LabImportConfidence {
+export type LabImportConfidenceRow = Pick<LabImportRow, "parameterCode" | "unit" | "method" | "unitInferred" | "methodInferred">;
+
+export function calculateLabImportConfidence(
+  rows: LabImportConfidenceRow[],
+  issues: LabImportIssue[],
+  context: LabImportContext = {},
+): LabImportConfidence {
   const total = Math.max(rows.length, 1);
   const unitKnown = rows.filter((row) => row.unit && row.unit !== "NÃO INFORMADA" && !row.unitInferred).length / total;
   const methodKnown = rows.filter((row) => row.method && row.method !== "NÃO INFORMADO" && !row.methodInferred).length / total;
@@ -747,7 +753,7 @@ export function buildLabImportPreviewFromMatrix(
   const sampleSet = new Set(rows.map((row) => row.sampleCode));
   const blockers = issues.filter((issue) => issue.severity === "BLOCKER").length;
   const warnings = issues.filter((issue) => issue.severity === "WARNING").length;
-  const confidence = makeConfidence(rows, issues, context);
+  const confidence = calculateLabImportConfidence(rows, issues, context);
 
   return {
     fileName,
