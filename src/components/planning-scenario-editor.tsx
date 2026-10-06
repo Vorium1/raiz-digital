@@ -60,6 +60,7 @@ export function PlanningScenarioEditor({
   const [crops,setCrops]=useState<Crop[]>(initialScenario.crops);
   const [results,setResults]=useState<any[]>([]);
   const [snapshots,setSnapshots]=useState(initialSnapshots);
+  const [selectedSnapshot,setSelectedSnapshot]=useState<any|null>(null);
   const [cropCode,setCropCode]=useState("SOYBEAN");
   const [editing,setEditing]=useState<string|null>(null);
   const [draft,setDraft]=useState<any>({});
@@ -170,6 +171,14 @@ export function PlanningScenarioEditor({
       setError("");
       const p=await call(`/api/planning/${scenario.id}/snapshots`,"POST");
       setSnapshots([p.snapshot,...snapshots]);
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  async function openSnapshot(snapshotId:string){
+    try{
+      setError("");
+      const p=await call(`/api/planning/${scenario.id}/snapshots/${snapshotId}`,"GET");
+      setSelectedSnapshot(p.snapshot);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
@@ -326,7 +335,36 @@ export function PlanningScenarioEditor({
 
     <section>
       <h2>Snapshots imutáveis</h2>
-      {snapshots.map(snapshot=><p key={snapshot.id}>{snapshot.createdAt} · {snapshot.sha256}</p>)}
+      {snapshots.map(snapshot=>
+        <div key={snapshot.id} className="card" style={{padding:12,margin:"8px 0"}}>
+          <strong>{snapshot.createdAt}</strong>
+          <small style={{display:"block",overflowWrap:"anywhere"}}>{snapshot.sha256}</small>
+          <button className="button secondary" onClick={()=>openSnapshot(snapshot.id)}>Abrir snapshot</button>
+        </div>
+      )}
+      {selectedSnapshot&&
+        <article className="card" style={{padding:16,marginTop:12}}>
+          <h3>Snapshot congelado</h3>
+          <p>
+            Integridade: <strong>{selectedSnapshot.integrity==="VERIFIED"?"SHA-256 verificado":"snapshot legado — hash canônico indisponível"}</strong>
+          </p>
+          <p>
+            Cenário: {selectedSnapshot.payload?.scenario?.name??"—"} ·
+            {selectedSnapshot.payload?.scenario?.fieldName??"—"} ·
+            versão {selectedSnapshot.payload?.version??1}
+          </p>
+          <p>
+            Evidência-base: {selectedSnapshot.payload?.scenario?.baseEvidenceReady?"disponível":"insuficiente/ausente"}.
+            O conteúdo exibido é o payload persistido, não o estado atual do cenário.
+          </p>
+          <ul>
+            {(selectedSnapshot.payload?.calculation?.results??[]).map((result:any)=>
+              <li key={result.position}>{result.crop?.cropCode??"Cultura"} · {result.status}</li>
+            )}
+          </ul>
+          <button className="button secondary" onClick={()=>setSelectedSnapshot(null)}>Fechar snapshot</button>
+        </article>
+      }
     </section>
   </>;
 }
