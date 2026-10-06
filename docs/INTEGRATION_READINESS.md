@@ -210,3 +210,20 @@ frente:
 Conclusão: replayar #101 hoje seria retrabalho e risco de regressão. Reabrir essa
 frente somente se um gate espacial atual falhar com evidência reproduzível.
 
+## Item 4 (#105) — confiança explicável sem duplicar métrica
+
+A antiga #106 foi dividida em dois ports cirúrgicos sobre a baseline atual, preservando
+as autoridades de score já existentes:
+
+- **#141** — explica a confiança da interpretação agronômica usando
+  `structured_output.confidence` já persistido pelo motor; preview Vercel verde.
+- **#142** — explica a confiança do laudo/importação usando o score persistido em
+  `analyses.confidence_score` e a última importação do mesmo tenant; a decomposição
+  só é exibida quando os dados persistidos reproduzem o score armazenado.
+
+A #142 é empilhada sobre #141. Isso mantém separadas as duas confianças exigidas pela
+issue #105 e evita criar um score paralelo. Se a reconstrução histórica não bater com
+o score persistido, o score original continua autoridade e a decomposição falha fechado.
+
+Regra futura: não reaplicar a antiga #106 inteira depois de #141 + #142.
+
