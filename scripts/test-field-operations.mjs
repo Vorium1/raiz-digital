@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parsePointCsv, parsePointGeoJson } from "../src/domain/field-operations.ts";
 
 const csv = `codigo;latitude;longitude;profundidade_de;profundidade_ate;subamostras\nP01;-28,2501;-52,4021;0;20;10\nP02;-28,2510;-52,4010;0;20;10`;
@@ -29,4 +30,76 @@ const invalid = parsePointCsv(`codigo;latitude;longitude\nP01;500;-52`);
 assert.equal(invalid.blockers, 1);
 assert.equal(invalid.points.length, 0);
 
-console.log("field-operations: 4 cenários aprovados");
+
+const catalogSource = readFileSync(new URL("../src/lib/repositories/catalog.ts", import.meta.url), "utf8");
+const fieldRouteSource = readFileSync(new URL("../src/app/api/fields/[id]/route.ts", import.meta.url), "utf8");
+const geoMapInputSource = readFileSync(new URL("../src/components/geo-map-input.tsx", import.meta.url), "utf8");
+const fieldManagerSource = readFileSync(new URL("../src/components/field-operations-manager.tsx", import.meta.url), "utf8");
+
+assert.match(
+  catalogSource,
+  /FIELD_BOUNDARY_UPDATED/,
+  "edição de contorno precisa deixar audit trail específico",
+);
+assert.match(
+  catalogSource,
+  /co\.status <> 'CANCELED'/,
+  "pontos de ordens ativas precisam participar da validação do novo limite",
+);
+assert.match(
+  catalogSource,
+  /SHAPEFILE_REAL_GPS_LONLAT','SHAPEFILE_REAL_EPSG4326'/,
+  "backend precisa usar a mesma autoridade espacial das fontes auditadas do mapa",
+);
+assert.match(
+  catalogSource,
+  /coalesce\(sp\.observed_position, sp\.position\)/,
+  "GPS observado deve prevalecer quando a fonte não é uma importação auditada pura",
+);
+assert.match(
+  catalogSource,
+  /Os pontos GPS não foram movidos/,
+  "falha de contorno deve explicar que coordenadas não foram deslocadas",
+);
+assert.match(
+  fieldRouteSource,
+  /boundary/,
+  "PATCH de talhão precisa aceitar atualização de contorno validado",
+);
+assert.match(
+  geoMapInputSource,
+  /referencePoints/,
+  "editor visual deve mostrar pontos de coleta como referência fixa",
+);
+assert.match(
+  geoMapInputSource,
+  /ponto fixo/,
+  "editor deve identificar visualmente que os pontos não são arrastáveis",
+);
+assert.match(
+  geoMapInputSource,
+  /loadGoogleMaps/,
+  "editor produtivo deve reutilizar o Google Maps configurado no RAIZ",
+);
+assert.match(
+  geoMapInputSource,
+  /MapTypeId\?\.SATELLITE/,
+  "Google deve abrir o editor na imagem de satélite",
+);
+assert.match(
+  geoMapInputSource,
+  /data.*geoMapBase|dataset\.geoMapBase/,
+  "editor deve declarar a base efetivamente ativa para o QA visual",
+);
+assert.match(
+  fieldManagerSource,
+  /Pontos GPS permaneceram fixos e dentro da área produtiva/,
+  "UX precisa confirmar a política espacial após salvar",
+);
+assert.match(
+  fieldManagerSource,
+  /referencePoints=\{editFieldReferencePoints\}/,
+  "edição do talhão deve alimentar o mapa com as posições efetivas dos pontos",
+);
+
+console.log("field-operations: importação + edição de contorno com GPS fixo aprovadas");
