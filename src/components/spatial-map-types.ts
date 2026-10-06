@@ -90,6 +90,12 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
  * mostra a captura GPS do mesmo ponto.
  */
 export function effectivePointCoordinates(point: MapPoint): { latitude: number; longitude: number } {
+  const source = (point.gpsSource ?? "").trim().toUpperCase();
+  // Quando `position` veio de uma fonte espacial auditada, ela é a autoridade real.
+  // Um `observed_position` legado não pode sobrescrever silenciosamente essa importação.
+  if (AUDITED_REAL_SOURCES.has(source)) {
+    return { latitude: point.latitude, longitude: point.longitude };
+  }
   if (point.observedLatitude != null && point.observedLongitude != null) {
     return { latitude: point.observedLatitude, longitude: point.observedLongitude };
   }
