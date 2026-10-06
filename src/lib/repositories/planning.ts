@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { writeAudit } from "@/lib/repositories/audit";
-import { executeMultiseasonPlan } from "@/domain/multiseason-planning";
+import { executeMultiseasonPlan, resolvePlanningScenarioPersistenceStatus } from "@/domain/multiseason-planning";
 import { buildPlanningSnapshotPayload, verifyPlanningSnapshot } from "@/domain/planning-snapshot";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
@@ -124,6 +124,7 @@ export async function updatePlanningScenario(input:{
            last_soil_correction=nullif($13,''),
            fertilization_history=nullif($14,''),
            organic_inputs=nullif($15,''),
+           status='DRAFT',
            updated_at=now()
        WHERE tenant_id=$1::uuid AND id=$2::uuid
        RETURNING ${scenarioSelect}`,
@@ -165,26 +166,55 @@ export async function updatePlanningScenario(input:{
     return row;
   });
 }
-export async function addPlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropCode:string;seasonLabel?:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null;irrigated?:boolean|null;notes?:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const row=(await c.query(`INSERT INTO planning_scenario_crops(tenant_id,scenario_id,position,crop_code,season_label,planned_date,target_yield,target_unit,irrigated,notes) SELECT $1::uuid,ps.id,coalesce(max(pc.position)+1,0),$3,$4,$5::date,$6,$7,$8,$9 FROM planning_scenarios ps LEFT JOIN planning_scenario_crops pc ON pc.tenant_id=ps.tenant_id AND pc.scenario_id=ps.id WHERE ps.tenant_id=$1::uuid AND ps.id=$2::uuid GROUP BY ps.id RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel"`,[input.tenantId,input.scenarioId,input.cropCode,input.seasonLabel??"",input.plannedDate??null,input.targetYield??null,input.targetUnit??null,input.irrigated??null,input.notes??""])).rows[0];if(!row)throw new PlanningError("Planejamento não encontrado.",404);return row;}); }
-export async function updatePlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropId:string;cropCode:string;seasonLabel?:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null;irrigated?:boolean|null;notes?:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const row=(await c.query(`UPDATE planning_scenario_crops SET crop_code=$4,season_label=$5,planned_date=$6::date,target_yield=$7,target_unit=$8,irrigated=$9,notes=$10,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel",target_yield::float8 AS "targetYield",target_unit AS "targetUnit",irrigated,notes`,[input.tenantId,input.scenarioId,input.cropId,input.cropCode,input.seasonLabel??"",input.plannedDate??null,input.targetYield??null,input.targetUnit??null,input.irrigated??null,input.notes??""])).rows[0];if(!row)throw new PlanningError("Cultivo não encontrado.",404);return row;}); }
-export async function removePlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropId:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const removed=(await c.query(`DELETE FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid RETURNING position`,[input.tenantId,input.scenarioId,input.cropId])).rows[0];if(!removed)throw new PlanningError("Cultivo não encontrado.",404);await c.query(`UPDATE planning_scenario_crops SET position=position-1,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND position>$3`,[input.tenantId,input.scenarioId,removed.position]);return getPlanningScenarioWithClient(c,input.tenantId,input.scenarioId);}); }
-export async function reorderPlanningCrops(input:{tenantId:string;userId:string;scenarioId:string;cropIds:string[]}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const found=(await c.query(`SELECT id::text FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid`,[input.tenantId,input.scenarioId])).rows.map((r:{id:string})=>r.id);if(found.length!==input.cropIds.length||new Set(found).size!==new Set(input.cropIds).size||found.some((id:string)=>!input.cropIds.includes(id)))throw new PlanningError("Cultivos do planejamento não encontrados.",404);for(let i=0;i<input.cropIds.length;i++)await c.query(`UPDATE planning_scenario_crops SET position=$4,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid`,[input.tenantId,input.scenarioId,input.cropIds[i],-(i+1)]);for(let i=0;i<input.cropIds.length;i++)await c.query(`UPDATE planning_scenario_crops SET position=$4,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid`,[input.tenantId,input.scenarioId,input.cropIds[i],i]);return getPlanningScenarioWithClient(c,input.tenantId,input.scenarioId);}); }
-export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){const scenario=await getPlanningScenario(tenantId,scenarioId,userId);return {scenarioId,results:executeMultiseasonPlan({crops:scenario.crops.map((c:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>c),hasBaseEvidence:Boolean(scenario.baseEvidenceReady)})};}
+export async function addPlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropCode:string;seasonLabel?:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null;irrigated?:boolean|null;notes?:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const row=(await c.query(`INSERT INTO planning_scenario_crops(tenant_id,scenario_id,position,crop_code,season_label,planned_date,target_yield,target_unit,irrigated,notes) SELECT $1::uuid,ps.id,coalesce(max(pc.position)+1,0),$3,$4,$5::date,$6,$7,$8,$9 FROM planning_scenarios ps LEFT JOIN planning_scenario_crops pc ON pc.tenant_id=ps.tenant_id AND pc.scenario_id=ps.id WHERE ps.tenant_id=$1::uuid AND ps.id=$2::uuid GROUP BY ps.id RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel"`,[input.tenantId,input.scenarioId,input.cropCode,input.seasonLabel??"",input.plannedDate??null,input.targetYield??null,input.targetUnit??null,input.irrigated??null,input.notes??""])).rows[0];if(!row)throw new PlanningError("Planejamento não encontrado.",404);await c.query(`UPDATE planning_scenarios SET status=\'DRAFT\',updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,[input.tenantId,input.scenarioId]);return row;}); }
+export async function updatePlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropId:string;cropCode:string;seasonLabel?:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null;irrigated?:boolean|null;notes?:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const row=(await c.query(`UPDATE planning_scenario_crops SET crop_code=$4,season_label=$5,planned_date=$6::date,target_yield=$7,target_unit=$8,irrigated=$9,notes=$10,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel",target_yield::float8 AS "targetYield",target_unit AS "targetUnit",irrigated,notes`,[input.tenantId,input.scenarioId,input.cropId,input.cropCode,input.seasonLabel??"",input.plannedDate??null,input.targetYield??null,input.targetUnit??null,input.irrigated??null,input.notes??""])).rows[0];if(!row)throw new PlanningError("Cultivo não encontrado.",404);await c.query(`UPDATE planning_scenarios SET status=\'DRAFT\',updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,[input.tenantId,input.scenarioId]);return row;}); }
+export async function removePlanningCrop(input:{tenantId:string;userId:string;scenarioId:string;cropId:string}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const removed=(await c.query(`DELETE FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid RETURNING position`,[input.tenantId,input.scenarioId,input.cropId])).rows[0];if(!removed)throw new PlanningError("Cultivo não encontrado.",404);await c.query(`UPDATE planning_scenario_crops SET position=position-1,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND position>$3`,[input.tenantId,input.scenarioId,removed.position]);await c.query(`UPDATE planning_scenarios SET status=\'DRAFT\',updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,[input.tenantId,input.scenarioId]);return getPlanningScenarioWithClient(c,input.tenantId,input.scenarioId);}); }
+export async function reorderPlanningCrops(input:{tenantId:string;userId:string;scenarioId:string;cropIds:string[]}) { return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{const found=(await c.query(`SELECT id::text FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid`,[input.tenantId,input.scenarioId])).rows.map((r:{id:string})=>r.id);if(found.length!==input.cropIds.length||new Set(found).size!==new Set(input.cropIds).size||found.some((id:string)=>!input.cropIds.includes(id)))throw new PlanningError("Cultivos do planejamento não encontrados.",404);for(let i=0;i<input.cropIds.length;i++)await c.query(`UPDATE planning_scenario_crops SET position=$4,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid`,[input.tenantId,input.scenarioId,input.cropIds[i],-(i+1)]);for(let i=0;i<input.cropIds.length;i++)await c.query(`UPDATE planning_scenario_crops SET position=$4,updated_at=now() WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid`,[input.tenantId,input.scenarioId,input.cropIds[i],i]);await c.query(`UPDATE planning_scenarios SET status=\'DRAFT\',updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,[input.tenantId,input.scenarioId]);return getPlanningScenarioWithClient(c,input.tenantId,input.scenarioId);}); }
+export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
+  return withTenant({tenantId,userId},async c=>{
+    const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
+    const results=executeMultiseasonPlan({
+      crops:scenario.crops.map((crop:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>crop),
+      hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
+    });
+    const status=resolvePlanningScenarioPersistenceStatus(results);
+    await c.query(
+      `UPDATE planning_scenarios SET status=$3,updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+      [tenantId,scenarioId,status],
+    );
+    if(userId){
+      await writeAudit(c,{
+        tenantId,
+        userId,
+        action:"PLANNING_SCENARIO_CALCULATED",
+        entityType:"planning_scenario",
+        entityId:scenarioId,
+        metadata:{status,cropCount:results.length},
+      });
+    }
+    return {scenarioId,status,results};
+  });
+}
+
 export async function createPlanningSnapshot(tenantId:string,scenarioId:string,userId:string){
   return withTenant({tenantId,userId},async c=>{
     const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
-    const calculation={
-      scenarioId,
-      results:executeMultiseasonPlan({
-        crops:scenario.crops.map((crop:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>crop),
-        hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
-      }),
-    };
+    const results=executeMultiseasonPlan({
+      crops:scenario.crops.map((crop:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>crop),
+      hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
+    });
+    const status=resolvePlanningScenarioPersistenceStatus(results);
+    const calculation={scenarioId,status,results};
+    const snapshotScenario={...scenario,status};
     const {payload,sha256}=buildPlanningSnapshotPayload({
       createdAt:new Date().toISOString(),
-      scenario,
+      scenario:snapshotScenario,
       calculation,
     });
+    await c.query(
+      `UPDATE planning_scenarios SET status=$3,updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+      [tenantId,scenarioId,status],
+    );
     const row=(await c.query(
       `INSERT INTO planning_scenario_snapshots(tenant_id,scenario_id,payload,sha256,created_by)
        VALUES($1::uuid,$2::uuid,$3::jsonb,$4,$5::uuid)
@@ -192,6 +222,14 @@ export async function createPlanningSnapshot(tenantId:string,scenarioId:string,u
       [tenantId,scenarioId,JSON.stringify(payload),sha256,userId],
     )).rows[0];
     if(!row)throw new PlanningError("Planejamento não encontrado.",404);
+    await writeAudit(c,{
+      tenantId,
+      userId,
+      action:"PLANNING_SCENARIO_SNAPSHOT_CREATED",
+      entityType:"planning_scenario_snapshot",
+      entityId:row.id,
+      metadata:{scenarioId,sha256,status},
+    });
     return row;
   });
 }
