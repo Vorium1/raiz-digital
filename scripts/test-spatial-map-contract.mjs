@@ -69,7 +69,7 @@ assert.equal(
   "importação genérica não pode virar fonte real auditada por inferência",
 );
 
-const observedPoint = point({
+const auditedPointWithLegacyObserved = point({
   gpsSource: "SHAPEFILE_REAL_GPS_LONLAT",
   latitude: -28.25,
   longitude: -52.4,
@@ -77,14 +77,28 @@ const observedPoint = point({
   observedLongitude: -52.4008888,
 });
 assert.equal(
-  pointPositionKind(observedPoint),
-  "OBSERVED",
-  "captura observada em campo deve prevalecer sobre a proveniência histórica",
+  pointPositionKind(auditedPointWithLegacyObserved),
+  "AUDITED_SOURCE",
+  "fonte espacial auditada deve continuar autoridade mesmo se existir observed_position legado",
 );
 assert.deepEqual(
-  effectivePointCoordinates(observedPoint),
+  effectivePointCoordinates(auditedPointWithLegacyObserved),
+  { latitude: -28.25, longitude: -52.4 },
+  "observed_position legado não pode sobrescrever position quando gps_source comprova importação espacial auditada",
+);
+
+const fieldObservedPoint = point({
+  gpsSource: "FIELD_GPS",
+  latitude: -28.25,
+  longitude: -52.4,
+  observedLatitude: -28.2507777,
+  observedLongitude: -52.4008888,
+});
+assert.equal(pointPositionKind(fieldObservedPoint), "OBSERVED");
+assert.deepEqual(
+  effectivePointCoordinates(fieldObservedPoint),
   { latitude: -28.2507777, longitude: -52.4008888 },
-  "mapas devem renderizar a posição observada, não a posição-base, quando ambas existem",
+  "captura observada continua autoridade quando a posição-base não é uma importação auditada especial",
 );
 assert.deepEqual(
   effectivePointCoordinates(point({ gpsSource: "SHAPEFILE_REAL_EPSG4326", latitude: -28.1234567, longitude: -52.7654321 })),
@@ -179,8 +193,26 @@ assert.equal(
   "namespace incompleta nunca deve ser tratada como carregada",
 );
 
+const mapDataSource = readFileSync(new URL("../src/lib/repositories/map-data.ts", import.meta.url), "utf8");
+const cabedaImportSource = readFileSync(new URL("../scripts/import-cabeda-real-geometry.mjs", import.meta.url), "utf8");
 const ndviRasterRouteSource = readFileSync(new URL("../src/app/api/fields/[id]/ndvi/map/route.ts", import.meta.url), "utf8");
 const googleFieldMapSource = readFileSync(new URL("../src/components/google-field-map.tsx", import.meta.url), "utf8");
+assert.match(
+  mapDataSource,
+  /ST_Y\(sp\.position\)::float8 AS latitude/,
+  "read model deve preservar position como base e observed_position como campo separado",
+);
+assert.doesNotMatch(
+  mapDataSource,
+  /ST_Y\(COALESCE\(sp\.observed_position, sp\.position\)\)::float8 AS latitude/,
+  "read model não pode colapsar observed_position sobre a posição-base antes da regra de autoridade da UI",
+);
+assert.match(
+  cabedaImportSource,
+  /observed_position=NULL/,
+  "importação espacial auditada deve limpar observed_position legado dentro da mesma transação controlada",
+);
+
 assert.match(
   ndviRasterRouteSource,
   /["']cache-control["']\s*:\s*["']private, no-cache["']/,

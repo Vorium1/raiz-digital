@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parsePointCsv, parsePointGeoJson } from "../src/domain/field-operations.ts";
+import { pointCoveredByGeometry, summarizePointCoverage } from "../src/domain/geometry-point-coverage.ts";
 
 const csv = `codigo;latitude;longitude;profundidade_de;profundidade_ate;subamostras\nP01;-28,2501;-52,4021;0;20;10\nP02;-28,2510;-52,4010;0;20;10`;
 const parsedCsv = parsePointCsv(csv);
@@ -29,6 +30,39 @@ assert.equal(parsedGeo.points[1]?.subsampleCount, 8);
 const invalid = parsePointCsv(`codigo;latitude;longitude\nP01;500;-52`);
 assert.equal(invalid.blockers, 1);
 assert.equal(invalid.points.length, 0);
+
+const coverageGeometry = {
+  type: "Polygon",
+  coordinates: [[
+    [-52.5, -28.3],
+    [-52.3, -28.3],
+    [-52.3, -28.1],
+    [-52.5, -28.1],
+    [-52.5, -28.3],
+  ]],
+};
+assert.equal(
+  pointCoveredByGeometry(coverageGeometry, { latitude: -28.2, longitude: -52.4 }),
+  true,
+  "ponto interno deve aparecer dentro na pré-checagem visual",
+);
+assert.equal(
+  pointCoveredByGeometry(coverageGeometry, { latitude: -28.35, longitude: -52.4 }),
+  false,
+  "ponto externo precisa ser sinalizado sem mover coordenada",
+);
+assert.equal(
+  pointCoveredByGeometry(coverageGeometry, { latitude: -28.3, longitude: -52.4 }),
+  true,
+  "ponto exatamente na borda deve acompanhar a semântica inclusiva de ST_Covers",
+);
+assert.deepEqual(
+  summarizePointCoverage(coverageGeometry, [
+    { latitude: -28.2, longitude: -52.4 },
+    { latitude: -28.35, longitude: -52.4 },
+  ]),
+  { validGeometry: true, inside: 1, total: 2 },
+);
 
 
 const catalogSource = readFileSync(new URL("../src/lib/repositories/catalog.ts", import.meta.url), "utf8");
@@ -100,6 +134,16 @@ assert.match(
   fieldManagerSource,
   /referencePoints=\{editFieldReferencePoints\}/,
   "edição do talhão deve alimentar o mapa com as posições efetivas dos pontos",
+);
+assert.match(
+  fieldManagerSource,
+  /editFieldCoverage\.inside/,
+  "UX precisa mostrar N de N pontos dentro durante a revisão do contorno",
+);
+assert.match(
+  fieldManagerSource,
+  /PostGIS repete a validação no servidor/,
+  "pré-checagem do navegador nunca pode substituir a autoridade PostGIS",
 );
 
 console.log("field-operations: importação + edição de contorno com GPS fixo aprovadas");

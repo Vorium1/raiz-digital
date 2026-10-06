@@ -90,6 +90,12 @@ export function spatialGeometryPositions(geometry: SpatialGeometry): Array<[numb
  * mostra a captura GPS do mesmo ponto.
  */
 export function effectivePointCoordinates(point: MapPoint): { latitude: number; longitude: number } {
+  const source = (point.gpsSource ?? "").trim().toUpperCase();
+  // Quando `position` veio de uma fonte espacial auditada, ela é a autoridade real.
+  // Um `observed_position` legado não pode sobrescrever silenciosamente essa importação.
+  if (AUDITED_REAL_SOURCES.has(source)) {
+    return { latitude: point.latitude, longitude: point.longitude };
+  }
   if (point.observedLatitude != null && point.observedLongitude != null) {
     return { latitude: point.observedLatitude, longitude: point.observedLongitude };
   }
@@ -104,9 +110,9 @@ export function effectivePointCoordinates(point: MapPoint): { latitude: number; 
  * auditor de proveniência; prefixos/sufixos arbitrários não promovem a coordenada a evidência auditada.
  */
 export function pointPositionKind(point: MapPoint): PointPositionKind {
-  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   const source = (point.gpsSource ?? "").trim().toUpperCase();
   if (AUDITED_REAL_SOURCES.has(source)) return "AUDITED_SOURCE";
+  if (point.observedLatitude != null && point.observedLongitude != null) return "OBSERVED";
   return "PLANNED";
 }
 export const MAP_NEUTRAL_COLOR = "#9AA79F";
