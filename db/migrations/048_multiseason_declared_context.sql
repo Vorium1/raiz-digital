@@ -1,6 +1,7 @@
 BEGIN;
 
 ALTER TABLE planning_scenarios
+  ADD COLUMN base_evidence_date date,
   ADD COLUMN management_system text,
   ADD COLUMN irrigation_type text,
   ADD COLUMN irrigation_capacity_notes text,
@@ -12,6 +13,8 @@ ALTER TABLE planning_scenarios
   ADD COLUMN fertilization_history text,
   ADD COLUMN organic_inputs text;
 
+COMMENT ON COLUMN planning_scenarios.base_evidence_date IS
+  'Data da evidência/análise de solo usada como base, informada explicitamente; nunca inferida de created_at.';
 COMMENT ON COLUMN planning_scenarios.management_system IS
   'Contexto de manejo declarado para a simulação; não cria regra agronômica.';
 COMMENT ON COLUMN planning_scenarios.irrigation_type IS
