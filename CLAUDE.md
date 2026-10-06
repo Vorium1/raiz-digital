@@ -8,21 +8,22 @@ Continuar a RAIZ Digital a partir do estado real recebido. **Não recomeçar o p
 
 A RAIZ Digital é uma plataforma multiempresa de inteligência agronômica: **“Do solo à decisão, com precisão.”**
 
-## Fonte de verdade do handoff
+## Fonte de verdade da retomada
 
-1. `docs/MASTER_HANDOFF_CLAUDE.md`
-2. `docs/PROJECT_STATE.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/MOTOR_AGRONOMICO.md`
-5. `docs/ROADMAP_PRODUCT.md`
-6. `docs/V0.5_INTERRUPTED.md`
-7. `docs/brand/Guia_de_Marca_Raiz_Digital.pdf`
+Leia nesta ordem:
+
+1. `docs/CURRENT_STATE.md` — snapshot curto e atual;
+2. `docs/INTEGRATION_READINESS.md` — ancestralidade, Draft PRs e regra anti-retrabalho;
+3. issue/checkpoint macro #113 e a issue específica da frente;
+4. `docs/PROJECT_STATE.md` — histórico detalhado, não snapshot corrente;
+5. documentos técnicos específicos quando a tarefa exigir.
 
 ## Baseline e snapshot atual
 
-- **Última baseline consolidada:** MVP 0.4.
-- **Snapshot recebido:** início da 0.5, interrompido durante o módulo de operações de campo.
-- A 0.5 **não está homologada**. O código novo deve ser auditado e testado antes de ser considerado concluído.
+- A linha técnica recente é o Draft PR #132 (`feature/agronomic-decision-timeline`).
+- Frentes posteriores permanecem em Draft PRs separados; não assuma que estão mergeadas.
+- Não reaplique PR, commit, migration ou funcionalidade sem conferir ancestralidade e a matriz em `INTEGRATION_READINESS.md`.
+- Nunca inferir estado de produção a partir de Preview, branch ou teste local.
 
 ## Stack que deve ser preservada
 
@@ -52,20 +53,18 @@ Não introduza microserviços, Redis, Firebase, Supabase, Lovable ou serviços p
 
 ## Primeira tarefa obrigatória
 
-Antes de desenvolver mais funcionalidade:
+Antes de desenvolver:
 
-1. inventarie o repositório e leia todos os documentos acima;
-2. instale dependências;
-3. execute testes existentes;
-4. execute `typecheck` e `build`;
-5. suba PostgreSQL/PostGIS com Docker;
-6. execute migrations 001–004 e seed;
-7. valide login real;
-8. valide RLS com **dois tenants** e usuários distintos;
-9. valide o fluxo 0.5 já iniciado (ordem de coleta, grid, importação de pontos, coleta GPS);
-10. corrija o que falhar sem reescrever o que já estiver correto.
+1. ler `docs/CURRENT_STATE.md` e `docs/INTEGRATION_READINESS.md`;
+2. conferir a issue/checkpoint relevante e o HEAD/base reais;
+3. verificar se já existe branch, commit, teste ou Draft PR equivalente;
+4. comparar ancestralidade antes de portar código de branch antiga;
+5. executar somente os gates proporcionais à mudança;
+6. usar PostGIS local descartável para migrations/testes quando necessário;
+7. corrigir o que falhar sem reescrever o que já estiver comprovadamente correto.
 
-Somente depois disso avance a 0.5.
+Não existe instrução corrente para “voltar à migration 001–004” ou reconstruir a antiga
+0.5. Migrations e estado real devem ser obtidos do snapshot atual.
 
 ## Forma de trabalhar
 

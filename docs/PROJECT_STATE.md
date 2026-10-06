@@ -1,5 +1,10 @@
 # Estado do Projeto — RAIZ Digital
 
+> **ARQUIVO HISTÓRICO.** Este documento acumula checkpoints antigos e não é mais o snapshot curto de retomada.
+> Para o estado corrente, leia primeiro `docs/CURRENT_STATE.md` e `docs/INTEGRATION_READINESS.md`.
+> Não execute instruções antigas de migration/branch sem conferir esses dois arquivos.
+
+
 Data do handoff: 2026-09-01
 Última auditoria registrada: 2026-09-03 (Claude Code, banco real via Supabase — sessão noturna autônoma)
 

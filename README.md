@@ -2,15 +2,18 @@
 
 Plataforma de inteligência agronômica **“Do solo à decisão, com precisão.”**
 
-## Versão atual
+## Estado atual
 
-**0.5.0-dev.1 — handoff: baseline 0.4 + operações de campo, autenticação completa e CRUD operacional**
+O repositório evoluiu muito além do antigo handoff 0.4/0.5. Não use números de versão
+históricos para decidir o que precisa ser refeito.
 
-A 0.4 mantém a UX construída nas versões 0.1–0.3 e conecta o primeiro núcleo persistente do produto. O modo `database` não usa números ou pareceres agronômicos fictícios para preencher telas vazias.
+> **Fonte curta de retomada:** leia primeiro `docs/CURRENT_STATE.md` e
+> `docs/INTEGRATION_READINESS.md`. `docs/PROJECT_STATE.md` permanece como histórico
+> detalhado e não deve ser interpretado como snapshot corrente.
 
-> **Handoff:** a v0.4 é a última baseline consolidada. Este diretório inclui a v0.5 em desenvolvimento contínuo,
-> ainda não homologada como versão oficial. Leia `CLAUDE.md`, `docs/MASTER_HANDOFF_CLAUDE.md` e
-> `docs/PROJECT_STATE.md` (o changelog detalhado, atualizado a cada bloco de trabalho) antes de continuar.
+A baseline técnica recente é a linha do Draft PR #132
+(`feature/agronomic-decision-timeline`), com frentes posteriores preservadas em
+Draft PRs separados e **ainda não integradas em produção**.
 
 [![CI](https://github.com/Vorium1/raiz-digital/actions/workflows/ci.yml/badge.svg)](https://github.com/Vorium1/raiz-digital/actions/workflows/ci.yml)
 
@@ -19,7 +22,7 @@ A 0.4 mantém a UX construída nas versões 0.1–0.3 e conecta o primeiro núcl
 **Base técnica**
 - Next.js + TypeScript em monólito modular, sem dependência de Lovable.
 - PostgreSQL/PostGIS como fonte oficial dos dados, driver `pg` sem ORM.
-- Runner de migrations (`npm run db:migrate`), 011 migrations aplicadas.
+- Runner de migrations (`npm run db:migrate`). A baseline técnica #132 contém migrations 001–046; o Draft de Planejamento Plurissafras adiciona a 047. Consulte `docs/CURRENT_STATE.md` antes de executar qualquer migration.
 - RLS nas entidades operacionais, forçada (`FORCE ROW LEVEL SECURITY`) e validada com um papel de banco
   restrito (`raiz_app`, sem `BYPASSRLS`) usado pela aplicação em runtime — cada transação define
   `app.tenant_id` e `app.user_id` antes das consultas.
