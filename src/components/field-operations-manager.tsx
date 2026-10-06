@@ -6,6 +6,7 @@ import { Icon } from "@/components/icon";
 import { GeoMapInput } from "@/components/geo-map-input";
 import { RealFieldMap } from "@/components/real-field-map";
 import { effectivePointCoordinates } from "@/components/spatial-map-types";
+import { summarizePointCoverage } from "@/domain/geometry-point-coverage";
 import { FieldYieldHistoryManager } from "@/components/field-yield-history-manager";
 
 type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown };
@@ -140,6 +141,15 @@ export function FieldOperationsManager() {
     }
     return [...byId.values()];
   }, [editingFieldId, orders]);
+  const editFieldCoverage = useMemo(() => {
+    if (!editingFieldId) return { validGeometry: false, inside: 0, total: 0 };
+    try {
+      const geometry = geoJsonObject(editFieldBoundary);
+      return summarizePointCoverage(geometry, editFieldReferencePoints);
+    } catch {
+      return { validGeometry: false, inside: 0, total: editFieldReferencePoints.length };
+    }
+  }, [editingFieldId, editFieldBoundary, editFieldReferencePoints]);
   const selectedSeason = context.seasons.find((season)=>season.id === orderSeasonId);
   const progress = selectedOrder?.plannedPoints ? Math.round(selectedOrder.collectedPoints / selectedOrder.plannedPoints * 100) : 0;
 
@@ -467,7 +477,7 @@ export function FieldOperationsManager() {
                 <div className="field-boundary-edit-head">
                   <input value={editFieldName} onChange={(e)=>setEditFieldName(e.target.value)} placeholder="Nome"/>
                   <span className="field-ops-list-actions">
-                    <button className="button tiny" disabled={busy === `field-save-${field.id}` || !editFieldBoundary.trim()} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/>Salvar limite</button>
+                    <button className="button tiny" disabled={busy === `field-save-${field.id}` || !editFieldCoverage.validGeometry || editFieldCoverage.inside !== editFieldCoverage.total} onClick={()=>void saveField(field.id)}><Icon name="check" size={13}/>Salvar limite</button>
                     <button className="icon-button" onClick={()=>{ setEditingFieldId(""); setEditFieldBoundary(""); }}><Icon name="close" size={13}/></button>
                   </span>
                 </div>
@@ -479,6 +489,15 @@ export function FieldOperationsManager() {
                     referencePoints={editFieldReferencePoints}
                     height={340}
                   />
+                  <div className={`field-boundary-point-count ${editFieldCoverage.validGeometry && editFieldCoverage.inside === editFieldCoverage.total ? "ok" : "warning"}`}>
+                    <Icon name={editFieldCoverage.validGeometry && editFieldCoverage.inside === editFieldCoverage.total ? "check" : "warning"} size={13}/>
+                    <strong>
+                      {editFieldCoverage.validGeometry
+                        ? `${editFieldCoverage.inside} de ${editFieldCoverage.total} ponto${editFieldCoverage.total === 1 ? "" : "s"} dentro do novo contorno`
+                        : "Contorno ainda não pode ser validado no navegador"}
+                    </strong>
+                    <span>Pré-checagem visual. O PostGIS repete a validação no servidor antes de salvar.</span>
+                  </div>
                   <small>
                     Os pontos verdes são coordenadas fixas de coleta. O desenho altera somente o limite produtivo do talhão.
                     O RAIZ não salva se algum ponto ativo ficar fora do novo contorno e recalcula os hectares pelo polígono.
