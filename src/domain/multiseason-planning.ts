@@ -21,3 +21,12 @@ export function executeMultiseasonPlan(input: { crops: PlannedCropInput[]; hasBa
     return { crop, position, status: capability.status, requirements: capability.requirements, limitations: capability.status === "PARTIAL" ? ["REQUIRES_AGRONOMIST_REVIEW"] : [], evidenceUsed: ["base evidence"], engineVersions: capability.engines, reanalysisRequired: false };
   });
 }
+
+
+export function resolvePlanningScenarioPersistenceStatus(
+  results:Array<{status:PlanningStatus}>,
+):"DRAFT"|"CALCULATED"|"REANALYSIS_REQUIRED"{
+  if(results.length===0)return "DRAFT";
+  if(results.some((result)=>result.status==="REANALYSIS_REQUIRED"))return "REANALYSIS_REQUIRED";
+  return "CALCULATED";
+}
