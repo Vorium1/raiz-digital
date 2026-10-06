@@ -4287,6 +4287,71 @@ real de catálogo e manual sem persistência aprovados no banco local E2E descar
 Regressões de motor/render React e handoff aprovadas; ver `docs/WSL_LOCAL_REVIEW_2026-09-30.md`.
 Sem merge ou produção.
 
+## 2026-10-01 — Calculadora RAIZ V2, pontos ↔ produto
+
+Partindo do HEAD validado do PR #132 (`a46edeb`), a Calculadora V1 foi estendida
+sem criar um segundo motor matemático. O modo principal usa “pontos” somente como
+linguagem de interface, sempre acompanhado da base explícita em kg/ha de N, P2O5,
+K2O, S, Ca ou Mg. A conversão continua em `commercial-input-engine.ts`: o produto
+escolhido entrega todos os nutrientes declarados, sem concluir se há excesso ou
+recomendação agronômica.
+
+Produto manual agora aceita a fórmula declarada N-P2O5-K2O (por exemplo 04-20-20),
+sem inferir outros componentes; S, Ca e Mg exigem declaração separada. A logística
+opcional de embalagens informa unidades teóricas, arredondamento de compra e
+excedente logístico sem modificar a dose técnica. Calcário continua em bloco PRNT
+separado, sem ser chamado de pontos. Nenhum produto manual é persistido e nenhuma
+simulação altera prescrição, relatório ou decisão oficial.
+
+Foram validados os cenários K2O 60/60%=100 kg/ha, N 90/46%, 04-20-20, fonte
+fosfatada, PRNT100/PRNT80, área/custo, embalagem de 50 kg e entradas inválidas.
+`test:calculator`, `test:calculator-ui`, contratos comerciais, `typecheck`, build,
+`check:migrations` e `test:handoff` foram executados localmente. Não há migration,
+merge, deploy ou alteração de produção neste corte.
+
+## 2026-10-01 — #128, auditoria de matriz tenant/RBAC
+
+Sem acesso ao corpo remoto da issue pela API nesta máquina, a auditoria foi limitada
+ao escopo documentado, PR #129, migrations 001–046 e testes presentes. Clientes,
+equipe, catálogo comercial, propriedades, talhões e administração de plataforma já
+possuem escopo de tenant/RLS e contratos de RBAC. A lacuna objetiva encontrada era
+de regressão: criação de propriedade/talhão cobria pai estrangeiro, mas edição e
+exclusão por UUID de outro tenant não eram exercitadas na matriz de rota.
+
+`test:tenant-catalog-routes` agora cobre todos os papéis para criação, edição e
+exclusão de propriedades e talhões, e comprova que UUID estrangeiro retorna 404 sem
+escrita nem auditoria. A criação de safra recebeu a mesma garantia: o `INSERT SELECT`
+consulta o talhão no tenant da sessão e retorna 404 quando ele não existe ou pertence
+a outro tenant, antes de auditoria. Nenhuma regra de produto, migration ou dado
+operacional foi alterado.
+
+### Checkpoint de topologia e RBAC (2026-10-01)
+
+O remoto foi lido diretamente por Git: `feature/agronomic-decision-timeline`
+(`a46edeb`) é a base de `feature/calculadora-raiz-v2-pontos` (`1341ab8`), que
+contém `ed03e10` da Calculadora e o teste de catálogo `1341ab8`. A auditoria
+`feature/issue-128-tenant-audit` (`dd71800`) é um único commit acima dessa pilha.
+`feature/report-dose-completeness` (`2e756b0`) é ancestral dessa linha e deve ser
+tratada como bloco isolado de relatório, sem reescrever os históricos existentes.
+
+Matriz de escrita confirmada nas rotas e contratos auditados: clientes aceitam
+`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST` e `COMMERCIAL`; propriedades incluem
+também `FIELD_TECH`; talhões, safras, coletas, pontos e operações de análise aceitam
+`SUPER_ADMIN`, `TENANT_ADMIN`, `AGRONOMIST` e `FIELD_TECH`; revisão, homologação e
+publicação exigem `SUPER_ADMIN`, `TENANT_ADMIN` ou `AGRONOMIST`; catálogo comercial
+é administrado por `SUPER_ADMIN`, `TENANT_ADMIN` ou `AGRONOMIST`; equipe exige
+`SUPER_ADMIN` ou `TENANT_ADMIN`; console de plataforma exige o flag explícito
+`isPlatformAdmin`, separado de `is_platform_curator`. `VIEWER` não possui rota de
+escrita nesses contratos e `COMMERCIAL` não possui rota de revisão/publicação.
+As leituras continuam no tenant da sessão/RLS; isso não transforma o administrador
+da plataforma em leitor operacional global.
+
+Os testes `security`, `client-master`, `platform-admin`, `team-privacy`,
+`team-administration`, `tenant-catalog-routes` e `analysis-tenant-links` foram
+executados neste checkpoint, além do teste real de RLS local. A auditoria não usa o
+corpo da issue remota, indisponível pela API desta máquina; não foi encontrada outra
+lacuna determinística no escopo de código e contratos examinado.
+
 
 ### Checkpoint WSL2 — #126 linha do tempo (2026-09-30)
 
@@ -4296,3 +4361,10 @@ todas as revisões, fontes/responsáveis e regras congeladas, filtros tipo/perí
 Sem migration, histórico paralelo ou escrita de produção. Testes reais de isolamento
 PostgreSQL e regressões registrados no CI. Detalhes em
 `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. PR deve permanecer draft, sem merge.
+
+**Checkpoint validado do PR #132:** o Item 10 está funcionalmente concluído no HEAD
+`a46edeb3d6eb49c34951b49944289d6e93eb6a81` (PR #132, ainda Draft e sem merge).
+No ambiente local descartável foram validadas as migrations 001–046 em PostGIS,
+o contrato RLS/timeline e os testes específicos; `typecheck`, build e
+`test:handoff`/contratos do CI também passaram. Esta validação não integra o PR,
+não altera produção e não executa migration fora do banco local descartável.

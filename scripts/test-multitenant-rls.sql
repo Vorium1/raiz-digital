@@ -6,17 +6,32 @@ BEGIN;
 INSERT INTO tenants(id,legal_name,trade_name) VALUES ('00000000-0000-4000-8000-000000000001','E2E TENANT A','E2E A'),('00000000-0000-4000-8000-000000000002','E2E TENANT B','E2E B');
 INSERT INTO clients(id,tenant_id,name,person_type,document_normalized,whatsapp,postal_code,state,country) VALUES ('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001','E2E CLIENT A','PF','00000000000','E2E WHATSAPP','00000000','SP','BR'),('00000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000002','E2E CLIENT B','PF','00000000000','E2E WHATSAPP','00000000','SP','BR');
 INSERT INTO properties(id,tenant_id,client_id,name,municipality,state) VALUES ('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000011','E2E PROPERTY A','E2E','SP'),('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000012','E2E PROPERTY B','E2E','SP');
-INSERT INTO users(id,name,email) VALUES ('00000000-0000-4000-8000-000000000031','E2E USER','multitenant-rls@e2e.invalid');
+INSERT INTO users(id,name,email) VALUES
+('00000000-0000-4000-8000-000000000031','E2E USER A','multitenant-rls-a@e2e.invalid'),
+('00000000-0000-4000-8000-000000000032','E2E USER B','multitenant-rls-b@e2e.invalid');
+INSERT INTO tenant_members(tenant_id,user_id,role,active) VALUES
+('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000031','TENANT_ADMIN',true),
+('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000032','TENANT_ADMIN',true);
 INSERT INTO commercial_input_products(tenant_id,code,name,kind,created_by,updated_by) VALUES
 ('00000000-0000-4000-8000-000000000001','E2E PRODUCT','E2E PRODUCT A','FERTILIZER','00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000031'),
 ('00000000-0000-4000-8000-000000000002','E2E PRODUCT','E2E PRODUCT B','FERTILIZER','00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000031');
 SET LOCAL ROLE raiz_app;
 DO $$ BEGIN
 IF (SELECT count(*) FROM clients) <> 0 THEN RAISE EXCEPTION 'Missing tenant leaks clients'; END IF;
+IF (SELECT count(*) FROM tenant_members) <> 0 THEN RAISE EXCEPTION 'Missing tenant leaks team memberships'; END IF;
 END $$;
 SELECT set_config('app.tenant_id','00000000-0000-4000-8000-000000000001',true);
 DO $$ DECLARE n integer; BEGIN
 IF (SELECT count(*) FROM clients) <> 1 THEN RAISE EXCEPTION 'Tenant A client isolation failed'; END IF;
+IF (SELECT count(*) FROM tenant_members) <> 1 THEN RAISE EXCEPTION 'Tenant A team isolation failed'; END IF;
+IF NOT EXISTS (
+  SELECT 1 FROM tenant_members
+  WHERE user_id='00000000-0000-4000-8000-000000000031'::uuid
+) THEN RAISE EXCEPTION 'Tenant A own member missing'; END IF;
+IF EXISTS (
+  SELECT 1 FROM tenant_members
+  WHERE user_id='00000000-0000-4000-8000-000000000032'::uuid
+) THEN RAISE EXCEPTION 'Tenant A can see Tenant B member'; END IF;
 IF (SELECT count(*) FROM properties) <> 1 THEN RAISE EXCEPTION 'Tenant A property isolation failed'; END IF;
 IF (SELECT count(*) FROM commercial_input_products) <> 1 THEN RAISE EXCEPTION 'Commercial catalog isolation failed'; END IF;
 -- Mirrors createProperty INSERT SELECT: hidden foreign parent returns zero rows.
@@ -62,12 +77,70 @@ END $$;
 SELECT set_config('app.tenant_id','00000000-0000-4000-8000-000000000002',true);
 DO $$ BEGIN
 IF (SELECT count(*) FROM commercial_input_products) <> 1 OR (SELECT name FROM commercial_input_products) <> 'E2E PRODUCT B' THEN RAISE EXCEPTION 'Tenant B catalog isolation failed'; END IF;
+IF (SELECT count(*) FROM tenant_members) <> 1 THEN RAISE EXCEPTION 'Tenant B team isolation failed'; END IF;
+IF NOT EXISTS (
+  SELECT 1 FROM tenant_members
+  WHERE user_id='00000000-0000-4000-8000-000000000032'::uuid
+) THEN RAISE EXCEPTION 'Tenant B own member missing'; END IF;
+IF EXISTS (
+  SELECT 1 FROM tenant_members
+  WHERE user_id='00000000-0000-4000-8000-000000000031'::uuid
+) THEN RAISE EXCEPTION 'Tenant B can see Tenant A member'; END IF;
 IF (SELECT count(*) FROM clients) <> 1 OR (SELECT name FROM clients) <> 'E2E CLIENT B' THEN RAISE EXCEPTION 'Tenant B isolation failed'; END IF;
 END $$;
 RESET ROLE;
-DO $$ BEGIN
-IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='raiz_app' AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole)) THEN RAISE EXCEPTION 'Unsafe runtime role'; END IF;
-IF EXISTS(SELECT 1 FROM pg_class WHERE relname IN ('clients','properties','fields','commercial_input_products') AND NOT(relrowsecurity AND relforcerowsecurity)) THEN RAISE EXCEPTION 'Missing FORCE RLS'; END IF;
-END $$;
-SELECT 'PASS: migrations 001-046; two-tenant RLS, missing context, cross-tenant CRUD/FK, document uniqueness and address checks' AS result;
+DO $
+DECLARE
+  table_name text;
+  protected_tables text[] := ARRAY[
+    'tenant_members',
+    'clients',
+    'properties',
+    'fields',
+    'crop_seasons',
+    'collection_orders',
+    'sample_points',
+    'analyses',
+    'analysis_imports',
+    'analysis_import_rows',
+    'lab_samples',
+    'lab_results',
+    'interpretations',
+    'reports',
+    'field_ndvi_snapshots',
+    'commercial_input_products',
+    'commercial_plan_snapshots',
+    'audit_events'
+  ];
+BEGIN
+  IF EXISTS(
+    SELECT 1 FROM pg_roles
+    WHERE rolname='raiz_app' AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole)
+  ) THEN RAISE EXCEPTION 'Unsafe runtime role'; END IF;
+
+  FOREACH table_name IN ARRAY protected_tables LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public'
+        AND c.relname=table_name
+        AND c.relrowsecurity
+        AND c.relforcerowsecurity
+    ) THEN
+      RAISE EXCEPTION 'Missing FORCE RLS on %', table_name;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_policies p
+      WHERE p.schemaname='public'
+        AND p.tablename=table_name
+        AND p.qual ILIKE '%current_tenant_id%'
+    ) THEN
+      RAISE EXCEPTION 'Missing tenant read policy on %', table_name;
+    END IF;
+  END LOOP;
+END $;
+SELECT 'PASS: migrations 001-046; team/client/catalog isolation; FORCE RLS + tenant policies on operational, report, import, NDVI and commercial snapshot tables; cross-tenant CRUD/FK, document uniqueness and address checks' AS result;
 ROLLBACK;

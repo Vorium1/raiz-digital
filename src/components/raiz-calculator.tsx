@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import { StatusBadge } from "@/components/ui";
 import {
+  calculateCommercialPackageLogistics,
   computeSingleProductRateFromNutrient,
   convertCommercialLimeDoseToPrnt100,
   convertLimingRequirementToCommercialProduct,
   convertNutrientBasis,
   evaluateCommercialProductRate,
+  parseNpkFormula,
   solveTwoProductPkPlan,
   type CommercialFertilizerProduct,
   type CommercialNutrient,
@@ -80,7 +82,9 @@ export function RaizCalculator({
   const [pkK, setPkK] = useState("");
 
   const [manualName, setManualName] = useState("Produto manual");
+  const [manualFormula, setManualFormula] = useState("");
   const [manualPrice, setManualPrice] = useState("");
+  const [packageWeight, setPackageWeight] = useState("");
   const [manualGuarantees, setManualGuarantees] = useState<Record<CommercialNutrient, string>>({
     N: "", P2O5: "", K2O: "", S: "", Ca: "", Mg: "",
   });
@@ -96,6 +100,15 @@ export function RaizCalculator({
   const [chemicalMode, setChemicalMode] = useState<"P_TO_P2O5" | "P2O5_TO_P" | "K_TO_K2O" | "K2O_TO_K">("P_TO_P2O5");
   const [chemicalValue, setChemicalValue] = useState("");
 
+  const manualFormulaResult = useMemo(() => {
+    if (!manualFormula.trim()) return { value: null, error: null as string | null };
+    try {
+      return { value: parseNpkFormula(manualFormula), error: null as string | null };
+    } catch (error) {
+      return { value: null, error: error instanceof Error ? error.message : "Fórmula manual inválida." };
+    }
+  }, [manualFormula]);
+
   const currentProduct = useMemo(() => {
     if (source === "CATALOG") {
       const found = fertilizers.find((product) => product.id === selectedProductId);
@@ -110,15 +123,16 @@ export function RaizCalculator({
     return {
       code: "MANUAL",
       name: manualName.trim() || "Produto manual",
-      guaranteesPercent: guarantees,
+      guaranteesPercent: { ...guarantees, ...(manualFormulaResult.value ?? {}) },
       pricePerTon: parseNumber(manualPrice),
     } satisfies CommercialFertilizerProduct;
-  }, [source, fertilizers, selectedProductId, manualGuarantees, manualName, manualPrice]);
+  }, [source, fertilizers, selectedProductId, manualGuarantees, manualName, manualPrice, manualFormulaResult]);
 
   const areaNumber = parseNumber(area);
 
   const nutrientResult = useMemo(() => {
     if (mode !== "NUTRIENT_TO_PRODUCT" || !currentProduct) return null;
+    if (source === "MANUAL" && manualFormulaResult.error) return { value: null, error: manualFormulaResult.error };
     const targetNumber = parseNumber(target);
     if (targetNumber == null) return null;
     try {
@@ -131,10 +145,11 @@ export function RaizCalculator({
     } catch (error) {
       return { value: null, error: error instanceof Error ? error.message : "Não foi possível calcular." };
     }
-  }, [mode, currentProduct, target, nutrient, areaNumber]);
+  }, [mode, currentProduct, target, nutrient, areaNumber, source, manualFormulaResult]);
 
   const supplyResult = useMemo(() => {
     if (mode !== "PRODUCT_TO_NUTRIENTS" || !currentProduct) return null;
+    if (source === "MANUAL" && manualFormulaResult.error) return { value: null, error: manualFormulaResult.error };
     const rateNumber = parseNumber(rate);
     if (rateNumber == null) return null;
     try {
@@ -146,7 +161,18 @@ export function RaizCalculator({
     } catch (error) {
       return { value: null, error: error instanceof Error ? error.message : "Não foi possível calcular." };
     }
-  }, [mode, currentProduct, rate, areaNumber]);
+  }, [mode, currentProduct, rate, areaNumber, source, manualFormulaResult]);
+
+  const packageResult = useMemo(() => {
+    const result = nutrientResult?.value ?? supplyResult?.value;
+    const packageWeightKg = parseNumber(packageWeight);
+    if (!result || packageWeightKg == null || result.totalProductKg == null) return null;
+    try {
+      return { value: calculateCommercialPackageLogistics({ totalProductKg: result.totalProductKg, packageWeightKg }), error: null };
+    } catch (error) {
+      return { value: null, error: error instanceof Error ? error.message : "Não foi possível calcular embalagens." };
+    }
+  }, [nutrientResult, supplyResult, packageWeight]);
 
   const pkResult = useMemo(() => {
     if (mode !== "PK_PAIR") return null;
@@ -225,7 +251,7 @@ export function RaizCalculator({
         <div className="review-grid">
           <label className="review-summary"><span>Tipo de cálculo</span>
             <select value={mode} onChange={(event) => setMode(event.target.value as Mode)}>
-              <option value="NUTRIENT_TO_PRODUCT">Nutriente → produto</option>
+              <option value="NUTRIENT_TO_PRODUCT">Pontos → produto</option>
               <option value="PRODUCT_TO_NUTRIENTS">Produto → nutrientes</option>
               <option value="PK_PAIR">Dois produtos para P2O5 + K2O</option>
               <option value="LIME">Calcário / PRNT</option>
@@ -242,7 +268,9 @@ export function RaizCalculator({
             : <label className="review-summary"><span>Nome de referência</span><input value={manualName} onChange={(event) => setManualName(event.target.value)}/></label>}
           </div>
           {source === "MANUAL" && <div className="narrative-block" style={{ marginTop: 10 }}>
-            <h4>Garantias informadas (%)</h4>
+            <h4>Composição manual declarada</h4>
+            <label className="review-summary"><span>Fórmula N-P2O5-K2O (%)</span><input value={manualFormula} onChange={(event) => setManualFormula(event.target.value)} inputMode="decimal" placeholder="Ex.: 04-20-20"/><small>Os três números significam N, P2O5 e K2O. S, Ca e Mg só entram se forem informados abaixo.</small></label>
+            <h4>Garantias adicionais ou conferência (%)</h4>
             <div className="review-grid">
               {NUTRIENTS.map((key) => <label className="review-summary" key={key}><span>{key}</span><input value={manualGuarantees[key]} onChange={(event) => setManualGuarantees((current) => ({ ...current, [key]: event.target.value }))} inputMode="decimal" placeholder="—"/></label>)}
               <label className="review-summary"><span>Preço (R$/t)</span><input value={manualPrice} onChange={(event) => setManualPrice(event.target.value)} inputMode="decimal" placeholder="Opcional"/></label>
@@ -252,11 +280,14 @@ export function RaizCalculator({
         </>}
 
         {mode === "NUTRIENT_TO_PRODUCT" && <div className="review-grid" style={{ marginTop: 10 }}>
-          <label className="review-summary"><span>Nutriente-guia</span><select value={nutrient} onChange={(event) => setNutrient(event.target.value as CommercialNutrient)}>{NUTRIENTS.map((key) => <option value={key} key={key}>{key}</option>)}</select></label>
-          <label className="review-summary"><span>Necessidade (kg/ha)</span><input value={target} onChange={(event) => setTarget(event.target.value)} inputMode="decimal"/></label>
+          <label className="review-summary"><span>Pontos de / base nutricional</span><select value={nutrient} onChange={(event) => setNutrient(event.target.value as CommercialNutrient)}>{NUTRIENTS.map((key) => <option value={key} key={key}>{key}</option>)}</select></label>
+          <label className="review-summary"><span>{`Pontos de ${nutrient} (kg/ha de ${nutrient})`}</span><input value={target} onChange={(event) => setTarget(event.target.value)} inputMode="decimal"/></label>
         </div>}
 
-        {mode === "PRODUCT_TO_NUTRIENTS" && <div className="review-grid" style={{ marginTop: 10 }}><label className="review-summary"><span>Dose do produto (kg/ha)</span><input value={rate} onChange={(event) => setRate(event.target.value)} inputMode="decimal"/></label></div>}
+        {(mode === "NUTRIENT_TO_PRODUCT" || mode === "PRODUCT_TO_NUTRIENTS") && <div className="review-grid" style={{ marginTop: 10 }}>
+          {mode === "PRODUCT_TO_NUTRIENTS" && <label className="review-summary"><span>Dose do produto (kg/ha)</span><input value={rate} onChange={(event) => setRate(event.target.value)} inputMode="decimal"/></label>}
+          <label className="review-summary"><span>Peso da embalagem (kg)</span><input value={packageWeight} onChange={(event) => setPackageWeight(event.target.value)} inputMode="decimal" placeholder="Opcional"/><small>Arredondamento somente para compra; não muda a dose técnica.</small></label>
+        </div>}
 
         {mode === "PK_PAIR" && <>
           {fertilizers.length < 2 ? <p className="report-empty-note">Cadastre ao menos dois fertilizantes no catálogo da empresa para resolver P2O5 + K2O em conjunto.</p> : <div className="review-grid" style={{ marginTop: 10 }}>
@@ -287,7 +318,8 @@ export function RaizCalculator({
           {nutrientResult?.error && <ResultError message={nutrientResult.error}/>}
           {nutrientResult?.value && <>
             <ConstraintWarnings violations={nutrientResult.value.constraintViolations}/>
-            <div className="review-grid"><div className="review-summary"><span>Dose do produto</span><strong>{formatNumber(nutrientResult.value.rateKgPerHa, 4)} kg/ha</strong></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(nutrientResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(nutrientResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(nutrientResult.value.totalCost)}</small></div></div>
+            <div className="review-grid"><div className="review-summary"><span>Dose técnica do produto</span><strong>{formatNumber(nutrientResult.value.rateKgPerHa, 4)} kg/ha</strong><small>{formatNumber(nutrientResult.value.rateKgPerHa / 1000, 6)} t/ha</small></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(nutrientResult.value.totalProductKg, 2)} kg</strong><small>{formatNumber(nutrientResult.value.totalProductTon, 4)} t</small></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(nutrientResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(nutrientResult.value.totalCost)}</small></div></div>
+            <p className="audit-hint">A entrega abaixo é numérica e informativa; esta simulação não julga excesso nem cria recomendação agronômica.</p>
             <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(nutrientResult.value.suppliedKgPerHa).map(([key, value]) => <div className="field-ops-list-row" key={key}><span><strong>{key}</strong><small>Fornecido pelo produto</small></span><strong>{formatNumber(value, 4)} kg/ha</strong></div>)}</div>
           </>}
           {supplyResult?.error && <ResultError message={supplyResult.error}/>}
@@ -296,6 +328,8 @@ export function RaizCalculator({
             <div className="review-grid"><div className="review-summary"><span>Dose aplicada</span><strong>{formatNumber(supplyResult.value.rateKgPerHa, 4)} kg/ha</strong></div><div className="review-summary"><span>Total do talhão</span><strong>{formatNumber(supplyResult.value.totalProductTon, 4)} t</strong></div><div className="review-summary"><span>Custo</span><strong>{formatMoney(supplyResult.value.costPerHa)}/ha</strong><small>Total {formatMoney(supplyResult.value.totalCost)}</small></div></div>
             <div className="field-ops-list" style={{ marginTop: 10 }}>{Object.entries(supplyResult.value.suppliedKgPerHa).map(([key, value]) => <div className="field-ops-list-row" key={key}><span><strong>{key}</strong></span><strong>{formatNumber(value, 4)} kg/ha</strong></div>)}</div>
           </>}
+          {packageResult?.error && <ResultError message={packageResult.error}/>}
+          {packageResult?.value && <div className="review-grid" style={{ marginTop: 10 }}><div className="review-summary"><span>Embalagens teóricas</span><strong>{formatNumber(packageResult.value.theoreticalPackageCount, 4)}</strong><small>{formatNumber(packageResult.value.packageWeightKg, 3)} kg por embalagem</small></div><div className="review-summary"><span>Compra arredondada</span><strong>{formatNumber(packageResult.value.purchasePackageCount, 0)} embalagens</strong><small>{formatNumber(packageResult.value.purchaseTotalKg, 2)} kg para compra</small></div><div className="review-summary"><span>Excedente logístico</span><strong>{formatNumber(packageResult.value.logisticalExcessKg, 2)} kg</strong><small>Não altera a dose técnica.</small></div></div>}
           {pkResult?.error && <ResultError message={pkResult.error}/>}
           {pkResult?.value && <>
             <ConstraintWarnings violations={pkResult.value.productA.constraintViolations} productName={pkResult.value.productA.product.name}/>

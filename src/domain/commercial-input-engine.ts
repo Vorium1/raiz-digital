@@ -47,6 +47,18 @@ export type ProductRateEvaluation = {
   constraintViolations: string[];
 };
 
+/**
+ * Logística de compra informativa. A dose técnica permanece a dose calculada;
+ * o arredondamento para compra nunca volta para a dose por hectare.
+ */
+export type CommercialPackageLogistics = {
+  packageWeightKg: number;
+  theoreticalPackageCount: number;
+  purchasePackageCount: number;
+  purchaseTotalKg: number;
+  logisticalExcessKg: number;
+};
+
 export type TwoProductPkSolution = {
   productA: ProductRateEvaluation;
   productB: ProductRateEvaluation;
@@ -179,6 +191,43 @@ export function evaluateCommercialProductRate(input: {
     constraintsSatisfied: constraintViolations.length === 0,
     constraintViolations,
   };
+}
+
+export function calculateCommercialPackageLogistics(input: {
+  totalProductKg: number;
+  packageWeightKg: number;
+}): CommercialPackageLogistics {
+  if (!Number.isFinite(input.totalProductKg) || input.totalProductKg < 0) {
+    throw new Error("Total do produto deve ser um número finito maior ou igual a zero.");
+  }
+  if (!Number.isFinite(input.packageWeightKg) || input.packageWeightKg <= 0) {
+    throw new Error("Peso da embalagem deve ser um número finito maior que zero.");
+  }
+  const theoreticalPackageCount = input.totalProductKg / input.packageWeightKg;
+  const purchasePackageCount = Math.ceil(theoreticalPackageCount - EPSILON);
+  const purchaseTotalKg = purchasePackageCount * input.packageWeightKg;
+  return {
+    packageWeightKg: round(input.packageWeightKg, 3),
+    theoreticalPackageCount: round(theoreticalPackageCount, 4),
+    purchasePackageCount,
+    purchaseTotalKg: round(purchaseTotalKg, 3),
+    logisticalExcessKg: round(purchaseTotalKg - input.totalProductKg, 3),
+  };
+}
+
+/**
+ * Interpreta somente a notação comercial N–P2O5–K2O declarada pelo usuário.
+ * Ela não infere enxofre, cálcio, magnésio ou micronutrientes ausentes.
+ */
+export function parseNpkFormula(formula: string): Pick<NutrientGuarantees, "N" | "P2O5" | "K2O"> {
+  const normalized = formula.trim().replace(/,/g, ".");
+  const match = /^(\d{1,3}(?:\.\d+)?)\s*[-/]\s*(\d{1,3}(?:\.\d+)?)\s*[-/]\s*(\d{1,3}(?:\.\d+)?)$/.exec(normalized);
+  if (!match) throw new Error("Fórmula manual deve usar N-P2O5-K2O, por exemplo 04-20-20.");
+  const [n, p2o5, k2o] = match.slice(1).map(Number);
+  for (const [label, value] of [["N", n], ["P2O5", p2o5], ["K2O", k2o]] as const) {
+    if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error(`Garantia de ${label} deve estar entre 0% e 100%.`);
+  }
+  return { N: n, P2O5: p2o5, K2O: k2o };
 }
 
 /**

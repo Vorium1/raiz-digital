@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import {
+  calculateCommercialPackageLogistics,
   computeSingleProductRateFromNutrient,
   convertCommercialLimeDoseToPrnt100,
   convertLimingRequirementToCommercialProduct,
   convertNutrientBasis,
   evaluateCommercialProductRate,
+  parseNpkFormula,
   solveTwoProductPkPlan,
   NUTRIENT_BASIS_FACTORS,
 } from "../src/domain/commercial-input-engine.ts";
@@ -23,12 +25,39 @@ const kTarget = computeSingleProductRateFromNutrient({
 assert.equal(kTarget.rateKgPerHa, 120);
 assert.equal(kTarget.suppliedKgPerHa.K2O, 72);
 
+// V2: “pontos” é apenas o rótulo de UX. A base explícita continua kg/ha do nutriente.
+const kPoints = computeSingleProductRateFromNutrient({ product: kcl60, driverNutrient: "K2O", targetKgPerHa: 60 });
+assert.equal(kPoints.rateKgPerHa, 100);
+
 const urea46 = computeSingleProductRateFromNutrient({
   product: { code: "UREIA-TESTE", name: "Fonte nitrogenada 46%", guaranteesPercent: { N: 46 } },
   driverNutrient: "N",
   targetKgPerHa: 90,
 });
 assert.ok(Math.abs(urea46.rateKgPerHa - 195.6522) < 0.0001);
+
+const formula042020 = { code: "04-20-20", name: "Fórmula sintética 04-20-20", guaranteesPercent: parseNpkFormula("04-20-20") };
+const formulaK = computeSingleProductRateFromNutrient({ product: formula042020, driverNutrient: "K2O", targetKgPerHa: 60, areaHa: 4.1 });
+assert.equal(formulaK.rateKgPerHa, 300);
+assert.equal(formulaK.suppliedKgPerHa.N, 12);
+assert.equal(formulaK.suppliedKgPerHa.P2O5, 60);
+assert.equal(formulaK.suppliedKgPerHa.K2O, 60);
+assert.equal(formulaK.totalProductKg, 1230);
+assert.equal(formulaK.totalProductTon, 1.23);
+
+const phosphate52 = computeSingleProductRateFromNutrient({
+  product: { code: "NP-52", name: "Fonte fosfatada sintética", guaranteesPercent: { N: 12, P2O5: 52 } },
+  driverNutrient: "P2O5",
+  targetKgPerHa: 80,
+});
+assert.ok(Math.abs(phosphate52.rateKgPerHa - 153.8462) < 0.0001);
+assert.ok(Math.abs(phosphate52.suppliedKgPerHa.N - 18.4615) < 0.0001);
+
+const bags = calculateCommercialPackageLogistics({ totalProductKg: 1230, packageWeightKg: 50 });
+assert.equal(bags.theoreticalPackageCount, 24.6);
+assert.equal(bags.purchasePackageCount, 25);
+assert.equal(bags.purchaseTotalKg, 1250);
+assert.equal(bags.logisticalExcessKg, 20);
 
 const inverseProduct = evaluateCommercialProductRate({
   product: kcl60,
@@ -49,6 +78,7 @@ const lime = convertLimingRequirementToCommercialProduct({
   productPrntPercent: 80,
 });
 assert.equal(lime.productDoseTonPerHa, 5.925);
+assert.equal(convertLimingRequirementToCommercialProduct({ requirementTonPerHaPrnt100: 3, productPrntPercent: 80 }).productDoseTonPerHa, 3.75);
 
 const reverseLime = convertCommercialLimeDoseToPrnt100({
   productDoseTonPerHa: 5.925,
@@ -129,6 +159,12 @@ assert.equal(noArea.costPerHa, 20);
 for (const invalidGuarantee of [-1, 101, NaN, Infinity]) {
   assert.throws(() => evaluateCommercialProductRate({ product: { ...kcl60, guaranteesPercent: { K2O: invalidGuarantee } }, rateKgPerHa: 1 }), /Garantia/);
 }
+for (const invalidFormula of ["04-20", "04-20-20-10", "04-20-x", "101-20-20", "-4-20-20"]) {
+  assert.throws(() => parseNpkFormula(invalidFormula), /Fórmula manual|Garantia/);
+}
+assert.deepEqual(parseNpkFormula("4,5-20-20"), { N: 4.5, P2O5: 20, K2O: 20 });
+assert.throws(() => calculateCommercialPackageLogistics({ totalProductKg: -1, packageWeightKg: 50 }), /Total do produto/);
+for (const invalidPackage of [0, -50, NaN, Infinity]) assert.throws(() => calculateCommercialPackageLogistics({ totalProductKg: 1, packageWeightKg: invalidPackage }), /Peso da embalagem/);
 for (const guarantee of [undefined, 0]) {
   assert.throws(() => computeSingleProductRateFromNutrient({ product: { ...kcl60, guaranteesPercent: { N: guarantee } }, driverNutrient: "N", targetKgPerHa: 1 }), /garantia positiva/);
 }
