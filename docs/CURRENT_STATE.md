@@ -35,7 +35,8 @@ Na baseline #132 existem migrations 001–046.
 - #141 — explicação da confiança técnica já persistida pelo motor.
 - #142 — explicação da confiança do laudo/importação, empilhada sobre #141.
 - #143 — editor de contorno produtivo com pontos GPS fixos.
-- #144 — autoridade de posição auditada, empilhada sobre #143.
+- #144 — autoridade de posição auditada + pré-checagem visual N de N pontos dentro, empilhada sobre #143.
+- #145 — prova de readiness do runtime pós-deploy por SHA exato, sem executar produção neste Draft.
 
 Nenhuma dessas frentes deve ser considerada mergeada ou em produção.
 
@@ -91,6 +92,12 @@ Sem mudança de base, não refazer por rotina:
 
 Quando frentes forem combinadas numa futura integração, repetir os gates relevantes
 sobre a combinação resultante, não sobre cada commit antigo isoladamente.
+
+## Atualizações recentes de segurança
+
+- #133 recebeu o gate RLS ampliado no commit `5a620e5`, cobrindo equipe, imports,
+  relatórios, NDVI e snapshots comerciais além de clientes/catálogo.
+- #144 e #145 possuem preview Vercel verde no último checkpoint verificado.
 
 ## Próximo foco seguro
 
