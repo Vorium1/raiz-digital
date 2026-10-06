@@ -57,5 +57,23 @@ ALTER TABLE planning_scenario_snapshots FORCE ROW LEVEL SECURITY;
 CREATE POLICY planning_scenarios_tenant_policy ON planning_scenarios USING (tenant_id = current_setting('app.tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
 CREATE POLICY planning_scenario_crops_tenant_policy ON planning_scenario_crops USING (tenant_id = current_setting('app.tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
 CREATE POLICY planning_scenario_snapshots_tenant_policy ON planning_scenario_snapshots USING (tenant_id = current_setting('app.tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
-GRANT SELECT, INSERT, UPDATE, DELETE ON planning_scenarios, planning_scenario_crops, planning_scenario_snapshots TO raiz_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON planning_scenarios, planning_scenario_crops TO raiz_app;
+GRANT SELECT, INSERT ON planning_scenario_snapshots TO raiz_app;
+REVOKE UPDATE, DELETE ON planning_scenario_snapshots FROM raiz_app;
+
+CREATE OR REPLACE FUNCTION protect_planning_scenario_snapshot()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $
+BEGIN
+  RAISE EXCEPTION 'Planning scenario snapshot is immutable'
+    USING ERRCODE = '55000';
+END;
+$;
+
+DROP TRIGGER IF EXISTS planning_scenario_snapshots_immutable ON planning_scenario_snapshots;
+CREATE TRIGGER planning_scenario_snapshots_immutable
+  BEFORE UPDATE OR DELETE ON planning_scenario_snapshots
+  FOR EACH ROW
+  EXECUTE FUNCTION protect_planning_scenario_snapshot();
 COMMIT;
