@@ -24,6 +24,11 @@ const scenarioSelect = `planning_scenarios.id::text,
   planning_scenarios.known_restrictions AS "knownRestrictions",
   planning_scenarios.previous_crop AS "previousCrop",
   planning_scenarios.previous_crop_code AS "previousCropCode",
+  planning_scenarios.years_since_last_liming::float8 AS "yearsSinceLastLiming",
+  planning_scenarios.liming_yield_below_local_average_drought AS "limingYieldBelowLocalAverageDrought",
+  planning_scenarios.liming_compaction_restricts_root_growth AS "limingCompactionRestrictsRootGrowth",
+  planning_scenarios.liming_phosphorus_10_20_below_critical AS "limingPhosphorus10To20BelowCritical",
+  planning_scenarios.liming_agronomist_confirmed_incorporation AS "limingAgronomistConfirmedIncorporation",
   planning_scenarios.recent_crop_history AS "recentCropHistory",
   planning_scenarios.last_soil_correction AS "lastSoilCorrection",
   planning_scenarios.fertilization_history AS "fertilizationHistory",
@@ -72,7 +77,7 @@ async function getPlanningScenarioWithClient(
   tenantId: string,
   scenarioId: string,
 ) {
-  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", cl.name AS "clientName", ba.code AS "baseAnalysisCode", base_dates."sampledFrom" AS "baseAnalysisSampledFrom", base_dates."sampledTo" AS "baseAnalysisSampledTo", base_dates."receivedFrom" AS "baseAnalysisReceivedFrom", base_dates."receivedTo" AS "baseAnalysisReceivedTo" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN analyses ba ON ba.tenant_id=planning_scenarios.tenant_id AND ba.id=planning_scenarios.base_analysis_id
+  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", p.state AS "state", p.municipality, cl.name AS "clientName", ba.code AS "baseAnalysisCode", base_dates."sampledFrom" AS "baseAnalysisSampledFrom", base_dates."sampledTo" AS "baseAnalysisSampledTo", base_dates."receivedFrom" AS "baseAnalysisReceivedFrom", base_dates."receivedTo" AS "baseAnalysisReceivedTo" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN analyses ba ON ba.tenant_id=planning_scenarios.tenant_id AND ba.id=planning_scenarios.base_analysis_id
 LEFT JOIN LATERAL (
   SELECT min(ls.sampled_at)::text AS "sampledFrom",
          max(ls.sampled_at)::text AS "sampledTo",
@@ -125,6 +130,11 @@ export async function updatePlanningScenario(input:{
   knownRestrictions?:string|null;
   previousCrop?:string|null;
   previousCropCode?:"SOYBEAN"|"CORN"|"OTHER"|null;
+  yearsSinceLastLiming?:number|null;
+  limingYieldBelowLocalAverageDrought?:boolean|null;
+  limingCompactionRestrictsRootGrowth?:boolean|null;
+  limingPhosphorus10To20BelowCritical?:boolean|null;
+  limingAgronomistConfirmedIncorporation?:boolean|null;
   recentCropHistory?:string|null;
   lastSoilCorrection?:string|null;
   fertilizationHistory?:string|null;
@@ -147,6 +157,11 @@ export async function updatePlanningScenario(input:{
            fertilization_history=nullif($14,''),
            organic_inputs=nullif($15,''),
            previous_crop_code=$16,
+           years_since_last_liming=$17,
+           liming_yield_below_local_average_drought=$18,
+           liming_compaction_restricts_root_growth=$19,
+           liming_phosphorus_10_20_below_critical=$20,
+           liming_agronomist_confirmed_incorporation=$21,
            status='DRAFT',
            updated_at=now()
        WHERE tenant_id=$1::uuid AND id=$2::uuid
@@ -168,6 +183,11 @@ export async function updatePlanningScenario(input:{
         input.fertilizationHistory?.trim()??"",
         input.organicInputs?.trim()??"",
         input.previousCropCode??null,
+        input.yearsSinceLastLiming??null,
+        input.limingYieldBelowLocalAverageDrought??null,
+        input.limingCompactionRestrictsRootGrowth??null,
+        input.limingPhosphorus10To20BelowCritical??null,
+        input.limingAgronomistConfirmedIncorporation??null,
       ],
     )).rows[0];
     if(!row)throw new PlanningError("Planejamento não encontrado.",404);
@@ -186,6 +206,13 @@ export async function updatePlanningScenario(input:{
         previousCropCode:row.previousCropCode??null,
         hasFertilizationHistory:Boolean(row.fertilizationHistory),
         hasOrganicInputs:Boolean(row.organicInputs),
+        hasLimingStructuredContext:Boolean(
+          row.yearsSinceLastLiming!=null
+          || row.limingYieldBelowLocalAverageDrought!=null
+          || row.limingCompactionRestrictsRootGrowth!=null
+          || row.limingPhosphorus10To20BelowCritical!=null
+          || row.limingAgronomistConfirmedIncorporation!=null
+        ),
       },
     });
     return row;
