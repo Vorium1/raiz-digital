@@ -265,7 +265,7 @@ export async function savePlanningCommercialSnapshot(input:{
   const workspace=simulation.workspace;
   const crop=workspace.crop;
   const engineInput=engineInputFromRequest(input);
-  const productSnapshots=simulation.selectedProducts as CommercialProductSnapshot[];
+  const productSnapshots=[...simulation.selectedProducts] as CommercialProductSnapshot[];
 
   return withTenant({tenantId:input.tenantId,userId:input.userId},async client=>{
     const linkage=(await client.query<{
