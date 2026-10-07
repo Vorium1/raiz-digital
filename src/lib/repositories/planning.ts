@@ -467,7 +467,6 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       targetCropProfile:null,
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
       deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
-      deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -477,6 +476,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       ...result,
       targetCropProfile:null,
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
+      deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -607,6 +607,9 @@ export async function calculatePlanningScenario(tenantId:string,scenarioId:strin
           cropCount:calculation.results.length,
           pkReadyCount:calculation.results.filter((result:any)=>
             result.deterministicPk?.P2O5?.ready || result.deterministicPk?.K2O?.ready
+          ).length,
+          sulfurReadyCount:calculation.results.filter((result:any)=>
+            result.deterministicSulfur?.ready
           ).length,
         },
       });
