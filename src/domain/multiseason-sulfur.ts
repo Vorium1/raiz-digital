@@ -166,7 +166,9 @@ export function computePlanningSulfurTarget(input:{
         profileId:RICE_S_SOSBAI_2025_PROFILE,
         sulfurMgDm3:rows[0].value,
         extractionMethod:"CALCIUM_PHOSPHATE_500_MG_L",
-        unit:S_UNIT,
+        // O motor legado usa a grafia ASCII "mg/dm3"; a evidência já foi validada acima como mg/dm³.
+        // É somente adaptação de notação da mesma unidade, sem alterar numeric_value.
+        unit:"mg/dm3",
       }),
       1,
       "SINGLE_SAMPLE",
