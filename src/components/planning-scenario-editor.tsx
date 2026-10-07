@@ -165,7 +165,7 @@ export function PlanningScenarioEditor({
       setResults([]);
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
-    setAccumulatedNitrogen(null);
+      setAccumulatedNitrogen(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -216,7 +216,7 @@ export function PlanningScenarioEditor({
       setResults([]);
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
-    setAccumulatedNitrogen(null);
+      setAccumulatedNitrogen(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
