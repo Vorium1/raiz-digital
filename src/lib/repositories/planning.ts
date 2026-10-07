@@ -91,7 +91,7 @@ LEFT JOIN LATERAL (
 ) base_dates ON true
 WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
   if(!scenario) throw new PlanningError("Planejamento não encontrado.",404);
-  const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, notes FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
+  const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date::text AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, notes, updated_at::text AS "updatedAt" FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
   return {...scenario,crops};
 }
 export async function getPlanningScenario(tenantId: string, scenarioId: string, userId?: string) {
@@ -668,6 +668,18 @@ async function buildPlanningCalculationWithClient(
   const accumulatedNitrogen=summarizePlanningNitrogenResults(results,scenario.areaHa);
   const initialLiming=summarizeInitialPlanningLiming(results,scenario.areaHa);
   return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur,accumulatedNitrogen,initialLiming};
+}
+
+export async function getPlanningCalculationPreview(
+  tenantId:string,
+  scenarioId:string,
+  userId?:string,
+){
+  return withTenant({tenantId,userId},async client=>{
+    const scenario=await getPlanningScenarioWithClient(client,tenantId,scenarioId);
+    const calculation=await buildPlanningCalculationWithClient(client,tenantId,scenario);
+    return {scenario,calculation};
+  });
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
