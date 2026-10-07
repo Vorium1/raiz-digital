@@ -139,6 +139,11 @@ assert.match(
 );
 assert.match(
   repository,
+  /computePlanningMicronutrients\(/,
+  "micronutrientes devem reutilizar classificação determinística com dose nula",
+);
+assert.match(
+  repository,
   /summarizeInitialPlanningLiming\(/,
   "calcário deve ser resumido como intervenção inicial, não acumulado por safra",
 );
@@ -328,6 +333,21 @@ assert.match(
   editor,
   /Calagem inicial do cenário/,
   "UI deve apresentar calcário como intervenção inicial separada",
+);
+assert.match(
+  editor,
+  /Micronutrientes · classificação analítica, sem dose automática/,
+  "UI deve deixar explícito que micronutrientes não têm dose automática",
+);
+assert.match(
+  editor,
+  /“Baixo” não é convertido em kg\/ha/,
+  "classe baixa não pode virar dose por inferência",
+);
+assert.doesNotMatch(
+  editor,
+  /calculatorHref\("(?:B|ZN|CU|MN)"/,
+  "micronutrientes não podem alimentar a calculadora sem regra de dose",
 );
 assert.match(
   editor,
