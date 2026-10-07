@@ -1,5 +1,6 @@
 export type PlanningStatus = "SUPPORTED" | "PARTIAL" | "UNSUPPORTED" | "REANALYSIS_REQUIRED";
 export type PlannedCropInput = {
+  id?: string;
   cropCode: string;
   plannedDate?: string | null;
   targetYield?: number | null;
