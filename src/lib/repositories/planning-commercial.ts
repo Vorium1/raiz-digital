@@ -81,7 +81,7 @@ function exactNitrogenTarget(target:any){
       : null;
 }
 
-function buildSourceTargets(input:{
+export function buildPlanningCommercialSourceTargets(input:{
   scenarioId:string;
   crop:any;
   result:any;
@@ -199,7 +199,7 @@ export async function getPlanningCommercialWorkspace(input:{
     throw new PlanningCommercialError("O cálculo do cultivo não corresponde ao cenário atual.",409);
   }
 
-  const sourceTargets=buildSourceTargets({scenarioId:input.scenarioId,crop,result});
+  const sourceTargets=buildPlanningCommercialSourceTargets({scenarioId:input.scenarioId,crop,result});
   const exactNutrients=nutrientTargets(sourceTargets);
   const p=exactNutrients.P2O5;
   const k=exactNutrients.K2O;
