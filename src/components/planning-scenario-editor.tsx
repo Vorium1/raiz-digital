@@ -138,6 +138,7 @@ export function PlanningScenarioEditor({
       setScenario((current)=>({...current,...p.scenario,crops:current.crops}));
       setScenarioDraft((current)=>({...current,...p.scenario,crops:current.crops}));
       setResults([]);
+      setAccumulatedPk(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -186,6 +187,7 @@ export function PlanningScenarioEditor({
       await call(`/api/planning/${scenario.id}/reorder`,"POST",{cropIds:next.map(item=>item.id)});
       setCrops(next.map((item,position)=>({...item,position})));
       setResults([]);
+      setAccumulatedPk(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
