@@ -563,66 +563,63 @@ async function buildPlanningCalculationWithClient(
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
-  return withTenant({tenantId,userId},async c=>{
-    const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
-    const results=executeMultiseasonPlan({
-      crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
-      hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
-      baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
-    });
-    const status=resolvePlanningScenarioPersistenceStatus(results);
-    await c.query(
+  return withTenant({tenantId,userId},async client=>{
+    const scenario=await getPlanningScenarioWithClient(client,tenantId,scenarioId);
+    const calculation=await buildPlanningCalculationWithClient(client,tenantId,scenario);
+    await client.query(
       `UPDATE planning_scenarios SET status=$3,updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,
-      [tenantId,scenarioId,status],
+      [tenantId,scenarioId,calculation.status],
     );
     if(userId){
-      await writeAudit(c,{
+      await writeAudit(client,{
         tenantId,
         userId,
         action:"PLANNING_SCENARIO_CALCULATED",
         entityType:"planning_scenario",
         entityId:scenarioId,
-        metadata:{status,cropCount:results.length},
+        metadata:{
+          status:calculation.status,
+          cropCount:calculation.results.length,
+          pkReadyCount:calculation.results.filter((result:any)=>
+            result.deterministicPk?.P2O5?.ready || result.deterministicPk?.K2O?.ready
+          ).length,
+        },
       });
     }
-    return {scenarioId,status,results};
+    return calculation;
   });
 }
 
 export async function createPlanningSnapshot(tenantId:string,scenarioId:string,userId:string){
-  return withTenant({tenantId,userId},async c=>{
-    const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
-    const results=executeMultiseasonPlan({
-      crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
-      hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
-      baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
-    });
-    const status=resolvePlanningScenarioPersistenceStatus(results);
-    const calculation={scenarioId,status,results};
-    const snapshotScenario={...scenario,status};
+  return withTenant({tenantId,userId},async client=>{
+    const scenario=await getPlanningScenarioWithClient(client,tenantId,scenarioId);
+    const calculation=await buildPlanningCalculationWithClient(client,tenantId,scenario);
+    const snapshotScenario={...scenario,status:calculation.status};
     const {payload,sha256}=buildPlanningSnapshotPayload({
       createdAt:new Date().toISOString(),
       scenario:snapshotScenario,
       calculation,
     });
-    await c.query(
+
+    await client.query(
       `UPDATE planning_scenarios SET status=$3,updated_at=now() WHERE tenant_id=$1::uuid AND id=$2::uuid`,
-      [tenantId,scenarioId,status],
+      [tenantId,scenarioId,calculation.status],
     );
-    const row=(await c.query(
+    const row=(await client.query(
       `INSERT INTO planning_scenario_snapshots(tenant_id,scenario_id,payload,sha256,created_by)
        VALUES($1::uuid,$2::uuid,$3::jsonb,$4,$5::uuid)
        RETURNING id::text,sha256,created_at AS "createdAt"`,
       [tenantId,scenarioId,JSON.stringify(payload),sha256,userId],
     )).rows[0];
     if(!row)throw new PlanningError("Planejamento não encontrado.",404);
-    await writeAudit(c,{
+
+    await writeAudit(client,{
       tenantId,
       userId,
       action:"PLANNING_SCENARIO_SNAPSHOT_CREATED",
       entityType:"planning_scenario_snapshot",
       entityId:row.id,
-      metadata:{scenarioId,sha256,status},
+      metadata:{scenarioId,sha256,status:calculation.status},
     });
     return row;
   });
