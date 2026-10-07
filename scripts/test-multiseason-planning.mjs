@@ -39,9 +39,25 @@ assert.equal(
   "CALCULATED",
 );
 const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
+const planningRoute = readFileSync(new URL("../src/app/api/planning/[id]/route.ts", import.meta.url), "utf8");
 const planningDomain = readFileSync(new URL("../src/domain/multiseason-planning.ts", import.meta.url), "utf8");
 assert.match(calculateRoute, /writers\.has\(s\.role\)/);
 assert.match(calculateRoute, /status:403/);
+assert.match(
+  planningRoute,
+  /const managementSystems=new Set/,
+  "manejo de calagem precisa ser estruturado no boundary HTTP",
+);
+assert.match(
+  planningRoute,
+  /optionalNonNegativeNumber\(b\.yearsSinceLastLiming/,
+  "anos desde a última calagem precisam ser validados como número não-negativo",
+);
+assert.match(
+  planningRoute,
+  /nullableBoolean\(b\.limingAgronomistConfirmedIncorporation/,
+  "confirmação agronômica deve preservar UNKNOWN em vez de converter para false",
+);
 assert.doesNotMatch(
   planningDomain,
   /position\s*>=\s*2/,
@@ -312,6 +328,16 @@ assert.match(
   editor,
   /Calagem inicial do cenário/,
   "UI deve apresentar calcário como intervenção inicial separada",
+);
+assert.match(
+  editor,
+  /necessidade da camada; aplicação não definida/,
+  "necessidade de camada não pode ser apresentada como recomendação de aplicação",
+);
+assert.match(
+  editor,
+  /commercialTargetTonHaPrnt100/,
+  "botão comercial de calcário deve depender de alvo explicitamente autorizado",
 );
 assert.match(
   editor,
