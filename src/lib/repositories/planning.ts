@@ -5,7 +5,7 @@ import { buildPlanningSnapshotPayload, verifyPlanningSnapshot } from "@/domain/p
 import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/domain/agronomic-engine";
 import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
 import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
-import { blockedPlanningPkTargets, computePlanningPkTargets, planningCropProfileCode } from "@/domain/multiseason-pk";
+import { blockedPlanningPkTargets, computePlanningPkTargets, planningCropProfileCode, summarizePlanningPkResults } from "@/domain/multiseason-pk";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -559,7 +559,8 @@ async function buildPlanningCalculationWithClient(
   });
   const results=await enrichPlanningResultsWithDeterministicPk(client,tenantId,scenario,readinessResults);
   const status=resolvePlanningScenarioPersistenceStatus(results);
-  return {scenarioId:scenario.id,status,results};
+  const accumulatedPk=summarizePlanningPkResults(results,scenario.areaHa);
+  return {scenarioId:scenario.id,status,results,accumulatedPk};
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
