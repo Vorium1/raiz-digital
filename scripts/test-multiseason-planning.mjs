@@ -106,6 +106,16 @@ assert.match(
 );
 assert.match(
   repository,
+  /computePlanningSulfurTarget\(/,
+  "S do planejamento deve reutilizar os motores determinísticos existentes",
+);
+assert.match(
+  repository,
+  /summarizePlanningSulfurResults\(/,
+  "snapshot/cálculo deve preservar o acumulado conhecido de S",
+);
+assert.match(
+  repository,
   /cultivationOrderAfterSoilAnalysis:result\.position\+1/,
   "ordem do cultivo precisa ser explícita no motor P/K",
 );
@@ -212,6 +222,16 @@ assert.match(
   editor,
   /P₂O₅ → produto/,
   "dose exata calculada deve poder alimentar a calculadora comercial",
+);
+assert.match(
+  editor,
+  /Enxofre conhecido do horizonte/,
+  "UI deve separar o acumulado conhecido de S",
+);
+assert.match(
+  editor,
+  /calculatorHref\("S",sulfur,scenario\.areaHa\)/,
+  "S determinístico pode alimentar a calculadora sem alvo inventado",
 );
 assert.match(
   editor,
