@@ -9,10 +9,20 @@ type BaseAnalysis={
   fieldName:string;
   seasonLabel:string;
   currentCrop:string|null;
-  createdAt:string;
+  sampledFrom:string|null;
+  sampledTo:string|null;
+  receivedFrom:string|null;
+  receivedTo:string|null;
+  registeredAt:string;
   resultCount:number;
 };
 type Scenario={id:string;name:string;fieldName:string;areaHa:number|null;cropCount:number;status:string;baseEvidenceReady?:boolean};
+
+function dateLabel(from:string|null,to:string|null){
+  if(!from)return "data técnica não registrada";
+  if(!to||to===from)return new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR");
+  return `${new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR")}–${new Date(`${to}T12:00:00Z`).toLocaleDateString("pt-BR")}`;
+}
 
 export function PlanningWorkspace({
   fields,
@@ -91,7 +101,7 @@ export function PlanningWorkspace({
           <option value="">Sem análise-base — cálculo ficará bloqueado por evidência</option>
           {analysesForField.map(analysis=>
             <option key={analysis.id} value={analysis.id}>
-              {analysis.code} · {analysis.seasonLabel}{analysis.currentCrop?` · ${analysis.currentCrop}`:""} · {analysis.resultCount} resultado{analysis.resultCount===1?"":"s"}
+              {analysis.code} · {analysis.seasonLabel}{analysis.currentCrop?` · ${analysis.currentCrop}`:""} · amostragem {dateLabel(analysis.sampledFrom,analysis.sampledTo)} · {analysis.resultCount} resultado{analysis.resultCount===1?"":"s"}
             </option>
           )}
         </select>
