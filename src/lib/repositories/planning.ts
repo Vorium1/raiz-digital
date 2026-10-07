@@ -367,6 +367,201 @@ export async function reorderPlanningCrops(input:{
   });
 }
 
+
+async function loadPlanningBaseLabResults(
+  client: import("pg").PoolClient,
+  tenantId: string,
+  analysisId: string,
+): Promise<LabResultInput[]> {
+  const result=await client.query<LabResultInput>(
+    `SELECT ls.laboratory_code AS "sampleCode",
+            lr.parameter_code AS "parameterCode",
+            lr.numeric_value::float8 AS "value",
+            lr.unit,
+            lr.analytical_method AS "method",
+            lr.original_payload->>'protocol' AS "protocol",
+            lr.source,
+            ls.sample_type AS "sampleType",
+            sp.depth_from_cm::float8 AS "depthFromCm",
+            sp.depth_to_cm::float8 AS "depthToCm"
+     FROM lab_samples ls
+     JOIN lab_results lr
+       ON lr.tenant_id=ls.tenant_id AND lr.lab_sample_id=ls.id
+     LEFT JOIN sample_points sp
+       ON sp.tenant_id=ls.tenant_id AND sp.id=ls.sample_point_id
+     WHERE ls.tenant_id=$1::uuid AND ls.analysis_id=$2::uuid
+     ORDER BY ls.laboratory_code,lr.parameter_code`,
+    [tenantId,analysisId],
+  );
+
+  return result.rows.map((row)=>({
+    ...row,
+    unit:normalizeUnit(row.parameterCode,row.unit),
+    method:normalizeAnalyticalMethod(row.parameterCode,row.method,row.protocol),
+    depthFromCm:row.depthFromCm??null,
+    depthToCm:row.depthToCm??null,
+  }));
+}
+
+async function loadPlanningCropProfile(
+  client: import("pg").PoolClient,
+  profileCode: string,
+): Promise<CropProfileDef|null> {
+  const profile=(await client.query<{
+    id:string;
+    code:string;
+    name:string;
+    status:"DRAFT"|"ACTIVE"|"SUPERSEDED";
+    semanticVersion:string;
+    contentHash:string|null;
+  }>(
+    `SELECT id::text,code,name,status,
+            semantic_version AS "semanticVersion",
+            content_hash AS "contentHash"
+     FROM crop_profiles
+     WHERE code=$1
+     ORDER BY CASE status WHEN 'ACTIVE' THEN 0 WHEN 'DRAFT' THEN 1 ELSE 2 END,updated_at DESC
+     LIMIT 1`,
+    [profileCode],
+  )).rows[0];
+  if(!profile)return null;
+
+  const parameters=(await client.query(
+    `SELECT id::text,
+            parameter_code AS "parameterCode",
+            parameter_category AS "parameterCategory",
+            sample_type AS "sampleType",
+            depth_from_cm::float8 AS "depthFromCm",
+            depth_to_cm::float8 AS "depthToCm",
+            analytical_method_allowed AS "analyticalMethodAllowed",
+            unit_expected AS "unitExpected",
+            sufficiency_ranges AS "sufficiencyRanges",
+            criticality,
+            status,
+            condition_parameter_code AS "conditionParameterCode",
+            condition_min::float8 AS "conditionMin",
+            condition_max::float8 AS "conditionMax",
+            derived_parameter_code AS "derivedParameterCode"
+     FROM crop_profile_parameters
+     WHERE crop_profile_id=$1::uuid`,
+    [profile.id],
+  )).rows;
+
+  return {
+    ...profile,
+    parameters,
+    auxiliaryParameterCodes:auxiliaryParameterCodesFor(profile.code),
+  } as CropProfileDef;
+}
+
+async function enrichPlanningResultsWithDeterministicPk(
+  client: import("pg").PoolClient,
+  tenantId: string,
+  scenario: any,
+  baseResults: ReturnType<typeof executeMultiseasonPlan>,
+){
+  if(!scenario.baseAnalysisId||!scenario.baseEvidenceReady){
+    return baseResults.map((result)=>({
+      ...result,
+      targetCropProfile:null,
+      deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
+    }));
+  }
+
+  const labResults=await loadPlanningBaseLabResults(client,tenantId,scenario.baseAnalysisId);
+  if(labResults.length===0){
+    return baseResults.map((result)=>({
+      ...result,
+      targetCropProfile:null,
+      deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
+    }));
+  }
+
+  const cache=new Map<string,CropProfileDef|null>();
+  const enriched=[];
+
+  for(const result of baseResults){
+    const profileCode=planningCropProfileCode(result.crop.cropCode);
+    if(!profileCode){
+      enriched.push({
+        ...result,
+        limitations:[...new Set([...result.limitations,"TARGET_CROP_PROFILE_NOT_MAPPED"])],
+        targetCropProfile:null,
+        deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["PLANNING_CROP_PROFILE_NOT_MAPPED"]),
+      });
+      continue;
+    }
+
+    let profile=cache.get(profileCode);
+    if(profile===undefined){
+      profile=await loadPlanningCropProfile(client,profileCode);
+      cache.set(profileCode,profile);
+    }
+
+    if(!profile||profile.status!=="ACTIVE"){
+      enriched.push({
+        ...result,
+        limitations:[...new Set([...result.limitations,"TARGET_CROP_PROFILE_NOT_ACTIVE"])],
+        targetCropProfile:profile?{
+          id:profile.id,
+          code:profile.code,
+          status:profile.status,
+          semanticVersion:profile.semanticVersion,
+          contentHash:profile.contentHash,
+          engineInterpretable:false,
+          pendencies:["PROFILE_NOT_ACTIVE"],
+        }:null,
+        deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
+      });
+      continue;
+    }
+
+    const engine=runAgronomicEngine({cropProfile:profile,labResults});
+    const deterministicPk=computePlanningPkTargets({
+      cropCode:result.crop.cropCode,
+      interpretation:engine.interpretation,
+      targetYield:result.crop.targetYield,
+      targetUnit:result.crop.targetUnit,
+      cultivationOrderAfterSoilAnalysis:result.position+1,
+      reanalysisRequired:result.reanalysisRequired,
+    });
+
+    enriched.push({
+      ...result,
+      limitations:engine.interpretable
+        ? result.limitations
+        : [...new Set([...result.limitations,"TARGET_CROP_PROFILE_PARTIAL"])],
+      targetCropProfile:{
+        id:profile.id,
+        code:profile.code,
+        status:profile.status,
+        semanticVersion:profile.semanticVersion,
+        contentHash:profile.contentHash,
+        engineInterpretable:engine.interpretable,
+        pendencies:engine.pendencies,
+      },
+      deterministicPk,
+    });
+  }
+
+  return enriched;
+}
+
+async function buildPlanningCalculationWithClient(
+  client: import("pg").PoolClient,
+  tenantId: string,
+  scenario: any,
+){
+  const readinessResults=executeMultiseasonPlan({
+    crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
+    hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
+    baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
+  });
+  const results=await enrichPlanningResultsWithDeterministicPk(client,tenantId,scenario,readinessResults);
+  const status=resolvePlanningScenarioPersistenceStatus(results);
+  return {scenarioId:scenario.id,status,results};
+}
+
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
   return withTenant({tenantId,userId},async c=>{
     const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
