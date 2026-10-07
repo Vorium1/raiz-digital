@@ -43,6 +43,21 @@ assert.match(
 );
 assert.match(
   repository,
+  /min\(ls\.sampled_at\)::text AS "sampledFrom"/,
+  "data técnica da análise-base deve vir da amostragem laboratorial",
+);
+assert.match(
+  repository,
+  /max\(ls\.sampled_at\)::text AS "sampledTo"/,
+  "múltiplas datas de amostragem devem preservar intervalo real",
+);
+assert.doesNotMatch(
+  editor,
+  /baseAnalysisCreatedAt/,
+  "created_at do cadastro não pode ser exibido como data técnica da análise",
+);
+assert.match(
+  repository,
   /hasBaseEvidence:Boolean\(scenario\.baseEvidenceReady\)/,
   "orquestração fail-closed deve usar evidência real e não apenas UUID da análise",
 );
