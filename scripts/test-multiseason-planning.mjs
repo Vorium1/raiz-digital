@@ -76,6 +76,11 @@ const planningWorkspace = readFileSync(new URL("../src/components/planning-works
 const declaredContextMigration = readFileSync(new URL("../db/migrations/048_multiseason_declared_context.sql", import.meta.url), "utf8");
 const previousCropMigration = readFileSync(new URL("../db/migrations/049_multiseason_previous_crop_code.sql", import.meta.url), "utf8");
 const limingContextMigration = readFileSync(new URL("../db/migrations/050_multiseason_liming_context.sql", import.meta.url), "utf8");
+const commercialSnapshotMigration = readFileSync(new URL("../db/migrations/051_multiseason_commercial_snapshots.sql", import.meta.url), "utf8");
+const planningCommercialRepository = readFileSync(new URL("../src/lib/repositories/planning-commercial.ts", import.meta.url), "utf8");
+const planningCommercialPanel = readFileSync(new URL("../src/components/planning-commercial-panel.tsx", import.meta.url), "utf8");
+const planningCommercialSimulationRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-simulation/route.ts", import.meta.url), "utf8");
+const planningCommercialSnapshotsRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-snapshots/route.ts", import.meta.url), "utf8");
 
 assert.match(
   repository,
@@ -280,6 +285,26 @@ for (const column of [
   assert.match(limingContextMigration, new RegExp(column), `contexto estruturado de calagem ausente: ${column}`);
 }
 assert.match(
+  commercialSnapshotMigration,
+  /CREATE TABLE planning_crop_commercial_snapshots/,
+  "cenário comercial plurissafras precisa de snapshot próprio por cultivo",
+);
+assert.match(
+  commercialSnapshotMigration,
+  /FOREIGN KEY \(tenant_id, scenario_id, planning_crop_id\)/,
+  "snapshot comercial precisa estar ligado ao tenant, cenário e cultivo juntos",
+);
+assert.match(
+  commercialSnapshotMigration,
+  /REVOKE UPDATE, DELETE ON planning_crop_commercial_snapshots FROM raiz_app/,
+  "runtime não pode reescrever histórico comercial do planejamento",
+);
+assert.match(
+  commercialSnapshotMigration,
+  /planning_crop_commercial_snapshots_immutable/,
+  "imutabilidade comercial precisa existir também no PostgreSQL",
+);
+assert.match(
   editor,
   /Data prevista/,
   "cada cultivo deve expor a data prevista já existente no modelo",
@@ -395,3 +420,69 @@ assert.match(
   "acumulado antigo não pode continuar visível depois que o cenário muda",
 );
 console.log("multiseason-planning: capability, evidência, base por talhão, snapshot imutável e ausência de alvo inventado aprovados");
+
+assert.match(
+  planningCommercialRepository,
+  /computeSingleProductRateFromNutrient/,
+  "comercial plurissafras deve reutilizar o motor comercial existente",
+);
+assert.match(
+  planningCommercialRepository,
+  /solveTwoProductPkPlan/,
+  "cenário P\/K deve reutilizar o solver comercial existente",
+);
+assert.match(
+  planningCommercialRepository,
+  /convertLimingRequirementToCommercialProduct/,
+  "calcário comercial deve reutilizar conversão PRNT existente",
+);
+assert.match(
+  planningCommercialRepository,
+  /sourceScenarioUpdatedAt[\s\S]*sourceCropUpdatedAt/,
+  "snapshot comercial precisa detectar cenário/cultivo alterado durante a simulação",
+);
+assert.match(
+  planningCommercialRepository,
+  /PLANNING_CROP_COMMERCIAL_SNAPSHOT_SAVED/,
+  "salvamento comercial por cultivo precisa ser auditado",
+);
+assert.match(
+  planningCommercialPanel,
+  /O produto e o preço são escolhas explícitas/,
+  "UI deve separar decisão comercial de necessidade agronômica",
+);
+assert.match(
+  planningCommercialPanel,
+  /Faixas e bloqueios permanecem técnicos/,
+  "UI não pode transformar faixa em compra",
+);
+assert.match(
+  planningCommercialPanel,
+  /Salvar cenário deste cultivo/,
+  "usuário precisa poder congelar alternativas comerciais por cultivo",
+);
+assert.match(
+  editor,
+  /PlanningCommercialPanel/,
+  "camada comercial precisa estar ligada a cada cultivo calculado",
+);
+assert.match(
+  planningCommercialSimulationRoute,
+  /getPlanningCommercialWorkspace/,
+  "GET comercial por cultivo deve recalcular workspace tenant-scoped",
+);
+assert.match(
+  planningCommercialSimulationRoute,
+  /simulatePlanningCommercialPlan/,
+  "POST comercial deve simular no servidor",
+);
+assert.match(
+  planningCommercialSnapshotsRoute,
+  /SAVE_ROLES/,
+  "snapshot comercial deve preservar RBAC explícito",
+);
+assert.match(
+  planningCommercialSnapshotsRoute,
+  /savePlanningCommercialSnapshot/,
+  "snapshot deve ser recalculado e salvo no servidor",
+);
