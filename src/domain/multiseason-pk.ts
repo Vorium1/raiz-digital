@@ -27,7 +27,7 @@ export function planningCropProfileCode(cropCode:string|null|undefined){
   return PROFILE_CODE_BY_PLANNING_CROP[normalized]??null;
 }
 
-function blocked(blockers:string[]):PlanningPkTarget{
+export function blockedPlanningPkTarget(blockers:string[]):PlanningPkTarget{
   return {
     ready:false,
     blockers:[...new Set(blockers)],
@@ -45,7 +45,7 @@ function blocked(blockers:string[]):PlanningPkTarget{
 function mapDose(
   decision:ReturnType<typeof computeDeterministicPkDose>,
 ):PlanningPkTarget{
-  if(!decision.ready||!decision.expected)return blocked(decision.blockers);
+  if(!decision.ready||!decision.expected)return blockedPlanningPkTarget(decision.blockers);
   return {
     ready:true,
     blockers:[],
@@ -60,6 +60,18 @@ function mapDose(
   };
 }
 
+export function blockedPlanningPkTargets(
+  cropCode:string|null|undefined,
+  blockers:string[],
+){
+  const gate=blockedPlanningPkTarget(blockers);
+  return {
+    profileCode:planningCropProfileCode(cropCode),
+    P2O5:gate,
+    K2O:gate,
+  };
+}
+
 export function computePlanningPkTargets(input:{
   cropCode:string;
   interpretation:unknown;
@@ -69,13 +81,13 @@ export function computePlanningPkTargets(input:{
   reanalysisRequired:boolean;
 }){
   if(input.reanalysisRequired){
-    const gate=blocked(["REANALYSIS_REQUIRED_BEFORE_PK"]);
+    const gate=blockedPlanningPkTarget(["REANALYSIS_REQUIRED_BEFORE_PK"]);
     return {profileCode:planningCropProfileCode(input.cropCode),P2O5:gate,K2O:gate};
   }
 
   const profileCode=planningCropProfileCode(input.cropCode);
   if(!profileCode){
-    const gate=blocked(["PLANNING_CROP_PROFILE_NOT_MAPPED"]);
+    const gate=blockedPlanningPkTarget(["PLANNING_CROP_PROFILE_NOT_MAPPED"]);
     return {profileCode:null,P2O5:gate,K2O:gate};
   }
 
@@ -87,7 +99,7 @@ export function computePlanningPkTargets(input:{
     contextBlockers.push("PLANNING_YIELD_UNIT_REQUIRED");
   }
   if(contextBlockers.length){
-    const gate=blocked(contextBlockers);
+    const gate=blockedPlanningPkTarget(contextBlockers);
     return {profileCode,P2O5:gate,K2O:gate};
   }
 
