@@ -36,6 +36,7 @@ type Scenario={
   waterAvailabilityNotes:string|null;
   knownRestrictions:string|null;
   previousCrop:string|null;
+  previousCropCode:"SOYBEAN"|"CORN"|"OTHER"|null;
   recentCropHistory:string|null;
   lastSoilCorrection:string|null;
   fertilizationHistory:string|null;
@@ -51,6 +52,14 @@ function pkTargetLabel(target:any){
   return `${target.doseKgPerHa} kg/ha`;
 }
 
+function nitrogenTargetLabel(target:any){
+  if(!target?.ready)return `bloqueado · ${(target?.blockers??[]).join(" · ")||"sem dose determinística"}`;
+  if(target.minimumKgNPerHa!==target.maximumKgNPerHa){
+    return `${target.minimumKgNPerHa}–${target.maximumKgNPerHa} kg N/ha`;
+  }
+  return `${target.doseKgNPerHa} kg N/ha`;
+}
+
 function sulfurTargetLabel(target:any){
   if(!target?.ready)return `bloqueado · ${(target?.blockers??[]).join(" · ")||"sem dose determinística"}`;
   if(target.minimumKgSPerHa!==target.maximumKgSPerHa){
@@ -59,13 +68,13 @@ function sulfurTargetLabel(target:any){
   return `${target.doseKgSPerHa} kg S/ha`;
 }
 
-function calculatorHref(nutrient:"P2O5"|"K2O"|"S",target:any,areaHa:number|null){
+function calculatorHref(nutrient:"P2O5"|"K2O"|"S"|"N",target:any,areaHa:number|null){
   const params=new URLSearchParams();
   if(areaHa!=null)params.set("area",String(areaHa));
   if(target?.ready)params.set("nutrient",nutrient);
-  const minimum=target?.minimumKgPerHa??target?.minimumKgSPerHa??null;
-  const maximum=target?.maximumKgPerHa??target?.maximumKgSPerHa??null;
-  const dose=target?.doseKgPerHa??target?.doseKgSPerHa??null;
+  const minimum=target?.minimumKgPerHa??target?.minimumKgSPerHa??target?.minimumKgNPerHa??null;
+  const maximum=target?.maximumKgPerHa??target?.maximumKgSPerHa??target?.maximumKgNPerHa??null;
+  const dose=target?.doseKgPerHa??target?.doseKgSPerHa??target?.doseKgNPerHa??null;
   if(target?.ready&&minimum===maximum&&typeof dose==="number"&&dose>0){
     params.set("target",String(dose));
   }
@@ -100,6 +109,7 @@ export function PlanningScenarioEditor({
   const [results,setResults]=useState<any[]>([]);
   const [accumulatedPk,setAccumulatedPk]=useState<any|null>(null);
   const [accumulatedSulfur,setAccumulatedSulfur]=useState<any|null>(null);
+  const [accumulatedNitrogen,setAccumulatedNitrogen]=useState<any|null>(null);
   const [snapshots,setSnapshots]=useState(initialSnapshots);
   const [selectedSnapshot,setSelectedSnapshot]=useState<any|null>(null);
   const [cropCode,setCropCode]=useState("SOYBEAN");
@@ -127,6 +137,7 @@ export function PlanningScenarioEditor({
     setResults([]);
     setAccumulatedPk(null);
     setAccumulatedSulfur(null);
+    setAccumulatedNitrogen(null);
   };
 
   async function saveScenarioContext(){
@@ -143,6 +154,7 @@ export function PlanningScenarioEditor({
         waterAvailabilityNotes:scenarioDraft.waterAvailabilityNotes,
         knownRestrictions:scenarioDraft.knownRestrictions,
         previousCrop:scenarioDraft.previousCrop,
+        previousCropCode:scenarioDraft.previousCropCode,
         recentCropHistory:scenarioDraft.recentCropHistory,
         lastSoilCorrection:scenarioDraft.lastSoilCorrection,
         fertilizationHistory:scenarioDraft.fertilizationHistory,
@@ -153,6 +165,7 @@ export function PlanningScenarioEditor({
       setResults([]);
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
+    setAccumulatedNitrogen(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -203,6 +216,7 @@ export function PlanningScenarioEditor({
       setResults([]);
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
+    setAccumulatedNitrogen(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
@@ -213,6 +227,7 @@ export function PlanningScenarioEditor({
       setResults(calculation.results);
       setAccumulatedPk(calculation.accumulatedPk??null);
       setAccumulatedSulfur(calculation.accumulatedSulfur??null);
+      setAccumulatedNitrogen(calculation.accumulatedNitrogen??null);
       setScenario((current)=>({...current,status:calculation.status}));
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
@@ -269,8 +284,23 @@ export function PlanningScenarioEditor({
         <label>Restrições conhecidas
           <textarea value={scenarioDraft.knownRestrictions??""} onChange={e=>setScenarioDraft({...scenarioDraft,knownRestrictions:e.target.value})}/>
         </label>
-        <label>Cultura anterior
+        <label>Categoria da cultura anterior
+          <select
+            value={scenarioDraft.previousCropCode??""}
+            onChange={e=>setScenarioDraft({
+              ...scenarioDraft,
+              previousCropCode:e.target.value===""?null:e.target.value as "SOYBEAN"|"CORN"|"OTHER",
+            })}
+          >
+            <option value="">Não informado</option>
+            <option value="SOYBEAN">Soja</option>
+            <option value="CORN">Milho</option>
+            <option value="OTHER">Outra</option>
+          </select>
+        </label>
+        <label>Cultura anterior — descrição livre
           <input value={scenarioDraft.previousCrop??""} onChange={e=>setScenarioDraft({...scenarioDraft,previousCrop:e.target.value})}/>
+          <small>A descrição é histórica; o motor de N usa somente a categoria estruturada acima.</small>
         </label>
         <label>Histórico recente de culturas
           <textarea value={scenarioDraft.recentCropHistory??""} onChange={e=>setScenarioDraft({...scenarioDraft,recentCropHistory:e.target.value})}/>
@@ -374,11 +404,12 @@ export function PlanningScenarioEditor({
 
     {results.length>0&&<section>
       <h2>Resultados da simulação</h2>
-      <p>P/K e S abaixo usam motores determinísticos oficiais da RAIZ. N, calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
+      <p>P/K, S e N abaixo usam motores determinísticos oficiais da RAIZ. N automático nesta etapa existe para trigo quando MO, meta e cultura anterior estão resolvidas; calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
       {results.map(result=>{
         const p=result.deterministicPk?.P2O5;
         const k=result.deterministicPk?.K2O;
         const sulfur=result.deterministicSulfur;
+        const nitrogen=result.deterministicNitrogen;
         return <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
           <strong>{result.crop.cropCode}: {result.status}</strong>
           <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Contexto mínimo disponível."}</p>
@@ -397,11 +428,16 @@ export function PlanningScenarioEditor({
               <span>S</span>
               <strong>{sulfurTargetLabel(sulfur)}</strong>
             </div>
+            <div className="summary-item">
+              <span>N</span>
+              <strong>{nitrogenTargetLabel(nitrogen)}</strong>
+            </div>
           </div>
           {(
             (p?.ready&&(p.maximumKgPerHa??0)>0)
             ||(k?.ready&&(k.maximumKgPerHa??0)>0)
             ||(sulfur?.ready&&(sulfur.maximumKgSPerHa??0)>0)
+            ||(nitrogen?.ready&&(nitrogen.maximumKgNPerHa??0)>0)
           )&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {p?.ready&&(p.maximumKgPerHa??0)>0&&<a className="button secondary" href={calculatorHref("P2O5",p,scenario.areaHa)}>
               {p.minimumKgPerHa===p.maximumKgPerHa?"P₂O₅ → produto":"Abrir calculadora para P₂O₅"}
@@ -411,6 +447,9 @@ export function PlanningScenarioEditor({
             </a>}
             {sulfur?.ready&&(sulfur.maximumKgSPerHa??0)>0&&<a className="button secondary" href={calculatorHref("S",sulfur,scenario.areaHa)}>
               {sulfur.minimumKgSPerHa===sulfur.maximumKgSPerHa?"S → produto":"Abrir calculadora para S"}
+            </a>}
+            {nitrogen?.ready&&(nitrogen.maximumKgNPerHa??0)>0&&<a className="button secondary" href={calculatorHref("N",nitrogen,scenario.areaHa)}>
+              {nitrogen.minimumKgNPerHa===nitrogen.maximumKgNPerHa?"N → produto":"Abrir calculadora para N"}
             </a>}
           </div>}
         </article>;
@@ -449,6 +488,24 @@ export function PlanningScenarioEditor({
           {accumulatedSulfur.complete
             ?"completo para os cultivos listados"
             :`parcial: ${accumulatedSulfur.readyCropCount} calculado(s), ${accumulatedSulfur.blockedCropCount} bloqueado(s)`}
+        </p>
+      </article>}
+      {accumulatedNitrogen&&<article className="card" style={{padding:16,marginTop:12}}>
+        <h3>Nitrogênio conhecido do horizonte</h3>
+        <p>
+          <strong>N:</strong>{" "}
+          {accumulatedNitrogen.minimumKgPerHa===accumulatedNitrogen.maximumKgPerHa
+            ? `${accumulatedNitrogen.minimumKgPerHa} kg N/ha`
+            : `${accumulatedNitrogen.minimumKgPerHa}–${accumulatedNitrogen.maximumKgPerHa} kg N/ha`}
+          {accumulatedNitrogen.totalMinimumKg!=null&&<> · talhão: {
+            accumulatedNitrogen.totalMinimumKg===accumulatedNitrogen.totalMaximumKg
+              ? `${accumulatedNitrogen.totalMinimumKg} kg N`
+              : `${accumulatedNitrogen.totalMinimumKg}–${accumulatedNitrogen.totalMaximumKg} kg N`
+          }</>}
+          {" · "}
+          {accumulatedNitrogen.complete
+            ?"completo para os cultivos listados"
+            :`parcial: ${accumulatedNitrogen.readyCropCount} calculado(s), ${accumulatedNitrogen.blockedCropCount} bloqueado(s)`}
         </p>
       </article>}
     </section>}
