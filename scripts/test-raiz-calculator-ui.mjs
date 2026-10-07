@@ -97,6 +97,12 @@ assert.match(catalog.html(), /Diferença 0 kg\/ha/);
 assert.match(catalog.html(), /acima do máximo operacional/);
 assert.match(catalog.html(), /abaixo do mínimo operacional/);
 
+const limePrefilled = calculator([
+  { id: "LIME80", name: "Calcário 80", code: "LIME80", kind: "LIMESTONE", active: true, guaranteesPercent: {}, prntPercent: 80, pricePerTon: null },
+], { mode: "LIME", limeRequirementTonHaPrnt100: 4.74, areaHa: 2 });
+assert.match(limePrefilled.html(), />5,925 t\/ha</);
+assert.match(limePrefilled.html(), />11,85 t</);
+
 const lime = calculator([{ id: "LIME", name: "Calcário cadastrado", code: "LIME", kind: "LIMESTONE", active: true, guaranteesPercent: {}, prntPercent: null, pricePerTon: null }]);
 lime.change("Tipo de cálculo", "LIME");
 assert.match(lime.html(), /não possui PRNT cadastrado/);
