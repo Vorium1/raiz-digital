@@ -93,6 +93,24 @@ assert.deepEqual(
   {min:4.2,max:5.4},
 );
 
+const layerOnly=computePlanningLimingTarget({
+  cropCode:"SOYBEAN",
+  position:0,
+  state:"RS",
+  managementSystem:"NO_TILL_CONSOLIDATED_UNSPECIFIED",
+  labResults:[
+    row("A","PH",5.2),
+    row("A","SMP",5.6),
+  ],
+  yearsSinceLastLiming:null,
+  restrictionAssessment:null,
+  reanalysisRequired:false,
+});
+assert.equal(layerOnly.ready,true);
+assert.equal(layerOnly.methodScope,"LAYER_REQUIREMENT");
+assert.equal(layerOnly.generalDoseTonHaPrnt100,5.4);
+assert.equal(layerOnly.commercialTargetTonHaPrnt100,null,"necessidade de camada não pode virar aplicação/produto");
+
 const noApply=computePlanningLimingTarget({
   cropCode:"SOYBEAN",
   position:0,
