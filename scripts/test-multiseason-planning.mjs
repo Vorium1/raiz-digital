@@ -1,15 +1,37 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { executeMultiseasonPlan, resolvePlanningCapability, resolvePlanningScenarioPersistenceStatus } from "../src/domain/multiseason-planning.ts";
+import { executeMultiseasonPlan, resolvePlanningCapability, resolvePlanningScenarioPersistenceStatus, soilReanalysisStatus } from "../src/domain/multiseason-planning.ts";
 assert.equal(resolvePlanningCapability("SOYBEAN").status, "PARTIAL");
 assert.equal(resolvePlanningCapability("UNKNOWN").status, "UNSUPPORTED");
 const noEvidence = executeMultiseasonPlan({ crops: [{ cropCode: "SOYBEAN" }], hasBaseEvidence: false });
 assert.equal(noEvidence[0].limitations[0], "INSUFFICIENT_EVIDENCE");
-const plan = executeMultiseasonPlan({ crops: [{ cropCode: "SOYBEAN" }, { cropCode: "WHEAT" }, { cropCode: "RICE" }], hasBaseEvidence: true });
+const unresolvedDates = executeMultiseasonPlan({
+  crops: [{ cropCode: "SOYBEAN" }, { cropCode: "WHEAT" }, { cropCode: "RICE" }],
+  hasBaseEvidence: true,
+});
+assert.equal(unresolvedDates[2].status, "PARTIAL");
+assert.ok(unresolvedDates[2].limitations.includes("BASE_SAMPLE_DATE_UNKNOWN"));
+assert.equal(unresolvedDates[2].reanalysisRequired, false);
+
+const plan = executeMultiseasonPlan({
+  crops: [
+    { cropCode: "SOYBEAN", plannedDate: "2027-10-01" },
+    { cropCode: "WHEAT", plannedDate: "2028-10-01" },
+    { cropCode: "RICE", plannedDate: "2029-09-15" },
+  ],
+  hasBaseEvidence: true,
+  baseSampledFrom: "2026-09-15",
+});
 assert.equal(plan[0].status, "PARTIAL");
 assert.equal(plan[1].status, "PARTIAL");
 assert.equal(plan[2].status, "REANALYSIS_REQUIRED");
 assert.equal(plan[2].reanalysisRequired, true);
+assert.equal(plan[2].reanalysisDueAt, "2029-09-15");
+
+assert.deepEqual(
+  soilReanalysisStatus({ baseSampledFrom: "2026-09-15", plannedDate: null }),
+  { required: false, resolved: false, limitation: "PLANNED_DATE_UNKNOWN", dueAt: "2029-09-15" },
+);
 assert.equal(resolvePlanningScenarioPersistenceStatus([]), "DRAFT");
 assert.equal(resolvePlanningScenarioPersistenceStatus(plan), "REANALYSIS_REQUIRED");
 assert.equal(
@@ -17,8 +39,19 @@ assert.equal(
   "CALCULATED",
 );
 const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
+const planningDomain = readFileSync(new URL("../src/domain/multiseason-planning.ts", import.meta.url), "utf8");
 assert.match(calculateRoute, /writers\.has\(s\.role\)/);
 assert.match(calculateRoute, /status:403/);
+assert.doesNotMatch(
+  planningDomain,
+  /position\s*>=\s*2/,
+  "posição do cultivo não pode definir sozinha quando a reanálise vence",
+);
+assert.match(
+  planningDomain,
+  /SOIL_REANALYSIS_MAX_YEARS = 3/,
+  "prazo homologado precisa estar explícito e versionável no domínio",
+);
 
 const repository = readFileSync(new URL("../src/lib/repositories/planning.ts", import.meta.url), "utf8");
 const editor = readFileSync(new URL("../src/components/planning-scenario-editor.tsx", import.meta.url), "utf8");
