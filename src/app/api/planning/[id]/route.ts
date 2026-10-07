@@ -3,6 +3,19 @@ import { getPlanningScenario, updatePlanningScenario, PlanningError } from "@/li
 
 const writers=new Set(["SUPER_ADMIN","TENANT_ADMIN","AGRONOMIST"]);
 const previousCropCodes=new Set(["SOYBEAN","CORN","OTHER"]);
+const managementSystems=new Set(["CONVENTIONAL","NO_TILL_ESTABLISHMENT","NO_TILL_CONSOLIDATED_UNSPECIFIED","NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS","NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS","OTHER"]);
+
+function optionalNonNegativeNumber(value:unknown,label:string){
+  if(value==null||value==="")return null;
+  const n=typeof value==="number"?value:Number(value);
+  if(!Number.isFinite(n)||n<0)throw new PlanningError(`${label} deve ser número maior ou igual a zero.`,400);
+  return Math.round(n*100)/100;
+}
+function nullableBoolean(value:unknown,label:string){
+  if(value==null||value==="")return null;
+  if(value===true||value===false)return value;
+  throw new PlanningError(`${label} deve ser sim, não ou não informado.`,400);
+}
 
 function optionalText(value:unknown,label:string,max=5000){
   if(value==null)return null;
@@ -36,6 +49,13 @@ export async function PATCH(r:Request,{params}:{params:Promise<{id:string}>}){
     if(!name||name.length>160)return Response.json({error:"Nome necessário e com até 160 caracteres."},{status:400});
 
     const irrigated=b.irrigated===true?true:b.irrigated===false?false:null;
+    const managementSystemRaw=typeof b.managementSystem==="string"&&b.managementSystem.trim()
+      ? b.managementSystem.trim().toUpperCase()
+      : null;
+    if(managementSystemRaw&&!managementSystems.has(managementSystemRaw)){
+      return Response.json({error:"Sistema de manejo estruturado inválido."},{status:400});
+    }
+
     const previousCropCodeRaw=typeof b.previousCropCode==="string"&&b.previousCropCode.trim()
       ? b.previousCropCode.trim().toUpperCase()
       : null;
@@ -49,13 +69,18 @@ export async function PATCH(r:Request,{params}:{params:Promise<{id:string}>}){
       name,
       irrigated,
       notes:optionalText(b.notes,"Observações")??"",
-      managementSystem:optionalText(b.managementSystem,"Sistema de manejo",160),
+      managementSystem:managementSystemRaw,
       irrigationType:optionalText(b.irrigationType,"Tipo de irrigação",160),
       irrigationCapacityNotes:optionalText(b.irrigationCapacityNotes,"Capacidade/limitação de irrigação"),
       waterAvailabilityNotes:optionalText(b.waterAvailabilityNotes,"Disponibilidade hídrica"),
       knownRestrictions:optionalText(b.knownRestrictions,"Restrições conhecidas"),
       previousCrop:optionalText(b.previousCrop,"Cultura anterior",160),
       previousCropCode:previousCropCodeRaw as "SOYBEAN"|"CORN"|"OTHER"|null,
+      yearsSinceLastLiming:optionalNonNegativeNumber(b.yearsSinceLastLiming,"Anos desde a última calagem"),
+      limingYieldBelowLocalAverageDrought:nullableBoolean(b.limingYieldBelowLocalAverageDrought,"Produtividade abaixo da média local em seca"),
+      limingCompactionRestrictsRootGrowth:nullableBoolean(b.limingCompactionRestrictsRootGrowth,"Compactação restringindo raízes"),
+      limingPhosphorus10To20BelowCritical:nullableBoolean(b.limingPhosphorus10To20BelowCritical,"Fósforo 10–20 cm abaixo do crítico"),
+      limingAgronomistConfirmedIncorporation:nullableBoolean(b.limingAgronomistConfirmedIncorporation,"Confirmação agronômica de incorporação"),
       recentCropHistory:optionalText(b.recentCropHistory,"Histórico recente de culturas"),
       lastSoilCorrection:optionalText(b.lastSoilCorrection,"Última correção de solo"),
       fertilizationHistory:optionalText(b.fertilizationHistory,"Histórico de adubação"),
