@@ -7,6 +7,7 @@ import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-para
 import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
 import { blockedPlanningPkTargets, computePlanningPkTargets, planningCropProfileCode, summarizePlanningPkResults } from "@/domain/multiseason-pk";
 import { blockedPlanningSulfur, computePlanningSulfurTarget, summarizePlanningSulfurResults } from "@/domain/multiseason-sulfur";
+import { blockedPlanningNitrogen, computePlanningNitrogenTarget, summarizePlanningNitrogenResults } from "@/domain/multiseason-nitrogen";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -22,6 +23,7 @@ const scenarioSelect = `planning_scenarios.id::text,
   planning_scenarios.water_availability_notes AS "waterAvailabilityNotes",
   planning_scenarios.known_restrictions AS "knownRestrictions",
   planning_scenarios.previous_crop AS "previousCrop",
+  planning_scenarios.previous_crop_code AS "previousCropCode",
   planning_scenarios.recent_crop_history AS "recentCropHistory",
   planning_scenarios.last_soil_correction AS "lastSoilCorrection",
   planning_scenarios.fertilization_history AS "fertilizationHistory",
@@ -122,6 +124,7 @@ export async function updatePlanningScenario(input:{
   waterAvailabilityNotes?:string|null;
   knownRestrictions?:string|null;
   previousCrop?:string|null;
+  previousCropCode?:"SOYBEAN"|"CORN"|"OTHER"|null;
   recentCropHistory?:string|null;
   lastSoilCorrection?:string|null;
   fertilizationHistory?:string|null;
@@ -143,6 +146,7 @@ export async function updatePlanningScenario(input:{
            last_soil_correction=nullif($13,''),
            fertilization_history=nullif($14,''),
            organic_inputs=nullif($15,''),
+           previous_crop_code=$16,
            status='DRAFT',
            updated_at=now()
        WHERE tenant_id=$1::uuid AND id=$2::uuid
@@ -163,6 +167,7 @@ export async function updatePlanningScenario(input:{
         input.lastSoilCorrection?.trim()??"",
         input.fertilizationHistory?.trim()??"",
         input.organicInputs?.trim()??"",
+        input.previousCropCode??null,
       ],
     )).rows[0];
     if(!row)throw new PlanningError("Planejamento não encontrado.",404);
@@ -178,6 +183,7 @@ export async function updatePlanningScenario(input:{
         hasIrrigationType:Boolean(row.irrigationType),
         hasWaterContext:Boolean(row.waterAvailabilityNotes),
         hasCropHistory:Boolean(row.previousCrop||row.recentCropHistory),
+        previousCropCode:row.previousCropCode??null,
         hasFertilizationHistory:Boolean(row.fertilizationHistory),
         hasOrganicInputs:Boolean(row.organicInputs),
       },
@@ -467,6 +473,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       targetCropProfile:null,
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
       deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
+      deterministicNitrogen:blockedPlanningNitrogen(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -477,6 +484,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       targetCropProfile:null,
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
       deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
+      deterministicNitrogen:blockedPlanningNitrogen(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -492,6 +500,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
         targetCropProfile:null,
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["PLANNING_CROP_PROFILE_NOT_MAPPED"]),
         deterministicSulfur:blockedPlanningSulfur(["S_CROP_RULE_NOT_IMPLEMENTED"]),
+        deterministicNitrogen:blockedPlanningNitrogen(["N_CROP_RULE_NOT_IMPLEMENTED"]),
       });
       continue;
     }
@@ -517,6 +526,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
         }:null,
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
         deterministicSulfur:blockedPlanningSulfur(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
+        deterministicNitrogen:blockedPlanningNitrogen(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
       });
       continue;
     }
@@ -536,6 +546,17 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       reanalysisRequired:result.reanalysisRequired,
       irrigated:scenario.crops[result.position]?.irrigated??null,
     });
+    const precedingCropCode=result.position===0
+      ? scenario.previousCropCode??null
+      : scenario.crops[result.position-1]?.cropCode??null;
+    const deterministicNitrogen=computePlanningNitrogenTarget({
+      cropCode:result.crop.cropCode,
+      targetYield:result.crop.targetYield,
+      targetUnit:result.crop.targetUnit,
+      labResults,
+      reanalysisRequired:result.reanalysisRequired,
+      precedingCropCode,
+    });
 
     enriched.push({
       ...result,
@@ -553,6 +574,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       },
       deterministicPk,
       deterministicSulfur,
+      deterministicNitrogen,
     });
   }
 
@@ -584,7 +606,8 @@ async function buildPlanningCalculationWithClient(
   const status=resolvePlanningScenarioPersistenceStatus(results);
   const accumulatedPk=summarizePlanningPkResults(results,scenario.areaHa);
   const accumulatedSulfur=summarizePlanningSulfurResults(results,scenario.areaHa);
-  return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur};
+  const accumulatedNitrogen=summarizePlanningNitrogenResults(results,scenario.areaHa);
+  return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur,accumulatedNitrogen};
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
@@ -610,6 +633,9 @@ export async function calculatePlanningScenario(tenantId:string,scenarioId:strin
           ).length,
           sulfurReadyCount:calculation.results.filter((result:any)=>
             result.deterministicSulfur?.ready
+          ).length,
+          nitrogenReadyCount:calculation.results.filter((result:any)=>
+            result.deterministicNitrogen?.ready
           ).length,
         },
       });
