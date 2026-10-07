@@ -188,6 +188,13 @@ function decisionForNutrient(input:{
   };
 }
 
+export function blockedPlanningMicronutrients(blockers:string[]):PlanningMicronutrients{
+  return Object.fromEntries(NUTRIENTS.map((nutrient)=>[
+    nutrient,
+    emptyDecision(nutrient,"BLOCKED",blockers),
+  ])) as PlanningMicronutrients;
+}
+
 export function computePlanningMicronutrients(input:{
   cropCode:string;
   labResults:LabResultInput[];
@@ -195,16 +202,10 @@ export function computePlanningMicronutrients(input:{
 }):PlanningMicronutrients{
   const crop=cropCode(input.cropCode);
   if(input.reanalysisRequired){
-    return Object.fromEntries(NUTRIENTS.map((nutrient)=>[
-      nutrient,
-      emptyDecision(nutrient,"BLOCKED",["REANALYSIS_REQUIRED_BEFORE_MICRONUTRIENT_CLASSIFICATION"]),
-    ])) as PlanningMicronutrients;
+    return blockedPlanningMicronutrients(["REANALYSIS_REQUIRED_BEFORE_MICRONUTRIENT_CLASSIFICATION"]);
   }
   if(!crop){
-    return Object.fromEntries(NUTRIENTS.map((nutrient)=>[
-      nutrient,
-      emptyDecision(nutrient,"BLOCKED",["MICRO_CROP_RULE_NOT_IMPLEMENTED"]),
-    ])) as PlanningMicronutrients;
+    return blockedPlanningMicronutrients(["MICRO_CROP_RULE_NOT_IMPLEMENTED"]);
   }
   return Object.fromEntries(NUTRIENTS.map((nutrient)=>[
     nutrient,
