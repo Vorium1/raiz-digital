@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildPlanningCommercialSourceTargets } from "../src/lib/repositories/planning-commercial.ts";
+import { buildPlanningCommercialSourceTargets } from "../src/domain/multiseason-commercial.ts";
 
 const crop={
   id:"00000000-0000-4000-8000-000000000127",
