@@ -57,6 +57,15 @@ function pkTargetLabel(target:any){
   return `${target.doseKgPerHa} kg/ha`;
 }
 
+function micronutrientLabel(decision:any){
+  if(!decision)return "não disponível";
+  if(decision.status==="NOT_AVAILABLE")return "não disponível";
+  if(decision.status==="BLOCKED")return `bloqueado · ${(decision.blockers??[]).join(" · ")}`;
+  if(decision.status==="UNIFORM")return decision.classification??"sem classe";
+  const classes=[...new Set((decision.pointClassifications??[]).map((point:any)=>point.classification).filter(Boolean))];
+  return `espacial · ${classes.join(" / ")||"classes por ponto"}`;
+}
+
 function limingTargetLabel(target:any){
   if(!target)return "não calculado";
   if(!target.ready)return `bloqueado · ${(target.blockers??[]).join(" · ")||"sem decisão determinística"}`;
@@ -513,6 +522,7 @@ export function PlanningScenarioEditor({
         const sulfur=result.deterministicSulfur;
         const nitrogen=result.deterministicNitrogen;
         const liming=result.deterministicLiming;
+        const micros=result.deterministicMicronutrients;
         return <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
           <strong>{result.crop.cropCode}: {result.status}</strong>
           <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Contexto mínimo disponível."}</p>
@@ -525,6 +535,18 @@ export function PlanningScenarioEditor({
             {liming?.commercialTargetTonHaPrnt100>0&&<div style={{marginTop:8}}>
               <a className="button secondary" href={limingCalculatorHref(liming,scenario.areaHa)}>Calcário → produto comercial</a>
             </div>}
+          </div>}
+          {micros&&<div className="card" style={{padding:12,margin:"10px 0"}}>
+            <span>Micronutrientes · classificação analítica, sem dose automática</span>
+            <div className="summary-strip" style={{marginTop:8}}>
+              {(["B","ZN","CU","MN"] as const).map((nutrient)=>
+                <div className="summary-item" key={nutrient}>
+                  <span>{nutrient}</span>
+                  <strong>{micronutrientLabel(micros[nutrient])}</strong>
+                </div>
+              )}
+            </div>
+            <small>“Baixo” não é convertido em kg/ha. Método, unidade e camada precisam corresponder à regra CQFS carregada.</small>
           </div>}
           <div className="summary-strip" style={{margin:"10px 0"}}>
             <div className="summary-item">
