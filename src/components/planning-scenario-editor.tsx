@@ -152,7 +152,7 @@ export function PlanningScenarioEditor({
       setScenarioDraft((current)=>({...current,...p.scenario,crops:current.crops}));
       setResults([]);
       setAccumulatedPk(null);
-    setAccumulatedSulfur(null);
+      setAccumulatedSulfur(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -202,7 +202,7 @@ export function PlanningScenarioEditor({
       setCrops(next.map((item,position)=>({...item,position})));
       setResults([]);
       setAccumulatedPk(null);
-    setAccumulatedSulfur(null);
+      setAccumulatedSulfur(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
