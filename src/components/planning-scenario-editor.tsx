@@ -31,6 +31,11 @@ type Scenario={
   irrigated:boolean|null;
   notes:string;
   managementSystem:string|null;
+  yearsSinceLastLiming:number|null;
+  limingYieldBelowLocalAverageDrought:boolean|null;
+  limingCompactionRestrictsRootGrowth:boolean|null;
+  limingPhosphorus10To20BelowCritical:boolean|null;
+  limingAgronomistConfirmedIncorporation:boolean|null;
   irrigationType:string|null;
   irrigationCapacityNotes:string|null;
   waterAvailabilityNotes:string|null;
@@ -50,6 +55,17 @@ function pkTargetLabel(target:any){
     return `${target.minimumKgPerHa}–${target.maximumKgPerHa} kg/ha`;
   }
   return `${target.doseKgPerHa} kg/ha`;
+}
+
+function limingTargetLabel(target:any){
+  if(!target)return "não calculado";
+  if(!target.ready)return `bloqueado · ${(target.blockers??[]).join(" · ")||"sem decisão determinística"}`;
+  if(target.status==="UNIFORM_NO_APPLY")return "não aplicar";
+  if(target.generalDoseTonHaPrnt100!=null)return `${target.generalDoseTonHaPrnt100} t/ha PRNT100`;
+  if(target.minimumTonHaPrnt100!=null&&target.maximumTonHaPrnt100!=null){
+    return `${target.minimumTonHaPrnt100}–${target.maximumTonHaPrnt100} t/ha PRNT100 · espacial`;
+  }
+  return target.status;
 }
 
 function nitrogenTargetLabel(target:any){
@@ -77,6 +93,16 @@ function calculatorHref(nutrient:"P2O5"|"K2O"|"S"|"N",target:any,areaHa:number|n
   const dose=target?.doseKgPerHa??target?.doseKgSPerHa??target?.doseKgNPerHa??null;
   if(target?.ready&&minimum===maximum&&typeof dose==="number"&&dose>0){
     params.set("target",String(dose));
+  }
+  return `/calculadoras?${params.toString()}`;
+}
+
+function limingCalculatorHref(target:any,areaHa:number|null){
+  const params=new URLSearchParams();
+  params.set("mode","LIME");
+  if(areaHa!=null)params.set("area",String(areaHa));
+  if(target?.commercialTargetTonHaPrnt100!=null&&target.commercialTargetTonHaPrnt100>0){
+    params.set("limeRequirement",String(target.commercialTargetTonHaPrnt100));
   }
   return `/calculadoras?${params.toString()}`;
 }
@@ -110,6 +136,7 @@ export function PlanningScenarioEditor({
   const [accumulatedPk,setAccumulatedPk]=useState<any|null>(null);
   const [accumulatedSulfur,setAccumulatedSulfur]=useState<any|null>(null);
   const [accumulatedNitrogen,setAccumulatedNitrogen]=useState<any|null>(null);
+  const [initialLiming,setInitialLiming]=useState<any|null>(null);
   const [snapshots,setSnapshots]=useState(initialSnapshots);
   const [selectedSnapshot,setSelectedSnapshot]=useState<any|null>(null);
   const [cropCode,setCropCode]=useState("SOYBEAN");
@@ -138,6 +165,7 @@ export function PlanningScenarioEditor({
     setAccumulatedPk(null);
     setAccumulatedSulfur(null);
     setAccumulatedNitrogen(null);
+    setInitialLiming(null);
   };
 
   async function saveScenarioContext(){
@@ -149,6 +177,11 @@ export function PlanningScenarioEditor({
         irrigated:scenarioDraft.irrigated,
         notes:scenarioDraft.notes,
         managementSystem:scenarioDraft.managementSystem,
+        yearsSinceLastLiming:scenarioDraft.yearsSinceLastLiming,
+        limingYieldBelowLocalAverageDrought:scenarioDraft.limingYieldBelowLocalAverageDrought,
+        limingCompactionRestrictsRootGrowth:scenarioDraft.limingCompactionRestrictsRootGrowth,
+        limingPhosphorus10To20BelowCritical:scenarioDraft.limingPhosphorus10To20BelowCritical,
+        limingAgronomistConfirmedIncorporation:scenarioDraft.limingAgronomistConfirmedIncorporation,
         irrigationType:scenarioDraft.irrigationType,
         irrigationCapacityNotes:scenarioDraft.irrigationCapacityNotes,
         waterAvailabilityNotes:scenarioDraft.waterAvailabilityNotes,
@@ -166,6 +199,7 @@ export function PlanningScenarioEditor({
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
       setAccumulatedNitrogen(null);
+    setInitialLiming(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -217,6 +251,7 @@ export function PlanningScenarioEditor({
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
       setAccumulatedNitrogen(null);
+    setInitialLiming(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
@@ -228,6 +263,7 @@ export function PlanningScenarioEditor({
       setAccumulatedPk(calculation.accumulatedPk??null);
       setAccumulatedSulfur(calculation.accumulatedSulfur??null);
       setAccumulatedNitrogen(calculation.accumulatedNitrogen??null);
+      setInitialLiming(calculation.initialLiming??null);
       setScenario((current)=>({...current,status:calculation.status}));
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
@@ -270,7 +306,64 @@ export function PlanningScenarioEditor({
           </select>
         </label>
         <label>Sistema de manejo/calagem
-          <input value={scenarioDraft.managementSystem??""} onChange={e=>setScenarioDraft({...scenarioDraft,managementSystem:e.target.value})} placeholder="Informado pelo responsável"/>
+          <select
+            value={scenarioDraft.managementSystem??""}
+            onChange={e=>setScenarioDraft({...scenarioDraft,managementSystem:e.target.value||null})}
+          >
+            <option value="">Não informado</option>
+            <option value="CONVENTIONAL">Preparo convencional</option>
+            <option value="NO_TILL_ESTABLISHMENT">Implantação do plantio direto</option>
+            <option value="NO_TILL_CONSOLIDATED_UNSPECIFIED">Plantio direto consolidado · condição 10–20 cm ainda não definida</option>
+            <option value="NO_TILL_CONSOLIDATED_NO_10_20_RESTRICTIONS">Plantio direto consolidado · sem restrição em 10–20 cm</option>
+            <option value="NO_TILL_CONSOLIDATED_WITH_10_20_RESTRICTIONS">Plantio direto consolidado · com restrição em 10–20 cm</option>
+            <option value="OTHER">Outro / não classificado</option>
+          </select>
+        </label>
+        <label>Anos desde a última calagem
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={scenarioDraft.yearsSinceLastLiming??""}
+            onChange={e=>setScenarioDraft({
+              ...scenarioDraft,
+              yearsSinceLastLiming:e.target.value===""?null:Number(e.target.value),
+            })}
+            placeholder="Não informado"
+          />
+          <small>Campo estruturado; o texto livre de “última correção” não é convertido automaticamente em anos.</small>
+        </label>
+        <label>Produtividade abaixo da média local, especialmente em seca?
+          <select
+            value={triState(scenarioDraft.limingYieldBelowLocalAverageDrought)}
+            onChange={e=>setScenarioDraft({...scenarioDraft,limingYieldBelowLocalAverageDrought:fromTriState(e.target.value)})}
+          >
+            <option value="unknown">Não avaliado</option><option value="yes">Sim</option><option value="no">Não</option>
+          </select>
+        </label>
+        <label>Compactação restringe raízes em profundidade?
+          <select
+            value={triState(scenarioDraft.limingCompactionRestrictsRootGrowth)}
+            onChange={e=>setScenarioDraft({...scenarioDraft,limingCompactionRestrictsRootGrowth:fromTriState(e.target.value)})}
+          >
+            <option value="unknown">Não avaliado</option><option value="yes">Sim</option><option value="no">Não</option>
+          </select>
+        </label>
+        <label>P em 10–20 cm está abaixo do crítico?
+          <select
+            value={triState(scenarioDraft.limingPhosphorus10To20BelowCritical)}
+            onChange={e=>setScenarioDraft({...scenarioDraft,limingPhosphorus10To20BelowCritical:fromTriState(e.target.value)})}
+          >
+            <option value="unknown">Não avaliado</option><option value="yes">Sim</option><option value="no">Não</option>
+          </select>
+        </label>
+        <label>Agrônomo confirmou a decisão de incorporação?
+          <select
+            value={triState(scenarioDraft.limingAgronomistConfirmedIncorporation)}
+            onChange={e=>setScenarioDraft({...scenarioDraft,limingAgronomistConfirmedIncorporation:fromTriState(e.target.value)})}
+          >
+            <option value="unknown">Não avaliado</option><option value="yes">Sim</option><option value="no">Não</option>
+          </select>
         </label>
         <label>Tipo de irrigação
           <input value={scenarioDraft.irrigationType??""} onChange={e=>setScenarioDraft({...scenarioDraft,irrigationType:e.target.value})} placeholder="Não inferir se ausente"/>
@@ -410,11 +503,20 @@ export function PlanningScenarioEditor({
         const k=result.deterministicPk?.K2O;
         const sulfur=result.deterministicSulfur;
         const nitrogen=result.deterministicNitrogen;
+        const liming=result.deterministicLiming;
         return <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
           <strong>{result.crop.cropCode}: {result.status}</strong>
           <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Contexto mínimo disponível."}</p>
           {result.targetCropProfile&&
             <p><small>Perfil: {result.targetCropProfile.code} · {result.targetCropProfile.semanticVersion} · {result.targetCropProfile.status}</small></p>}
+          {result.position===0&&<div className="card" style={{padding:12,margin:"10px 0"}}>
+            <span>Calcário PRNT100</span>
+            <strong style={{display:"block"}}>{limingTargetLabel(liming)}</strong>
+            {liming?.methodId&&<small>Método: {liming.methodId} · perfil de amostragem: {liming.samplingProfile??"—"}</small>}
+            {liming?.commercialTargetTonHaPrnt100>0&&<div style={{marginTop:8}}>
+              <a className="button secondary" href={limingCalculatorHref(liming,scenario.areaHa)}>Calcário → produto comercial</a>
+            </div>}
+          </div>}
           <div className="summary-strip" style={{margin:"10px 0"}}>
             <div className="summary-item">
               <span>P₂O₅</span>
@@ -489,6 +591,16 @@ export function PlanningScenarioEditor({
             ?"completo para os cultivos listados"
             :`parcial: ${accumulatedSulfur.readyCropCount} calculado(s), ${accumulatedSulfur.blockedCropCount} bloqueado(s)`}
         </p>
+      </article>}
+      {initialLiming&&<article className="card" style={{padding:16,marginTop:12}}>
+        <h3>Calagem inicial do cenário</h3>
+        <p><strong>Decisão:</strong> {limingTargetLabel(initialLiming)}</p>
+        {initialLiming.totalCommercialTargetTon!=null&&
+          <p><strong>Total para o talhão:</strong> {initialLiming.totalCommercialTargetTon} t de equivalente PRNT100 antes da conversão para produto comercial.</p>}
+        {initialLiming.status==="SPATIAL"&&
+          <small>A análise sustenta decisão espacial/faixa; a RAIZ não transforma isso em média geral sem evidência de ponderação válida.</small>}
+        {initialLiming.commercialTargetTonHaPrnt100>0&&
+          <div style={{marginTop:8}}><a className="button secondary" href={limingCalculatorHref(initialLiming,scenario.areaHa)}>Converter PRNT100 em calcário comercial</a></div>}
       </article>}
       {accumulatedNitrogen&&<article className="card" style={{padding:16,marginTop:12}}>
         <h3>Nitrogênio conhecido do horizonte</h3>
