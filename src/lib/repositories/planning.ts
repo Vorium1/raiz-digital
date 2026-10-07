@@ -40,7 +40,11 @@ export async function listPlanningBaseAnalyses(tenantId:string,userId?:string){
             f.name AS "fieldName",
             cs.season_label AS "seasonLabel",
             cs.current_crop AS "currentCrop",
-            a.created_at::text AS "createdAt",
+            min(ls.sampled_at)::text AS "sampledFrom",
+            max(ls.sampled_at)::text AS "sampledTo",
+            min(ls.received_at)::text AS "receivedFrom",
+            max(ls.received_at)::text AS "receivedTo",
+            a.created_at::text AS "registeredAt",
             count(lr.id)::int AS "resultCount"
      FROM analyses a
      JOIN crop_seasons cs ON cs.tenant_id=a.tenant_id AND cs.id=a.crop_season_id
@@ -49,7 +53,7 @@ export async function listPlanningBaseAnalyses(tenantId:string,userId?:string){
      LEFT JOIN lab_results lr ON lr.tenant_id=ls.tenant_id AND lr.lab_sample_id=ls.id AND lr.numeric_value IS NOT NULL
      WHERE a.tenant_id=$1::uuid
      GROUP BY a.id,f.id,cs.id
-     ORDER BY a.created_at DESC`,
+     ORDER BY coalesce(max(ls.sampled_at), a.created_at::date) DESC, a.created_at DESC`,
     [tenantId],
   )).rows);
 }
@@ -61,7 +65,17 @@ async function getPlanningScenarioWithClient(
   tenantId: string,
   scenarioId: string,
 ) {
-  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", cl.name AS "clientName", ba.code AS "baseAnalysisCode", ba.created_at::text AS "baseAnalysisCreatedAt" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN analyses ba ON ba.tenant_id=planning_scenarios.tenant_id AND ba.id=planning_scenarios.base_analysis_id WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
+  const scenario=(await c.query(`SELECT ${scenarioSelect}, f.name AS "fieldName", f.area_ha::float8 AS "areaHa", p.name AS "propertyName", cl.name AS "clientName", ba.code AS "baseAnalysisCode", base_dates."sampledFrom" AS "baseAnalysisSampledFrom", base_dates."sampledTo" AS "baseAnalysisSampledTo", base_dates."receivedFrom" AS "baseAnalysisReceivedFrom", base_dates."receivedTo" AS "baseAnalysisReceivedTo" FROM planning_scenarios planning_scenarios JOIN fields f ON f.tenant_id=planning_scenarios.tenant_id AND f.id=planning_scenarios.field_id JOIN properties p ON p.tenant_id=f.tenant_id AND p.id=f.property_id JOIN clients cl ON cl.tenant_id=p.tenant_id AND cl.id=p.client_id LEFT JOIN analyses ba ON ba.tenant_id=planning_scenarios.tenant_id AND ba.id=planning_scenarios.base_analysis_id
+LEFT JOIN LATERAL (
+  SELECT min(ls.sampled_at)::text AS "sampledFrom",
+         max(ls.sampled_at)::text AS "sampledTo",
+         min(ls.received_at)::text AS "receivedFrom",
+         max(ls.received_at)::text AS "receivedTo"
+  FROM lab_samples ls
+  WHERE ls.tenant_id=planning_scenarios.tenant_id
+    AND ls.analysis_id=planning_scenarios.base_analysis_id
+) base_dates ON true
+WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
   if(!scenario) throw new PlanningError("Planejamento não encontrado.",404);
   const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, notes FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
   return {...scenario,crops};
