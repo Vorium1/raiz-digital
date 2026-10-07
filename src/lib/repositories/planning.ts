@@ -367,8 +367,9 @@ export async function calculatePlanningScenario(tenantId:string,scenarioId:strin
   return withTenant({tenantId,userId},async c=>{
     const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
     const results=executeMultiseasonPlan({
-      crops:scenario.crops.map((crop:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>crop),
+      crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
       hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
+      baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
     });
     const status=resolvePlanningScenarioPersistenceStatus(results);
     await c.query(
@@ -393,8 +394,9 @@ export async function createPlanningSnapshot(tenantId:string,scenarioId:string,u
   return withTenant({tenantId,userId},async c=>{
     const scenario=await getPlanningScenarioWithClient(c,tenantId,scenarioId);
     const results=executeMultiseasonPlan({
-      crops:scenario.crops.map((crop:{cropCode:string;targetYield?:number|null;targetUnit?:string|null})=>crop),
+      crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
       hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
+      baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
     });
     const status=resolvePlanningScenarioPersistenceStatus(results);
     const calculation={scenarioId,status,results};
