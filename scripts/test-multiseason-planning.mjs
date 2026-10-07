@@ -95,6 +95,26 @@ assert.match(
   "orquestração fail-closed deve usar evidência real e não apenas UUID da análise",
 );
 assert.match(
+  repository,
+  /runAgronomicEngine\(\{cropProfile:profile,labResults\}\)/,
+  "plurissafras deve reprocessar o laudo-base com o perfil da cultura planejada",
+);
+assert.match(
+  repository,
+  /computePlanningPkTargets\(/,
+  "P/K do planejamento deve reutilizar o motor determinístico oficial",
+);
+assert.match(
+  repository,
+  /cultivationOrderAfterSoilAnalysis:result\.position\+1/,
+  "ordem do cultivo precisa ser explícita no motor P/K",
+);
+assert.match(
+  repository,
+  /FOR SHARE/,
+  "cálculo/snapshot deve bloquear mudança concorrente da análise-base enquanto deriva doses",
+);
+assert.match(
   planningWorkspace,
   /baseAnalysisId:baseAnalysisId\|\|null/,
   "workspace deve enviar explicitamente a análise-base escolhida",
@@ -177,5 +197,20 @@ assert.match(
   editor,
   /Eles não criam doses, clima ou efeito residual por conta própria/,
   "entrevista declarada não pode ser apresentada como regra agronômica",
+);
+assert.match(
+  editor,
+  /P₂O₅ → produto/,
+  "dose exata calculada deve poder alimentar a calculadora comercial",
+);
+assert.match(
+  editor,
+  /Parcial|parcial:/i,
+  "acumulado deve deixar explícito quando existem cultivos bloqueados",
+);
+assert.doesNotMatch(
+  editor,
+  /target=60/,
+  "nenhum alvo fixo pode reaparecer na integração com a calculadora",
 );
 console.log("multiseason-planning: capability, evidência, base por talhão, snapshot imutável e ausência de alvo inventado aprovados");
