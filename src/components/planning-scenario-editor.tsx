@@ -208,7 +208,7 @@ export function PlanningScenarioEditor({
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
       setAccumulatedNitrogen(null);
-    setInitialLiming(null);
+      setInitialLiming(null);
     }catch(e){
       setError(e instanceof Error?e.message:String(e));
     }finally{
@@ -260,7 +260,7 @@ export function PlanningScenarioEditor({
       setAccumulatedPk(null);
       setAccumulatedSulfur(null);
       setAccumulatedNitrogen(null);
-    setInitialLiming(null);
+      setInitialLiming(null);
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
