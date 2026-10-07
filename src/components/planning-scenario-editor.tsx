@@ -43,6 +43,24 @@ type Scenario={
   crops:Crop[];
 };
 
+function pkTargetLabel(target:any){
+  if(!target?.ready)return `bloqueado · ${(target?.blockers??[]).join(" · ")||"sem dose determinística"}`;
+  if(target.minimumKgPerHa!==target.maximumKgPerHa){
+    return `${target.minimumKgPerHa}–${target.maximumKgPerHa} kg/ha`;
+  }
+  return `${target.doseKgPerHa} kg/ha`;
+}
+
+function calculatorHref(nutrient:"P2O5"|"K2O",target:any,areaHa:number|null){
+  const params=new URLSearchParams();
+  if(areaHa!=null)params.set("area",String(areaHa));
+  if(target?.ready&&target.minimumKgPerHa===target.maximumKgPerHa&&target.doseKgPerHa!=null){
+    params.set("nutrient",nutrient);
+    params.set("target",String(target.doseKgPerHa));
+  }
+  return `/calculadoras?${params.toString()}`;
+}
+
 function technicalDateLabel(from:string|null|undefined,to:string|null|undefined){
   if(!from)return "data técnica não registrada";
   const first=new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR");
@@ -69,6 +87,7 @@ export function PlanningScenarioEditor({
   const [scenarioDraft,setScenarioDraft]=useState({...initialScenario});
   const [crops,setCrops]=useState<Crop[]>(initialScenario.crops);
   const [results,setResults]=useState<any[]>([]);
+  const [accumulatedPk,setAccumulatedPk]=useState<any|null>(null);
   const [snapshots,setSnapshots]=useState(initialSnapshots);
   const [selectedSnapshot,setSelectedSnapshot]=useState<any|null>(null);
   const [cropCode,setCropCode]=useState("SOYBEAN");
@@ -94,6 +113,7 @@ export function PlanningScenarioEditor({
     setScenarioDraft(p.scenario);
     setCrops(p.scenario.crops);
     setResults([]);
+    setAccumulatedPk(null);
   };
 
   async function saveScenarioContext(){
@@ -172,7 +192,10 @@ export function PlanningScenarioEditor({
   async function calculate(){
     try{
       setError("");
-      setResults((await call(`/api/planning/${scenario.id}/calculate`,"POST")).results);
+      const calculation=await call(`/api/planning/${scenario.id}/calculate`,"POST");
+      setResults(calculation.results);
+      setAccumulatedPk(calculation.accumulatedPk??null);
+      setScenario((current)=>({...current,status:calculation.status}));
     }catch(e){setError(e instanceof Error?e.message:String(e));}
   }
 
@@ -271,7 +294,7 @@ export function PlanningScenarioEditor({
         </select>
       </label>
       <button className="button" onClick={add}>Adicionar cultivo</button>
-      <button className="button" onClick={calculate}>Calcular simulação</button>
+      <button className="button" onClick={calculate}>Calcular P/K e prontidão</button>
       <button className="button" onClick={snapshot}>Criar snapshot</button>
       {error&&<p role="alert">{error}</p>}
     </section>
@@ -333,14 +356,53 @@ export function PlanningScenarioEditor({
 
     {results.length>0&&<section>
       <h2>Resultados da simulação</h2>
-      {results.map(result=>
-        <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
+      <p>P/K abaixo usa o motor determinístico oficial da RAIZ. N, S, calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
+      {results.map(result=>{
+        const p=result.deterministicPk?.P2O5;
+        const k=result.deterministicPk?.K2O;
+        return <article className="card" style={{padding:14,margin:"8px 0"}} key={result.position}>
           <strong>{result.crop.cropCode}: {result.status}</strong>
-          <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Requisitos disponíveis para revisão."}</p>
-          {result.status!=="UNSUPPORTED"&&!result.reanalysisRequired&&
-            <a className="button" href={`/calculadoras?area=${scenario.areaHa??""}`}>Abrir calculadora comercial</a>}
-        </article>
-      )}
+          <p>{result.reanalysisRequired?"NOVA ANÁLISE NECESSÁRIA":result.limitations.join(" · ")||"Contexto mínimo disponível."}</p>
+          {result.targetCropProfile&&
+            <p><small>Perfil: {result.targetCropProfile.code} · {result.targetCropProfile.semanticVersion} · {result.targetCropProfile.status}</small></p>}
+          <div className="summary-strip" style={{margin:"10px 0"}}>
+            <div className="summary-item">
+              <span>P₂O₅</span>
+              <strong>{pkTargetLabel(p)}</strong>
+            </div>
+            <div className="summary-item">
+              <span>K₂O</span>
+              <strong>{pkTargetLabel(k)}</strong>
+            </div>
+          </div>
+          {(p?.ready||k?.ready)&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {p?.ready&&<a className="button secondary" href={calculatorHref("P2O5",p,scenario.areaHa)}>
+              {p.minimumKgPerHa===p.maximumKgPerHa?"P₂O₅ → produto":"Abrir calculadora para P₂O₅"}
+            </a>}
+            {k?.ready&&<a className="button secondary" href={calculatorHref("K2O",k,scenario.areaHa)}>
+              {k.minimumKgPerHa===k.maximumKgPerHa?"K₂O → produto":"Abrir calculadora para K₂O"}
+            </a>}
+          </div>}
+        </article>;
+      })}
+      {accumulatedPk&&<article className="card" style={{padding:16,marginTop:12}}>
+        <h3>Acumulado conhecido do horizonte</h3>
+        {(["P2O5","K2O"] as const).map(nutrient=>{
+          const item=accumulatedPk[nutrient];
+          return <p key={nutrient}>
+            <strong>{nutrient==="P2O5"?"P₂O₅":"K₂O"}:</strong>{" "}
+            {item.minimumKgPerHa===item.maximumKgPerHa
+              ? `${item.minimumKgPerHa} kg/ha`
+              : `${item.minimumKgPerHa}–${item.maximumKgPerHa} kg/ha`}
+            {item.totalMinimumKg!=null&&<> · talhão: {item.totalMinimumKg===item.totalMaximumKg
+              ? `${item.totalMinimumKg} kg`
+              : `${item.totalMinimumKg}–${item.totalMaximumKg} kg`}</>}
+            {" · "}
+            {item.complete?"completo para os cultivos listados":`parcial: ${item.readyCropCount} calculado(s), ${item.blockedCropCount} bloqueado(s)`}
+          </p>;
+        })}
+        <small>“Parcial” nunca completa cultivos bloqueados com zero ou média inventada.</small>
+      </article>}
     </section>}
 
     <section>
