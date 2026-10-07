@@ -58,6 +58,7 @@ const editor = readFileSync(new URL("../src/components/planning-scenario-editor.
 const migration = readFileSync(new URL("../db/migrations/047_multiseason_planning.sql", import.meta.url), "utf8");
 const planningWorkspace = readFileSync(new URL("../src/components/planning-workspace.tsx", import.meta.url), "utf8");
 const declaredContextMigration = readFileSync(new URL("../db/migrations/048_multiseason_declared_context.sql", import.meta.url), "utf8");
+const previousCropMigration = readFileSync(new URL("../db/migrations/049_multiseason_previous_crop_code.sql", import.meta.url), "utf8");
 
 assert.match(
   repository,
@@ -108,6 +109,26 @@ assert.match(
   repository,
   /computePlanningSulfurTarget\(/,
   "S do planejamento deve reutilizar os motores determinísticos existentes",
+);
+assert.match(
+  repository,
+  /computePlanningNitrogenTarget\(/,
+  "N do planejamento deve reutilizar o motor determinístico existente",
+);
+assert.match(
+  repository,
+  /result\.position===0\s*\? scenario\.previousCropCode\?\?null\s*:\s*scenario\.crops\[result\.position-1\]\?\.cropCode\?\?null/,
+  "primeiro cultivo usa predecessor estruturado e os seguintes usam a própria sequência",
+);
+assert.doesNotMatch(
+  repository,
+  /precedingCropCode=result\.position===0[\s\S]{0,120}scenario\.previousCrop\b/,
+  "texto livre de cultura anterior não pode alimentar automaticamente o motor de N",
+);
+assert.match(
+  repository,
+  /summarizePlanningNitrogenResults\(/,
+  "cálculo/snapshot deve preservar o acumulado conhecido de N",
 );
 assert.match(
   repository,
@@ -204,6 +225,16 @@ assert.match(declaredContextMigration, /ADD COLUMN recent_crop_history text/);
 assert.match(declaredContextMigration, /ADD COLUMN fertilization_history text/);
 assert.match(declaredContextMigration, /ADD COLUMN organic_inputs text/);
 assert.match(
+  previousCropMigration,
+  /ADD COLUMN previous_crop_code text/,
+  "categoria estruturada da cultura anterior precisa existir separada do texto livre",
+);
+assert.match(
+  previousCropMigration,
+  /SOYBEAN','CORN','OTHER/,
+  "cultura anterior estruturada deve usar enum fechado e UNKNOWN como null",
+);
+assert.match(
   editor,
   /Data prevista/,
   "cada cultivo deve expor a data prevista já existente no modelo",
@@ -227,6 +258,26 @@ assert.match(
   editor,
   /Enxofre conhecido do horizonte/,
   "UI deve separar o acumulado conhecido de S",
+);
+assert.match(
+  editor,
+  /Categoria da cultura anterior/,
+  "entrevista precisa expor predecessor estruturado para o primeiro cultivo",
+);
+assert.match(
+  editor,
+  /motor de N usa somente a categoria estruturada acima/,
+  "UI deve deixar explícito que texto livre não alimenta N",
+);
+assert.match(
+  editor,
+  /Nitrogênio conhecido do horizonte/,
+  "UI deve separar o acumulado conhecido de N",
+);
+assert.match(
+  editor,
+  /calculatorHref\("N",nitrogen,scenario\.areaHa\)/,
+  "N determinístico pode alimentar a calculadora sem alvo inventado",
 );
 assert.match(
   editor,
