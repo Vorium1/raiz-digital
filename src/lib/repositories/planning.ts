@@ -8,6 +8,7 @@ import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-no
 import { blockedPlanningPkTargets, computePlanningPkTargets, planningCropProfileCode, summarizePlanningPkResults } from "@/domain/multiseason-pk";
 import { blockedPlanningSulfur, computePlanningSulfurTarget, summarizePlanningSulfurResults } from "@/domain/multiseason-sulfur";
 import { blockedPlanningNitrogen, computePlanningNitrogenTarget, summarizePlanningNitrogenResults } from "@/domain/multiseason-nitrogen";
+import { blockedPlanningLiming, computePlanningLimingTarget, summarizeInitialPlanningLiming } from "@/domain/multiseason-liming";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -501,6 +502,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
       deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
       deterministicNitrogen:blockedPlanningNitrogen(["INSUFFICIENT_EVIDENCE"]),
+      deterministicLiming:blockedPlanningLiming(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -512,6 +514,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
       deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
       deterministicNitrogen:blockedPlanningNitrogen(["INSUFFICIENT_EVIDENCE"]),
+      deterministicLiming:blockedPlanningLiming(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -528,6 +531,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["PLANNING_CROP_PROFILE_NOT_MAPPED"]),
         deterministicSulfur:blockedPlanningSulfur(["S_CROP_RULE_NOT_IMPLEMENTED"]),
         deterministicNitrogen:blockedPlanningNitrogen(["N_CROP_RULE_NOT_IMPLEMENTED"]),
+        deterministicLiming:blockedPlanningLiming(["LIMING_CROP_RULE_NOT_IMPLEMENTED"],"NOT_APPLICABLE"),
       });
       continue;
     }
@@ -554,6 +558,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
         deterministicSulfur:blockedPlanningSulfur(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
         deterministicNitrogen:blockedPlanningNitrogen(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
+        deterministicLiming:blockedPlanningLiming(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
       });
       continue;
     }
@@ -584,6 +589,21 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       reanalysisRequired:result.reanalysisRequired,
       precedingCropCode,
     });
+    const deterministicLiming=computePlanningLimingTarget({
+      cropCode:result.crop.cropCode,
+      position:result.position,
+      state:scenario.state??null,
+      managementSystem:scenario.managementSystem??null,
+      labResults,
+      yearsSinceLastLiming:scenario.yearsSinceLastLiming??null,
+      restrictionAssessment:{
+        yieldBelowLocalAverageEspeciallyInDrought:scenario.limingYieldBelowLocalAverageDrought??null,
+        compactionRestrictsRootGrowthAtDepth:scenario.limingCompactionRestrictsRootGrowth??null,
+        phosphorus10To20BelowCritical:scenario.limingPhosphorus10To20BelowCritical??null,
+        agronomistConfirmedIncorporationDecision:scenario.limingAgronomistConfirmedIncorporation??null,
+      },
+      reanalysisRequired:result.reanalysisRequired,
+    });
 
     enriched.push({
       ...result,
@@ -602,6 +622,7 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       deterministicPk,
       deterministicSulfur,
       deterministicNitrogen,
+      deterministicLiming,
     });
   }
 
@@ -634,7 +655,8 @@ async function buildPlanningCalculationWithClient(
   const accumulatedPk=summarizePlanningPkResults(results,scenario.areaHa);
   const accumulatedSulfur=summarizePlanningSulfurResults(results,scenario.areaHa);
   const accumulatedNitrogen=summarizePlanningNitrogenResults(results,scenario.areaHa);
-  return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur,accumulatedNitrogen};
+  const initialLiming=summarizeInitialPlanningLiming(results,scenario.areaHa);
+  return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur,accumulatedNitrogen,initialLiming};
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
@@ -664,6 +686,10 @@ export async function calculatePlanningScenario(tenantId:string,scenarioId:strin
           nitrogenReadyCount:calculation.results.filter((result:any)=>
             result.deterministicNitrogen?.ready
           ).length,
+          limingReadyCount:calculation.results.filter((result:any)=>
+            result.deterministicLiming?.ready
+          ).length,
+          limingCommercialTargetTonHaPrnt100:calculation.initialLiming?.commercialTargetTonHaPrnt100??null,
         },
       });
     }
