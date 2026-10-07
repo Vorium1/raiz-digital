@@ -6,6 +6,7 @@ import { runAgronomicEngine, type CropProfileDef, type LabResultInput } from "@/
 import { auxiliaryParameterCodesFor } from "@/domain/crop-profile-auxiliary-parameters";
 import { normalizeAnalyticalMethod, normalizeUnit } from "@/domain/lab-method-normalization";
 import { blockedPlanningPkTargets, computePlanningPkTargets, planningCropProfileCode, summarizePlanningPkResults } from "@/domain/multiseason-pk";
+import { blockedPlanningSulfur, computePlanningSulfurTarget, summarizePlanningSulfurResults } from "@/domain/multiseason-sulfur";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -454,7 +455,7 @@ async function loadPlanningCropProfile(
   } as CropProfileDef;
 }
 
-async function enrichPlanningResultsWithDeterministicPk(
+async function enrichPlanningResultsWithDeterministicNutrients(
   client: import("pg").PoolClient,
   tenantId: string,
   scenario: any,
@@ -465,6 +466,8 @@ async function enrichPlanningResultsWithDeterministicPk(
       ...result,
       targetCropProfile:null,
       deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["INSUFFICIENT_EVIDENCE"]),
+      deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
+      deterministicSulfur:blockedPlanningSulfur(["INSUFFICIENT_EVIDENCE"]),
     }));
   }
 
@@ -488,6 +491,7 @@ async function enrichPlanningResultsWithDeterministicPk(
         limitations:[...new Set([...result.limitations,"TARGET_CROP_PROFILE_NOT_MAPPED"])],
         targetCropProfile:null,
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["PLANNING_CROP_PROFILE_NOT_MAPPED"]),
+        deterministicSulfur:blockedPlanningSulfur(["S_CROP_RULE_NOT_IMPLEMENTED"]),
       });
       continue;
     }
@@ -512,6 +516,7 @@ async function enrichPlanningResultsWithDeterministicPk(
           pendencies:["PROFILE_NOT_ACTIVE"],
         }:null,
         deterministicPk:blockedPlanningPkTargets(result.crop.cropCode,["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
+        deterministicSulfur:blockedPlanningSulfur(["TARGET_CROP_PROFILE_NOT_ACTIVE"]),
       });
       continue;
     }
@@ -524,6 +529,12 @@ async function enrichPlanningResultsWithDeterministicPk(
       targetUnit:result.crop.targetUnit,
       cultivationOrderAfterSoilAnalysis:result.position+1,
       reanalysisRequired:result.reanalysisRequired,
+    });
+    const deterministicSulfur=computePlanningSulfurTarget({
+      cropCode:result.crop.cropCode,
+      labResults,
+      reanalysisRequired:result.reanalysisRequired,
+      irrigated:scenario.crops[result.position]?.irrigated??null,
     });
 
     enriched.push({
@@ -541,6 +552,7 @@ async function enrichPlanningResultsWithDeterministicPk(
         pendencies:engine.pendencies,
       },
       deterministicPk,
+      deterministicSulfur,
     });
   }
 
@@ -568,10 +580,11 @@ async function buildPlanningCalculationWithClient(
     hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
     baseSampledFrom:scenario.baseAnalysisSampledFrom??null,
   });
-  const results=await enrichPlanningResultsWithDeterministicPk(client,tenantId,scenario,readinessResults);
+  const results=await enrichPlanningResultsWithDeterministicNutrients(client,tenantId,scenario,readinessResults);
   const status=resolvePlanningScenarioPersistenceStatus(results);
   const accumulatedPk=summarizePlanningPkResults(results,scenario.areaHa);
-  return {scenarioId:scenario.id,status,results,accumulatedPk};
+  const accumulatedSulfur=summarizePlanningSulfurResults(results,scenario.areaHa);
+  return {scenarioId:scenario.id,status,results,accumulatedPk,accumulatedSulfur};
 }
 
 export async function calculatePlanningScenario(tenantId:string,scenarioId:string,userId?:string){
