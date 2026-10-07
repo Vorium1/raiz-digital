@@ -161,8 +161,18 @@ assert.doesNotMatch(
 );
 assert.match(
   editor,
-  /\/calculadoras\?area=/,
-  "calculadora pode receber apenas contexto neutro de área enquanto não houver alvo calculado",
+  /new URLSearchParams\(\)/,
+  "integração com a calculadora deve montar parâmetros explicitamente",
+);
+assert.match(
+  editor,
+  /params\.set\("area",String\(areaHa\)\)/,
+  "área pode ser transportada como contexto neutro",
+);
+assert.match(
+  editor,
+  /target\?\.ready&&target\.minimumKgPerHa===target\.maximumKgPerHa/,
+  "alvo só pode ser enviado à calculadora quando a dose determinística é exata",
 );
 assert.match(
   migration,
@@ -212,5 +222,10 @@ assert.doesNotMatch(
   editor,
   /target=60/,
   "nenhum alvo fixo pode reaparecer na integração com a calculadora",
+);
+assert.match(
+  editor,
+  /setResults\(\[\]\);\s*setAccumulatedPk\(null\)/,
+  "acumulado antigo não pode continuar visível depois que o cenário muda",
 );
 console.log("multiseason-planning: capability, evidência, base por talhão, snapshot imutável e ausência de alvo inventado aprovados");
