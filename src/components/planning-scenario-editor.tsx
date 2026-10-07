@@ -23,7 +23,10 @@ type Scenario={
   areaHa:number|null;
   baseAnalysisId:string|null;
   baseAnalysisCode?:string|null;
-  baseAnalysisCreatedAt?:string|null;
+  baseAnalysisSampledFrom?:string|null;
+  baseAnalysisSampledTo?:string|null;
+  baseAnalysisReceivedFrom?:string|null;
+  baseAnalysisReceivedTo?:string|null;
   baseEvidenceReady:boolean;
   irrigated:boolean|null;
   notes:string;
@@ -39,6 +42,13 @@ type Scenario={
   organicInputs:string|null;
   crops:Crop[];
 };
+
+function technicalDateLabel(from:string|null|undefined,to:string|null|undefined){
+  if(!from)return "data técnica não registrada";
+  const first=new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR");
+  if(!to||to===from)return first;
+  return `${first}–${new Date(`${to}T12:00:00Z`).toLocaleDateString("pt-BR")}`;
+}
 
 function triState(value:boolean|null|undefined){
   return value===true?"yes":value===false?"no":"unknown";
@@ -246,7 +256,7 @@ export function PlanningScenarioEditor({
       <p>
         <strong>Análise-base:</strong>{" "}
         {scenario.baseAnalysisId
-          ? `${scenario.baseAnalysisCode??scenario.baseAnalysisId.slice(0,8)} · ${scenario.baseAnalysisCreatedAt?new Date(scenario.baseAnalysisCreatedAt).toLocaleDateString("pt-BR"):"data não disponível"} · ${scenario.baseEvidenceReady?"evidência laboratorial disponível":"sem resultado laboratorial utilizável"}`
+          ? `${scenario.baseAnalysisCode??scenario.baseAnalysisId.slice(0,8)} · amostragem ${technicalDateLabel(scenario.baseAnalysisSampledFrom,scenario.baseAnalysisSampledTo)} · ${scenario.baseEvidenceReady?"evidência laboratorial disponível":"sem resultado laboratorial utilizável"}`
           :"não vinculada"}
       </p>
     </section>
