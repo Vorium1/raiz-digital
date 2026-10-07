@@ -2,6 +2,7 @@ import { getPlatformSession } from "@/lib/auth/session";
 import { getPlanningScenario, updatePlanningScenario, PlanningError } from "@/lib/repositories/planning";
 
 const writers=new Set(["SUPER_ADMIN","TENANT_ADMIN","AGRONOMIST"]);
+const previousCropCodes=new Set(["SOYBEAN","CORN","OTHER"]);
 
 function optionalText(value:unknown,label:string,max=5000){
   if(value==null)return null;
@@ -35,6 +36,12 @@ export async function PATCH(r:Request,{params}:{params:Promise<{id:string}>}){
     if(!name||name.length>160)return Response.json({error:"Nome necessário e com até 160 caracteres."},{status:400});
 
     const irrigated=b.irrigated===true?true:b.irrigated===false?false:null;
+    const previousCropCodeRaw=typeof b.previousCropCode==="string"&&b.previousCropCode.trim()
+      ? b.previousCropCode.trim().toUpperCase()
+      : null;
+    if(previousCropCodeRaw&&!previousCropCodes.has(previousCropCodeRaw)){
+      return Response.json({error:"Categoria estruturada da cultura anterior inválida."},{status:400});
+    }
     const scenario=await updatePlanningScenario({
       tenantId:s.tenantId,
       userId:s.userId,
@@ -48,6 +55,7 @@ export async function PATCH(r:Request,{params}:{params:Promise<{id:string}>}){
       waterAvailabilityNotes:optionalText(b.waterAvailabilityNotes,"Disponibilidade hídrica"),
       knownRestrictions:optionalText(b.knownRestrictions,"Restrições conhecidas"),
       previousCrop:optionalText(b.previousCrop,"Cultura anterior",160),
+      previousCropCode:previousCropCodeRaw as "SOYBEAN"|"CORN"|"OTHER"|null,
       recentCropHistory:optionalText(b.recentCropHistory,"Histórico recente de culturas"),
       lastSoilCorrection:optionalText(b.lastSoilCorrection,"Última correção de solo"),
       fertilizationHistory:optionalText(b.fertilizationHistory,"Histórico de adubação"),
