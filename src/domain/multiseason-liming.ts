@@ -22,6 +22,7 @@ export type PlanningLimingTarget = {
   maximumTonHaPrnt100:number|null;
   applicationMode:"INCORPORATED"|"SURFACE"|null;
   methodId:string|null;
+  methodScope:"APPLICATION_RECOMMENDATION"|"LAYER_REQUIREMENT"|null;
   samplingProfile:string|null;
   sampleCount:number;
   commercialTargetTonHaPrnt100:number|null;
@@ -42,6 +43,7 @@ export function blockedPlanningLiming(
     maximumTonHaPrnt100:null,
     applicationMode:null,
     methodId:null,
+    methodScope:null,
     samplingProfile:null,
     sampleCount:0,
     commercialTargetTonHaPrnt100:null,
@@ -51,6 +53,7 @@ export function blockedPlanningLiming(
 function mapDecision(
   decision:SoybeanLimingUniformDecision,
   methodId:string|null,
+  methodScope:"APPLICATION_RECOMMENDATION"|"LAYER_REQUIREMENT"|null,
   samplingProfile:string|null,
 ):PlanningLimingTarget{
   const sampleCount=decision.sampleDecisions.length;
@@ -58,6 +61,7 @@ function mapDecision(
     return {
       ...blockedPlanningLiming(["LIMING_CROP_RULE_NOT_APPLICABLE"],"NOT_APPLICABLE"),
       methodId,
+      methodScope,
       samplingProfile,
       sampleCount,
       warnings:decision.warnings,
@@ -69,6 +73,7 @@ function mapDecision(
         decision.blockers.length?decision.blockers:["LIMING_DETERMINISTIC_DECISION_BLOCKED"],
       ),
       methodId,
+      methodScope,
       samplingProfile,
       sampleCount,
       warnings:decision.warnings,
@@ -80,7 +85,8 @@ function mapDecision(
     ? decision.operationalGeneralDoseTonHaPrnt100
     : null;
   const commercialTarget=
-    decision.automaticGeneralDoseAllowed
+    methodScope==="APPLICATION_RECOMMENDATION"
+    && decision.automaticGeneralDoseAllowed
     && general!=null
     && Number.isFinite(general)
     && general>0
@@ -98,6 +104,7 @@ function mapDecision(
     maximumTonHaPrnt100:range?.max??decision.uniformDoseTonHaPrnt100,
     applicationMode:decision.applicationMode,
     methodId,
+    methodScope,
     samplingProfile,
     sampleCount,
     commercialTargetTonHaPrnt100:commercialTarget,
@@ -188,6 +195,7 @@ export function computePlanningLimingTarget(input:{
   const mapped=mapDecision(
     selected,
     methodSelection.selectedMethodId,
+    methodSelection.scope,
     methodSelection.samplingProfile,
   );
 
