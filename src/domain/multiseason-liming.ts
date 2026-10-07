@@ -7,6 +7,7 @@ import {
   LIMING_METHOD_IDS,
   evaluateIntegrated020LimingLayerRequirement,
   selectLimingMethod,
+  type LimingMethodScope,
 } from "./liming-method-selector.ts";
 import { resolveSelectedLimingDecision } from "./liming-method-decision.ts";
 import type { SoybeanLimingRestrictionAssessment } from "./soybean-liming-rs-sc-2025.ts";
@@ -22,7 +23,7 @@ export type PlanningLimingTarget = {
   maximumTonHaPrnt100:number|null;
   applicationMode:"INCORPORATED"|"SURFACE"|null;
   methodId:string|null;
-  methodScope:"APPLICATION_RECOMMENDATION"|"LAYER_REQUIREMENT"|null;
+  methodScope:LimingMethodScope|null;
   samplingProfile:string|null;
   sampleCount:number;
   commercialTargetTonHaPrnt100:number|null;
@@ -53,7 +54,7 @@ export function blockedPlanningLiming(
 function mapDecision(
   decision:SoybeanLimingUniformDecision,
   methodId:string|null,
-  methodScope:"APPLICATION_RECOMMENDATION"|"LAYER_REQUIREMENT"|null,
+  methodScope:LimingMethodScope|null,
   samplingProfile:string|null,
 ):PlanningLimingTarget{
   const sampleCount=decision.sampleDecisions.length;
