@@ -59,6 +59,7 @@ const migration = readFileSync(new URL("../db/migrations/047_multiseason_plannin
 const planningWorkspace = readFileSync(new URL("../src/components/planning-workspace.tsx", import.meta.url), "utf8");
 const declaredContextMigration = readFileSync(new URL("../db/migrations/048_multiseason_declared_context.sql", import.meta.url), "utf8");
 const previousCropMigration = readFileSync(new URL("../db/migrations/049_multiseason_previous_crop_code.sql", import.meta.url), "utf8");
+const limingContextMigration = readFileSync(new URL("../db/migrations/050_multiseason_liming_context.sql", import.meta.url), "utf8");
 
 assert.match(
   repository,
@@ -114,6 +115,16 @@ assert.match(
   repository,
   /computePlanningNitrogenTarget\(/,
   "N do planejamento deve reutilizar o motor determinístico existente",
+);
+assert.match(
+  repository,
+  /computePlanningLimingTarget\(/,
+  "calagem inicial deve reutilizar o motor determinístico oficial",
+);
+assert.match(
+  repository,
+  /summarizeInitialPlanningLiming\(/,
+  "calcário deve ser resumido como intervenção inicial, não acumulado por safra",
 );
 assert.match(
   repository,
@@ -235,6 +246,19 @@ assert.match(
   "cultura anterior estruturada deve usar enum fechado e UNKNOWN como null",
 );
 assert.match(
+  limingContextMigration,
+  /ADD COLUMN years_since_last_liming numeric/,
+  "anos desde a última calagem precisam ser campo estruturado",
+);
+for (const column of [
+  "liming_yield_below_local_average_drought",
+  "liming_compaction_restricts_root_growth",
+  "liming_phosphorus_10_20_below_critical",
+  "liming_agronomist_confirmed_incorporation",
+]) {
+  assert.match(limingContextMigration, new RegExp(column), `contexto estruturado de calagem ausente: ${column}`);
+}
+assert.match(
   editor,
   /Data prevista/,
   "cada cultivo deve expor a data prevista já existente no modelo",
@@ -273,6 +297,31 @@ assert.match(
   editor,
   /Nitrogênio conhecido do horizonte/,
   "UI deve separar o acumulado conhecido de N",
+);
+assert.match(
+  editor,
+  /Anos desde a última calagem/,
+  "entrevista precisa manter histórico de calagem em campo estruturado",
+);
+assert.match(
+  editor,
+  /texto livre de “última correção” não é convertido automaticamente em anos/,
+  "texto histórico não pode alimentar silenciosamente o motor de calagem",
+);
+assert.match(
+  editor,
+  /Calagem inicial do cenário/,
+  "UI deve apresentar calcário como intervenção inicial separada",
+);
+assert.match(
+  editor,
+  /mode","LIME"/,
+  "handoff do calcário deve abrir explicitamente o modo PRNT da calculadora",
+);
+assert.match(
+  editor,
+  /limeRequirement/,
+  "somente a necessidade PRNT100 autorizada pode ser enviada à calculadora",
 );
 assert.match(
   editor,
