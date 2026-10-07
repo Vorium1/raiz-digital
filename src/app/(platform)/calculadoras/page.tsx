@@ -6,7 +6,8 @@ import type { CommercialNutrient } from "@/domain/commercial-input-engine";
 export const metadata = { title: "Calculadoras" };
 
 const NUTRIENTS = new Set<CommercialNutrient>(["N", "P2O5", "K2O", "S", "Ca", "Mg"]);
-const MODES = new Set(["NUTRIENT_TO_PRODUCT","PRODUCT_TO_NUTRIENTS","PK_PAIR","LIME","CHEMICAL"] as const);
+type CalculatorMode = "NUTRIENT_TO_PRODUCT"|"PRODUCT_TO_NUTRIENTS"|"PK_PAIR"|"LIME"|"CHEMICAL";
+const MODES = new Set<CalculatorMode>(["NUTRIENT_TO_PRODUCT","PRODUCT_TO_NUTRIENTS","PK_PAIR","LIME","CHEMICAL"]);
 
 function numberParam(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -26,8 +27,8 @@ export default async function CalculatorsPage({
     searchParams,
   ]);
   const modeRaw = Array.isArray(query.mode) ? query.mode[0] : query.mode;
-  const mode = modeRaw && MODES.has(modeRaw as typeof MODES extends Set<infer T> ? T : never)
-    ? modeRaw as "NUTRIENT_TO_PRODUCT"|"PRODUCT_TO_NUTRIENTS"|"PK_PAIR"|"LIME"|"CHEMICAL"
+  const mode = modeRaw && MODES.has(modeRaw as CalculatorMode)
+    ? modeRaw as CalculatorMode
     : undefined;
   const nutrientRaw = Array.isArray(query.nutrient) ? query.nutrient[0] : query.nutrient;
   const nutrient = nutrientRaw && NUTRIENTS.has(nutrientRaw as CommercialNutrient)
