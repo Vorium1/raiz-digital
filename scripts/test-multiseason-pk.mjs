@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   computePlanningPkTargets,
   planningCropProfileCode,
+  summarizePlanningPkResults,
 } from "../src/domain/multiseason-pk.ts";
 
 const item=(sampleCode,parameterCode,classification)=>({
@@ -83,3 +84,26 @@ assert.equal(rice.P2O5.ready,false,"motor uniforme não deve fingir suporte de a
 assert.ok(rice.P2O5.blockers.includes("PK_CROP_RULE_NOT_IMPLEMENTED"));
 
 console.log("multiseason-pk: mapeamento, doses oficiais, metas explícitas e gates fail-closed aprovados");
+
+
+const summary=summarizePlanningPkResults([
+  {deterministicPk:soybean},
+  {deterministicPk:{
+    P2O5:{...soybean.P2O5,doseKgPerHa:45,minimumKgPerHa:45,maximumKgPerHa:45},
+    K2O:{...soybean.K2O,doseKgPerHa:30,minimumKgPerHa:30,maximumKgPerHa:30},
+  }},
+],10);
+assert.equal(summary.P2O5.complete,true);
+assert.equal(summary.P2O5.minimumKgPerHa,108);
+assert.equal(summary.P2O5.totalMinimumKg,1080);
+assert.equal(summary.K2O.maximumKgPerHa,135);
+assert.equal(summary.K2O.totalMaximumKg,1350);
+
+const partialSummary=summarizePlanningPkResults([
+  {deterministicPk:soybean},
+  {deterministicPk:missingGoal},
+],10);
+assert.equal(partialSummary.P2O5.complete,false);
+assert.equal(partialSummary.P2O5.readyCropCount,1);
+assert.equal(partialSummary.P2O5.blockedCropCount,1);
+assert.equal(partialSummary.P2O5.minimumKgPerHa,63,"acumulado parcial soma somente parcelas calculadas");
