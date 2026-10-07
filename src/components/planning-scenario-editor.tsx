@@ -61,6 +61,15 @@ function limingTargetLabel(target:any){
   if(!target)return "não calculado";
   if(!target.ready)return `bloqueado · ${(target.blockers??[]).join(" · ")||"sem decisão determinística"}`;
   if(target.status==="UNIFORM_NO_APPLY")return "não aplicar";
+  if(target.methodScope==="LAYER_REQUIREMENT"){
+    if(target.generalDoseTonHaPrnt100!=null){
+      return `${target.generalDoseTonHaPrnt100} t/ha PRNT100 · necessidade da camada; aplicação não definida`;
+    }
+    if(target.minimumTonHaPrnt100!=null&&target.maximumTonHaPrnt100!=null){
+      return `${target.minimumTonHaPrnt100}–${target.maximumTonHaPrnt100} t/ha PRNT100 · necessidade da camada; aplicação não definida`;
+    }
+    return "necessidade da camada disponível; aplicação não definida";
+  }
   if(target.generalDoseTonHaPrnt100!=null)return `${target.generalDoseTonHaPrnt100} t/ha PRNT100`;
   if(target.minimumTonHaPrnt100!=null&&target.maximumTonHaPrnt100!=null){
     return `${target.minimumTonHaPrnt100}–${target.maximumTonHaPrnt100} t/ha PRNT100 · espacial`;
