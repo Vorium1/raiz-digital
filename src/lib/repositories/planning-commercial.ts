@@ -21,6 +21,24 @@ import { writeAudit } from "@/lib/repositories/audit";
 
 export type PlanningCommercialMode = "SINGLE" | "PK_PAIR" | "LIME";
 
+export class PlanningCommercialError extends Error {
+  constructor(message:string,readonly status=422,readonly details?:unknown){
+    super(message);
+    this.name="PlanningCommercialError";
+  }
+}
+
+function engineProduct(product:CommercialInputProduct):CommercialFertilizerProduct{
+  return {
+    code:product.code,
+    name:product.name,
+    guaranteesPercent:product.guaranteesPercent,
+    pricePerTon:product.pricePerTon,
+    minRateKgPerHa:product.minRateKgPerHa,
+    maxRateKgPerHa:product.maxRateKgPerHa,
+  };
+}
+
 function nutrientTargets(sourceTargets:PlanningCommercialSourceTarget[]):NutrientTargets{
   const targets:NutrientTargets={};
   for(const source of sourceTargets){
