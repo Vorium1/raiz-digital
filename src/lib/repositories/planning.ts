@@ -552,6 +552,17 @@ async function buildPlanningCalculationWithClient(
   tenantId: string,
   scenario: any,
 ){
+  if(scenario.baseAnalysisId){
+    const locked=(await client.query(
+      `SELECT id::text
+       FROM analyses
+       WHERE tenant_id=$1::uuid AND id=$2::uuid
+       FOR SHARE`,
+      [tenantId,scenario.baseAnalysisId],
+    )).rows[0];
+    if(!locked)throw new PlanningError("Análise-base não encontrada nesta empresa.",404);
+  }
+
   const readinessResults=executeMultiseasonPlan({
     crops:scenario.crops.map((crop:{cropCode:string;plannedDate?:string|null;targetYield?:number|null;targetUnit?:string|null})=>crop),
     hasBaseEvidence:Boolean(scenario.baseEvidenceReady),
