@@ -123,3 +123,41 @@ export function computePlanningPkTargets(input:{
     })),
   };
 }
+
+
+function round1(value:number){
+  return Math.round((value+Number.EPSILON)*10)/10;
+}
+
+export function summarizePlanningPkResults(
+  results:Array<{
+    deterministicPk?:{
+      P2O5:PlanningPkTarget;
+      K2O:PlanningPkTarget;
+    }|null;
+  }>,
+  areaHa:number|null|undefined,
+){
+  function nutrientSummary(nutrient:"P2O5"|"K2O"){
+    const targets=results.map((result)=>result.deterministicPk?.[nutrient]??null);
+    const ready=targets.filter((target):target is PlanningPkTarget=>Boolean(target?.ready));
+    const minimumKgPerHa=round1(ready.reduce((sum,target)=>sum+(target.minimumKgPerHa??0),0));
+    const maximumKgPerHa=round1(ready.reduce((sum,target)=>sum+(target.maximumKgPerHa??0),0));
+    const validArea=typeof areaHa==="number"&&Number.isFinite(areaHa)&&areaHa>0?areaHa:null;
+    return {
+      nutrient,
+      complete:results.length>0&&ready.length===results.length,
+      readyCropCount:ready.length,
+      blockedCropCount:results.length-ready.length,
+      minimumKgPerHa,
+      maximumKgPerHa,
+      totalMinimumKg:validArea==null?null:round1(minimumKgPerHa*validArea),
+      totalMaximumKg:validArea==null?null:round1(maximumKgPerHa*validArea),
+    };
+  }
+
+  return {
+    P2O5:nutrientSummary("P2O5"),
+    K2O:nutrientSummary("K2O"),
+  };
+}
