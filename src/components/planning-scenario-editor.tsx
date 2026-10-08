@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { PlanningCommercialPanel } from "@/components/planning-commercial-panel";
 import { PlanningZarcPanel } from "@/components/planning-zarc-panel";
+import { PlanningRiceResponseFields, type PlanningRiceResponseClass } from "@/components/planning-rice-response-fields";
 
 type Crop={
   id:string;
@@ -13,6 +14,8 @@ type Crop={
   targetYield:number|null;
   targetUnit:string|null;
   irrigated:boolean|null;
+  riceResponseClass?:PlanningRiceResponseClass|null;
+  riceResponseClassApproved?:boolean;
   notes:string;
 };
 
@@ -90,6 +93,7 @@ function limingTargetLabel(target:any){
 
 function nitrogenTargetLabel(target:any){
   if(!target?.ready)return `bloqueado · ${(target?.blockers??[]).join(" · ")||"sem dose determinística"}`;
+  if(target.doseKind==="UPPER_BOUND")return `até ${target.maximumKgNPerHa} kg N/ha`;
   if(target.minimumKgNPerHa!==target.maximumKgNPerHa){
     return `${target.minimumKgNPerHa}–${target.maximumKgNPerHa} kg N/ha`;
   }
@@ -492,7 +496,15 @@ export function PlanningScenarioEditor({
                   <option value="no">Sequeiro</option>
                 </select>
               </label>
-              <label>Observações operacionais
+              {["RICE","ARROZ"].includes(String(draft.cropCode??crop.cropCode).toUpperCase())&&
+                <PlanningRiceResponseFields
+                  responseClass={(draft.riceResponseClass??crop.riceResponseClass??null) as PlanningRiceResponseClass|null}
+                  approved={Boolean(draft.riceResponseClassApproved??crop.riceResponseClassApproved)}
+                  onChange={(riceResponseClass,riceResponseClassApproved)=>
+                    setDraft({...draft,riceResponseClass,riceResponseClassApproved})
+                  }
+                />}
+                            <label>Observações operacionais
                 <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
               </label>
               <div>
@@ -506,7 +518,12 @@ export function PlanningScenarioEditor({
                 Meta: {crop.targetYield??"UNKNOWN"} {crop.targetUnit??""} ·
                 {crop.irrigated===true?" irrigado":crop.irrigated===false?" sequeiro":" condição hídrica UNKNOWN"}
               </p>
-              <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
+              {["RICE","ARROZ"].includes(crop.cropCode.toUpperCase())&&<p>
+                Resposta SOSBAI: <strong>{crop.riceResponseClass??"não resolvida"}</strong> · {
+                  crop.riceResponseClassApproved?"aprovada":"aguarda aprovação explícita"
+                }
+              </p>
+                            <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
               <button onClick={()=>move(index,-1)} disabled={index===0}>↑</button>
               <button onClick={()=>move(index,1)} disabled={index===crops.length-1}>↓</button>
               <button onClick={()=>remove(crop.id)}>Remover</button>
@@ -517,7 +534,7 @@ export function PlanningScenarioEditor({
 
     {results.length>0&&<section>
       <h2>Resultados da simulação</h2>
-      <p>P/K, S e N abaixo usam motores determinísticos oficiais da RAIZ. N automático nesta etapa existe para trigo quando MO, meta e cultura anterior estão resolvidas; calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
+      <p>P/K, S e N abaixo usam motores determinísticos oficiais da RAIZ. N é calculado para trigo quando MO, meta e cultura anterior estão resolvidas e para arroz irrigado somente quando a classe de resposta SOSBAI estiver explicitamente aprovada. Calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
       {results.map(result=>{
         const p=result.deterministicPk?.P2O5;
         const k=result.deterministicPk?.K2O;
