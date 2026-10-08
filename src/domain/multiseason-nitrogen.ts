@@ -7,13 +7,19 @@ import {
   type NitrogenRecommendation,
 } from "./nitrogen-dose-engine.ts";
 import type { LabResultInput } from "./agronomic-engine.ts";
+import {
+  computeRiceContinuousNitrogen,
+  evaluateRiceContinuousNitrogenEnvelope,
+  RESEARCH_READY_PROFILES,
+  type RiceResponseClass,
+} from "./research-ready-rules.ts";
 
 export type PlanningPreviousCropCode = "SOYBEAN" | "CORN" | "OTHER" | null;
 
 export type PlanningNitrogenTarget = {
   ready:boolean;
   blockers:string[];
-  doseKind:"EXACT"|"RANGE"|"BLOCKED";
+  doseKind:"EXACT"|"RANGE"|"UPPER_BOUND"|"BLOCKED";
   doseKgNPerHa:number|null;
   minimumKgNPerHa:number|null;
   maximumKgNPerHa:number|null;
@@ -27,6 +33,8 @@ export type PlanningNitrogenTarget = {
   precedingCrop:"SOY"|"CORN"|null;
   organicMatterPct:number|null;
   organicMatterBand:string|null;
+  riceResponseClass:RiceResponseClass|null;
+  riceResponseClassApproved:boolean;
 };
 
 export function wheatPrecedingCropFromPlanningCode(
@@ -59,6 +67,8 @@ export function blockedPlanningNitrogen(
     precedingCrop,
     organicMatterPct:null,
     organicMatterBand:null,
+    riceResponseClass:null,
+    riceResponseClassApproved:false,
   };
 }
 
@@ -82,6 +92,8 @@ function mapWheatRecommendation(
       source:recommendation.source,
       organicMatterPct,
       organicMatterBand,
+      riceResponseClass:null,
+      riceResponseClassApproved:false,
     };
   }
 
@@ -104,6 +116,8 @@ function mapWheatRecommendation(
       precedingCrop,
       organicMatterPct,
       organicMatterBand,
+      riceResponseClass:null,
+      riceResponseClassApproved:false,
     };
   }
 
@@ -124,6 +138,8 @@ function mapWheatRecommendation(
     precedingCrop,
     organicMatterPct,
     organicMatterBand,
+    riceResponseClass:null,
+    riceResponseClassApproved:false,
   };
 }
 
@@ -135,6 +151,141 @@ function soilOrganicMatterRows(results:LabResultInput[]){
   );
 }
 
+
+function riceOrganicMatterEvidence(results:LabResultInput[]){
+  const rows=soilOrganicMatterRows(results);
+  if(rows.length===0){
+    return {ready:false as const,blockers:["RICE_N_REQUIRES_ORGANIC_MATTER_PERCENT"],organicMatterPct:null,organicMatterBand:null,sourceSnapshotId:null};
+  }
+  if(rows.some((row)=>!isOrganicMatterPercentUnit(row.unit))){
+    return {ready:false as const,blockers:["ORGANIC_MATTER_UNIT_UNSUPPORTED"],organicMatterPct:null,organicMatterBand:null,sourceSnapshotId:null};
+  }
+  if(rows.some((row)=>!Number.isFinite(row.value)||row.value<0)){
+    return {ready:false as const,blockers:["ORGANIC_MATTER_VALUE_INVALID"],organicMatterPct:null,organicMatterBand:null,sourceSnapshotId:null};
+  }
+
+  const envelopes=[];
+  try{
+    for(const row of rows){
+      envelopes.push(evaluateRiceContinuousNitrogenEnvelope({
+        profileId:RESEARCH_READY_PROFILES.rice,
+        organicMatterPct:row.value,
+      }));
+    }
+  }catch{
+    return {ready:false as const,blockers:["RICE_N_ORGANIC_MATTER_BAND_UNRESOLVED"],organicMatterPct:null,organicMatterBand:null,sourceSnapshotId:null};
+  }
+
+  const bands=[...new Set(envelopes.map((envelope)=>envelope.organicMatterBand))];
+  if(bands.length!==1){
+    return {
+      ready:false as const,
+      blockers:["RICE_N_OM_BANDS_CONFLICT_NO_UNIFORM_DOSE"],
+      organicMatterPct:null,
+      organicMatterBand:null,
+      sourceSnapshotId:envelopes[0]?.sourceSnapshotId??null,
+    };
+  }
+
+  const organicMatterPct=Math.round(
+    (rows.reduce((sum,row)=>sum+row.value,0)/rows.length+Number.EPSILON)*100,
+  )/100;
+  return {
+    ready:true as const,
+    blockers:[],
+    organicMatterPct,
+    organicMatterBand:bands[0],
+    sourceSnapshotId:envelopes[0]?.sourceSnapshotId??null,
+  };
+}
+
+function computePlanningRiceNitrogen(input:{
+  labResults:LabResultInput[];
+  reanalysisRequired:boolean;
+  irrigated:boolean|null|undefined;
+  responseClass:RiceResponseClass|null|undefined;
+  responseClassApproved:boolean|null|undefined;
+}):PlanningNitrogenTarget{
+  if(input.reanalysisRequired){
+    return blockedPlanningNitrogen(["REANALYSIS_REQUIRED_BEFORE_N"]);
+  }
+  if(input.irrigated!==true){
+    return blockedPlanningNitrogen([
+      input.irrigated===false
+        ?"RICE_N_RULE_REQUIRES_IRRIGATED"
+        :"RICE_IRRIGATION_CONTEXT_REQUIRED",
+    ]);
+  }
+  if(!input.responseClass||input.responseClassApproved!==true){
+    const blocked=blockedPlanningNitrogen(["RICE_RESPONSE_CLASS_NOT_RESOLVED"]);
+    blocked.riceResponseClass=input.responseClass??null;
+    blocked.riceResponseClassApproved=false;
+    return blocked;
+  }
+
+  const evidence=riceOrganicMatterEvidence(input.labResults);
+  if(!evidence.ready){
+    const blocked=blockedPlanningNitrogen(evidence.blockers);
+    blocked.organicMatterPct=evidence.organicMatterPct;
+    blocked.organicMatterBand=evidence.organicMatterBand;
+    blocked.sourceSnapshotId=evidence.sourceSnapshotId;
+    blocked.riceResponseClass=input.responseClass;
+    blocked.riceResponseClassApproved=true;
+    return blocked;
+  }
+
+  const recommendation=computeRiceContinuousNitrogen({
+    profileId:RESEARCH_READY_PROFILES.rice,
+    organicMatterPct:evidence.organicMatterPct!,
+    responseClass:input.responseClass,
+    responseClassApproved:true,
+  });
+
+  if(recommendation.dose.kind==="EXACT"){
+    return {
+      ready:true,
+      blockers:[],
+      doseKind:"EXACT",
+      doseKgNPerHa:recommendation.dose.kgPerHa,
+      minimumKgNPerHa:recommendation.dose.kgPerHa,
+      maximumKgNPerHa:recommendation.dose.kgPerHa,
+      sowingMinimumKgNPerHa:null,
+      sowingMaximumKgNPerHa:null,
+      ruleId:recommendation.ruleId,
+      ruleVersion:recommendation.ruleVersion,
+      sourceSnapshotId:evidence.sourceSnapshotId,
+      source:recommendation.source,
+      requiresAgronomistReview:true,
+      precedingCrop:null,
+      organicMatterPct:evidence.organicMatterPct,
+      organicMatterBand:recommendation.organicMatterBand,
+      riceResponseClass:input.responseClass,
+      riceResponseClassApproved:true,
+    };
+  }
+
+  return {
+    ready:true,
+    blockers:[],
+    doseKind:"UPPER_BOUND",
+    doseKgNPerHa:null,
+    minimumKgNPerHa:0,
+    maximumKgNPerHa:recommendation.dose.maxKgPerHa,
+    sowingMinimumKgNPerHa:null,
+    sowingMaximumKgNPerHa:null,
+    ruleId:recommendation.ruleId,
+    ruleVersion:recommendation.ruleVersion,
+    sourceSnapshotId:evidence.sourceSnapshotId,
+    source:recommendation.source,
+    requiresAgronomistReview:true,
+    precedingCrop:null,
+    organicMatterPct:evidence.organicMatterPct,
+    organicMatterBand:recommendation.organicMatterBand,
+    riceResponseClass:input.responseClass,
+    riceResponseClassApproved:true,
+  };
+}
+
 export function computePlanningNitrogenTarget(input:{
   cropCode:string;
   targetYield:number|null|undefined;
@@ -142,12 +293,25 @@ export function computePlanningNitrogenTarget(input:{
   labResults:LabResultInput[];
   reanalysisRequired:boolean;
   precedingCropCode:string|null|undefined;
+  irrigated?:boolean|null;
+  riceResponseClass?:RiceResponseClass|null;
+  riceResponseClassApproved?:boolean|null;
 }):PlanningNitrogenTarget{
   const crop=input.cropCode.trim().toUpperCase();
   const precedingCrop=wheatPrecedingCropFromPlanningCode(input.precedingCropCode);
 
   if(input.reanalysisRequired){
     return blockedPlanningNitrogen(["REANALYSIS_REQUIRED_BEFORE_N"],precedingCrop);
+  }
+
+  if(crop==="RICE"||crop==="ARROZ"){
+    return computePlanningRiceNitrogen({
+      labResults:input.labResults,
+      reanalysisRequired:input.reanalysisRequired,
+      irrigated:input.irrigated,
+      responseClass:input.riceResponseClass,
+      responseClassApproved:input.riceResponseClassApproved,
+    });
   }
 
   if(crop!=="WHEAT"&&crop!=="TRIGO"){
