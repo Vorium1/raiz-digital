@@ -59,6 +59,7 @@ function sulfurLabel(target:any){
 }
 function nitrogenLabel(target:any){
   if(!target?.ready)return "bloqueado/sem dose";
+  if(target.doseKind==="UPPER_BOUND")return `até ${number(target.maximumKgNPerHa,4)} kg N/ha`;
   return rangeLabel(target.minimumKgNPerHa,target.maximumKgNPerHa,"kg N/ha");
 }
 function limingLabel(target:any){
@@ -235,6 +236,13 @@ export default async function MultiseasonPlanningReportPage({
                   <div className="review-summary"><span>S</span><strong>{sulfurLabel(result.deterministicSulfur)}</strong></div>
                   <div className="review-summary"><span>N</span><strong>{nitrogenLabel(result.deterministicNitrogen)}</strong></div>
                 </div>
+                {result.deterministicNitrogen?.riceResponseClass&&<p>
+                  <strong>Resposta SOSBAI:</strong> {result.deterministicNitrogen.riceResponseClass} · {
+                    result.deterministicNitrogen.riceResponseClassApproved
+                      ?"Resposta SOSBAI aprovada explicitamente pelo responsável técnico."
+                      :"Aguarda aprovação explícita; não seleciona coluna de N."
+                  }
+                </p>}
                 {result.position===0&&<p><strong>Calagem inicial:</strong> {limingLabel(result.deterministicLiming)}</p>}
                 {result.deterministicMicronutrients&&<p>
                   <strong>Micronutrientes:</strong>{" "}
