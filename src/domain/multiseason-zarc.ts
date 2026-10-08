@@ -92,7 +92,7 @@ function cultureBaseNames(culture:AgritecCultureLike){
   }))];
 }
 
-function cultivationMatches(culture:AgritecCulture,irrigated:boolean|null|undefined){
+function cultivationMatches(culture:AgritecCultureLike,irrigated:boolean|null|undefined){
   if(irrigated==null)return true;
   const cultivation=normalizedOfficialName(culture.cultivation??"");
   if(irrigated)return cultivation==="IRRIGADO"||cultivation.startsWith("IRRIGADO ");
