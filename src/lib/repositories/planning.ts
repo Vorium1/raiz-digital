@@ -255,7 +255,6 @@ export async function addPlanningCrop(input:{
         input.tenantId,input.scenarioId,nextPosition,input.cropCode,input.seasonLabel??"",
         input.plannedDate??null,input.targetYield??null,input.targetUnit??null,
         input.irrigated??null,input.notes??"",
-        riceResponseClass,riceResponseClassApproved,
       ],
     )).rows[0];
 
@@ -308,11 +307,14 @@ export async function updatePlanningCrop(input:{
        WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid
        RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel",
                  planned_date AS "plannedDate",target_yield::float8 AS "targetYield",
-                 target_unit AS "targetUnit",irrigated,notes`,
+                 target_unit AS "targetUnit",irrigated,
+                 rice_response_class AS "riceResponseClass",
+                 rice_response_class_approved AS "riceResponseClassApproved",notes`,
       [
         input.tenantId,input.scenarioId,input.cropId,input.cropCode,input.seasonLabel??"",
         input.plannedDate??null,input.targetYield??null,input.targetUnit??null,
         input.irrigated??null,input.notes??"",
+        riceResponseClass,riceResponseClassApproved,
       ],
     )).rows[0];
     if(!row)throw new PlanningError("Cultivo não encontrado.",404);
@@ -324,7 +326,13 @@ export async function updatePlanningCrop(input:{
     await writeAudit(c,{
       tenantId:input.tenantId,userId:input.userId,
       action:"PLANNING_CROP_UPDATED",entityType:"planning_scenario_crop",entityId:row.id,
-      metadata:{scenarioId:input.scenarioId,position:row.position,cropCode:row.cropCode},
+      metadata:{
+        scenarioId:input.scenarioId,
+        position:row.position,
+        cropCode:row.cropCode,
+        riceResponseClass:row.riceResponseClass??null,
+        riceResponseClassApproved:row.riceResponseClassApproved===true,
+      },
     });
     return row;
   });
