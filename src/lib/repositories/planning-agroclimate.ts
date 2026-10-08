@@ -260,18 +260,70 @@ export async function listPlanningCropZarcSnapshots(input:{
   const limit=Math.min(Math.max(Math.floor(input.limit ?? 10),1),50);
   return withTenant({tenantId:input.tenantId,userId:input.userId}, async client => {
     return (await client.query(
-      `SELECT id::text,provider,provider_version AS "providerVersion",
-              source_urls AS "sourceUrls",retrieved_at::text AS "retrievedAt",
-              municipality_name AS "municipalityName",state_code AS "stateCode",
-              ibge_municipality_code AS "ibgeMunicipalityCode",crop_code AS "cropCode",
-              agritec_culture_id AS "agritecCultureId",planned_date::text AS "plannedDate",
-              assessment,source_scenario_updated_at::text AS "sourceScenarioUpdatedAt",
-              source_crop_updated_at::text AS "sourceCropUpdatedAt",created_at::text AS "createdAt"
-       FROM planning_crop_agroclimate_snapshots
-       WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND planning_crop_id=$3::uuid
-       ORDER BY created_at DESC,id DESC
+      `SELECT pas.id::text,pas.provider,pas.provider_version AS "providerVersion",
+              pas.source_urls AS "sourceUrls",pas.retrieved_at::text AS "retrievedAt",
+              pas.municipality_name AS "municipalityName",pas.state_code AS "stateCode",
+              pas.ibge_municipality_code AS "ibgeMunicipalityCode",pas.crop_code AS "cropCode",
+              pas.agritec_culture_id AS "agritecCultureId",pas.planned_date::text AS "plannedDate",
+              pas.assessment,pas.source_scenario_updated_at::text AS "sourceScenarioUpdatedAt",
+              pas.source_crop_updated_at::text AS "sourceCropUpdatedAt",pas.created_at::text AS "createdAt",
+              (pas.source_scenario_updated_at=ps.updated_at
+                AND pas.source_crop_updated_at=pc.updated_at) AS "current"
+       FROM planning_crop_agroclimate_snapshots pas
+       JOIN planning_scenarios ps
+         ON ps.tenant_id=pas.tenant_id AND ps.id=pas.scenario_id
+       JOIN planning_scenario_crops pc
+         ON pc.tenant_id=pas.tenant_id
+        AND pc.scenario_id=pas.scenario_id
+        AND pc.id=pas.planning_crop_id
+       WHERE pas.tenant_id=$1::uuid
+         AND pas.scenario_id=$2::uuid
+         AND pas.planning_crop_id=$3::uuid
+       ORDER BY pas.created_at DESC,pas.id DESC
        LIMIT $4`,
       [input.tenantId,input.scenarioId,input.cropId,limit],
     )).rows;
   });
+}
+
+
+export async function getCompatiblePlanningAgroclimateSnapshotsWithClient(
+  client:import("pg").PoolClient,
+  input:{
+    tenantId:string;
+    scenarioId:string;
+    scenarioUpdatedAt:string;
+    crops:Array<{id:string;updatedAt:string}>;
+  },
+){
+  const rows=(await client.query(
+    `SELECT id::text,planning_crop_id::text AS "planningCropId",
+            provider,provider_version AS "providerVersion",
+            source_urls AS "sourceUrls",retrieved_at::text AS "retrievedAt",
+            municipality_name AS "municipalityName",state_code AS "stateCode",
+            ibge_municipality_code AS "ibgeMunicipalityCode",crop_code AS "cropCode",
+            agritec_culture_id AS "agritecCultureId",planned_date::text AS "plannedDate",
+            assessment,source_scenario_updated_at::text AS "sourceScenarioUpdatedAt",
+            source_crop_updated_at::text AS "sourceCropUpdatedAt",created_at::text AS "createdAt"
+     FROM planning_crop_agroclimate_snapshots
+     WHERE tenant_id=$1::uuid
+       AND scenario_id=$2::uuid
+       AND source_scenario_updated_at=$3::timestamptz
+     ORDER BY planning_crop_id,created_at DESC,id DESC`,
+    [input.tenantId,input.scenarioId,input.scenarioUpdatedAt],
+  )).rows;
+
+  const cropVersions=new Map(
+    input.crops.map((crop)=>[crop.id,new Date(crop.updatedAt).getTime()]),
+  );
+  const latestByCrop=new Map<string,any>();
+  for(const row of rows){
+    const cropId=String(row.planningCropId);
+    if(latestByCrop.has(cropId))continue;
+    const expected=cropVersions.get(cropId);
+    const actual=new Date(row.sourceCropUpdatedAt).getTime();
+    if(expected==null||!Number.isFinite(actual)||actual!==expected)continue;
+    latestByCrop.set(cropId,row);
+  }
+  return Object.fromEntries(latestByCrop);
 }
