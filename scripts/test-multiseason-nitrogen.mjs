@@ -130,6 +130,113 @@ const afterReanalysis=computePlanningNitrogenTarget({
 assert.equal(afterReanalysis.ready,false);
 assert.deepEqual(afterReanalysis.blockers,["REANALYSIS_REQUIRED_BEFORE_N"]);
 
+const riceUnresolved=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:8,
+  targetUnit:"t/ha",
+  labResults:[mo("A",2.5)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:null,
+  riceResponseClassApproved:false,
+});
+assert.equal(riceUnresolved.ready,false);
+assert.deepEqual(riceUnresolved.blockers,["RICE_RESPONSE_CLASS_NOT_RESOLVED"]);
+
+const riceNotIrrigated=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:8,
+  targetUnit:"t/ha",
+  labResults:[mo("A",2.5)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:false,
+  riceResponseClass:"MEDIA",
+  riceResponseClassApproved:true,
+});
+assert.equal(riceNotIrrigated.ready,false);
+assert.deepEqual(riceNotIrrigated.blockers,["RICE_N_RULE_REQUIRES_IRRIGATED"]);
+
+const riceMediaApproved=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:8,
+  targetUnit:"t/ha",
+  labResults:[mo("A",2.5)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:"MEDIA",
+  riceResponseClassApproved:true,
+});
+assert.equal(riceMediaApproved.ready,true);
+assert.equal(riceMediaApproved.doseKind,"EXACT");
+assert.equal(riceMediaApproved.doseKgNPerHa,110);
+assert.equal(riceMediaApproved.riceResponseClass,"MEDIA");
+assert.equal(riceMediaApproved.riceResponseClassApproved,true);
+assert.equal(riceMediaApproved.ruleId,"N-ARROZ-CONTINUO-SOSBAI-2025");
+
+const riceAltaSameBand=computePlanningNitrogenTarget({
+  cropCode:"ARROZ",
+  targetYield:null,
+  targetUnit:null,
+  labResults:[mo("A",2),mo("B",2.4)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:"ALTA",
+  riceResponseClassApproved:true,
+});
+assert.equal(riceAltaSameBand.ready,true);
+assert.equal(riceAltaSameBand.doseKind,"EXACT");
+assert.equal(riceAltaSameBand.doseKgNPerHa,135);
+assert.equal(riceAltaSameBand.organicMatterPct,2.2);
+
+const riceBandConflict=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:null,
+  targetUnit:null,
+  labResults:[mo("A",2.5),mo("B",3)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:"ALTA",
+  riceResponseClassApproved:true,
+});
+assert.equal(riceBandConflict.ready,false);
+assert.deepEqual(riceBandConflict.blockers,["RICE_N_OM_BANDS_CONFLICT_NO_UNIFORM_DOSE"]);
+
+const riceUpperBound=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:null,
+  targetUnit:null,
+  labResults:[mo("A",6)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:"ALTA",
+  riceResponseClassApproved:true,
+});
+assert.equal(riceUpperBound.ready,true);
+assert.equal(riceUpperBound.doseKind,"UPPER_BOUND");
+assert.equal(riceUpperBound.doseKgNPerHa,null);
+assert.equal(riceUpperBound.minimumKgNPerHa,0);
+assert.equal(riceUpperBound.maximumKgNPerHa,110);
+
+const ricePrecisionGap=computePlanningNitrogenTarget({
+  cropCode:"RICE",
+  targetYield:null,
+  targetUnit:null,
+  labResults:[mo("A",2.55)],
+  reanalysisRequired:false,
+  precedingCropCode:null,
+  irrigated:true,
+  riceResponseClass:"MEDIA",
+  riceResponseClassApproved:true,
+});
+assert.equal(ricePrecisionGap.ready,false);
+assert.deepEqual(ricePrecisionGap.blockers,["RICE_N_ORGANIC_MATTER_BAND_UNRESOLVED"]);
+
 const soybean=computePlanningNitrogenTarget({
   cropCode:"SOYBEAN",
   targetYield:4,
@@ -158,4 +265,4 @@ assert.equal(partial.readyCropCount,1);
 assert.equal(partial.blockedCropCount,1);
 assert.equal(partial.minimumKgPerHa,80);
 
-console.log("multiseason-nitrogen: trigo, MO, predecessor, unidade, reanálise e acumulado aprovados");
+console.log("multiseason-nitrogen: trigo + arroz SOSBAI, MO, predecessor, aprovação explícita, reanálise e acumulado aprovados");
