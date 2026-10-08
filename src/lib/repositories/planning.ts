@@ -10,6 +10,7 @@ import { blockedPlanningSulfur, computePlanningSulfurTarget, summarizePlanningSu
 import { blockedPlanningNitrogen, computePlanningNitrogenTarget, summarizePlanningNitrogenResults } from "@/domain/multiseason-nitrogen";
 import { blockedPlanningLiming, computePlanningLimingTarget, summarizeInitialPlanningLiming } from "@/domain/multiseason-liming";
 import { blockedPlanningMicronutrients, computePlanningMicronutrients } from "@/domain/multiseason-micronutrients";
+import { getCompatiblePlanningAgroclimateSnapshotsWithClient } from "@/lib/repositories/planning-agroclimate";
 
 export class PlanningError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const scenarioSelect = `planning_scenarios.id::text,
@@ -729,11 +730,22 @@ export async function createPlanningSnapshot(tenantId:string,scenarioId:string,u
   return withTenant({tenantId,userId},async client=>{
     const scenario=await getPlanningScenarioWithClient(client,tenantId,scenarioId);
     const calculation=await buildPlanningCalculationWithClient(client,tenantId,scenario);
+    const scenarioUpdatedAt=new Date(scenario.updatedAt).toISOString();
+    const agroclimateByCrop=await getCompatiblePlanningAgroclimateSnapshotsWithClient(client,{
+      tenantId,
+      scenarioId,
+      scenarioUpdatedAt,
+      crops:scenario.crops.map((crop:{id:string;updatedAt:string})=>({
+        id:crop.id,
+        updatedAt:crop.updatedAt,
+      })),
+    });
+    const frozenCalculation={...calculation,agroclimateByCrop};
     const snapshotScenario={...scenario,status:calculation.status};
     const {payload,sha256}=buildPlanningSnapshotPayload({
       createdAt:new Date().toISOString(),
       scenario:snapshotScenario,
-      calculation,
+      calculation:frozenCalculation,
     });
 
     await client.query(
