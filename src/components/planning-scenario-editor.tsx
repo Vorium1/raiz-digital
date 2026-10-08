@@ -496,14 +496,6 @@ export function PlanningScenarioEditor({
                   <option value="no">Sequeiro</option>
                 </select>
               </label>
-              {["RICE","ARROZ"].includes(String(draft.cropCode??crop.cropCode).toUpperCase())&&
-                <PlanningRiceResponseFields
-                  responseClass={(draft.riceResponseClass??crop.riceResponseClass??null) as PlanningRiceResponseClass|null}
-                  approved={Boolean(draft.riceResponseClassApproved??crop.riceResponseClassApproved)}
-                  onChange={(riceResponseClass,riceResponseClassApproved)=>
-                    setDraft({...draft,riceResponseClass,riceResponseClassApproved})
-                  }
-                />}
                             <label>Observações operacionais
                 <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
               </label>
@@ -517,11 +509,6 @@ export function PlanningScenarioEditor({
                 {crop.seasonLabel||"Janela não informada"} · {crop.plannedDate||"data não informada"} ·
                 Meta: {crop.targetYield??"UNKNOWN"} {crop.targetUnit??""} ·
                 {crop.irrigated===true?" irrigado":crop.irrigated===false?" sequeiro":" condição hídrica UNKNOWN"}
-              </p>
-              {["RICE","ARROZ"].includes(crop.cropCode.toUpperCase())&&<p>
-                Resposta SOSBAI: <strong>{crop.riceResponseClass??"não resolvida"}</strong> · {
-                  crop.riceResponseClassApproved?"aprovada":"aguarda aprovação explícita"
-                }
               </p>
                             <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
               <button onClick={()=>move(index,-1)} disabled={index===0}>↑</button>
