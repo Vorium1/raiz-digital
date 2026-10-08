@@ -77,10 +77,14 @@ const declaredContextMigration = readFileSync(new URL("../db/migrations/048_mult
 const previousCropMigration = readFileSync(new URL("../db/migrations/049_multiseason_previous_crop_code.sql", import.meta.url), "utf8");
 const limingContextMigration = readFileSync(new URL("../db/migrations/050_multiseason_liming_context.sql", import.meta.url), "utf8");
 const commercialSnapshotMigration = readFileSync(new URL("../db/migrations/051_multiseason_commercial_snapshots.sql", import.meta.url), "utf8");
+const agroclimateSnapshotMigration = readFileSync(new URL("../db/migrations/052_multiseason_agroclimate_snapshots.sql", import.meta.url), "utf8");
 const planningCommercialRepository = readFileSync(new URL("../src/lib/repositories/planning-commercial.ts", import.meta.url), "utf8");
 const planningCommercialPanel = readFileSync(new URL("../src/components/planning-commercial-panel.tsx", import.meta.url), "utf8");
 const planningCommercialSimulationRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-simulation/route.ts", import.meta.url), "utf8");
 const planningCommercialSnapshotsRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-snapshots/route.ts", import.meta.url), "utf8");
+const planningAgroclimateRepository = readFileSync(new URL("../src/lib/repositories/planning-agroclimate.ts", import.meta.url), "utf8");
+const planningZarcPanel = readFileSync(new URL("../src/components/planning-zarc-panel.tsx", import.meta.url), "utf8");
+const planningZarcRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/zarc/route.ts", import.meta.url), "utf8");
 
 assert.match(
   repository,
@@ -485,4 +489,95 @@ assert.match(
   planningCommercialSnapshotsRoute,
   /savePlanningCommercialSnapshot/,
   "snapshot deve ser recalculado e salvo no servidor",
+);
+
+assert.match(
+  agroclimateSnapshotMigration,
+  /CREATE TABLE planning_crop_agroclimate_snapshots/,
+  "ZARC por cultivo precisa de snapshot próprio e imutável",
+);
+assert.match(
+  agroclimateSnapshotMigration,
+  /REVOKE UPDATE, DELETE ON planning_crop_agroclimate_snapshots FROM raiz_app/,
+  "runtime não pode reescrever evidência ZARC congelada",
+);
+assert.match(
+  agroclimateSnapshotMigration,
+  /planning_crop_agroclimate_snapshots_immutable/,
+  "imutabilidade ZARC precisa existir no PostgreSQL",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /process\.env\.AGROAPI_ACCESS_TOKEN/,
+  "consulta Agritec deve depender de credencial de servidor, nunca de valor do cliente",
+);
+assert.doesNotMatch(
+  planningAgroclimateRepository,
+  /NEXT_PUBLIC_AGROAPI/,
+  "token Agritec não pode ser público",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /resolveAgritecMunicipalityExact/,
+  "município ZARC deve ser ligado por resolução oficial exata",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /resolveAgritecCultureExact/,
+  "cultura ZARC deve ser ligada por resolução oficial exata",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /PLANNING_CHANGED_DURING_ZARC_FETCH/,
+  "mudança concorrente deve invalidar a captura ZARC antes de persistir",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /PLANNING_CROP_ZARC_SNAPSHOT_CREATED/,
+  "captura ZARC precisa ser auditada",
+);
+assert.match(
+  planningAgroclimateRepository,
+  /source_scenario_updated_at=ps\.updated_at[\s\S]*source_crop_updated_at=pc\.updated_at/,
+  "histórico ZARC precisa distinguir evidência atual de evidência histórica",
+);
+assert.match(
+  repository,
+  /getCompatiblePlanningAgroclimateSnapshotsWithClient/,
+  "snapshot plurissafras deve congelar somente evidência ZARC compatível com sua versão",
+);
+assert.match(
+  repository,
+  /agroclimateByCrop/,
+  "evidência ZARC compatível deve entrar no payload hashado do planejamento",
+);
+assert.match(
+  planningZarcPanel,
+  /ZARC é zoneamento de risco de plantio/,
+  "UI deve explicar a semântica de risco ZARC",
+);
+assert.match(
+  planningZarcPanel,
+  /não aumenta ou reduz dose de fertilizante automaticamente/,
+  "ZARC não pode alterar dose por inferência",
+);
+assert.match(
+  planningZarcPanel,
+  /credencial Agritec\/Embrapa não configurada/,
+  "ausência da credencial deve degradar apenas o bloco climático",
+);
+assert.match(
+  editor,
+  /PlanningZarcPanel/,
+  "ZARC oficial deve ficar vinculado a cada cultivo do planejamento",
+);
+assert.match(
+  planningZarcRoute,
+  /writers\.has\(session\.role\)/,
+  "atualização ZARC deve respeitar o RBAC do planejamento",
+);
+assert.match(
+  planningZarcRoute,
+  /refreshPlanningCropZarcSnapshot/,
+  "POST ZARC deve consultar e congelar evidência no servidor",
 );
