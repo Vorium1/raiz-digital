@@ -40,6 +40,7 @@ assert.equal(
 );
 const calculateRoute = readFileSync(new URL("../src/app/api/planning/[id]/calculate/route.ts", import.meta.url), "utf8");
 const planningRoute = readFileSync(new URL("../src/app/api/planning/[id]/route.ts", import.meta.url), "utf8");
+const planningCropRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/route.ts", import.meta.url), "utf8");
 const planningDomain = readFileSync(new URL("../src/domain/multiseason-planning.ts", import.meta.url), "utf8");
 assert.match(calculateRoute, /writers\.has\(s\.role\)/);
 assert.match(calculateRoute, /status:403/);
@@ -57,6 +58,21 @@ assert.match(
   planningRoute,
   /nullableBoolean\(b\.limingAgronomistConfirmedIncorporation/,
   "confirmação agronômica deve preservar UNKNOWN em vez de converter para false",
+);
+assert.match(
+  planningCropRoute,
+  /const riceResponseClasses=new Set\(\["MEDIA","ALTA","MUITO_ALTA"\]\)/,
+  "boundary HTTP precisa validar a classe SOSBAI em enum fechado",
+);
+assert.match(
+  planningCropRoute,
+  /riceResponseClassApproved=isRice&&body\.riceResponseClassApproved===true/,
+  "aprovação precisa vir explicitamente do request",
+);
+assert.match(
+  planningCropRoute,
+  /Selecione a classe de resposta SOSBAI antes de confirmar a aprovação/,
+  "API não pode aceitar aprovação sem classe",
 );
 assert.doesNotMatch(
   planningDomain,
@@ -77,11 +93,13 @@ const declaredContextMigration = readFileSync(new URL("../db/migrations/048_mult
 const previousCropMigration = readFileSync(new URL("../db/migrations/049_multiseason_previous_crop_code.sql", import.meta.url), "utf8");
 const limingContextMigration = readFileSync(new URL("../db/migrations/050_multiseason_liming_context.sql", import.meta.url), "utf8");
 const commercialSnapshotMigration = readFileSync(new URL("../db/migrations/051_multiseason_commercial_snapshots.sql", import.meta.url), "utf8");
+const riceResponseMigration = readFileSync(new URL("../db/migrations/053_multiseason_rice_response_class.sql", import.meta.url), "utf8");
 const agroclimateSnapshotMigration = readFileSync(new URL("../db/migrations/052_multiseason_agroclimate_snapshots.sql", import.meta.url), "utf8");
 const planningCommercialRepository = readFileSync(new URL("../src/lib/repositories/planning-commercial.ts", import.meta.url), "utf8");
 const planningCommercialPanel = readFileSync(new URL("../src/components/planning-commercial-panel.tsx", import.meta.url), "utf8");
 const planningCommercialSimulationRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-simulation/route.ts", import.meta.url), "utf8");
 const planningCommercialSnapshotsRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/commercial-snapshots/route.ts", import.meta.url), "utf8");
+const planningReport = readFileSync(new URL("../src/app/(platform)/planejamento/[id]/relatorio/[snapshotId]/page.tsx", import.meta.url), "utf8");
 const planningAgroclimateRepository = readFileSync(new URL("../src/lib/repositories/planning-agroclimate.ts", import.meta.url), "utf8");
 const planningZarcPanel = readFileSync(new URL("../src/components/planning-zarc-panel.tsx", import.meta.url), "utf8");
 const planningZarcRoute = readFileSync(new URL("../src/app/api/planning/[id]/crops/[cropId]/zarc/route.ts", import.meta.url), "utf8");
@@ -140,6 +158,16 @@ assert.match(
   repository,
   /computePlanningNitrogenTarget\(/,
   "N do planejamento deve reutilizar o motor determinístico existente",
+);
+assert.match(
+  repository,
+  /riceResponseClass:scenario\.crops\[result\.position\]\?\.riceResponseClass\?\?null/,
+  "motor de N do arroz precisa receber a classe estruturada do cultivo",
+);
+assert.match(
+  repository,
+  /riceResponseClassApproved:scenario\.crops\[result\.position\]\?\.riceResponseClassApproved===true/,
+  "motor de N do arroz precisa receber aprovação explícita, nunca inferida",
 );
 assert.match(
   repository,
@@ -309,6 +337,26 @@ assert.match(
   "imutabilidade comercial precisa existir também no PostgreSQL",
 );
 assert.match(
+  riceResponseMigration,
+  /ADD COLUMN rice_response_class text/,
+  "classe de resposta SOSBAI precisa ser persistida no cultivo",
+);
+assert.match(
+  riceResponseMigration,
+  /MEDIA','ALTA','MUITO_ALTA/,
+  "classe de resposta do arroz deve usar enum fechado",
+);
+assert.match(
+  riceResponseMigration,
+  /rice_response_class_approved boolean NOT NULL DEFAULT false/,
+  "selecionar a classe não pode equivaler a aprovação automática",
+);
+assert.match(
+  riceResponseMigration,
+  /rice_response_class_approved = false OR rice_response_class IS NOT NULL/,
+  "aprovação sem classe precisa ser inválida no banco",
+);
+assert.match(
   editor,
   /Data prevista/,
   "cada cultivo deve expor a data prevista já existente no modelo",
@@ -337,6 +385,21 @@ assert.match(
   editor,
   /Categoria da cultura anterior/,
   "entrevista precisa expor predecessor estruturado para o primeiro cultivo",
+);
+assert.match(
+  editor,
+  /Classe de resposta SOSBAI/,
+  "edição do arroz precisa expor a classe de resposta oficial",
+);
+assert.match(
+  editor,
+  /riceResponseClassApproved:false/,
+  "mudar a classe do arroz deve invalidar aprovação anterior",
+);
+assert.match(
+  editor,
+  /Classe revisada e aprovada pelo responsável técnico/,
+  "aprovação do arroz precisa ser uma ação explícita da UI",
 );
 assert.match(
   editor,
@@ -580,4 +643,15 @@ assert.match(
   planningZarcRoute,
   /refreshPlanningCropZarcSnapshot/,
   "POST ZARC deve consultar e congelar evidência no servidor",
+);
+
+assert.match(
+  planningReport,
+  /Resposta SOSBAI aprovada explicitamente pelo responsável técnico/,
+  "relatório precisa registrar a classe de resposta que autorizou o N do arroz",
+);
+assert.match(
+  planningReport,
+  /doseKind==="UPPER_BOUND"/,
+  "limite superior de N do arroz não pode ser apresentado como dose exata",
 );
