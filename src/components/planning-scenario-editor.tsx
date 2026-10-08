@@ -661,7 +661,10 @@ export function PlanningScenarioEditor({
         <div key={snapshot.id} className="card" style={{padding:12,margin:"8px 0"}}>
           <strong>{snapshot.createdAt}</strong>
           <small style={{display:"block",overflowWrap:"anywhere"}}>{snapshot.sha256}</small>
-          <button className="button secondary" onClick={()=>openSnapshot(snapshot.id)}>Abrir snapshot</button>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+            <button className="button secondary" onClick={()=>openSnapshot(snapshot.id)}>Abrir snapshot</button>
+            <a className="button secondary" href={`/planejamento/${scenario.id}/relatorio/${snapshot.id}`}>Relatório / PDF</a>
+          </div>
         </div>
       )}
       {selectedSnapshot&&
