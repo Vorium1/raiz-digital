@@ -7,6 +7,34 @@ INSERT INTO properties(id,tenant_id,client_id,name,municipality,state) VALUES ('
 INSERT INTO fields(id,tenant_id,property_id,name,area_ha,boundary) VALUES ('10000000-0000-4000-8000-000000000041','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000031','Field A',10,ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))',4326));
 INSERT INTO planning_scenarios(id,tenant_id,field_id,name,created_by) VALUES ('10000000-0000-4000-8000-000000000051','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000041','Scenario A','10000000-0000-4000-8000-000000000011');
 INSERT INTO planning_scenario_crops(id,tenant_id,scenario_id,position,crop_code) VALUES ('10000000-0000-4000-8000-000000000061','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000051',0,'SOYBEAN'),('10000000-0000-4000-8000-000000000062','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000051',1,'WHEAT'),('10000000-0000-4000-8000-000000000063','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000051',2,'RICE');
+UPDATE planning_scenario_crops
+   SET rice_response_class='ALTA',
+       rice_response_class_approved=true
+ WHERE id='10000000-0000-4000-8000-000000000063'::uuid;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM planning_scenario_crops
+    WHERE id='10000000-0000-4000-8000-000000000063'::uuid
+      AND rice_response_class='ALTA'
+      AND rice_response_class_approved=true
+  ) THEN
+    RAISE EXCEPTION 'valid rice response approval was not persisted';
+  END IF;
+
+  BEGIN
+    UPDATE planning_scenario_crops
+       SET rice_response_class=NULL,
+           rice_response_class_approved=true
+     WHERE id='10000000-0000-4000-8000-000000000063'::uuid;
+    RAISE EXCEPTION 'invalid rice response approval accepted';
+  EXCEPTION
+    WHEN check_violation THEN NULL;
+  END;
+END $;
+
 INSERT INTO planning_scenario_snapshots(tenant_id,scenario_id,payload,sha256,created_by) VALUES ('10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000051','{"version":1}'::jsonb,repeat('a',64),'10000000-0000-4000-8000-000000000011');
 INSERT INTO planning_crop_commercial_snapshots
 (id,tenant_id,scenario_id,planning_crop_id,label,simulation_mode,area_ha,crop_position,crop_code,season_label,
@@ -115,4 +143,4 @@ DO $$ BEGIN
  THEN RAISE EXCEPTION 'tenant B leak'; END IF;
  IF EXISTS(SELECT 1 FROM planning_scenarios WHERE id='10000000-0000-4000-8000-000000000051') THEN RAISE EXCEPTION 'foreign scenario visible'; END IF;
 END $$;
-RESET ROLE; SELECT 'PASS: planning lifecycle, immutable agronomic/commercial/agroclimate snapshots and tenant B RLS invisibility' AS result; ROLLBACK;
+RESET ROLE; SELECT 'PASS: planning lifecycle, explicit rice response approval, immutable agronomic/commercial/agroclimate snapshots and tenant B RLS invisibility' AS result; ROLLBACK;
