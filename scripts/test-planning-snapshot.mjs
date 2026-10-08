@@ -8,7 +8,7 @@ import {
   verifyPlanningSnapshot,
 } from "../src/domain/planning-snapshot.ts";
 
-assert.equal(PLANNING_SNAPSHOT_VERSION, 2);
+assert.equal(PLANNING_SNAPSHOT_VERSION, 3);
 
 const first={
   version:2,
@@ -35,11 +35,24 @@ const built=buildPlanningSnapshotPayload({
   scenario:first.scenario,
   calculation:first.calculation,
 });
-assert.equal(built.payload.version,2);
+assert.equal(built.payload.version,3);
 assert.equal(verifyPlanningSnapshot(built.payload,built.sha256),true);
 assert.equal(
   verifyPlanningSnapshot({...built.payload,scenario:{...built.payload.scenario,name:"alterado"}},built.sha256),
   false,
+);
+
+const legacyV2={
+  version:2,
+  createdAt:"2026-10-06T20:00:00.000Z",
+  scenario:{name:"legado v2"},
+  calculation:{results:[]},
+};
+const legacyV2Hash=planningSnapshotSha256(legacyV2);
+assert.equal(
+  verifyPlanningSnapshot(legacyV2,legacyV2Hash),
+  true,
+  "version:2 continua verificável após evolução do schema para v3",
 );
 
 const repository=readFileSync(new URL("../src/lib/repositories/planning.ts",import.meta.url),"utf8");
