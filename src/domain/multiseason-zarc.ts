@@ -1,8 +1,38 @@
-import type {
-  AgritecCulture,
-  AgritecMunicipality,
-  AgritecZarcWindow,
-} from "../lib/agroclimate/embrapa-agritec-zarc-provider.ts";
+export type AgritecMunicipalityLike={
+  ibgeCode:string;
+  name:string;
+  stateCode:string;
+  latitude:number|null;
+  longitude:number|null;
+  updatedOn:string|null;
+};
+
+export type AgritecCultureLike={
+  id:number;
+  name:string;
+  fullName:string;
+  seasonLabel:string|null;
+  cultivation:string|null;
+  climate:string|null;
+  hasZoning:boolean;
+  updatedOn:string|null;
+};
+
+export type AgritecZarcWindowLike={
+  municipalityName:string;
+  stateCode:string;
+  cropName:string;
+  cycleLabel:string;
+  soilLabel:string;
+  startDay:number;
+  startMonth:number;
+  endDay:number;
+  endMonth:number;
+  seasonStartYear:number;
+  seasonEndYear:number;
+  riskPct:20|30|40;
+  ordinance:string;
+};
 
 function normalizedOfficialName(value:string){
   return value
@@ -14,11 +44,11 @@ function normalizedOfficialName(value:string){
 }
 
 export type AgritecMunicipalityResolution =
-  | {status:"READY";municipality:AgritecMunicipality;warnings:string[]}
+  | {status:"READY";municipality:AgritecMunicipalityLike;warnings:string[]}
   | {status:"NO_MATCH"|"AMBIGUOUS";municipality:null;warnings:string[]};
 
 export function resolveAgritecMunicipalityExact(input:{
-  municipalities:AgritecMunicipality[];
+  municipalities:AgritecMunicipalityLike[];
   municipalityName:string;
   stateCode:string;
 }):AgritecMunicipalityResolution{
@@ -51,7 +81,7 @@ const PLANNING_CROP_TO_AGRITEC_BASE:Record<string,string>={
   ARROZ:"ARROZ",
 };
 
-function cultureBaseNames(culture:AgritecCulture){
+function cultureBaseNames(culture:AgritecCultureLike){
   const cultivation=normalizedOfficialName(culture.cultivation??"");
   return [...new Set([culture.name,culture.fullName].map((raw)=>{
     const name=normalizedOfficialName(raw);
@@ -70,7 +100,7 @@ function cultivationMatches(culture:AgritecCulture,irrigated:boolean|null|undefi
 }
 
 export type AgritecCultureResolution =
-  | {status:"READY";culture:AgritecCulture;warnings:string[]}
+  | {status:"READY";culture:AgritecCultureLike;warnings:string[]}
   | {
       status:"CROP_NOT_SUPPORTED"|"NO_MATCH"|"AMBIGUOUS"|"WATER_CONDITION_REQUIRED";
       culture:null;
@@ -78,7 +108,7 @@ export type AgritecCultureResolution =
     };
 
 export function resolveAgritecCultureExact(input:{
-  cultures:AgritecCulture[];
+  cultures:AgritecCultureLike[];
   cropCode:string;
   irrigated:boolean|null|undefined;
 }):AgritecCultureResolution{
@@ -132,7 +162,7 @@ function monthDay(month:number,day:number){
   return month*100+day;
 }
 
-function dateFallsInsideWindow(date:Date,window:AgritecZarcWindow){
+function dateFallsInsideWindow(date:Date,window:AgritecZarcWindowLike){
   const current=monthDay(date.getUTCMonth()+1,date.getUTCDate());
   const start=monthDay(window.startMonth,window.startDay);
   const end=monthDay(window.endMonth,window.endDay);
@@ -157,7 +187,7 @@ export type PlanningZarcAssessment={
 };
 
 export function assessAgritecPlanningDate(input:{
-  windows:AgritecZarcWindow[];
+  windows:AgritecZarcWindowLike[];
   plannedDate:string;
   municipalityName:string;
   stateCode:string;
