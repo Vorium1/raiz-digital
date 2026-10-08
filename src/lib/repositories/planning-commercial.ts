@@ -386,3 +386,44 @@ export async function listPlanningCommercialSnapshots(input:{
     return rows;
   });
 }
+
+
+export async function listPlanningCommercialSnapshotsForPlanningSnapshot(input:{
+  tenantId:string;
+  userId:string;
+  scenarioId:string;
+  snapshotCreatedAt:string;
+  sourceScenarioUpdatedAt:string;
+  crops:Array<{id:string;updatedAt:string}>;
+}){
+  const cropVersions=new Map(
+    input.crops.map((crop)=>[crop.id,new Date(crop.updatedAt).getTime()]),
+  );
+  return withTenant({tenantId:input.tenantId,userId:input.userId},async client=>{
+    const rows=(await client.query(
+      `SELECT id::text,label,simulation_mode AS "simulationMode",schema_version AS "schemaVersion",
+              area_ha::float8 AS "areaHa",planning_crop_id::text AS "planningCropId",
+              crop_position AS "cropPosition",crop_code AS "cropCode",
+              season_label AS "seasonLabel",planned_date::text AS "plannedDate",
+              source_scenario_updated_at AS "sourceScenarioUpdatedAt",
+              source_crop_updated_at AS "sourceCropUpdatedAt",
+              source_targets AS "sourceTargets",product_snapshots AS "productSnapshots",
+              engine_input AS "engineInput",engine_output AS "engineOutput",
+              created_by::text AS "createdBy",created_at::text AS "createdAt"
+       FROM planning_crop_commercial_snapshots
+       WHERE tenant_id=$1::uuid
+         AND scenario_id=$2::uuid
+         AND created_at<=$3::timestamptz
+         AND source_scenario_updated_at=$4::timestamptz
+       ORDER BY crop_position,created_at,id`,
+      [input.tenantId,input.scenarioId,input.snapshotCreatedAt,input.sourceScenarioUpdatedAt],
+    )).rows;
+
+    return rows.filter((row:any)=>{
+      const expected=cropVersions.get(String(row.planningCropId));
+      if(expected==null)return false;
+      const actual=new Date(row.sourceCropUpdatedAt).getTime();
+      return Number.isFinite(actual)&&actual===expected;
+    });
+  });
+}
