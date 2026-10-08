@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PlanningCommercialPanel } from "@/components/planning-commercial-panel";
+import { PlanningZarcPanel } from "@/components/planning-zarc-panel";
 
 type Crop={
   id:string;
@@ -586,7 +587,8 @@ export function PlanningScenarioEditor({
               {nitrogen.minimumKgNPerHa===nitrogen.maximumKgNPerHa?"N → produto":"Abrir calculadora para N"}
             </a>}
           </div>}
-          {result.crop?.id&&<PlanningCommercialPanel scenarioId={scenario.id} cropId={result.crop.id}/>} 
+          {result.crop?.id&&<PlanningCommercialPanel scenarioId={scenario.id} cropId={result.crop.id}/>}
+          {result.crop?.id&&<PlanningZarcPanel scenarioId={scenario.id} cropId={result.crop.id}/>}  
         </article>;
       })}
       {accumulatedPk&&<article className="card" style={{padding:16,marginTop:12}}>
