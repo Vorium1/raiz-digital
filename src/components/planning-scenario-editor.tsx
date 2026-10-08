@@ -514,12 +514,12 @@ export function PlanningScenarioEditor({
                   </select>
                   <small>Não é inferida por meta, clima, preço ou investimento.</small>
                 </label>
-                <label style={{alignSelf:"end"}}>
+                <label style={{alignSelf:"flex-end"}}>
                   <span style={{display:"flex",gap:8,alignItems:"center"}}>
                     <input
                       type="checkbox"
-                      checked={draft.riceResponseClassApproved??crop.riceResponseClassApproved??false}
-                      disabled={!(draft.riceResponseClass??crop.riceResponseClass)}
+                      checked={Boolean(draft.riceResponseClassApproved??crop.riceResponseClassApproved)}
+                      disabled={!Boolean(draft.riceResponseClass??crop.riceResponseClass)}
                       onChange={e=>setDraft({...draft,riceResponseClassApproved:e.target.checked})}
                     />
                     Classe revisada e aprovada pelo responsável técnico
