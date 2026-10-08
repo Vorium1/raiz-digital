@@ -1,5 +1,3 @@
-"use client";
-
 export type PlanningRiceResponseClass="MEDIA"|"ALTA"|"MUITO_ALTA";
 
 export function PlanningRiceResponseFields({
