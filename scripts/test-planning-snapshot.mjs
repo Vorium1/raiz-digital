@@ -59,6 +59,8 @@ const repository=readFileSync(new URL("../src/lib/repositories/planning.ts",impo
 const route=readFileSync(new URL("../src/app/api/planning/[id]/snapshots/[snapshotId]/route.ts",import.meta.url),"utf8");
 assert.match(repository,/integrity:version>=2\?"VERIFIED":"LEGACY_UNVERIFIABLE"/);
 assert.match(repository,/verifyPlanningSnapshot\(row\.payload,row\.sha256\)/);
+assert.match(repository,/getCompatiblePlanningAgroclimateSnapshotsWithClient/,"snapshot v3 deve selecionar ZARC compatível antes do hash");
+assert.match(repository,/agroclimateByCrop/,"snapshot v3 deve congelar evidência ZARC por cultivo dentro do payload");
 assert.match(route,/getPlanningSnapshot\(session\.tenantId,id,snapshotId,session\.userId\)/);
 
 console.log("planning-snapshot: hash canônico v2, verificação e leitura tenant-scoped aprovados");
