@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const PLANNING_SNAPSHOT_VERSION = 2;
+export const PLANNING_SNAPSHOT_VERSION = 3;
 
 function canonicalize(value:unknown):unknown {
   if(Array.isArray(value)) return value.map(canonicalize);
