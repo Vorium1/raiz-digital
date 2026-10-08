@@ -496,7 +496,15 @@ export function PlanningScenarioEditor({
                   <option value="no">Sequeiro</option>
                 </select>
               </label>
-                                          <label>Observações operacionais
+                                          {["RICE","ARROZ"].includes(String(draft.cropCode??crop.cropCode).toUpperCase())&&
+                <PlanningRiceResponseFields
+                  responseClass={(draft.riceResponseClass??crop.riceResponseClass??null) as PlanningRiceResponseClass|null}
+                  approved={Boolean(draft.riceResponseClassApproved??crop.riceResponseClassApproved)}
+                  onChange={(riceResponseClass,riceResponseClassApproved)=>{
+                    setDraft((current:any)=>({...current,riceResponseClass,riceResponseClassApproved}));
+                  }}
+                />}
+                            <label>Observações operacionais
                 <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
               </label>
               <div>
@@ -510,12 +518,7 @@ export function PlanningScenarioEditor({
                 Meta: {crop.targetYield??"UNKNOWN"} {crop.targetUnit??""} ·
                 {crop.irrigated===true?" irrigado":crop.irrigated===false?" sequeiro":" condição hídrica UNKNOWN"}
               </p>
-                            {["RICE","ARROZ"].includes(crop.cropCode.toUpperCase())&&<p>
-                Resposta SOSBAI: <strong>{crop.riceResponseClass??"não resolvida"}</strong> · {
-                  crop.riceResponseClassApproved?"aprovada":"aguarda aprovação explícita"
-                }
-              </p>
-                            <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
+                                          <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
               <button onClick={()=>move(index,-1)} disabled={index===0}>↑</button>
               <button onClick={()=>move(index,1)} disabled={index===crops.length-1}>↓</button>
               <button onClick={()=>remove(crop.id)}>Remover</button>
