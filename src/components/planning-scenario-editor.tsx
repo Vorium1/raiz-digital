@@ -13,6 +13,8 @@ type Crop={
   targetYield:number|null;
   targetUnit:string|null;
   irrigated:boolean|null;
+  riceResponseClass:"MEDIA"|"ALTA"|"MUITO_ALTA"|null;
+  riceResponseClassApproved:boolean;
   notes:string;
 };
 
@@ -90,6 +92,9 @@ function limingTargetLabel(target:any){
 
 function nitrogenTargetLabel(target:any){
   if(!target?.ready)return `bloqueado · ${(target?.blockers??[]).join(" · ")||"sem dose determinística"}`;
+  if(target.doseKind==="UPPER_BOUND"){
+    return `até ${target.maximumKgNPerHa} kg N/ha`;
+  }
   if(target.minimumKgNPerHa!==target.maximumKgNPerHa){
     return `${target.minimumKgNPerHa}–${target.maximumKgNPerHa} kg N/ha`;
   }
@@ -492,6 +497,35 @@ export function PlanningScenarioEditor({
                   <option value="no">Sequeiro</option>
                 </select>
               </label>
+              {String(draft.cropCode??crop.cropCode).toUpperCase()==="RICE"&&<>
+                <label>Classe de resposta SOSBAI
+                  <select
+                    value={draft.riceResponseClass??crop.riceResponseClass??""}
+                    onChange={e=>setDraft({
+                      ...draft,
+                      riceResponseClass:e.target.value||null,
+                      riceResponseClassApproved:false,
+                    })}
+                  >
+                    <option value="">Não resolvida</option>
+                    <option value="MEDIA">Média</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="MUITO_ALTA">Muito alta</option>
+                  </select>
+                  <small>Não é inferida por meta, clima, preço ou investimento.</small>
+                </label>
+                <label style={{alignSelf:"end"}}>
+                  <span style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <input
+                      type="checkbox"
+                      checked={draft.riceResponseClassApproved??crop.riceResponseClassApproved??false}
+                      disabled={!(draft.riceResponseClass??crop.riceResponseClass)}
+                      onChange={e=>setDraft({...draft,riceResponseClassApproved:e.target.checked})}
+                    />
+                    Classe revisada e aprovada pelo responsável técnico
+                  </span>
+                </label>
+              </>}
               <label>Observações operacionais
                 <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
               </label>
@@ -506,6 +540,11 @@ export function PlanningScenarioEditor({
                 Meta: {crop.targetYield??"UNKNOWN"} {crop.targetUnit??""} ·
                 {crop.irrigated===true?" irrigado":crop.irrigated===false?" sequeiro":" condição hídrica UNKNOWN"}
               </p>
+              {(crop.cropCode==="RICE"||crop.cropCode==="ARROZ")&&<p>
+                Resposta SOSBAI: <strong>{crop.riceResponseClass??"não resolvida"}</strong> · {
+                  crop.riceResponseClassApproved?"aprovada":"aguarda aprovação explícita"
+                }
+              </p>
               <button onClick={()=>{setDraft({...crop});setEditing(crop.id)}}>Editar</button>
               <button onClick={()=>move(index,-1)} disabled={index===0}>↑</button>
               <button onClick={()=>move(index,1)} disabled={index===crops.length-1}>↓</button>
@@ -517,7 +556,7 @@ export function PlanningScenarioEditor({
 
     {results.length>0&&<section>
       <h2>Resultados da simulação</h2>
-      <p>P/K, S e N abaixo usam motores determinísticos oficiais da RAIZ. N automático nesta etapa existe para trigo quando MO, meta e cultura anterior estão resolvidas; calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
+      <p>P/K, S e N abaixo usam motores determinísticos oficiais da RAIZ. N é calculado para trigo quando MO, meta e cultura anterior estão resolvidas e para arroz irrigado somente quando a classe de resposta SOSBAI estiver explicitamente aprovada. Calcário e demais nutrientes só entram quando seus contextos específicos estiverem válidos.</p>
       {results.map(result=>{
         const p=result.deterministicPk?.P2O5;
         const k=result.deterministicPk?.K2O;
