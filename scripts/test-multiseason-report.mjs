@@ -66,6 +66,21 @@ assert.match(
 );
 assert.match(
   report,
+  /agroclimateByCrop/,
+  "relatório deve ler somente evidência agroclimática já congelada no snapshot",
+);
+assert.match(
+  report,
+  /ZARC é zoneamento de risco de implantação, não previsão de produtividade/,
+  "relatório deve preservar a semântica oficial do ZARC",
+);
+assert.match(
+  report,
+  /não altera automaticamente dose de nutriente ou corretivo/,
+  "risco climático não pode mudar dose por inferência",
+);
+assert.match(
+  report,
   /Classificação analítica não é convertida em dose automática/,
   "micronutriente classificado não pode virar dose no relatório",
 );
