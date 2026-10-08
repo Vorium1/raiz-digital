@@ -496,15 +496,7 @@ export function PlanningScenarioEditor({
                   <option value="no">Sequeiro</option>
                 </select>
               </label>
-                            {["RICE","ARROZ"].includes(String(draft.cropCode??crop.cropCode).toUpperCase())&&
-                <PlanningRiceResponseFields
-                  responseClass={(draft.riceResponseClass??crop.riceResponseClass??null) as PlanningRiceResponseClass|null}
-                  approved={Boolean(draft.riceResponseClassApproved??crop.riceResponseClassApproved)}
-                  onChange={(riceResponseClass,riceResponseClassApproved)=>{
-                    setDraft((current:any)=>({...current,riceResponseClass,riceResponseClassApproved}));
-                  }}
-                />}
-                            <label>Observações operacionais
+                                          <label>Observações operacionais
                 <textarea value={draft.notes??crop.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
               </label>
               <div>
