@@ -92,7 +92,7 @@ LEFT JOIN LATERAL (
 ) base_dates ON true
 WHERE planning_scenarios.tenant_id=$1::uuid AND planning_scenarios.id=$2::uuid`,[tenantId,scenarioId])).rows[0];
   if(!scenario) throw new PlanningError("Planejamento não encontrado.",404);
-  const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date::text AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, notes, updated_at::text AS "updatedAt" FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
+  const crops=(await c.query(`SELECT id::text, position, crop_code AS "cropCode", season_label AS "seasonLabel", planned_date::text AS "plannedDate", target_yield::float8 AS "targetYield", target_unit AS "targetUnit", irrigated, rice_response_class AS "riceResponseClass", rice_response_class_approved AS "riceResponseClassApproved", notes, updated_at::text AS "updatedAt" FROM planning_scenario_crops WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid ORDER BY position,id`,[tenantId,scenarioId])).rows;
   return {...scenario,crops};
 }
 export async function getPlanningScenario(tenantId: string, scenarioId: string, userId?: string) {
@@ -248,11 +248,14 @@ export async function addPlanningCrop(input:{
        VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::date,$7,$8,$9,$10)
        RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel",
                  planned_date AS "plannedDate",target_yield::float8 AS "targetYield",
-                 target_unit AS "targetUnit",irrigated,notes`,
+                 target_unit AS "targetUnit",irrigated,
+                 rice_response_class AS "riceResponseClass",
+                 rice_response_class_approved AS "riceResponseClassApproved",notes`,
       [
         input.tenantId,input.scenarioId,nextPosition,input.cropCode,input.seasonLabel??"",
         input.plannedDate??null,input.targetYield??null,input.targetUnit??null,
         input.irrigated??null,input.notes??"",
+        riceResponseClass,riceResponseClassApproved,
       ],
     )).rows[0];
 
@@ -264,7 +267,13 @@ export async function addPlanningCrop(input:{
     await writeAudit(c,{
       tenantId:input.tenantId,userId:input.userId,
       action:"PLANNING_CROP_ADDED",entityType:"planning_scenario_crop",entityId:row.id,
-      metadata:{scenarioId:input.scenarioId,position:row.position,cropCode:row.cropCode},
+      metadata:{
+        scenarioId:input.scenarioId,
+        position:row.position,
+        cropCode:row.cropCode,
+        riceResponseClass:row.riceResponseClass??null,
+        riceResponseClassApproved:row.riceResponseClassApproved===true,
+      },
     });
     return row;
   });
@@ -274,8 +283,17 @@ export async function updatePlanningCrop(input:{
   tenantId:string;userId:string;scenarioId:string;cropId:string;cropCode:string;
   seasonLabel?:string;plannedDate?:string|null;targetYield?:number|null;
   targetUnit?:string|null;irrigated?:boolean|null;notes?:string;
+  riceResponseClass?:"MEDIA"|"ALTA"|"MUITO_ALTA"|null;
+  riceResponseClassApproved?:boolean;
 }) {
   return withTenant({tenantId:input.tenantId,userId:input.userId},async c=>{
+    const normalizedCrop=input.cropCode.trim().toUpperCase();
+    const isRice=normalizedCrop==="RICE"||normalizedCrop==="ARROZ";
+    const riceResponseClass=isRice?(input.riceResponseClass??null):null;
+    const riceResponseClassApproved=isRice&&input.riceResponseClassApproved===true;
+    if(riceResponseClassApproved&&!riceResponseClass){
+      throw new PlanningError("A classe de resposta do arroz precisa ser informada antes da aprovação.",400);
+    }
     await c.query(
       `SELECT id FROM planning_scenarios
        WHERE tenant_id=$1::uuid AND id=$2::uuid
@@ -285,7 +303,8 @@ export async function updatePlanningCrop(input:{
     const row=(await c.query(
       `UPDATE planning_scenario_crops
        SET crop_code=$4,season_label=$5,planned_date=$6::date,target_yield=$7,
-           target_unit=$8,irrigated=$9,notes=$10,updated_at=now()
+           target_unit=$8,irrigated=$9,notes=$10,
+           rice_response_class=$11,rice_response_class_approved=$12,updated_at=now()
        WHERE tenant_id=$1::uuid AND scenario_id=$2::uuid AND id=$3::uuid
        RETURNING id::text,position,crop_code AS "cropCode",season_label AS "seasonLabel",
                  planned_date AS "plannedDate",target_yield::float8 AS "targetYield",
@@ -594,6 +613,9 @@ async function enrichPlanningResultsWithDeterministicNutrients(
       labResults,
       reanalysisRequired:result.reanalysisRequired,
       precedingCropCode,
+      irrigated:scenario.crops[result.position]?.irrigated??null,
+      riceResponseClass:scenario.crops[result.position]?.riceResponseClass??null,
+      riceResponseClassApproved:scenario.crops[result.position]?.riceResponseClassApproved===true,
     });
     const deterministicLiming=computePlanningLimingTarget({
       cropCode:result.crop.cropCode,
