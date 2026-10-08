@@ -140,6 +140,7 @@ export default async function MultiseasonPlanningReportPage({
     const accumulatedSulfur=calculation.accumulatedSulfur??null;
     const accumulatedNitrogen=calculation.accumulatedNitrogen??null;
     const initialLiming=calculation.initialLiming??null;
+    const agroclimateByCrop=calculation.agroclimateByCrop??{};
 
     return <>
       <Topbar eyebrow="Planejamento" title="Relatório Plurissafras">
@@ -300,9 +301,43 @@ export default async function MultiseasonPlanningReportPage({
 
           <section className="report-section">
             <h2>5. Clima e risco</h2>
-            <p className="report-empty-note">
-              Este snapshot ainda não congela um contexto agroclimático plurissafras oficial. A previsão CPTEC de 7 dias não é extrapolada para safras futuras, e nenhum sinal ENSO ou janela ZARC é inventado. O bloco climático permanece pendente até a evidência oficial poder ser vinculada e congelada por cultivo.
-            </p>
+            {Object.keys(agroclimateByCrop).length>0
+              ?<div>
+                {results.map((result:any)=>{
+                  const climate=agroclimateByCrop[String(result.crop?.id??"")];
+                  if(!climate)return null;
+                  const assessment=climate.assessment??{};
+                  const riskLabel=assessment.status==="CONSENSUS_RISK"
+                    ?`risco oficial ${assessment.riskLevelsPct?.[0]??"—"}%`
+                    :assessment.status==="VARIABLE_BY_SOIL_OR_CYCLE"
+                      ?`varia ${(assessment.riskLevelsPct??[]).join("–")||"—"}% conforme solo/ciclo`
+                      :assessment.status==="NOT_INDICATED"
+                        ?"data não indicada nas janelas oficiais retornadas"
+                        :"safra/data não corresponde às janelas oficiais retornadas";
+                  return <div key={result.crop?.id??result.position} className="review-summary" style={{marginBottom:8}}>
+                    <span>{cropLabel(result.crop?.cropCode)} · {result.crop?.seasonLabel||"janela não informada"}</span>
+                    <strong>ZARC: {riskLabel}</strong>
+                    <small>
+                      {climate.municipalityName}/{climate.stateCode} · data prevista {climate.plannedDate} ·
+                      fonte {climate.provider} {climate.providerVersion} · consultado em {dateTimeLabel(climate.retrievedAt)}
+                    </small>
+                    {(assessment.unresolvedDimensions??[]).length>0&&<small>
+                      Dimensões abertas: {assessment.unresolvedDimensions.join(", ")}. A RAIZ preservou o envelope sem escolher contexto ausente.
+                    </small>}
+                    {(assessment.sourcePortarias??[]).length>0&&<small>
+                      Portaria(s): {assessment.sourcePortarias.join(" · ")}
+                    </small>}
+                  </div>;
+                })}
+                <p className="report-empty-note">
+                  ZARC é zoneamento de risco de implantação, não previsão de produtividade. Esta evidência não altera automaticamente dose de nutriente ou corretivo.
+                  A previsão CPTEC de 7 dias não é extrapolada para safras futuras e nenhum sinal ENSO ausente é inventado.
+                </p>
+              </div>
+              :<p className="report-empty-note">
+                Este snapshot não possui contexto ZARC oficial congelado para os cultivos atuais.
+                A previsão CPTEC de 7 dias não é extrapolada para safras futuras, e nenhum sinal ENSO ou janela ZARC é inventado.
+              </p>}
           </section>
 
           <section className="report-section">
