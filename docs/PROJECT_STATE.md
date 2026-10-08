@@ -4296,3 +4296,11 @@ todas as revisões, fontes/responsáveis e regras congeladas, filtros tipo/perí
 Sem migration, histórico paralelo ou escrita de produção. Testes reais de isolamento
 PostgreSQL e regressões registrados no CI. Detalhes em
 `docs/WSL_LOCAL_REVIEW_2026-09-30.md`. PR deve permanecer draft, sem merge.
+
+## 2026-10-01 — clean-room local, migrations 001–047
+
+Em PostGIS local descartável, o banco `raiz_clean_room` foi criado do zero e recebeu
+as migrations 001–047 em ordem, sem reutilizar o volume previamente migrado. Os
+contratos SQL de RLS multitenant e de planejamento plurissafras também passaram sob
+o papel restrito `raiz_app`, em transações com rollback. A validação é exclusivamente
+local: não houve conexão, migration ou escrita em produção.

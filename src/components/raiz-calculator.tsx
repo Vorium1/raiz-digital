@@ -63,12 +63,12 @@ export function RaizCalculator({
   prefill,
 }: {
   products: CommercialInputProduct[];
-  prefill?: { nutrient?: CommercialNutrient; targetKgPerHa?: number; areaHa?: number };
+  prefill?: { nutrient?: CommercialNutrient; targetKgPerHa?: number; areaHa?: number; mode?: Mode; limeRequirementTonHaPrnt100?: number };
 }) {
   const fertilizers = useMemo(() => products.filter((product) => product.active && product.kind === "FERTILIZER"), [products]);
   const limestones = useMemo(() => products.filter((product) => product.active && product.kind === "LIMESTONE"), [products]);
 
-  const [mode, setMode] = useState<Mode>("NUTRIENT_TO_PRODUCT");
+  const [mode, setMode] = useState<Mode>(prefill?.mode ?? "NUTRIENT_TO_PRODUCT");
   const [source, setSource] = useState<ProductSource>(fertilizers.length ? "CATALOG" : "MANUAL");
   const [selectedProductId, setSelectedProductId] = useState(fertilizers[0]?.id ?? "");
   const [selectedProductBId, setSelectedProductBId] = useState(fertilizers[1]?.id ?? "");
@@ -89,7 +89,7 @@ export function RaizCalculator({
   const [limeProductId, setLimeProductId] = useState(limestones[0]?.id ?? "");
   const [limePrnt, setLimePrnt] = useState("");
   const [limePrice, setLimePrice] = useState("");
-  const [limeRequirement, setLimeRequirement] = useState("");
+  const [limeRequirement, setLimeRequirement] = useState(prefill?.limeRequirementTonHaPrnt100?.toString() ?? "");
   const [limePhysicalDose, setLimePhysicalDose] = useState("");
   const [limeDirection, setLimeDirection] = useState<LimeDirection>("PRNT100_TO_PRODUCT");
 
